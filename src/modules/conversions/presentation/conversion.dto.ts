@@ -1,0 +1,2 @@
+import { ApiPropertyOptional } from '@nestjs/swagger'; import { IsEnum, IsOptional, IsString, MaxLength } from 'class-validator'; import { ConversionPriority } from '../domain/conversion-job.types';
+export class CreateConversionJobDto { @ApiPropertyOptional({ enum: ConversionPriority, default: ConversionPriority.NORMAL }) @IsOptional() @IsEnum(ConversionPriority) priority?: ConversionPriority; @ApiPropertyOptional({ description: 'Future storage reference, never raw source content.' }) @IsOptional() @IsString() @MaxLength(1000) inputReference?: string; }

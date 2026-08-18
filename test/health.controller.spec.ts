@@ -1,0 +1,3 @@
+jest.mock('ioredis', () => ({ __esModule: true, default: jest.fn().mockImplementation(() => ({ connect: () => Promise.resolve(), ping: () => Promise.resolve('PONG'), disconnect: () => undefined })) }));
+import { HealthController } from '../src/modules/health/health.controller';
+describe('HealthController', () => { it('reports MongoDB and Redis as up when both probes succeed', async () => { const controller = new HealthController({ readyState: 1 } as never, { getOrThrow: jest.fn(), get: jest.fn() } as never); await expect(controller.health()).resolves.toEqual({ status: 'ok', services: { mongodb: 'up', redis: 'up' } }); }); });
