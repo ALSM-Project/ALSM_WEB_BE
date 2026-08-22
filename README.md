@@ -27,7 +27,7 @@ Docker services are `backend`, `worker`, `mongodb`, and `redis`. Service-to-serv
 
 ## Local development
 
-Provide reachable MongoDB/Redis values in `.env` (use `localhost` only when Node runs outside Docker), then run:
+Provide reachable MongoDB/Redis values and a Base64-encoded 32-byte `MFA_ENCRYPTION_KEY` in `.env` (use `localhost` only when Node runs outside Docker), then run:
 
 ```sh
 npm install
@@ -40,12 +40,12 @@ Important commands: `npm run build`, `npm run lint`, `npm run test`, `npm run te
 
 ## Environment
 
-Copy `.env.example`. Required values include `MONGODB_URI`, `REDIS_HOST`, `REDIS_PORT`, `JWT_ACCESS_SECRET`, `JWT_REFRESH_SECRET`, `CORS_ORIGINS`, and `CONVERSION_WORKER_ENABLED`. Use long random JWT secrets; never commit `.env`. The defaults use Docker hostnames and intentionally marked development placeholders.
+Copy `.env.example`. Required values include `MONGODB_URI`, `REDIS_HOST`, `REDIS_PORT`, `JWT_ACCESS_SECRET`, `JWT_REFRESH_SECRET`, `MFA_ENCRYPTION_KEY`, `CORS_ORIGINS`, and `CONVERSION_WORKER_ENABLED`. `MFA_ENCRYPTION_KEY` must be a stable Base64-encoded 32-byte key; changing it makes existing encrypted MFA secrets undecryptable. Use long random JWT secrets; never commit `.env`. The defaults use Docker hostnames and intentionally marked development placeholders.
 
 ## APIs and behavior
 
 - `GET /health`
-- Auth: register, login, refresh, logout, and `me`.
+- Auth: register, login, refresh, logout, `me`, and TOTP 2FA enrollment (`POST /auth/2fa/setup`, then `POST /auth/2fa/confirm`).
 - Organization-scoped Projects: create, list, get, update, soft-delete.
 - Conversion jobs: create/list per project, get, retry.
 
