@@ -40,7 +40,7 @@ Important commands: `npm run build`, `npm run lint`, `npm run test`, `npm run te
 
 ## Continuous integration
 
-GitHub Actions validates pushes to `feature/**` and `develop`, plus pull requests targeting `develop`. Checks cover linting, Jest tests, TypeScript type checking, the NestJS build, and a Docker image build.
+GitHub Actions validates pushes to `feature/**`, `fix/**`, `chore/**`, `refactor/**`, and `develop`, plus pull requests targeting `develop`. Checks cover linting, Jest tests, TypeScript type checking, the NestJS build, and a Docker image build.
 
 ## Environment
 
