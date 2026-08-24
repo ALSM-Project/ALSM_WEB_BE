@@ -1,0 +1,53 @@
+name: Backend CI Pipeline
+
+on:
+  push:
+    branches:
+      - develop
+      - 'feature/**'
+      - 'fix/**'
+      - 'chore/**'
+      - 'refactor/**'
+  pull_request:
+    branches:
+      - develop
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  validate:
+    name: Build & Validate
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'npm'
+
+      - name: Install Dependencies
+        run: npm ci
+
+      - name: Code Linting (ESLint)
+        run: npm run lint
+
+      - name: Run Automated Tests
+        run: npm run test
+
+      - name: TypeScript Type Check
+        run: npx tsc --noEmit
+
+      - name: Build NestJS Application
+        run: npm run build
+
+      - name: Validate Dockerfile Build
+        run: docker build -t alsm-backend-ci .
