@@ -38,6 +38,10 @@ npm run worker
 
 Important commands: `npm run build`, `npm run lint`, `npm run test`, `npm run test:e2e`, `npm run format`, `npm run start:prod`, and `npm run worker:prod`.
 
+## Continuous integration
+
+GitHub Actions validates pushes to `feature/**` and `develop`, plus pull requests targeting `develop`. Checks cover linting, Jest tests, TypeScript type checking, the NestJS build, and a Docker image build.
+
 ## Environment
 
 Copy `.env.example`. Required values include `MONGODB_URI`, `REDIS_HOST`, `REDIS_PORT`, `JWT_ACCESS_SECRET`, `JWT_REFRESH_SECRET`, `MFA_ENCRYPTION_KEY`, `CORS_ORIGINS`, and `CONVERSION_WORKER_ENABLED`. `MFA_ENCRYPTION_KEY` must be a stable Base64-encoded 32-byte key; changing it makes existing encrypted MFA secrets undecryptable. Use long random JWT secrets; never commit `.env`. The defaults use Docker hostnames and intentionally marked development placeholders.
