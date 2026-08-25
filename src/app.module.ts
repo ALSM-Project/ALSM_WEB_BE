@@ -35,15 +35,11 @@ import {
 import { MongoConversionJobRepository } from './modules/conversions/infrastructure/mongo-conversion-job.repository';
 import { BullMqConversionQueue } from './modules/conversions/infrastructure/bullmq-conversion.queue';
 import { UnconfiguredConversionEngineAdapter } from './modules/conversions/infrastructure/unconfigured-conversion-engine.adapter';
-import { AuthTokenIssuerService } from './modules/auth/application/auth-token-issuer.service';
-import { RegisterUserService } from './modules/auth/application/register-user.service';
-import { LoginUserService } from './modules/auth/application/login-user.service';
-import { RefreshSessionService } from './modules/auth/application/refresh-session.service';
-import { LogoutSessionService } from './modules/auth/application/logout-session.service';
-import { GetMeService } from './modules/auth/application/get-me.service';
-import { LoginWithGoogleService } from './modules/auth/application/login-with-google.service';
-import { GoogleIdentityVerifierAdapter } from './modules/auth/infrastructure/google-identity-verifier.adapter';
-import { GOOGLE_IDENTITY_PORT } from './modules/auth/domain/google-identity.port';
+import { AuthService } from './modules/auth/application/auth.service';
+import { ConfirmMfaSetupService } from './modules/auth/application/confirm-mfa-setup.service';
+import { MFA_SECURITY } from './modules/auth/application/mfa-security.port';
+import { StartMfaSetupService } from './modules/auth/application/start-mfa-setup.service';
+import { MfaSecurityService } from './modules/auth/infrastructure/mfa-security.service';
 import { AuthController } from './modules/auth/presentation/auth.controller';
 import { OrganizationAuthorizationService } from './modules/organizations/application/organization-authorization.service';
 import { OrganizationContextService } from './modules/organizations/application/organization-context.service';
@@ -53,6 +49,7 @@ import { ConversionJobService } from './modules/conversions/application/conversi
 import { ConversionsController } from './modules/conversions/presentation/conversions.controller';
 import { HealthController } from './modules/health/health.controller';
 import { ConversionWorkerRunner } from './modules/conversions/infrastructure/conversion-worker.runner';
+
 @Module({
   imports: [
     ConfigModule.forRoot({ isGlobal: true, validationSchema: environmentValidationSchema }),
@@ -70,22 +67,19 @@ import { ConversionWorkerRunner } from './modules/conversions/infrastructure/con
   controllers: [AuthController, ProjectsController, ConversionsController, HealthController],
   providers: [
     JwtAuthGuard,
-    AuthTokenIssuerService,
-    RegisterUserService,
-    LoginUserService,
-    RefreshSessionService,
-    LogoutSessionService,
-    GetMeService,
-    LoginWithGoogleService,
+    AuthService,
+    StartMfaSetupService,
+    ConfirmMfaSetupService,
+    MfaSecurityService,
     OrganizationContextService,
     OrganizationAuthorizationService,
     ProjectService,
     ConversionJobService,
     ConversionWorkerRunner,
+    { provide: MFA_SECURITY, useExisting: MfaSecurityService },
     { provide: USER_REPOSITORY, useClass: MongoUserRepository },
     { provide: ORGANIZATION_REPOSITORY, useClass: MongoOrganizationRepository },
     { provide: SESSION_REPOSITORY, useClass: MongoSessionRepository },
-    { provide: GOOGLE_IDENTITY_PORT, useClass: GoogleIdentityVerifierAdapter },
     { provide: AUDIT_REPOSITORY, useClass: MongoAuditRepository },
     { provide: PROJECT_REPOSITORY, useClass: MongoProjectRepository },
     { provide: CONVERSION_JOB_REPOSITORY, useClass: MongoConversionJobRepository },
