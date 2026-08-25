@@ -4,7 +4,7 @@ export type UserDocument = HydratedDocument<User>;
 @Schema({ collection: 'users', timestamps: true })
 export class User {
   @Prop({ required: true, unique: true, lowercase: true, trim: true }) email!: string;
-  @Prop({ required: true, select: false }) passwordHash!: string;
+  @Prop({ required: false, select: false }) passwordHash?: string;
   @Prop({ required: true, trim: true }) fullName!: string;
   @Prop({ default: false }) isPlatformAdmin!: boolean;
   @Prop({ default: true }) isActive!: boolean;

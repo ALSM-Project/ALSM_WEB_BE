@@ -6,6 +6,6 @@
     "outDir": "./dist", "baseUrl": "./", "incremental": true,
     "strict": true, "noImplicitOverride": true, "skipLibCheck": true,
     "paths": { "@/*": ["src/*"] },
-    "ignoreDeprecations": "6.0"
+    "ignoreDeprecations": "5.0"
   }
 }
