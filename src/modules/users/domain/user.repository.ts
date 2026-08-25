@@ -8,7 +8,7 @@ export interface MfaState {
 export interface UserRecord {
   id: string;
   email: string;
-  passwordHash: string;
+  passwordHash?: string;
   fullName: string;
   isPlatformAdmin: boolean;
   isActive: boolean;

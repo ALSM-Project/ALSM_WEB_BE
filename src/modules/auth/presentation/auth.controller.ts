@@ -12,12 +12,7 @@ import { ApiBearerAuth, ApiResponse, ApiTags } from '@nestjs/swagger';
 import { AuthService, AuthTokens } from '../application/auth.service';
 import { ConfirmMfaSetupService } from '../application/confirm-mfa-setup.service';
 import { StartMfaSetupService } from '../application/start-mfa-setup.service';
-import {
-  ConfirmMfaSetupDto,
-  LoginDto,
-  RefreshDto,
-  RegisterDto,
-} from './auth.dto';
+import { ConfirmMfaSetupDto, GoogleLoginDto, LoginDto, RefreshDto, RegisterDto } from './auth.dto';
 import { MfaPresenter } from './mfa.presenter';
 import { CurrentUser } from '../../../shared/security/current-user.decorator';
 import { AuthenticatedUser } from '../../../shared/logging/request-id.middleware';
@@ -41,6 +36,12 @@ export class AuthController {
   @Post('login')
   async login(@Body() dto: LoginDto): Promise<AuthTokens> {
     return this.auth.login(dto.email, dto.password);
+  }
+
+  @HttpCode(HttpStatus.OK)
+  @Post('google')
+  async google(@Body() dto: GoogleLoginDto): Promise<AuthTokens> {
+    return this.auth.loginWithGoogle(dto.idToken);
   }
 
   @HttpCode(HttpStatus.OK)
@@ -77,12 +78,7 @@ export class AuthController {
   @ApiResponse({ status: HttpStatus.CONFLICT, description: 'MFA state changed' })
   @Header('Cache-Control', 'no-store')
   @Post('2fa/confirm')
-  async confirmMfa(
-    @CurrentUser() user: AuthenticatedUser,
-    @Body() dto: ConfirmMfaSetupDto,
-  ) {
-    return MfaPresenter.confirmation(
-      await this.confirmMfaSetup.execute(user.userId, dto.code),
-    );
+  async confirmMfa(@CurrentUser() user: AuthenticatedUser, @Body() dto: ConfirmMfaSetupDto) {
+    return MfaPresenter.confirmation(await this.confirmMfaSetup.execute(user.userId, dto.code));
   }
 }
