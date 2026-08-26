@@ -22,4 +22,5 @@ export const environmentValidationSchema = Joi.object({
   MFA_ISSUER: Joi.string().trim().min(1).default('ALSM'),
   CORS_ORIGINS: Joi.string().required(),
   CONVERSION_WORKER_ENABLED: Joi.boolean().default(false),
+  CASSO_API_KEY: Joi.string().allow('').default(''),
 });
