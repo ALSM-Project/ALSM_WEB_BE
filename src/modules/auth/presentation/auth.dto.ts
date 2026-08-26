@@ -20,6 +20,20 @@ export class GoogleLoginDto {
   @ApiProperty({ description: 'Google ID token from GIS' }) @IsString() idToken!: string;
 }
 
+export class ForgotPasswordDto {
+  @ApiProperty({ example: 'alex@example.com' }) @IsEmail() email!: string;
+}
+
+export class ResetPasswordDto {
+  @ApiProperty() @IsString() token!: string;
+  @ApiProperty({ minLength: 8 }) @IsString() @MinLength(8) newPassword!: string;
+}
+
+export class ChangePasswordDto {
+  @ApiProperty() @IsString() currentPassword!: string;
+  @ApiProperty({ minLength: 8 }) @IsString() @MinLength(8) newPassword!: string;
+}
+
 export class ConfirmMfaSetupDto {
   @ApiProperty({ example: '123456', description: 'Six-digit TOTP verification code' })
   @IsString()

@@ -12,7 +12,19 @@ import { ApiBearerAuth, ApiResponse, ApiTags } from '@nestjs/swagger';
 import { AuthService, AuthTokens } from '../application/auth.service';
 import { ConfirmMfaSetupService } from '../application/confirm-mfa-setup.service';
 import { StartMfaSetupService } from '../application/start-mfa-setup.service';
-import { ConfirmMfaSetupDto, GoogleLoginDto, LoginDto, RefreshDto, RegisterDto } from './auth.dto';
+import { ForgotPasswordService } from '../application/forgot-password.service';
+import { ResetPasswordService } from '../application/reset-password.service';
+import { ChangePasswordService } from '../application/change-password.service';
+import {
+  ChangePasswordDto,
+  ConfirmMfaSetupDto,
+  ForgotPasswordDto,
+  GoogleLoginDto,
+  LoginDto,
+  RefreshDto,
+  RegisterDto,
+  ResetPasswordDto,
+} from './auth.dto';
 import { MfaPresenter } from './mfa.presenter';
 import { CurrentUser } from '../../../shared/security/current-user.decorator';
 import { AuthenticatedUser } from '../../../shared/logging/request-id.middleware';
@@ -25,6 +37,9 @@ export class AuthController {
     private readonly auth: AuthService,
     private readonly startMfaSetup: StartMfaSetupService,
     private readonly confirmMfaSetup: ConfirmMfaSetupService,
+    private readonly forgotPasswordService: ForgotPasswordService,
+    private readonly resetPasswordService: ResetPasswordService,
+    private readonly changePasswordService: ChangePasswordService,
   ) {}
 
   @Post('register')
@@ -42,6 +57,32 @@ export class AuthController {
   @Post('google')
   async google(@Body() dto: GoogleLoginDto): Promise<AuthTokens> {
     return this.auth.loginWithGoogle(dto.idToken);
+  }
+
+  @HttpCode(HttpStatus.OK)
+  @Post('forgot-password')
+  async forgotPassword(@Body() dto: ForgotPasswordDto): Promise<{ ok: true }> {
+    await this.forgotPasswordService.execute(dto.email);
+    return { ok: true };
+  }
+
+  @HttpCode(HttpStatus.OK)
+  @Post('reset-password')
+  async resetPassword(@Body() dto: ResetPasswordDto): Promise<{ ok: true }> {
+    await this.resetPasswordService.execute(dto.token, dto.newPassword);
+    return { ok: true };
+  }
+
+  @ApiBearerAuth()
+  @UseGuards(JwtAuthGuard)
+  @HttpCode(HttpStatus.OK)
+  @Post('change-password')
+  async changePassword(
+    @CurrentUser() user: AuthenticatedUser,
+    @Body() dto: ChangePasswordDto,
+  ): Promise<{ ok: true }> {
+    await this.changePasswordService.execute(user.userId, dto.currentPassword, dto.newPassword);
+    return { ok: true };
   }
 
   @HttpCode(HttpStatus.OK)

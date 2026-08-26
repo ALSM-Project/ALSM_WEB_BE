@@ -13,25 +13,28 @@ describe('AuthController MFA endpoints', () => {
     auth as never,
     startMfaSetup as never,
     confirmMfaSetup as never,
+    {} as never,
+    {} as never,
+    {} as never,
   );
 
   beforeEach(() => jest.clearAllMocks());
 
   it('protects setup and confirmation with JWT authentication', () => {
-    expect(
-      Reflect.getMetadata(GUARDS_METADATA, AuthController.prototype.setupMfa),
-    ).toContain(JwtAuthGuard);
-    expect(
-      Reflect.getMetadata(GUARDS_METADATA, AuthController.prototype.confirmMfa),
-    ).toContain(JwtAuthGuard);
+    expect(Reflect.getMetadata(GUARDS_METADATA, AuthController.prototype.setupMfa)).toContain(
+      JwtAuthGuard,
+    );
+    expect(Reflect.getMetadata(GUARDS_METADATA, AuthController.prototype.confirmMfa)).toContain(
+      JwtAuthGuard,
+    );
   });
 
   it('prevents sensitive MFA responses from being cached', () => {
     const expectedHeader = { name: 'Cache-Control', value: 'no-store' };
 
-    expect(
-      Reflect.getMetadata(HEADERS_METADATA, AuthController.prototype.setupMfa),
-    ).toContainEqual(expectedHeader);
+    expect(Reflect.getMetadata(HEADERS_METADATA, AuthController.prototype.setupMfa)).toContainEqual(
+      expectedHeader,
+    );
     expect(
       Reflect.getMetadata(HEADERS_METADATA, AuthController.prototype.confirmMfa),
     ).toContainEqual(expectedHeader);
@@ -69,9 +72,6 @@ describe('AuthController MFA endpoints', () => {
     );
 
     expect(startMfaSetup.execute).toHaveBeenCalledWith('authenticated-user');
-    expect(confirmMfaSetup.execute).toHaveBeenCalledWith(
-      'authenticated-user',
-      '123456',
-    );
+    expect(confirmMfaSetup.execute).toHaveBeenCalledWith('authenticated-user', '123456');
   });
 });

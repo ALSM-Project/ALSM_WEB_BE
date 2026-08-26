@@ -11,6 +11,10 @@ import {
   OrganizationSchema,
 } from './modules/organizations/infrastructure/organization.schema';
 import { UserSession, UserSessionSchema } from './modules/auth/infrastructure/user-session.schema';
+import {
+  PasswordReset,
+  PasswordResetSchema,
+} from './modules/auth/infrastructure/password-reset.schema';
 import { AuditLog, AuditLogSchema } from './modules/audit/infrastructure/audit-log.schema';
 import { Project, ProjectSchema } from './modules/projects/infrastructure/project.schema';
 import {
@@ -40,6 +44,13 @@ import { ConfirmMfaSetupService } from './modules/auth/application/confirm-mfa-s
 import { MFA_SECURITY } from './modules/auth/application/mfa-security.port';
 import { StartMfaSetupService } from './modules/auth/application/start-mfa-setup.service';
 import { MfaSecurityService } from './modules/auth/infrastructure/mfa-security.service';
+import { ForgotPasswordService } from './modules/auth/application/forgot-password.service';
+import { ResetPasswordService } from './modules/auth/application/reset-password.service';
+import { ChangePasswordService } from './modules/auth/application/change-password.service';
+import { EMAIL_PORT } from './modules/auth/domain/email.port';
+import { SmtpEmailAdapter } from './modules/auth/infrastructure/smtp-email.adapter';
+import { PASSWORD_RESET_REPOSITORY } from './modules/auth/domain/password-reset.repository';
+import { MongoPasswordResetRepository } from './modules/auth/infrastructure/mongo-password-reset.repository';
 import { AuthController } from './modules/auth/presentation/auth.controller';
 import { OrganizationAuthorizationService } from './modules/organizations/application/organization-authorization.service';
 import { OrganizationContextService } from './modules/organizations/application/organization-context.service';
@@ -62,6 +73,7 @@ import { ConversionWorkerRunner } from './modules/conversions/infrastructure/con
       { name: AuditLog.name, schema: AuditLogSchema },
       { name: Project.name, schema: ProjectSchema },
       { name: ConversionJob.name, schema: ConversionJobSchema },
+      { name: PasswordReset.name, schema: PasswordResetSchema },
     ]),
   ],
   controllers: [AuthController, ProjectsController, ConversionsController, HealthController],
@@ -71,6 +83,10 @@ import { ConversionWorkerRunner } from './modules/conversions/infrastructure/con
     StartMfaSetupService,
     ConfirmMfaSetupService,
     MfaSecurityService,
+    ForgotPasswordService,
+    ResetPasswordService,
+    ChangePasswordService,
+    SmtpEmailAdapter,
     OrganizationContextService,
     OrganizationAuthorizationService,
     ProjectService,
@@ -85,6 +101,8 @@ import { ConversionWorkerRunner } from './modules/conversions/infrastructure/con
     { provide: CONVERSION_JOB_REPOSITORY, useClass: MongoConversionJobRepository },
     { provide: CONVERSION_QUEUE, useClass: BullMqConversionQueue },
     { provide: CONVERSION_ENGINE, useClass: UnconfiguredConversionEngineAdapter },
+    { provide: EMAIL_PORT, useClass: SmtpEmailAdapter },
+    { provide: PASSWORD_RESET_REPOSITORY, useClass: MongoPasswordResetRepository },
   ],
   exports: [ConversionWorkerRunner],
 })

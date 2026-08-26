@@ -25,4 +25,13 @@ export const environmentValidationSchema = Joi.object({
   CORS_ORIGINS: Joi.string().required(),
   GOOGLE_CLIENT_ID: Joi.string().allow('').default(''),
   CONVERSION_WORKER_ENABLED: Joi.boolean().default(false),
+  SMTP_HOST: Joi.string().allow('').default(''),
+  SMTP_PORT: Joi.number().port().default(587),
+  SMTP_SECURE: Joi.boolean().default(false),
+  SMTP_USER: Joi.string().allow('').default(''),
+  SMTP_PASS: Joi.string().allow('').default(''),
+  SMTP_FROM: Joi.string().allow('').default(''),
+  APP_BASE_URL: Joi.string()
+    .uri({ scheme: ['http', 'https'] })
+    .default('http://localhost:5173'),
 });
