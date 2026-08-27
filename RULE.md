@@ -12,6 +12,22 @@
 
 ---
 
+## ENGINEERING DOCUMENTATION MAP
+
+`RULE.md` is the highest-level backend engineering governance document. Detailed standards are maintained under `docs/engineering/`:
+
+- `CODING_STANDARDS.md` — coding style, quality, security, testing, error/logging rules.
+- `PROJECT_STRUCTURE_GUIDELINES.md` — module/folder/layer organization.
+- `NAMING_CONVENTIONS.md` — naming for files, folders, classes, routes, collections, branches, commits.
+- `adr/` — accepted Architecture Decision Records and rationale.
+- `DEVELOPER_HANDBOOK.md` — onboarding and day-to-day workflow.
+- `CONTRIBUTING.md` — branch/PR/review/contribution rules.
+- `FOLDER_README_GUIDELINES.md` — required README content for important folders/modules.
+
+If a detailed guide conflicts with this `RULE.md`, `RULE.md` wins until the conflict is formally resolved.
+
+---
+
 # 0. NORTH STAR — ĐÍCH KIẾN TRÚC DUY NHẤT
 
 Backend ALSM sử dụng:

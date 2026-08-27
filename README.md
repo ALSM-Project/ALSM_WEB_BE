@@ -2,11 +2,24 @@
 
 ALSM (Automating Legacy System Modernization) is the shared NestJS backend for the Self-Service, Internal, and Enterprise React portals. It manages platform workflow around legacy conversion jobs; it does **not** implement BMS/DSPF-to-Frontend or COBOL-to-Java conversion tools.
 
-## Backend Development Rules
+## ⚠️ Backend Development Rules
 
-Before creating, modifying, refactoring, or deleting backend code, every contributor must read [RULE.md](RULE.md).
+Before creating, modifying, refactoring, reviewing, or deleting backend code, every developer, contributor, or AI coding agent MUST read [RULE.md](./RULE.md).
 
-RULE.md is the authoritative engineering guideline for the ALSM backend. Backend pull requests and changes are expected to comply with RULE.md.
+`RULE.md` is the authoritative engineering governance document for the ALSM backend. All backend changes and pull requests are expected to comply with it.
+
+## Engineering Documentation
+
+| Document | Purpose |
+|---|---|
+| [RULE.md](./RULE.md) | Mandatory backend engineering rules |
+| [Coding Standards](./docs/engineering/CODING_STANDARDS.md) | Coding conventions and implementation standards |
+| [Project Structure Guidelines](./docs/engineering/PROJECT_STRUCTURE_GUIDELINES.md) | Folder, module, and layer structure |
+| [Naming Conventions](./docs/engineering/NAMING_CONVENTIONS.md) | Naming rules for files, types, APIs, and Git branches |
+| [Architecture Decisions](./docs/engineering/ADR_INDEX.md) | Approved architecture decisions and rationale |
+| [Developer Handbook](./docs/engineering/DEVELOPER_HANDBOOK.md) | Developer onboarding and daily workflow |
+| [Contribution Guidelines](./docs/engineering/CONTRIBUTING.md) | Git, branch, pull-request, and review workflow |
+| [Folder README Guidelines](./docs/engineering/FOLDER_README_GUIDELINES.md) | Documentation requirements for important folders |
 
 ## Architecture and stack
 
