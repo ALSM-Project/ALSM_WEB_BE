@@ -162,9 +162,8 @@ export class PaymentService {
     for (const tx of transactions) {
       this.logger.log(`Casso TX: id=${tx.id}, amount=${tx.amount}, desc="${tx.description}"`);
 
-      // Extract potential reference codes from the description
-      // Casso description typically contains the transfer note that the user wrote
-      const description = (tx.description || '').toUpperCase();
+      // Clean description and extract alphanumeric characters to match reference code flexibly
+      const normalizedDesc = (tx.description || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
 
       // Find matching pending payment by reference code
       const pendingPayments = await this.paymentModel.find({
@@ -174,10 +173,12 @@ export class PaymentService {
 
       for (const payment of pendingPayments) {
         const refUpper = payment.referenceCode.toUpperCase();
+        const refClean = refUpper.replace(/[^A-Z0-9]/g, '');
 
-        // Check if the description contains our reference code
-        // and the amount matches (or is greater/equal)
-        if (description.includes(refUpper) && tx.amount >= payment.amountVnd) {
+        // Check if description contains reference code (normal or cleaned)
+        const isMatched = description.includes(refUpper) || normalizedDesc.includes(refClean);
+
+        if (isMatched && tx.amount >= payment.amountVnd) {
           // Mark payment as completed
           payment.status = PaymentStatus.COMPLETED;
           payment.paidAt = new Date();
@@ -200,6 +201,8 @@ export class PaymentService {
           this.logger.log(`✅ Payment matched! Ref=${payment.referenceCode}, TxID=${tx.id}`);
           matchedCount++;
           break;
+        } else if (isMatched && tx.amount < payment.amountVnd) {
+          this.logger.warn(`⚠️ Partial payment detected! Ref=${payment.referenceCode}, Required=${payment.amountVnd}, Received=${tx.amount}`);
         }
       }
     }
