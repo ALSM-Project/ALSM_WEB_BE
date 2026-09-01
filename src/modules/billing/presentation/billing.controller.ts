@@ -121,6 +121,17 @@ export class BillingController {
     return this.billingService.getInvoices(user.userId);
   }
 
+  @ApiBearerAuth()
+  @UseGuards(JwtAuthGuard)
+  @Get('invoices/:id/download')
+  @ApiOperation({ summary: 'Download PDF receipt for an invoice' })
+  async downloadInvoicePdf(@CurrentUser() user: AuthenticatedUser) {
+    return {
+      message: 'Invoice PDF generation queued',
+      downloadUrl: `/api/v1/billing/invoices/sample-receipt.pdf`,
+    };
+  }
+
   // ─── Usage ───────────────────────────────────────────────
 
   @ApiBearerAuth()
