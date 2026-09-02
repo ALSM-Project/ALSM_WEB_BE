@@ -1,145 +1,107 @@
 import {
   BadRequestException,
+  Inject,
   Injectable,
   Logger,
   NotFoundException,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { InjectModel } from '@nestjs/mongoose';
-import { Model, Types } from 'mongoose';
 import {
-  BillingCycle,
-  PLAN_CATALOGUE,
+  CassoTransaction,
   PaymentStatus,
   PlanTier,
+  VIETQR_BANK_CONFIG,
 } from '../domain/billing.types';
-import { Payment, PaymentDocument } from '../infrastructure/payment.schema';
 import { BillingService } from './billing.service';
-import { CassoTransaction } from '../presentation/billing.dto';
-
-/** Bank account info for VietQR – configure per environment. */
-const BANK_CONFIG = {
-  bankId: 'MB',             // MB Bank code for VietQR
-  bankName: 'MB Bank',
-  accountNumber: '005220248888',
-  accountName: 'MODERNIZER JSC',
-};
+import {
+  IPaymentRepository,
+  PAYMENT_REPOSITORY,
+} from '../domain/billing.repository.interface';
 
 @Injectable()
 export class PaymentService {
   private readonly logger = new Logger(PaymentService.name);
-  private readonly cassoApiKey: string;
 
   constructor(
-    @InjectModel(Payment.name) private readonly paymentModel: Model<PaymentDocument>,
+    @Inject(PAYMENT_REPOSITORY)
+    private readonly paymentRepo: IPaymentRepository,
     private readonly billingService: BillingService,
-    private readonly config: ConfigService,
-  ) {
-    this.cassoApiKey = this.config.get<string>('CASSO_API_KEY', '');
+    private readonly configService: ConfigService,
+  ) {}
+
+  // ─── Casso Webhook Validation ─────────────────────────────
+
+  validateCassoWebhook(authHeader?: string): boolean {
+    const expectedKey = this.configService.get<string>('CASSO_API_KEY');
+    if (!expectedKey) return true; // dev mode default
+    if (!authHeader) return false;
+    const token = authHeader.replace(/^Apikey\s+/i, '').trim();
+    return token === expectedKey;
   }
 
-  // ─── Create Payment Order ────────────────────────────────
+  // ─── VietQR Payment Order Creation ────────────────────────
 
-  async createPaymentOrder(
+  async createQRPayment(
     userId: string,
     organizationId: string,
     planTier: PlanTier,
-    billingCycle: BillingCycle,
+    amountVnd: number,
+    subscriptionId?: string,
+    invoiceId?: string,
   ) {
-    const plan = PLAN_CATALOGUE.find((p) => p.tier === planTier);
-    if (!plan) throw new BadRequestException('Invalid plan tier');
-    if (plan.tier === PlanTier.ENTERPRISE) {
-      throw new BadRequestException('Enterprise plans require contacting sales.');
-    }
+    const randomSuffix = Math.floor(1000 + Math.random() * 9000);
+    const referenceCode = `ALSM${randomSuffix}`;
 
-    const amountVnd =
-      billingCycle === BillingCycle.ANNUAL ? plan.annualPriceVnd * 12 : plan.monthlyPriceVnd;
+    const expiresAt = new Date(Date.now() + 15 * 60 * 1000); // 15 mins expiry
 
-    // Generate a unique reference code: ALSM + random 6 digits
-    const refNum = String(Math.floor(100000 + Math.random() * 900000));
-    const referenceCode = `ALSM${refNum}`;
+    const bank = VIETQR_BANK_CONFIG;
+    const addInfo = encodeURIComponent(referenceCode);
+    const accountName = encodeURIComponent(bank.accountName);
+    const qrDataUrl = `https://img.vietqr.io/image/${bank.bankId}-${bank.accountNumber}-compact2.png?amount=${amountVnd}&addInfo=${addInfo}&accountName=${accountName}`;
 
-    // QR code expires in 15 minutes
-    const expiresAt = new Date(Date.now() + 15 * 60 * 1000);
-
-    // Generate VietQR URL
-    // Format: https://img.vietqr.io/image/{bankId}-{accountNumber}-qr_only.png?amount={amount}&addInfo={referenceCode}
-    const qrDataUrl = `https://img.vietqr.io/image/${BANK_CONFIG.bankId}-${BANK_CONFIG.accountNumber}-compact2.png?amount=${amountVnd}&addInfo=${encodeURIComponent(referenceCode)}&accountName=${encodeURIComponent(BANK_CONFIG.accountName)}`;
-
-    // Create subscription in PENDING_PAYMENT state
-    const subscription = await this.billingService.createPaidSubscription(
+    const payment = await this.paymentRepo.create({
       userId,
       organizationId,
-      planTier,
-      billingCycle,
-    );
-
-    // Create the payment record
-    const payment = await this.paymentModel.create({
-      userId: new Types.ObjectId(userId),
-      organizationId: new Types.ObjectId(organizationId),
-      subscriptionId: new Types.ObjectId(subscription.id),
+      subscriptionId,
+      invoiceId,
       planTier,
       amountVnd,
       status: PaymentStatus.PENDING,
       referenceCode,
       qrDataUrl,
-      bankName: BANK_CONFIG.bankName,
-      accountNumber: BANK_CONFIG.accountNumber,
-      accountName: BANK_CONFIG.accountName,
+      bankName: bank.bankName,
+      accountNumber: bank.accountNumber,
+      accountName: bank.accountName,
       expiresAt,
     });
 
-    // Create invoice
-    const periodEnd = new Date();
-    if (billingCycle === BillingCycle.ANNUAL) {
-      periodEnd.setFullYear(periodEnd.getFullYear() + 1);
-    } else {
-      periodEnd.setMonth(periodEnd.getMonth() + 1);
-    }
-
-    const invoice = await this.billingService.createInvoice(
-      userId,
-      organizationId,
-      subscription.id,
-      planTier,
-      plan.name,
-      amountVnd,
-      new Date(),
-      periodEnd,
-    );
-
-    this.logger.log(`Payment order created: ${referenceCode}, amount=${amountVnd} VND`);
+    this.logger.log(`Created QR Payment ${payment.id}, Ref=${referenceCode}, Amount=${amountVnd} VND`);
 
     return {
-      paymentId: payment._id.toString(),
-      subscriptionId: subscription.id,
-      invoiceNumber: invoice.invoiceNumber,
-      planName: `${plan.name} (${billingCycle === BillingCycle.MONTHLY ? 'Monthly' : 'Annual'})`,
-      amountVnd,
-      currency: '₫',
-      referenceCode,
-      qrDataUrl,
-      bankName: BANK_CONFIG.bankName,
-      accountNumber: BANK_CONFIG.accountNumber,
-      accountName: BANK_CONFIG.accountName,
-      expiresAt,
+      paymentId: payment.id,
+      subscriptionId: payment.subscriptionId,
+      invoiceNumber: payment.invoiceId || 'INV-PENDING',
+      planName: planTier,
+      amountVnd: payment.amountVnd,
+      currency: 'VND',
+      referenceCode: payment.referenceCode,
+      qrDataUrl: payment.qrDataUrl,
+      bankName: payment.bankName,
+      accountNumber: payment.accountNumber,
+      accountName: payment.accountName,
+      expiresAt: payment.expiresAt.toISOString(),
     };
   }
 
-  // ─── Check Payment Status ────────────────────────────────
+  // ─── Check Payment Status (Polling Endpoint) ──────────────
 
   async getPaymentStatus(paymentId: string) {
-    const payment = await this.paymentModel.findById(paymentId).lean();
+    const payment = await this.paymentRepo.findById(paymentId);
     if (!payment) throw new NotFoundException('Payment not found');
 
-    // Check if expired
     if (payment.status === PaymentStatus.PENDING && new Date() > payment.expiresAt) {
-      await this.paymentModel.updateOne(
-        { _id: payment._id },
-        { status: PaymentStatus.EXPIRED },
-      );
-      return { status: PaymentStatus.EXPIRED };
+      await this.paymentRepo.updateStatus(paymentId, PaymentStatus.EXPIRED);
+      return { status: PaymentStatus.EXPIRED, paidAt: null, amountVnd: payment.amountVnd };
     }
 
     return {
@@ -151,49 +113,38 @@ export class PaymentService {
 
   // ─── Casso Webhook Handler ───────────────────────────────
 
-  /**
-   * Process incoming Casso webhook.
-   * Casso sends bank transactions when money arrives.
-   * We match the transaction description against our referenceCode.
-   */
   async handleCassoWebhook(transactions: CassoTransaction[]) {
     let matchedCount = 0;
 
     for (const tx of transactions) {
       this.logger.log(`Casso TX: id=${tx.id}, amount=${tx.amount}, desc="${tx.description}"`);
 
-      // Clean description and extract alphanumeric characters to match reference code flexibly
-      const normalizedDesc = (tx.description || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
+      const description = (tx.description || '').toUpperCase();
+      const normalizedDesc = description.replace(/[^A-Z0-9]/g, '');
 
-      // Find matching pending payment by reference code
-      const pendingPayments = await this.paymentModel.find({
-        status: PaymentStatus.PENDING,
-        expiresAt: { $gt: new Date() },
-      });
+      const pendingPayments = await this.paymentRepo.findPending();
 
       for (const payment of pendingPayments) {
         const refUpper = payment.referenceCode.toUpperCase();
         const refClean = refUpper.replace(/[^A-Z0-9]/g, '');
 
-        // Check if description contains reference code (normal or cleaned)
         const isMatched = description.includes(refUpper) || normalizedDesc.includes(refClean);
 
         if (isMatched && tx.amount >= payment.amountVnd) {
-          // Mark payment as completed
-          payment.status = PaymentStatus.COMPLETED;
-          payment.paidAt = new Date();
-          payment.cassoTransactionId = String(tx.id);
-          await payment.save();
+          await this.paymentRepo.updateStatus(
+            payment.id,
+            PaymentStatus.COMPLETED,
+            new Date(),
+            String(tx.id),
+          );
 
-          // Activate the subscription
           if (payment.subscriptionId) {
-            await this.billingService.activateSubscription(payment.subscriptionId.toString());
+            await this.billingService.activateSubscription(payment.subscriptionId);
           }
 
-          // Mark invoice as paid
           if (payment.invoiceId) {
             await this.billingService.markInvoicePaid(
-              payment.invoiceId.toString(),
+              payment.invoiceId,
               'QR Bank Transfer',
             );
           }
@@ -209,19 +160,5 @@ export class PaymentService {
 
     this.logger.log(`Casso webhook processed: ${transactions.length} TX, ${matchedCount} matched`);
     return { processed: transactions.length, matched: matchedCount };
-  }
-
-  /**
-   * Validate the Casso webhook request.
-   * Casso sends an API key in the Authorization header.
-   */
-  validateCassoWebhook(authHeader: string | undefined): boolean {
-    if (!this.cassoApiKey) {
-      this.logger.warn('CASSO_API_KEY not configured – skipping webhook validation');
-      return true; // Allow in dev if not configured
-    }
-    // Casso sends: "Apikey <key>"
-    const token = authHeader?.replace(/^Apikey\s+/i, '').trim();
-    return token === this.cassoApiKey;
   }
 }

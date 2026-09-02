@@ -49,6 +49,10 @@ export class CreatePaymentDto {
   @ApiProperty({ enum: BillingCycle, example: BillingCycle.MONTHLY })
   @IsEnum(BillingCycle)
   billingCycle!: BillingCycle;
+
+  @ApiPropertyOptional({ example: 499000 })
+  @IsOptional()
+  amountVnd?: number;
 }
 
 // ─── Casso Webhook DTO ──────────────────────────────────────

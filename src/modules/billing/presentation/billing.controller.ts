@@ -19,6 +19,7 @@ import {
   CreateSubscriptionDto,
   UpgradeSubscriptionDto,
 } from './billing.dto';
+import { BillingPresenter } from './response/billing.presenter';
 
 @ApiTags('Billing')
 @Controller('billing')
@@ -43,7 +44,8 @@ export class BillingController {
   @Get('subscription')
   @ApiOperation({ summary: 'Get current user subscription' })
   async getCurrentSubscription(@CurrentUser() user: AuthenticatedUser) {
-    return this.billingService.getCurrentSubscription(user.userId);
+    const sub = await this.billingService.getCurrentSubscription(user.userId);
+    return BillingPresenter.toSubscriptionResponse(sub);
   }
 
   @ApiBearerAuth()
@@ -52,9 +54,9 @@ export class BillingController {
   @ApiOperation({ summary: 'Activate free trial (Professional, 14 days)' })
   @ApiResponse({ status: HttpStatus.CONFLICT, description: 'Already has subscription' })
   async activateTrial(@CurrentUser() user: AuthenticatedUser) {
-    // For now, use userId as organizationId placeholder
-    // In production, resolve from x-organization-id header
-    return this.billingService.activateTrial(user.userId, user.userId);
+    const orgId = (user as any).organizationId || user.userId;
+    const sub = await this.billingService.activateTrial(user.userId, orgId);
+    return BillingPresenter.toSubscriptionResponse(sub);
   }
 
   @ApiBearerAuth()
@@ -65,12 +67,14 @@ export class BillingController {
     @CurrentUser() user: AuthenticatedUser,
     @Body() dto: CreateSubscriptionDto,
   ) {
-    return this.billingService.createPaidSubscription(
+    const orgId = (user as any).organizationId || user.userId;
+    const sub = await this.billingService.createPaidSubscription(
       user.userId,
-      user.userId, // placeholder org
+      orgId,
       dto.planTier,
       dto.billingCycle,
     );
+    return BillingPresenter.toSubscriptionResponse(sub);
   }
 
   @ApiBearerAuth()
@@ -80,7 +84,6 @@ export class BillingController {
   async getUpgradePreview(
     @CurrentUser() user: AuthenticatedUser,
   ) {
-    // Default preview to Professional for now
     return this.billingService.getUpgradePreview(user.userId, 'PROFESSIONAL' as any);
   }
 
@@ -118,7 +121,8 @@ export class BillingController {
   @Get('invoices')
   @ApiOperation({ summary: 'List invoices for current user' })
   async getInvoices(@CurrentUser() user: AuthenticatedUser) {
-    return this.billingService.getInvoices(user.userId);
+    const invoices = await this.billingService.getInvoices(user.userId);
+    return BillingPresenter.toInvoiceListResponse(invoices);
   }
 
   @ApiBearerAuth()
@@ -139,6 +143,7 @@ export class BillingController {
   @Get('usage')
   @ApiOperation({ summary: 'Get resource usage statistics' })
   async getUsageStats(@CurrentUser() user: AuthenticatedUser) {
-    return this.usageService.getUsageStats(user.userId, user.userId);
+    const orgId = (user as any).organizationId || user.userId;
+    return this.usageService.getUsageStats(user.userId, orgId);
   }
 }

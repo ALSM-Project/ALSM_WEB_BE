@@ -1,32 +1,34 @@
 import {
   BadRequestException,
   ConflictException,
+  Inject,
   Injectable,
   Logger,
   NotFoundException,
 } from '@nestjs/common';
-import { InjectModel } from '@nestjs/mongoose';
-import { Model, Types } from 'mongoose';
 import {
   BillingCycle,
-  InvoiceStatus,
   PLAN_CATALOGUE,
   PlanTier,
   SubscriptionStatus,
 } from '../domain/billing.types';
 import {
-  Subscription,
-  SubscriptionDocument,
-} from '../infrastructure/subscription.schema';
-import { Invoice, InvoiceDocument } from '../infrastructure/invoice.schema';
+  INVOICE_REPOSITORY,
+  IInvoiceRepository,
+  ISubscriptionRepository,
+  SUBSCRIPTION_REPOSITORY,
+  SubscriptionProps,
+} from '../domain/billing.repository.interface';
 
 @Injectable()
 export class BillingService {
   private readonly logger = new Logger(BillingService.name);
 
   constructor(
-    @InjectModel(Subscription.name) private readonly subscriptionModel: Model<SubscriptionDocument>,
-    @InjectModel(Invoice.name) private readonly invoiceModel: Model<InvoiceDocument>,
+    @Inject(SUBSCRIPTION_REPOSITORY)
+    private readonly subscriptionRepo: ISubscriptionRepository,
+    @Inject(INVOICE_REPOSITORY)
+    private readonly invoiceRepo: IInvoiceRepository,
   ) {}
 
   // ─── Plans ───────────────────────────────────────────────
@@ -45,41 +47,15 @@ export class BillingService {
 
   // ─── Current Subscription ────────────────────────────────
 
-  async getCurrentSubscription(userId: string) {
-    const sub = await this.subscriptionModel
-      .findOne({
-        userId: new Types.ObjectId(userId),
-        status: { $in: [SubscriptionStatus.ACTIVE, SubscriptionStatus.TRIAL, SubscriptionStatus.PENDING_PAYMENT] },
-      })
-      .sort({ createdAt: -1 })
-      .lean();
-
-    if (!sub) return null;
-
-    return {
-      id: sub._id.toString(),
-      planTier: sub.planTier,
-      planName: sub.planName,
-      status: sub.status,
-      billingCycle: sub.billingCycle,
-      amountVnd: sub.amountVnd,
-      trialEndsAt: sub.trialEndsAt,
-      currentPeriodStart: sub.currentPeriodStart,
-      currentPeriodEnd: sub.currentPeriodEnd,
-      cancelledAt: sub.cancelledAt,
-      createdAt: sub.createdAt,
-    };
+  async getCurrentSubscription(userId: string): Promise<SubscriptionProps | null> {
+    return this.subscriptionRepo.findActiveByUser(userId);
   }
 
   // ─── Create Subscription (Trial) ────────────────────────
 
   async activateTrial(userId: string, organizationId: string) {
-    // Check no active subscription
-    const existing = await this.subscriptionModel.findOne({
-      userId: new Types.ObjectId(userId),
-      status: { $in: [SubscriptionStatus.ACTIVE, SubscriptionStatus.TRIAL] },
-    });
-    if (existing) {
+    const existing = await this.subscriptionRepo.findActiveByUser(userId);
+    if (existing && existing.status !== SubscriptionStatus.PENDING_PAYMENT) {
       throw new ConflictException({
         code: 'SUBSCRIPTION_EXISTS',
         message: 'You already have an active subscription or trial.',
@@ -88,11 +64,11 @@ export class BillingService {
 
     const plan = PLAN_CATALOGUE.find((p) => p.tier === PlanTier.PROFESSIONAL)!;
     const now = new Date();
-    const trialEnd = new Date(now.getTime() + 14 * 24 * 60 * 60 * 1000); // 14 days
+    const trialEnd = new Date(now.getTime() + 14 * 24 * 60 * 60 * 1000);
 
-    const subscription = await this.subscriptionModel.create({
-      userId: new Types.ObjectId(userId),
-      organizationId: new Types.ObjectId(organizationId),
+    const subscription = await this.subscriptionRepo.create({
+      userId,
+      organizationId,
       planTier: PlanTier.PROFESSIONAL,
       planName: plan.name,
       billingCycle: BillingCycle.MONTHLY,
@@ -104,14 +80,7 @@ export class BillingService {
     });
 
     this.logger.log(`Trial activated for user ${userId}, ends ${trialEnd.toISOString()}`);
-
-    return {
-      id: subscription._id.toString(),
-      planTier: subscription.planTier,
-      planName: subscription.planName,
-      status: subscription.status,
-      trialEndsAt: subscription.trialEndsAt,
-    };
+    return subscription;
   }
 
   // ─── Create Paid Subscription ────────────────────────────
@@ -142,9 +111,9 @@ export class BillingService {
       periodEnd.setMonth(periodEnd.getMonth() + 1);
     }
 
-    const subscription = await this.subscriptionModel.create({
-      userId: new Types.ObjectId(userId),
-      organizationId: new Types.ObjectId(organizationId),
+    const subscription = await this.subscriptionRepo.create({
+      userId,
+      organizationId,
       planTier,
       planName: plan.name,
       billingCycle,
@@ -155,25 +124,14 @@ export class BillingService {
     });
 
     this.logger.log(`Subscription created for user ${userId}, plan=${planTier}, awaiting payment`);
-
-    return {
-      id: subscription._id.toString(),
-      planTier: subscription.planTier,
-      planName: subscription.planName,
-      status: subscription.status,
-      amountVnd: subscription.amountVnd,
-      billingCycle: subscription.billingCycle,
-    };
+    return subscription;
   }
 
-  // ─── Activate Subscription (called after payment confirmed) ──
+  // ─── Activate Subscription ────────────────────────────────
 
   async activateSubscription(subscriptionId: string) {
-    const sub = await this.subscriptionModel.findById(subscriptionId);
+    const sub = await this.subscriptionRepo.updateStatus(subscriptionId, SubscriptionStatus.ACTIVE);
     if (!sub) throw new NotFoundException('Subscription not found');
-
-    sub.status = SubscriptionStatus.ACTIVE;
-    await sub.save();
 
     this.logger.log(`Subscription ${subscriptionId} activated`);
     return sub;
@@ -182,17 +140,13 @@ export class BillingService {
   // ─── Upgrade Subscription ────────────────────────────────
 
   async getUpgradePreview(userId: string, targetPlanTier: PlanTier) {
-    const current = await this.subscriptionModel.findOne({
-      userId: new Types.ObjectId(userId),
-      status: { $in: [SubscriptionStatus.ACTIVE, SubscriptionStatus.TRIAL] },
-    });
+    const current = await this.subscriptionRepo.findActiveByUser(userId);
     if (!current) throw new NotFoundException('No active subscription found');
 
     const currentPlan = PLAN_CATALOGUE.find((p) => p.tier === current.planTier);
     const targetPlan = PLAN_CATALOGUE.find((p) => p.tier === targetPlanTier);
     if (!targetPlan) throw new BadRequestException('Target plan not found');
 
-    // Calculate prorated amounts
     const now = new Date();
     const periodEnd = current.currentPeriodEnd || now;
     const periodStart = current.currentPeriodStart || now;
@@ -234,24 +188,16 @@ export class BillingService {
   // ─── Cancel Subscription ─────────────────────────────────
 
   async cancelSubscription(userId: string, reason: string, feedback?: string) {
-    const sub = await this.subscriptionModel.findOne({
-      userId: new Types.ObjectId(userId),
-      status: { $in: [SubscriptionStatus.ACTIVE, SubscriptionStatus.TRIAL] },
-    });
+    const sub = await this.subscriptionRepo.findActiveByUser(userId);
     if (!sub) throw new NotFoundException('No active subscription to cancel');
 
-    sub.status = SubscriptionStatus.CANCELLED;
-    sub.cancelledAt = new Date();
-    sub.cancelReason = reason;
-    sub.cancelFeedback = feedback;
-    await sub.save();
+    const updated = await this.subscriptionRepo.cancel(sub.id, reason, feedback);
 
-    this.logger.log(`Subscription ${sub._id} cancelled by user ${userId}: ${reason}`);
-
+    this.logger.log(`Subscription ${sub.id} cancelled by user ${userId}: ${reason}`);
     return {
-      id: sub._id.toString(),
-      status: sub.status,
-      cancelledAt: sub.cancelledAt,
+      id: updated?.id || sub.id,
+      status: updated?.status || SubscriptionStatus.CANCELLED,
+      cancelledAt: updated?.cancelledAt || new Date(),
       accessUntil: sub.currentPeriodEnd,
     };
   }
@@ -259,24 +205,7 @@ export class BillingService {
   // ─── Invoices ────────────────────────────────────────────
 
   async getInvoices(userId: string) {
-    const invoices = await this.invoiceModel
-      .find({ userId: new Types.ObjectId(userId) })
-      .sort({ createdAt: -1 })
-      .limit(20)
-      .lean();
-
-    return invoices.map((inv) => ({
-      id: inv._id.toString(),
-      invoiceNumber: inv.invoiceNumber,
-      planName: inv.planName,
-      amountVnd: inv.amountVnd,
-      status: inv.status,
-      billingPeriodStart: inv.billingPeriodStart,
-      billingPeriodEnd: inv.billingPeriodEnd,
-      paidAt: inv.paidAt,
-      paymentMethod: inv.paymentMethod,
-      createdAt: inv.createdAt,
-    }));
+    return this.invoiceRepo.findRecentByUser(userId);
   }
 
   async createInvoice(
@@ -289,18 +218,18 @@ export class BillingService {
     periodStart: Date,
     periodEnd: Date,
   ) {
-    const count = await this.invoiceModel.countDocuments();
+    const count = await this.invoiceRepo.countDocuments();
     const invoiceNumber = `INV-${new Date().getFullYear()}-${String(count + 1).padStart(4, '0')}`;
 
-    const invoice = await this.invoiceModel.create({
-      userId: new Types.ObjectId(userId),
-      organizationId: new Types.ObjectId(organizationId),
-      subscriptionId: new Types.ObjectId(subscriptionId),
+    const invoice = await this.invoiceRepo.create({
+      userId,
+      organizationId,
+      subscriptionId,
       invoiceNumber,
       planTier,
       planName,
       amountVnd,
-      status: InvoiceStatus.PENDING,
+      status: 'PENDING' as any,
       billingPeriodStart: periodStart,
       billingPeriodEnd: periodEnd,
     });
@@ -310,14 +239,8 @@ export class BillingService {
   }
 
   async markInvoicePaid(invoiceId: string, paymentMethod: string) {
-    const invoice = await this.invoiceModel.findById(invoiceId);
+    const invoice = await this.invoiceRepo.markPaid(invoiceId, paymentMethod);
     if (!invoice) throw new NotFoundException('Invoice not found');
-
-    invoice.status = InvoiceStatus.PAID;
-    invoice.paidAt = new Date();
-    invoice.paymentMethod = paymentMethod;
-    await invoice.save();
-
     return invoice;
   }
 }

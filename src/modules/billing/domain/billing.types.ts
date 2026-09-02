@@ -112,6 +112,24 @@ export const PLAN_CATALOGUE: SubscriptionPlanDefinition[] = [
   },
 ];
 
+// ─── Casso Transaction & VietQR Config ─────────────────────
+export interface CassoTransaction {
+  id: number;
+  tid: string;
+  description: string;
+  amount: number;
+  cusum_balance: number;
+  when: string;
+  bank_sub_acc_id: string;
+}
+
+export const VIETQR_BANK_CONFIG = {
+  bankId: 'MB',
+  bankName: 'MBBank (Ngan hang Quan doi)',
+  accountNumber: '090123456789',
+  accountName: 'CONG TY COPHANA ALSM SOFTWARE',
+};
+
 // ─── Repository injection tokens ────────────────────────────
 export const SUBSCRIPTION_REPOSITORY = Symbol('SUBSCRIPTION_REPOSITORY');
 export const INVOICE_REPOSITORY = Symbol('INVOICE_REPOSITORY');

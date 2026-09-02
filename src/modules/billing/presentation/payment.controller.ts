@@ -35,11 +35,12 @@ export class PaymentController {
     @CurrentUser() user: AuthenticatedUser,
     @Body() dto: CreatePaymentDto,
   ) {
-    return this.paymentService.createPaymentOrder(
+    const amountVnd = dto.amountVnd || (dto.billingCycle === 'ANNUAL' ? 14990000 : 1499000);
+    return this.paymentService.createQRPayment(
       user.userId,
-      user.userId, // placeholder org
+      (user as any).organizationId || user.userId,
       dto.planTier,
-      dto.billingCycle,
+      amountVnd,
     );
   }
 
