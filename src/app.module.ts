@@ -56,6 +56,22 @@ import { MongoSubscriptionRepository } from './modules/billing/infrastructure/pe
 import { MongoInvoiceRepository } from './modules/billing/infrastructure/persistence/mongo-invoice.repository';
 import { MongoPaymentRepository } from './modules/billing/infrastructure/persistence/mongo-payment.repository';
 
+import { Menu, MenuSchema } from './modules/menus/infrastructure/schemas/menu.schema';
+import { UserPreferences, UserPreferencesSchema } from './modules/menus/infrastructure/schemas/user-preferences.schema';
+import { MenuAnalytics, MenuAnalyticsSchema } from './modules/menus/infrastructure/schemas/menu-analytics.schema';
+import { GetPersonalizedMenuService } from './modules/menus/application/services/get-personalized-menu.service';
+import { MenuPersonalizationService } from './modules/menus/application/services/personalization.service';
+import { CommandPaletteService } from './modules/menus/application/services/command-palette.service';
+import { MenuAnalyticsService } from './modules/menus/application/services/menu-analytics.service';
+import { MenuController } from './modules/menus/presentation/controllers/menu.controller';
+import { CommandPaletteController } from './modules/menus/presentation/controllers/command-palette.controller';
+import {
+  MENU_REPOSITORY,
+  USER_PREFERENCES_REPOSITORY,
+} from './modules/menus/domain/interfaces/menu.repository.interface';
+import { MongoMenuRepository } from './modules/menus/infrastructure/persistence/mongo-menu.repository';
+import { MongoUserPreferencesRepository } from './modules/menus/infrastructure/persistence/mongo-user-preferences.repository';
+
 @Module({
   imports: [
     ConfigModule.forRoot({ isGlobal: true, validationSchema: environmentValidationSchema }),
@@ -71,6 +87,9 @@ import { MongoPaymentRepository } from './modules/billing/infrastructure/persist
       { name: Subscription.name, schema: SubscriptionSchema },
       { name: Invoice.name, schema: InvoiceSchema },
       { name: Payment.name, schema: PaymentSchema },
+      { name: Menu.name, schema: MenuSchema },
+      { name: UserPreferences.name, schema: UserPreferencesSchema },
+      { name: MenuAnalytics.name, schema: MenuAnalyticsSchema },
     ]),
   ],
   controllers: [
@@ -80,6 +99,8 @@ import { MongoPaymentRepository } from './modules/billing/infrastructure/persist
     HealthController,
     BillingController,
     PaymentController,
+    MenuController,
+    CommandPaletteController,
   ],
   providers: [
     JwtAuthGuard,
@@ -95,9 +116,15 @@ import { MongoPaymentRepository } from './modules/billing/infrastructure/persist
     BillingService,
     PaymentService,
     UsageService,
+    GetPersonalizedMenuService,
+    MenuPersonalizationService,
+    CommandPaletteService,
+    MenuAnalyticsService,
     MongoSubscriptionRepository,
     MongoInvoiceRepository,
     MongoPaymentRepository,
+    MongoMenuRepository,
+    MongoUserPreferencesRepository,
     { provide: MFA_SECURITY, useExisting: MfaSecurityService },
     { provide: USER_REPOSITORY, useClass: MongoUserRepository },
     { provide: ORGANIZATION_REPOSITORY, useClass: MongoOrganizationRepository },
@@ -108,6 +135,8 @@ import { MongoPaymentRepository } from './modules/billing/infrastructure/persist
     { provide: SUBSCRIPTION_REPOSITORY, useClass: MongoSubscriptionRepository },
     { provide: INVOICE_REPOSITORY, useClass: MongoInvoiceRepository },
     { provide: PAYMENT_REPOSITORY, useClass: MongoPaymentRepository },
+    { provide: MENU_REPOSITORY, useClass: MongoMenuRepository },
+    { provide: USER_PREFERENCES_REPOSITORY, useClass: MongoUserPreferencesRepository },
     { provide: CONVERSION_QUEUE, useClass: BullMqConversionQueue },
     { provide: CONVERSION_ENGINE, useClass: UnconfiguredConversionEngineAdapter },
   ],
