@@ -24,6 +24,14 @@ The module uses `application/`, `domain/`, `infrastructure/`, and
 domain/application-facing `ConversionEnginePort`. Queue payloads stay compact;
 MongoDB is the business source of truth.
 
+A `ConversionJob` may optionally carry a `screenId` (a screen is an external,
+opaque identifier — this module does not own a Screen entity). This lets a job
+represent either a whole-project conversion (`screenId` unset, legacy shape)
+or one legacy screen's conversion. `POST .../conversions/bulk` creates one job
+per requested `screenId`; `GET .../screens/:screenId/conversions` lists a
+screen's conversion history (most recent first) so a client can read the
+current/last result for that screen.
+
 ## Security / Organization Isolation
 
 Jobs and results are organization/project-scoped. Requests must verify
