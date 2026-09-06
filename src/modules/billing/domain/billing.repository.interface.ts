@@ -62,6 +62,22 @@ export interface PaymentProps {
   createdAt?: Date;
 }
 
+export interface PlanProps {
+  id: string;
+  tier: PlanTier;
+  name: string;
+  description: string;
+  monthlyPriceVnd: number;
+  annualPriceVnd: number;
+  isPopular: boolean;
+  maxProjects: number;
+  maxScreensPerMonth: number;
+  storageGb: number;
+  features: string[];
+  sortOrder?: number;
+  isActive?: boolean;
+}
+
 export interface ISubscriptionRepository {
   findById(id: string): Promise<SubscriptionProps | null>;
   findActiveByUser(userId: string): Promise<SubscriptionProps | null>;
@@ -85,6 +101,32 @@ export interface IPaymentRepository {
   updateStatus(id: string, status: PaymentStatus, paidAt?: Date, cassoTxId?: string): Promise<PaymentProps | null>;
 }
 
+export interface BankConfigProps {
+  id?: string;
+  bankId: string;
+  bankName: string;
+  accountNumber: string;
+  accountName: string;
+  isActive?: boolean;
+}
+
+export interface IPlanRepository {
+  findAllActive(): Promise<PlanProps[]>;
+  findByTier(tier: PlanTier): Promise<PlanProps | null>;
+  seedDefaults(defaults: PlanProps[]): Promise<void>;
+  createOrUpdate(plan: Omit<PlanProps, 'id'>): Promise<PlanProps>;
+}
+
+export interface IBankConfigRepository {
+  getActiveConfig(): Promise<BankConfigProps>;
+  seedDefaults(defaultConfig: BankConfigProps): Promise<void>;
+  updateConfig(props: Partial<BankConfigProps>): Promise<BankConfigProps>;
+}
+
 export const SUBSCRIPTION_REPOSITORY = Symbol('SUBSCRIPTION_REPOSITORY');
 export const INVOICE_REPOSITORY = Symbol('INVOICE_REPOSITORY');
 export const PAYMENT_REPOSITORY = Symbol('PAYMENT_REPOSITORY');
+export const PLAN_REPOSITORY = Symbol('PLAN_REPOSITORY');
+export const BANK_CONFIG_REPOSITORY = Symbol('BANK_CONFIG_REPOSITORY');
+
+

@@ -5,6 +5,7 @@ import {
   Injectable,
   Logger,
   NotFoundException,
+  OnModuleInit,
 } from '@nestjs/common';
 import {
   BillingCycle,
@@ -15,13 +16,16 @@ import {
 import {
   INVOICE_REPOSITORY,
   IInvoiceRepository,
+  IPlanRepository,
   ISubscriptionRepository,
+  PLAN_REPOSITORY,
+  PlanProps,
   SUBSCRIPTION_REPOSITORY,
   SubscriptionProps,
 } from '../domain/billing.repository.interface';
 
 @Injectable()
-export class BillingService {
+export class BillingService implements OnModuleInit {
   private readonly logger = new Logger(BillingService.name);
 
   constructor(
@@ -29,12 +33,37 @@ export class BillingService {
     private readonly subscriptionRepo: ISubscriptionRepository,
     @Inject(INVOICE_REPOSITORY)
     private readonly invoiceRepo: IInvoiceRepository,
+    @Inject(PLAN_REPOSITORY)
+    private readonly planRepo: IPlanRepository,
   ) {}
+
+  async onModuleInit() {
+    try {
+      const defaultCatalog: PlanProps[] = PLAN_CATALOGUE.map((p) => ({
+        id: '',
+        tier: p.tier,
+        name: p.name,
+        description: p.description,
+        monthlyPriceVnd: p.monthlyPriceVnd,
+        annualPriceVnd: p.annualPriceVnd,
+        isPopular: p.isPopular,
+        maxProjects: p.maxProjects,
+        maxScreensPerMonth: p.maxScreensPerMonth,
+        storageGb: p.storageGb,
+        features: p.features,
+      }));
+      await this.planRepo.seedDefaults(defaultCatalog);
+      this.logger.log('Subscription plans initialized in MongoDB repository');
+    } catch (err) {
+      this.logger.error('Failed to seed default subscription plans in MongoDB:', err);
+    }
+  }
 
   // ─── Plans ───────────────────────────────────────────────
 
-  getPlans() {
-    return PLAN_CATALOGUE.map((p) => ({
+  async getPlans() {
+    const plans = await this.planRepo.findAllActive();
+    return plans.map((p) => ({
       id: p.tier,
       name: p.name,
       description: p.description,
@@ -62,14 +91,31 @@ export class BillingService {
       });
     }
 
-    const plan = PLAN_CATALOGUE.find((p) => p.tier === PlanTier.PROFESSIONAL)!;
+    let plan = await this.planRepo.findByTier(PlanTier.PROFESSIONAL);
+    if (!plan) {
+      const all = await this.planRepo.findAllActive();
+      plan = all[0] || {
+        id: '',
+        tier: PlanTier.PROFESSIONAL,
+        name: 'Professional',
+        description: 'Advanced capabilities',
+        monthlyPriceVnd: 499000,
+        annualPriceVnd: 399000,
+        isPopular: true,
+        maxProjects: -1,
+        maxScreensPerMonth: 100,
+        storageGb: 50,
+        features: [],
+      };
+    }
+
     const now = new Date();
     const trialEnd = new Date(now.getTime() + 14 * 24 * 60 * 60 * 1000);
 
     const subscription = await this.subscriptionRepo.create({
       userId,
       organizationId,
-      planTier: PlanTier.PROFESSIONAL,
+      planTier: plan.tier,
       planName: plan.name,
       billingCycle: BillingCycle.MONTHLY,
       status: SubscriptionStatus.TRIAL,
@@ -91,7 +137,7 @@ export class BillingService {
     planTier: PlanTier,
     billingCycle: BillingCycle,
   ) {
-    const plan = PLAN_CATALOGUE.find((p) => p.tier === planTier);
+    const plan = await this.planRepo.findByTier(planTier);
     if (!plan) throw new BadRequestException({ code: 'INVALID_PLAN', message: 'Plan not found.' });
     if (plan.tier === PlanTier.ENTERPRISE) {
       throw new BadRequestException({
@@ -143,8 +189,8 @@ export class BillingService {
     const current = await this.subscriptionRepo.findActiveByUser(userId);
     if (!current) throw new NotFoundException('No active subscription found');
 
-    const currentPlan = PLAN_CATALOGUE.find((p) => p.tier === current.planTier);
-    const targetPlan = PLAN_CATALOGUE.find((p) => p.tier === targetPlanTier);
+    const currentPlan = await this.planRepo.findByTier(current.planTier);
+    const targetPlan = await this.planRepo.findByTier(targetPlanTier);
     if (!targetPlan) throw new BadRequestException('Target plan not found');
 
     const now = new Date();

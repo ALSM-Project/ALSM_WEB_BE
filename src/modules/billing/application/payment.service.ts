@@ -4,30 +4,50 @@ import {
   Injectable,
   Logger,
   NotFoundException,
+  OnModuleInit,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import {
   CassoTransaction,
+  DEFAULT_BANK_CONFIG,
   PaymentStatus,
   PlanTier,
-  VIETQR_BANK_CONFIG,
 } from '../domain/billing.types';
 import { BillingService } from './billing.service';
 import {
+  BANK_CONFIG_REPOSITORY,
+  IBankConfigRepository,
   IPaymentRepository,
   PAYMENT_REPOSITORY,
 } from '../domain/billing.repository.interface';
 
 @Injectable()
-export class PaymentService {
+export class PaymentService implements OnModuleInit {
   private readonly logger = new Logger(PaymentService.name);
 
   constructor(
     @Inject(PAYMENT_REPOSITORY)
     private readonly paymentRepo: IPaymentRepository,
+    @Inject(BANK_CONFIG_REPOSITORY)
+    private readonly bankConfigRepo: IBankConfigRepository,
     private readonly billingService: BillingService,
     private readonly configService: ConfigService,
   ) {}
+
+  async onModuleInit() {
+    try {
+      await this.bankConfigRepo.seedDefaults(DEFAULT_BANK_CONFIG);
+      this.logger.log('Payment bank config initialized in MongoDB (STK: 0899886249, MB Bank)');
+    } catch (err) {
+      this.logger.error('Failed to seed payment bank config in MongoDB:', err);
+    }
+  }
+
+  // ─── Bank Config Get / Update ─────────────────────────────
+
+  async getBankConfig() {
+    return this.bankConfigRepo.getActiveConfig();
+  }
 
   // ─── Casso Webhook Validation ─────────────────────────────
 
@@ -54,7 +74,8 @@ export class PaymentService {
 
     const expiresAt = new Date(Date.now() + 15 * 60 * 1000); // 15 mins expiry
 
-    const bank = VIETQR_BANK_CONFIG;
+    // Fetch active bank account configuration from MongoDB
+    const bank = await this.bankConfigRepo.getActiveConfig();
     const addInfo = encodeURIComponent(referenceCode);
     const accountName = encodeURIComponent(bank.accountName);
     const qrDataUrl = `https://img.vietqr.io/image/${bank.bankId}-${bank.accountNumber}-compact2.png?amount=${amountVnd}&addInfo=${addInfo}&accountName=${accountName}`;
@@ -75,7 +96,7 @@ export class PaymentService {
       expiresAt,
     });
 
-    this.logger.log(`Created QR Payment ${payment.id}, Ref=${referenceCode}, Amount=${amountVnd} VND`);
+    this.logger.log(`Created QR Payment ${payment.id}, Ref=${referenceCode}, STK=${bank.accountNumber}, Amount=${amountVnd} VND`);
 
     return {
       paymentId: payment.id,

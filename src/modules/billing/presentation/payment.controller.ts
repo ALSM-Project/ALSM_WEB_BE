@@ -38,7 +38,17 @@ export class PaymentController {
 
   constructor(private readonly paymentService: PaymentService) {}
 
+  @Get('bank-config')
+  @ApiOperation({
+    summary: 'Get active payment bank configuration',
+    description: 'Retrieves the active bank account details used for VietQR code generation from MongoDB.',
+  })
+  async getBankConfig() {
+    return this.paymentService.getBankConfig();
+  }
+
   // ─── Create Payment Order + QR ───────────────────────────
+
 
   @ApiBearerAuth()
   @UseGuards(JwtAuthGuard)

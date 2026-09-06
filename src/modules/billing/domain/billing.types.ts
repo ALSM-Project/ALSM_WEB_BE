@@ -123,14 +123,16 @@ export interface CassoTransaction {
   bank_sub_acc_id: string;
 }
 
-export const VIETQR_BANK_CONFIG = {
+export const DEFAULT_BANK_CONFIG = {
   bankId: 'MB',
   bankName: 'MBBank (Ngan hang Quan doi)',
-  accountNumber: '090123456789',
-  accountName: 'CONG TY COPHANA ALSM SOFTWARE',
+  accountNumber: '0899886249',
+  accountName: 'CONG TY COPHAN ALSM SOFTWARE',
 };
+export const VIETQR_BANK_CONFIG = DEFAULT_BANK_CONFIG;
 
 // ─── Repository injection tokens ────────────────────────────
 export const SUBSCRIPTION_REPOSITORY = Symbol('SUBSCRIPTION_REPOSITORY');
 export const INVOICE_REPOSITORY = Symbol('INVOICE_REPOSITORY');
 export const PAYMENT_REPOSITORY = Symbol('PAYMENT_REPOSITORY');
+

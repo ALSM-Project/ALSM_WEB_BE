@@ -42,19 +42,25 @@ import { ConversionWorkerRunner } from './modules/conversions/infrastructure/con
 import { Subscription, SubscriptionSchema } from './modules/billing/infrastructure/subscription.schema';
 import { Invoice, InvoiceSchema } from './modules/billing/infrastructure/invoice.schema';
 import { Payment, PaymentSchema } from './modules/billing/infrastructure/payment.schema';
+import { Plan, PlanSchema } from './modules/billing/infrastructure/plan.schema';
+import { BankConfig, BankConfigSchema } from './modules/billing/infrastructure/bank-config.schema';
 import { BillingService } from './modules/billing/application/billing.service';
 import { PaymentService } from './modules/billing/application/payment.service';
 import { UsageService } from './modules/billing/application/usage.service';
 import { BillingController } from './modules/billing/presentation/billing.controller';
 import { PaymentController } from './modules/billing/presentation/payment.controller';
 import {
+  BANK_CONFIG_REPOSITORY,
   INVOICE_REPOSITORY,
   PAYMENT_REPOSITORY,
+  PLAN_REPOSITORY,
   SUBSCRIPTION_REPOSITORY,
 } from './modules/billing/domain/billing.repository.interface';
 import { MongoSubscriptionRepository } from './modules/billing/infrastructure/persistence/mongo-subscription.repository';
 import { MongoInvoiceRepository } from './modules/billing/infrastructure/persistence/mongo-invoice.repository';
 import { MongoPaymentRepository } from './modules/billing/infrastructure/persistence/mongo-payment.repository';
+import { MongoPlanRepository } from './modules/billing/infrastructure/persistence/mongo-plan.repository';
+import { MongoBankConfigRepository } from './modules/billing/infrastructure/persistence/mongo-bank-config.repository';
 
 import { Menu, MenuSchema } from './modules/menus/infrastructure/schemas/menu.schema';
 import { UserPreferences, UserPreferencesSchema } from './modules/menus/infrastructure/schemas/user-preferences.schema';
@@ -87,6 +93,8 @@ import { MongoUserPreferencesRepository } from './modules/menus/infrastructure/p
       { name: Subscription.name, schema: SubscriptionSchema },
       { name: Invoice.name, schema: InvoiceSchema },
       { name: Payment.name, schema: PaymentSchema },
+      { name: Plan.name, schema: PlanSchema },
+      { name: BankConfig.name, schema: BankConfigSchema },
       { name: Menu.name, schema: MenuSchema },
       { name: UserPreferences.name, schema: UserPreferencesSchema },
       { name: MenuAnalytics.name, schema: MenuAnalyticsSchema },
@@ -123,6 +131,8 @@ import { MongoUserPreferencesRepository } from './modules/menus/infrastructure/p
     MongoSubscriptionRepository,
     MongoInvoiceRepository,
     MongoPaymentRepository,
+    MongoPlanRepository,
+    MongoBankConfigRepository,
     MongoMenuRepository,
     MongoUserPreferencesRepository,
     { provide: MFA_SECURITY, useExisting: MfaSecurityService },
@@ -135,6 +145,8 @@ import { MongoUserPreferencesRepository } from './modules/menus/infrastructure/p
     { provide: SUBSCRIPTION_REPOSITORY, useClass: MongoSubscriptionRepository },
     { provide: INVOICE_REPOSITORY, useClass: MongoInvoiceRepository },
     { provide: PAYMENT_REPOSITORY, useClass: MongoPaymentRepository },
+    { provide: PLAN_REPOSITORY, useClass: MongoPlanRepository },
+    { provide: BANK_CONFIG_REPOSITORY, useClass: MongoBankConfigRepository },
     { provide: MENU_REPOSITORY, useClass: MongoMenuRepository },
     { provide: USER_PREFERENCES_REPOSITORY, useClass: MongoUserPreferencesRepository },
     { provide: CONVERSION_QUEUE, useClass: BullMqConversionQueue },
