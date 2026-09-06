@@ -21,6 +21,10 @@ import {
   ConversionJob,
   ConversionJobSchema,
 } from './modules/conversions/infrastructure/conversion-job.schema';
+import {
+  FieldMapping,
+  FieldMappingSchema,
+} from './modules/conversions/infrastructure/field-mapping.schema';
 import { USER_REPOSITORY } from './modules/users/domain/user.repository';
 import { MongoUserRepository } from './modules/users/infrastructure/mongo-user.repository';
 import { ORGANIZATION_REPOSITORY } from './modules/organizations/domain/organization.repository';
@@ -39,6 +43,11 @@ import {
 import { MongoConversionJobRepository } from './modules/conversions/infrastructure/mongo-conversion-job.repository';
 import { BullMqConversionQueue } from './modules/conversions/infrastructure/bullmq-conversion.queue';
 import { UnconfiguredConversionEngineAdapter } from './modules/conversions/infrastructure/unconfigured-conversion-engine.adapter';
+import { FIELD_MAPPING_REPOSITORY } from './modules/conversions/domain/field-mapping.types';
+import { MongoFieldMappingRepository } from './modules/conversions/infrastructure/mongo-field-mapping.repository';
+import { GetFieldMappingService } from './modules/conversions/application/get-field-mapping.service';
+import { SaveFieldMappingService } from './modules/conversions/application/save-field-mapping.service';
+import { FieldMappingController } from './modules/conversions/presentation/field-mapping.controller';
 import { AuthService } from './modules/auth/application/auth.service';
 import { ConfirmMfaSetupService } from './modules/auth/application/confirm-mfa-setup.service';
 import { MFA_SECURITY } from './modules/auth/application/mfa-security.port';
@@ -74,9 +83,16 @@ import { ConversionWorkerRunner } from './modules/conversions/infrastructure/con
       { name: Project.name, schema: ProjectSchema },
       { name: ConversionJob.name, schema: ConversionJobSchema },
       { name: PasswordReset.name, schema: PasswordResetSchema },
+      { name: FieldMapping.name, schema: FieldMappingSchema },
     ]),
   ],
-  controllers: [AuthController, ProjectsController, ConversionsController, HealthController],
+  controllers: [
+    AuthController,
+    ProjectsController,
+    ConversionsController,
+    FieldMappingController,
+    HealthController,
+  ],
   providers: [
     JwtAuthGuard,
     AuthService,
@@ -91,6 +107,8 @@ import { ConversionWorkerRunner } from './modules/conversions/infrastructure/con
     OrganizationAuthorizationService,
     ProjectService,
     ConversionJobService,
+    GetFieldMappingService,
+    SaveFieldMappingService,
     ConversionWorkerRunner,
     { provide: MFA_SECURITY, useExisting: MfaSecurityService },
     { provide: USER_REPOSITORY, useClass: MongoUserRepository },
@@ -99,6 +117,7 @@ import { ConversionWorkerRunner } from './modules/conversions/infrastructure/con
     { provide: AUDIT_REPOSITORY, useClass: MongoAuditRepository },
     { provide: PROJECT_REPOSITORY, useClass: MongoProjectRepository },
     { provide: CONVERSION_JOB_REPOSITORY, useClass: MongoConversionJobRepository },
+    { provide: FIELD_MAPPING_REPOSITORY, useClass: MongoFieldMappingRepository },
     { provide: CONVERSION_QUEUE, useClass: BullMqConversionQueue },
     { provide: CONVERSION_ENGINE, useClass: UnconfiguredConversionEngineAdapter },
     { provide: EMAIL_PORT, useClass: SmtpEmailAdapter },
