@@ -68,6 +68,8 @@ import { ProjectsController } from './modules/projects/presentation/projects.con
 import { ConversionJobService } from './modules/conversions/application/conversion-job.service';
 import { ConversionsController } from './modules/conversions/presentation/conversions.controller';
 import { HealthController } from './modules/health/health.controller';
+import { ExportCodeService } from './modules/conversions/application/export-code.service';
+import { ExportController } from './modules/conversions/presentation/export.controller';
 import { ConversionWorkerRunner } from './modules/conversions/infrastructure/conversion-worker.runner';
 
 @Module({
@@ -91,6 +93,7 @@ import { ConversionWorkerRunner } from './modules/conversions/infrastructure/con
     ProjectsController,
     ConversionsController,
     FieldMappingController,
+    ExportController,
     HealthController,
   ],
   providers: [
@@ -109,6 +112,7 @@ import { ConversionWorkerRunner } from './modules/conversions/infrastructure/con
     ConversionJobService,
     GetFieldMappingService,
     SaveFieldMappingService,
+    ExportCodeService,
     ConversionWorkerRunner,
     { provide: MFA_SECURITY, useExisting: MfaSecurityService },
     { provide: USER_REPOSITORY, useClass: MongoUserRepository },
