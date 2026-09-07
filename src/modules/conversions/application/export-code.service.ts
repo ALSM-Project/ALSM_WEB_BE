@@ -1,5 +1,7 @@
 import { Injectable } from '@nestjs/common';
-import JSZip from 'jszip';
+import type JSZipType from 'jszip';
+// eslint-disable-next-line @typescript-eslint/no-require-imports
+const JSZip = require('jszip') as typeof JSZipType;
 import type {
   ExportConfiguration,
   ExportFileItem,
@@ -47,7 +49,7 @@ export class ExportCodeService {
 
     const tree = this.buildFileTree(config, projectName, screens);
 
-    const addItemsToZip = (items: ExportFileItem[], currentFolder: JSZip) => {
+    const addItemsToZip = (items: ExportFileItem[], currentFolder: JSZipType) => {
       for (const item of items) {
         if (item.type === 'dir') {
           const subFolder = currentFolder.folder(item.name);
