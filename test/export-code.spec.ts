@@ -1,5 +1,4 @@
 import { Test, TestingModule } from '@nestjs/testing';
-import { ExecutionContext } from '@nestjs/common';
 import { ExportCodeService } from '../src/modules/conversions/application/export-code.service';
 import { ExportController } from '../src/modules/conversions/presentation/export.controller';
 import { JwtAuthGuard } from '../src/shared/security/jwt-auth.guard';
@@ -7,7 +6,7 @@ import type { ExportConfiguration } from '../src/modules/conversions/domain/expo
 
 /** Mock guard: bypass authentication trong unit test */
 const mockJwtAuthGuard = {
-  canActivate: (_ctx: ExecutionContext) => true,
+  canActivate: () => true,
 };
 
 describe('ExportCodeService & ExportController', () => {
