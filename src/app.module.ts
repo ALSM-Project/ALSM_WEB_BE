@@ -5,6 +5,7 @@ import { MongooseModule } from '@nestjs/mongoose';
 import { environmentValidationSchema } from './config/environment.validation';
 import { RequestIdMiddleware } from './shared/logging/request-id.middleware';
 import { JwtAuthGuard } from './shared/security/jwt-auth.guard';
+import { PermissionsGuard } from './shared/security/permissions.guard';
 import { User, UserSchema } from './modules/users/infrastructure/user.schema';
 import { Organization, OrganizationSchema } from './modules/organizations/infrastructure/organization.schema';
 import { UserSession, UserSessionSchema } from './modules/auth/infrastructure/user-session.schema';
@@ -62,26 +63,13 @@ import { MongoPaymentRepository } from './modules/billing/infrastructure/persist
 import { MongoPlanRepository } from './modules/billing/infrastructure/persistence/mongo-plan.repository';
 import { MongoBankConfigRepository } from './modules/billing/infrastructure/persistence/mongo-bank-config.repository';
 
-import { Menu, MenuSchema } from './modules/menus/infrastructure/schemas/menu.schema';
-import { UserPreferences, UserPreferencesSchema } from './modules/menus/infrastructure/schemas/user-preferences.schema';
-import { MenuAnalytics, MenuAnalyticsSchema } from './modules/menus/infrastructure/schemas/menu-analytics.schema';
-import { GetPersonalizedMenuService } from './modules/menus/application/services/get-personalized-menu.service';
-import { MenuPersonalizationService } from './modules/menus/application/services/personalization.service';
-import { CommandPaletteService } from './modules/menus/application/services/command-palette.service';
-import { MenuAnalyticsService } from './modules/menus/application/services/menu-analytics.service';
-import { MenuController } from './modules/menus/presentation/controllers/menu.controller';
-import { CommandPaletteController } from './modules/menus/presentation/controllers/command-palette.controller';
-import {
-  MENU_REPOSITORY,
-  USER_PREFERENCES_REPOSITORY,
-} from './modules/menus/domain/interfaces/menu.repository.interface';
-import { MongoMenuRepository } from './modules/menus/infrastructure/persistence/mongo-menu.repository';
-import { MongoUserPreferencesRepository } from './modules/menus/infrastructure/persistence/mongo-user-preferences.repository';
+import { RbacModule } from './modules/rbac/rbac.module';
+import { MenuModule } from './modules/menus/menu.module';
 
 @Module({
   imports: [
     ConfigModule.forRoot({ isGlobal: true, validationSchema: environmentValidationSchema }),
-    JwtModule.register({}),
+    JwtModule.register({ global: true }),
     MongooseModule.forRootAsync({ useFactory: () => ({ uri: process.env.MONGODB_URI }) }),
     MongooseModule.forFeature([
       { name: User.name, schema: UserSchema },
@@ -95,10 +83,9 @@ import { MongoUserPreferencesRepository } from './modules/menus/infrastructure/p
       { name: Payment.name, schema: PaymentSchema },
       { name: Plan.name, schema: PlanSchema },
       { name: BankConfig.name, schema: BankConfigSchema },
-      { name: Menu.name, schema: MenuSchema },
-      { name: UserPreferences.name, schema: UserPreferencesSchema },
-      { name: MenuAnalytics.name, schema: MenuAnalyticsSchema },
     ]),
+    RbacModule,
+    MenuModule,
   ],
   controllers: [
     AuthController,
@@ -107,11 +94,10 @@ import { MongoUserPreferencesRepository } from './modules/menus/infrastructure/p
     HealthController,
     BillingController,
     PaymentController,
-    MenuController,
-    CommandPaletteController,
   ],
   providers: [
     JwtAuthGuard,
+    PermissionsGuard,
     AuthService,
     StartMfaSetupService,
     ConfirmMfaSetupService,
@@ -124,17 +110,11 @@ import { MongoUserPreferencesRepository } from './modules/menus/infrastructure/p
     BillingService,
     PaymentService,
     UsageService,
-    GetPersonalizedMenuService,
-    MenuPersonalizationService,
-    CommandPaletteService,
-    MenuAnalyticsService,
     MongoSubscriptionRepository,
     MongoInvoiceRepository,
     MongoPaymentRepository,
     MongoPlanRepository,
     MongoBankConfigRepository,
-    MongoMenuRepository,
-    MongoUserPreferencesRepository,
     { provide: MFA_SECURITY, useExisting: MfaSecurityService },
     { provide: USER_REPOSITORY, useClass: MongoUserRepository },
     { provide: ORGANIZATION_REPOSITORY, useClass: MongoOrganizationRepository },
@@ -147,8 +127,6 @@ import { MongoUserPreferencesRepository } from './modules/menus/infrastructure/p
     { provide: PAYMENT_REPOSITORY, useClass: MongoPaymentRepository },
     { provide: PLAN_REPOSITORY, useClass: MongoPlanRepository },
     { provide: BANK_CONFIG_REPOSITORY, useClass: MongoBankConfigRepository },
-    { provide: MENU_REPOSITORY, useClass: MongoMenuRepository },
-    { provide: USER_PREFERENCES_REPOSITORY, useClass: MongoUserPreferencesRepository },
     { provide: CONVERSION_QUEUE, useClass: BullMqConversionQueue },
     { provide: CONVERSION_ENGINE, useClass: UnconfiguredConversionEngineAdapter },
   ],

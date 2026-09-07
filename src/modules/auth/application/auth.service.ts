@@ -1,16 +1,132 @@
-import { ConflictException, Inject, Injectable, UnauthorizedException } from '@nestjs/common'; import { randomUUID } from 'crypto';
-import { ConfigService } from '@nestjs/config'; import { JwtService } from '@nestjs/jwt'; import * as bcrypt from 'bcrypt';
-import { USER_REPOSITORY, UserRecord, UserRepository } from '../../users/domain/user.repository'; import { ORGANIZATION_REPOSITORY, OrganizationRepository } from '../../organizations/domain/organization.repository'; import { OrganizationRole, OrganizationType } from '../../organizations/domain/organization.types'; import { AUDIT_REPOSITORY, AuditRepository } from '../../audit/domain/audit.repository'; import { SESSION_REPOSITORY, SessionRepository } from '../domain/session.repository';
-export interface AuthTokens { accessToken: string; refreshToken: string; }
-@Injectable() export class AuthService {
-  constructor(private readonly jwt: JwtService, private readonly config: ConfigService, @Inject(USER_REPOSITORY) private readonly users: UserRepository, @Inject(ORGANIZATION_REPOSITORY) private readonly organizations: OrganizationRepository, @Inject(SESSION_REPOSITORY) private readonly sessions: SessionRepository, @Inject(AUDIT_REPOSITORY) private readonly audit: AuditRepository) {}
-  async register(email: string, password: string, fullName: string): Promise<AuthTokens> { const normalizedEmail = email.trim().toLowerCase(); if (await this.users.findByEmail(normalizedEmail)) throw new ConflictException({ code: 'EMAIL_ALREADY_REGISTERED', message: 'Email is already registered' }); const user = await this.users.create({ email: normalizedEmail, passwordHash: await bcrypt.hash(password, 12), fullName: fullName.trim() }); const organization = await this.organizations.create({ name: `${user.fullName}'s Organization`, type: OrganizationType.SELF_SERVICE, members: [{ userId: user.id, role: OrganizationRole.OWNER }] }); await this.audit.append({ actorUserId: user.id, organizationId: organization.id, action: 'USER_REGISTERED', resourceType: 'USER', resourceId: user.id }); return this.createSessionTokens(user); }
-  async login(email: string, password: string): Promise<AuthTokens> { const user = await this.users.findByEmail(email.trim().toLowerCase()); if (!user || !user.isActive || !(await bcrypt.compare(password, user.passwordHash))) throw new UnauthorizedException({ code: 'INVALID_CREDENTIALS', message: 'Invalid email or password' }); await this.audit.append({ actorUserId: user.id, action: 'USER_LOGIN', resourceType: 'USER', resourceId: user.id }); return this.createSessionTokens(user); }
-  async refresh(refreshToken: string): Promise<AuthTokens> { const payload = await this.verifyRefresh(refreshToken); const session = await this.sessions.findActive(payload.tid); if (!session || session.userId !== payload.sub || !(await bcrypt.compare(refreshToken, session.refreshTokenHash))) throw new UnauthorizedException({ code: 'INVALID_REFRESH_TOKEN', message: 'Refresh token is invalid or revoked' }); const user = await this.users.findById(payload.sub); if (!user || !user.isActive) throw new UnauthorizedException({ code: 'INVALID_REFRESH_TOKEN', message: 'Refresh token is invalid or revoked' }); await this.sessions.revoke(session.id); return this.createSessionTokens(user); }
-  async logout(refreshToken: string): Promise<void> { try { const payload = await this.verifyRefresh(refreshToken); const session = await this.sessions.findActive(payload.tid); if (session) await this.sessions.revoke(session.id); } catch { /* Logout is idempotent and never reveals token validity. */ } }
-  async me(userId: string): Promise<Omit<UserRecord, 'passwordHash' | 'mfa'>> { const user = await this.users.findById(userId); if (!user || !user.isActive) throw new UnauthorizedException({ code: 'UNAUTHORIZED', message: 'User is unavailable' }); return { id: user.id, email: user.email, fullName: user.fullName, isPlatformAdmin: user.isPlatformAdmin, isActive: user.isActive, createdAt: user.createdAt, updatedAt: user.updatedAt }; }
-  private async createSessionTokens(user: UserRecord): Promise<AuthTokens> { const tokenId = randomUUID(); const expiresAt = new Date(Date.now() + this.durationMs('JWT_REFRESH_EXPIRES_IN')); const session = await this.sessions.create({ tokenId, userId: user.id, refreshTokenHash: 'pending', expiresAt }); const accessToken = await this.jwt.signAsync({ sub: user.id, email: user.email, isPlatformAdmin: user.isPlatformAdmin }, { secret: this.config.getOrThrow('JWT_ACCESS_SECRET'), expiresIn: this.durationSeconds('JWT_ACCESS_EXPIRES_IN') }); const refreshToken = await this.jwt.signAsync({ sub: user.id, tid: tokenId }, { secret: this.config.getOrThrow('JWT_REFRESH_SECRET'), expiresIn: this.durationSeconds('JWT_REFRESH_EXPIRES_IN') }); await this.sessions.updateTokenHash(session.id, await bcrypt.hash(refreshToken, 12)); return { accessToken, refreshToken }; }
-  private async verifyRefresh(token: string): Promise<{ sub: string; tid: string }> { try { return await this.jwt.verifyAsync<{ sub: string; tid: string }>(token, { secret: this.config.getOrThrow('JWT_REFRESH_SECRET') }); } catch { throw new UnauthorizedException({ code: 'INVALID_REFRESH_TOKEN', message: 'Refresh token is invalid or expired' }); } }
-  private durationSeconds(key: string): number { return Math.floor(this.durationMs(key) / 1000); }
-  private durationMs(key: string): number { const value = this.config.getOrThrow<string>(key); const match = /^(\d+)([smhd])$/.exec(value); if (!match) throw new Error(`${key} must use a simple duration such as 15m`); const units: Record<string, number> = { s: 1000, m: 60000, h: 3600000, d: 86400000 }; return Number(match[1]) * units[match[2]]; }
+import { ConflictException, Inject, Injectable, UnauthorizedException } from '@nestjs/common';
+import { randomUUID } from 'crypto';
+import { ConfigService } from '@nestjs/config';
+import { JwtService } from '@nestjs/jwt';
+import * as bcrypt from 'bcrypt';
+import { USER_REPOSITORY, UserRecord, UserRepository } from '../../users/domain/user.repository';
+import { ORGANIZATION_REPOSITORY, OrganizationRepository } from '../../organizations/domain/organization.repository';
+import { OrganizationRole, OrganizationType } from '../../organizations/domain/organization.types';
+import { AUDIT_REPOSITORY, AuditRepository } from '../../audit/domain/audit.repository';
+import { SESSION_REPOSITORY, SessionRepository } from '../domain/session.repository';
+import { EffectivePermissionsService } from '../../rbac/application/effective-permissions.service';
+
+export interface AuthTokens {
+  accessToken: string;
+  refreshToken: string;
+}
+
+@Injectable()
+export class AuthService {
+  constructor(
+    private readonly jwt: JwtService,
+    private readonly config: ConfigService,
+    @Inject(USER_REPOSITORY) private readonly users: UserRepository,
+    @Inject(ORGANIZATION_REPOSITORY) private readonly organizations: OrganizationRepository,
+    @Inject(SESSION_REPOSITORY) private readonly sessions: SessionRepository,
+    @Inject(AUDIT_REPOSITORY) private readonly audit: AuditRepository,
+    private readonly effectivePermissionsService: EffectivePermissionsService,
+  ) {}
+
+  async register(email: string, password: string, fullName: string): Promise<AuthTokens> {
+    const normalizedEmail = email.trim().toLowerCase();
+    if (await this.users.findByEmail(normalizedEmail))
+      throw new ConflictException({ code: 'EMAIL_ALREADY_REGISTERED', message: 'Email is already registered' });
+    const user = await this.users.create({
+      email: normalizedEmail,
+      passwordHash: await bcrypt.hash(password, 12),
+      fullName: fullName.trim(),
+    });
+    const organization = await this.organizations.create({
+      name: `${user.fullName}'s Organization`,
+      type: OrganizationType.SELF_SERVICE,
+      members: [{ userId: user.id, role: OrganizationRole.OWNER }],
+    });
+    await this.audit.append({ actorUserId: user.id, organizationId: organization.id, action: 'USER_REGISTERED', resourceType: 'USER', resourceId: user.id });
+    return this.createSessionTokens(user);
+  }
+
+  async login(email: string, password: string): Promise<AuthTokens> {
+    const user = await this.users.findByEmail(email.trim().toLowerCase());
+    if (!user || !user.isActive || !(await bcrypt.compare(password, user.passwordHash)))
+      throw new UnauthorizedException({ code: 'INVALID_CREDENTIALS', message: 'Invalid email or password' });
+    await this.audit.append({ actorUserId: user.id, action: 'USER_LOGIN', resourceType: 'USER', resourceId: user.id });
+    return this.createSessionTokens(user);
+  }
+
+  async refresh(refreshToken: string): Promise<AuthTokens> {
+    const payload = await this.verifyRefresh(refreshToken);
+    const session = await this.sessions.findActive(payload.tid);
+    if (!session || session.userId !== payload.sub || !(await bcrypt.compare(refreshToken, session.refreshTokenHash)))
+      throw new UnauthorizedException({ code: 'INVALID_REFRESH_TOKEN', message: 'Refresh token is invalid or revoked' });
+    const user = await this.users.findById(payload.sub);
+    if (!user || !user.isActive) throw new UnauthorizedException({ code: 'INVALID_REFRESH_TOKEN', message: 'Refresh token is invalid or revoked' });
+    await this.sessions.revoke(session.id);
+    return this.createSessionTokens(user);
+  }
+
+  async logout(refreshToken: string): Promise<void> {
+    try {
+      const payload = await this.verifyRefresh(refreshToken);
+      const session = await this.sessions.findActive(payload.tid);
+      if (session) await this.sessions.revoke(session.id);
+    } catch {
+      /* Logout is idempotent and never reveals token validity. */
+    }
+  }
+
+  async me(userId: string) {
+    const user = await this.users.findById(userId);
+    if (!user || !user.isActive) throw new UnauthorizedException({ code: 'UNAUTHORIZED', message: 'User is unavailable' });
+
+    const roles = await this.effectivePermissionsService.getUserRoles(userId);
+    const effectivePermissions = await this.effectivePermissionsService.getEffectivePermissions(userId);
+
+    return {
+      id: user.id,
+      email: user.email,
+      fullName: user.fullName,
+      isPlatformAdmin: user.isPlatformAdmin,
+      roles,
+      effectivePermissions,
+      isActive: user.isActive,
+      createdAt: user.createdAt,
+      updatedAt: user.updatedAt,
+    };
+  }
+
+  private async createSessionTokens(user: UserRecord): Promise<AuthTokens> {
+    const tokenId = randomUUID();
+    const expiresAt = new Date(Date.now() + this.durationMs('JWT_REFRESH_EXPIRES_IN'));
+    const session = await this.sessions.create({ tokenId, userId: user.id, refreshTokenHash: 'pending', expiresAt });
+    const accessToken = await this.jwt.signAsync(
+      { sub: user.id, email: user.email, isPlatformAdmin: user.isPlatformAdmin },
+      { secret: this.config.getOrThrow('JWT_ACCESS_SECRET'), expiresIn: this.durationSeconds('JWT_ACCESS_EXPIRES_IN') },
+    );
+    const refreshToken = await this.jwt.signAsync(
+      { sub: user.id, tid: tokenId },
+      { secret: this.config.getOrThrow('JWT_REFRESH_SECRET'), expiresIn: this.durationSeconds('JWT_REFRESH_EXPIRES_IN') },
+    );
+    await this.sessions.updateTokenHash(session.id, await bcrypt.hash(refreshToken, 12));
+    return { accessToken, refreshToken };
+  }
+
+  private async verifyRefresh(token: string): Promise<{ sub: string; tid: string }> {
+    try {
+      return await this.jwt.verifyAsync<{ sub: string; tid: string }>(token, { secret: this.config.getOrThrow('JWT_REFRESH_SECRET') });
+    } catch {
+      throw new UnauthorizedException({ code: 'INVALID_REFRESH_TOKEN', message: 'Refresh token is invalid or expired' });
+    }
+  }
+
+  private durationSeconds(key: string): number {
+    return Math.floor(this.durationMs(key) / 1000);
+  }
+
+  private durationMs(key: string): number {
+    const value = this.config.getOrThrow<string>(key);
+    const match = /^(\d+)([smhd])$/.exec(value);
+    if (!match) throw new Error(`${key} must use a simple duration such as 15m`);
+    const units: Record<string, number> = { s: 1000, m: 60000, h: 3600000, d: 86400000 };
+    return Number(match[1]) * units[match[2]];
+  }
 }
