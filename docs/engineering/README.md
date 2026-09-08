@@ -37,4 +37,4 @@ The React frontend and independent Conversion Tool repositories should have thei
 5. `NAMING_CONVENTIONS.md`
 6. Relevant ADRs
 7. Relevant module `README.md`
-8. Existing tests and implementation for the feature being changed
+8. Existing tests and implementation for the feature being change
