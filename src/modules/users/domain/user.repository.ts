@@ -8,7 +8,7 @@ export interface MfaState {
 export interface UserRecord {
   id: string;
   email: string;
-  passwordHash: string;
+  passwordHash?: string;
   fullName: string;
   isPlatformAdmin: boolean;
   isActive: boolean;
@@ -25,6 +25,7 @@ export interface UserRepository {
   create(input: Pick<UserRecord, 'email' | 'passwordHash' | 'fullName'>): Promise<UserRecord>;
   findByEmail(email: string): Promise<UserRecord | null>;
   findById(id: string): Promise<UserRecord | null>;
+  updatePassword(id: string, passwordHash: string): Promise<void>;
   findByIdForMfa(id: string): Promise<UserRecord | null>;
   beginMfaSetup(userId: string, encryptedSecret: string): Promise<UserRecord | null>;
   completeMfaSetup(

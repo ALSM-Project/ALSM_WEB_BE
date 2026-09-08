@@ -3,8 +3,12 @@ import { randomUUID } from 'crypto';
 import { ConfigService } from '@nestjs/config';
 import { JwtService } from '@nestjs/jwt';
 import * as bcrypt from 'bcrypt';
+import { OAuth2Client, TokenPayload } from 'google-auth-library';
 import { USER_REPOSITORY, UserRecord, UserRepository } from '../../users/domain/user.repository';
-import { ORGANIZATION_REPOSITORY, OrganizationRepository } from '../../organizations/domain/organization.repository';
+import {
+  ORGANIZATION_REPOSITORY,
+  OrganizationRepository,
+} from '../../organizations/domain/organization.repository';
 import { OrganizationRole, OrganizationType } from '../../organizations/domain/organization.types';
 import { AUDIT_REPOSITORY, AuditRepository } from '../../audit/domain/audit.repository';
 import { SESSION_REPOSITORY, SessionRepository } from '../domain/session.repository';
@@ -29,8 +33,12 @@ export class AuthService {
 
   async register(email: string, password: string, fullName: string): Promise<AuthTokens> {
     const normalizedEmail = email.trim().toLowerCase();
-    if (await this.users.findByEmail(normalizedEmail))
-      throw new ConflictException({ code: 'EMAIL_ALREADY_REGISTERED', message: 'Email is already registered' });
+    if (await this.users.findByEmail(normalizedEmail)) {
+      throw new ConflictException({
+        code: 'EMAIL_ALREADY_REGISTERED',
+        message: 'Email is already registered',
+      });
+    }
     const user = await this.users.create({
       email: normalizedEmail,
       passwordHash: await bcrypt.hash(password, 12),
@@ -41,25 +49,98 @@ export class AuthService {
       type: OrganizationType.SELF_SERVICE,
       members: [{ userId: user.id, role: OrganizationRole.OWNER }],
     });
-    await this.audit.append({ actorUserId: user.id, organizationId: organization.id, action: 'USER_REGISTERED', resourceType: 'USER', resourceId: user.id });
+    await this.audit.append({
+      actorUserId: user.id,
+      organizationId: organization.id,
+      action: 'USER_REGISTERED',
+      resourceType: 'USER',
+      resourceId: user.id,
+    });
     return this.createSessionTokens(user);
   }
 
   async login(email: string, password: string): Promise<AuthTokens> {
     const user = await this.users.findByEmail(email.trim().toLowerCase());
-    if (!user || !user.isActive || !(await bcrypt.compare(password, user.passwordHash)))
-      throw new UnauthorizedException({ code: 'INVALID_CREDENTIALS', message: 'Invalid email or password' });
-    await this.audit.append({ actorUserId: user.id, action: 'USER_LOGIN', resourceType: 'USER', resourceId: user.id });
+    if (
+      !user ||
+      !user.isActive ||
+      !user.passwordHash ||
+      !(await bcrypt.compare(password, user.passwordHash))
+    ) {
+      throw new UnauthorizedException({
+        code: 'INVALID_CREDENTIALS',
+        message: 'Invalid email or password',
+      });
+    }
+    await this.audit.append({
+      actorUserId: user.id,
+      action: 'USER_LOGIN',
+      resourceType: 'USER',
+      resourceId: user.id,
+    });
+    return this.createSessionTokens(user);
+  }
+
+  async loginWithGoogle(idToken: string): Promise<AuthTokens> {
+    const payload = await this.verifyGoogleIdToken(idToken);
+    const email = (payload.email ?? '').trim().toLowerCase();
+
+    let user = await this.users.findByEmail(email);
+    if (!user) {
+      user = await this.users.create({
+        email,
+        fullName: payload.name?.trim() || email.split('@')[0],
+      });
+      const organization = await this.organizations.create({
+        name: `${user.fullName}'s Organization`,
+        type: OrganizationType.SELF_SERVICE,
+        members: [{ userId: user.id, role: OrganizationRole.OWNER }],
+      });
+      await this.audit.append({
+        actorUserId: user.id,
+        organizationId: organization.id,
+        action: 'USER_REGISTERED_GOOGLE',
+        resourceType: 'USER',
+        resourceId: user.id,
+      });
+    } else {
+      if (!user.isActive) {
+        throw new UnauthorizedException({
+          code: 'INVALID_CREDENTIALS',
+          message: 'Account is inactive',
+        });
+      }
+      await this.audit.append({
+        actorUserId: user.id,
+        action: 'USER_LOGIN_GOOGLE',
+        resourceType: 'USER',
+        resourceId: user.id,
+      });
+    }
+
     return this.createSessionTokens(user);
   }
 
   async refresh(refreshToken: string): Promise<AuthTokens> {
     const payload = await this.verifyRefresh(refreshToken);
     const session = await this.sessions.findActive(payload.tid);
-    if (!session || session.userId !== payload.sub || !(await bcrypt.compare(refreshToken, session.refreshTokenHash)))
-      throw new UnauthorizedException({ code: 'INVALID_REFRESH_TOKEN', message: 'Refresh token is invalid or revoked' });
+    if (
+      !session ||
+      session.userId !== payload.sub ||
+      !(await bcrypt.compare(refreshToken, session.refreshTokenHash))
+    ) {
+      throw new UnauthorizedException({
+        code: 'INVALID_REFRESH_TOKEN',
+        message: 'Refresh token is invalid or revoked',
+      });
+    }
     const user = await this.users.findById(payload.sub);
-    if (!user || !user.isActive) throw new UnauthorizedException({ code: 'INVALID_REFRESH_TOKEN', message: 'Refresh token is invalid or revoked' });
+    if (!user || !user.isActive) {
+      throw new UnauthorizedException({
+        code: 'INVALID_REFRESH_TOKEN',
+        message: 'Refresh token is invalid or revoked',
+      });
+    }
     await this.sessions.revoke(session.id);
     return this.createSessionTokens(user);
   }
@@ -70,13 +151,15 @@ export class AuthService {
       const session = await this.sessions.findActive(payload.tid);
       if (session) await this.sessions.revoke(session.id);
     } catch {
-      /* Logout is idempotent and never reveals token validity. */
+      // Logout is idempotent and never reveals token validity.
     }
   }
 
   async me(userId: string) {
     const user = await this.users.findById(userId);
-    if (!user || !user.isActive) throw new UnauthorizedException({ code: 'UNAUTHORIZED', message: 'User is unavailable' });
+    if (!user || !user.isActive) {
+      throw new UnauthorizedException({ code: 'UNAUTHORIZED', message: 'User is unavailable' });
+    }
 
     const roles = await this.effectivePermissionsService.getUserRoles(userId);
     const effectivePermissions = await this.effectivePermissionsService.getEffectivePermissions(userId);
@@ -97,14 +180,25 @@ export class AuthService {
   private async createSessionTokens(user: UserRecord): Promise<AuthTokens> {
     const tokenId = randomUUID();
     const expiresAt = new Date(Date.now() + this.durationMs('JWT_REFRESH_EXPIRES_IN'));
-    const session = await this.sessions.create({ tokenId, userId: user.id, refreshTokenHash: 'pending', expiresAt });
+    const session = await this.sessions.create({
+      tokenId,
+      userId: user.id,
+      refreshTokenHash: 'pending',
+      expiresAt,
+    });
     const accessToken = await this.jwt.signAsync(
       { sub: user.id, email: user.email, isPlatformAdmin: user.isPlatformAdmin },
-      { secret: this.config.getOrThrow('JWT_ACCESS_SECRET'), expiresIn: this.durationSeconds('JWT_ACCESS_EXPIRES_IN') },
+      {
+        secret: this.config.getOrThrow('JWT_ACCESS_SECRET'),
+        expiresIn: this.durationSeconds('JWT_ACCESS_EXPIRES_IN'),
+      },
     );
     const refreshToken = await this.jwt.signAsync(
       { sub: user.id, tid: tokenId },
-      { secret: this.config.getOrThrow('JWT_REFRESH_SECRET'), expiresIn: this.durationSeconds('JWT_REFRESH_EXPIRES_IN') },
+      {
+        secret: this.config.getOrThrow('JWT_REFRESH_SECRET'),
+        expiresIn: this.durationSeconds('JWT_REFRESH_EXPIRES_IN'),
+      },
     );
     await this.sessions.updateTokenHash(session.id, await bcrypt.hash(refreshToken, 12));
     return { accessToken, refreshToken };
@@ -112,9 +206,41 @@ export class AuthService {
 
   private async verifyRefresh(token: string): Promise<{ sub: string; tid: string }> {
     try {
-      return await this.jwt.verifyAsync<{ sub: string; tid: string }>(token, { secret: this.config.getOrThrow('JWT_REFRESH_SECRET') });
+      return await this.jwt.verifyAsync<{ sub: string; tid: string }>(token, {
+        secret: this.config.getOrThrow('JWT_REFRESH_SECRET'),
+      });
     } catch {
-      throw new UnauthorizedException({ code: 'INVALID_REFRESH_TOKEN', message: 'Refresh token is invalid or expired' });
+      throw new UnauthorizedException({
+        code: 'INVALID_REFRESH_TOKEN',
+        message: 'Refresh token is invalid or expired',
+      });
+    }
+  }
+
+  private async verifyGoogleIdToken(idToken: string): Promise<TokenPayload> {
+    const clientId = this.config.getOrThrow<string>('GOOGLE_CLIENT_ID');
+    if (!clientId) {
+      throw new UnauthorizedException({
+        code: 'INVALID_CREDENTIALS',
+        message: 'Google sign-in is not configured',
+      });
+    }
+    try {
+      const ticket = await new OAuth2Client().verifyIdToken({ idToken, audience: clientId });
+      const payload = ticket.getPayload();
+      if (!payload || payload.aud !== clientId || !payload.email_verified || !payload.email) {
+        throw new UnauthorizedException({
+          code: 'INVALID_CREDENTIALS',
+          message: 'Google token is invalid',
+        });
+      }
+      return payload;
+    } catch (err) {
+      if (err instanceof UnauthorizedException) throw err;
+      throw new UnauthorizedException({
+        code: 'INVALID_CREDENTIALS',
+        message: 'Google token could not be verified',
+      });
     }
   }
 

@@ -1,11 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model } from 'mongoose';
-import {
-  MfaSetupFailureResult,
-  UserRecord,
-  UserRepository,
-} from '../domain/user.repository';
+import { MfaSetupFailureResult, UserRecord, UserRepository } from '../domain/user.repository';
 import { User, UserDocument } from './user.schema';
 
 @Injectable()
@@ -19,33 +15,25 @@ export class MongoUserRepository implements UserRepository {
   }
 
   async findByEmail(email: string): Promise<UserRecord | null> {
-    const doc = await this.model
-      .findOne({ email })
-      .select('+passwordHash')
-      .exec();
+    const doc = await this.model.findOne({ email }).select('+passwordHash').exec();
     return doc ? this.map(doc) : null;
   }
 
   async findById(id: string): Promise<UserRecord | null> {
-    const doc = await this.model
-      .findById(id)
-      .select('+passwordHash')
-      .exec();
+    const doc = await this.model.findById(id).select('+passwordHash').exec();
     return doc ? this.map(doc) : null;
+  }
+
+  async updatePassword(id: string, passwordHash: string): Promise<void> {
+    await this.model.updateOne({ _id: id }, { $set: { passwordHash } }).exec();
   }
 
   async findByIdForMfa(id: string): Promise<UserRecord | null> {
-    const doc = await this.model
-      .findById(id)
-      .select('+mfa.secret +mfa.backupCodeHashes')
-      .exec();
+    const doc = await this.model.findById(id).select('+mfa.secret +mfa.backupCodeHashes').exec();
     return doc ? this.map(doc) : null;
   }
 
-  async beginMfaSetup(
-    userId: string,
-    encryptedSecret: string,
-  ): Promise<UserRecord | null> {
+  async beginMfaSetup(userId: string, encryptedSecret: string): Promise<UserRecord | null> {
     const doc = await this.model
       .findOneAndUpdate(
         { _id: userId, 'mfa.enabled': { $ne: true } },
@@ -119,11 +107,7 @@ export class MongoUserRepository implements UserRepository {
                 $cond: [maximumAttemptsReached, 0, incrementedCount],
               },
               'mfa.backupCodeHashes': {
-                $cond: [
-                  maximumAttemptsReached,
-                  [],
-                  { $ifNull: ['$mfa.backupCodeHashes', []] },
-                ],
+                $cond: [maximumAttemptsReached, [], { $ifNull: ['$mfa.backupCodeHashes', []] }],
               },
             },
           },

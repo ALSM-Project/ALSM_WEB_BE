@@ -3,12 +3,25 @@
   "version": "0.1.0",
   "private": true,
   "description": "ALSM modular-monolith backend foundation",
-  "engines": { "node": ">=22" },
+  "engines": {
+    "node": ">=22"
+  },
   "jest": {
-    "moduleFileExtensions": ["js", "json", "ts"],
+    "moduleFileExtensions": [
+      "js",
+      "json",
+      "ts"
+    ],
     "rootDir": ".",
     "testRegex": ".*\\.spec\\.ts$",
-    "transform": { "^.+\\.(t|j)s$": ["ts-jest", { "tsconfig": "tsconfig.json" }] }
+    "transform": {
+      "^.+\\.(t|j)s$": [
+        "ts-jest",
+        {
+          "tsconfig": "tsconfig.json"
+        }
+      ]
+    }
   },
   "scripts": {
     "build": "nest build",
@@ -32,14 +45,18 @@
     "@nestjs/mongoose": "^11.0.3",
     "@nestjs/platform-express": "^11.1.6",
     "@nestjs/swagger": "^11.2.0",
+    "@types/nodemailer": "^8.0.1",
     "bcrypt": "^6.0.0",
     "bullmq": "^5.58.5",
     "class-transformer": "^0.5.1",
     "class-validator": "^0.14.2",
+    "google-auth-library": "^11.0.2",
     "helmet": "^8.1.0",
     "ioredis": "^5.7.0",
     "joi": "^18.0.1",
+    "jszip": "^3.10.1",
     "mongoose": "^8.18.0",
+    "nodemailer": "^9.0.5",
     "otpauth": "^9.5.1",
     "qrcode": "^1.5.4",
     "reflect-metadata": "^0.2.2",
