@@ -32,6 +32,14 @@ MongoDB is the business source of truth.
 port: one field-mapping document per `(organizationId, projectId, screenId)`,
 upserted wholesale on every manual edit (no per-entry versioning yet).
 
+A `ConversionJob` may optionally carry a `screenId` (a screen is an external,
+opaque identifier — this module does not own a Screen entity). This lets a job
+represent either a whole-project conversion (`screenId` unset, legacy shape)
+or one legacy screen's conversion. `POST .../conversions/bulk` creates one job
+per requested `screenId`; `GET .../screens/:screenId/conversions` lists a
+screen's conversion history (most recent first) so a client can read the
+current/last result for that screen.
+
 ## Persistence / Collections
 
 - `conversion_jobs`

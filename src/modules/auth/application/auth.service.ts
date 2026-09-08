@@ -12,6 +12,7 @@ import {
 import { OrganizationRole, OrganizationType } from '../../organizations/domain/organization.types';
 import { AUDIT_REPOSITORY, AuditRepository } from '../../audit/domain/audit.repository';
 import { SESSION_REPOSITORY, SessionRepository } from '../domain/session.repository';
+import { EffectivePermissionsService } from '../../rbac/application/effective-permissions.service';
 
 export interface AuthTokens {
   accessToken: string;
@@ -27,6 +28,7 @@ export class AuthService {
     @Inject(ORGANIZATION_REPOSITORY) private readonly organizations: OrganizationRepository,
     @Inject(SESSION_REPOSITORY) private readonly sessions: SessionRepository,
     @Inject(AUDIT_REPOSITORY) private readonly audit: AuditRepository,
+    private readonly effectivePermissionsService: EffectivePermissionsService,
   ) {}
 
   async register(email: string, password: string, fullName: string): Promise<AuthTokens> {
@@ -153,16 +155,22 @@ export class AuthService {
     }
   }
 
-  async me(userId: string): Promise<Omit<UserRecord, 'passwordHash' | 'mfa'>> {
+  async me(userId: string) {
     const user = await this.users.findById(userId);
     if (!user || !user.isActive) {
       throw new UnauthorizedException({ code: 'UNAUTHORIZED', message: 'User is unavailable' });
     }
+
+    const roles = await this.effectivePermissionsService.getUserRoles(userId);
+    const effectivePermissions = await this.effectivePermissionsService.getEffectivePermissions(userId);
+
     return {
       id: user.id,
       email: user.email,
       fullName: user.fullName,
       isPlatformAdmin: user.isPlatformAdmin,
+      roles,
+      effectivePermissions,
       isActive: user.isActive,
       createdAt: user.createdAt,
       updatedAt: user.updatedAt,

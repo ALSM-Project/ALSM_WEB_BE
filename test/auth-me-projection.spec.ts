@@ -20,6 +20,10 @@ describe('AuthService user projection', () => {
         updatedAt: new Date(),
       }),
     };
+    const effectivePermissions = {
+      getUserRoles: jest.fn().mockResolvedValue(['CUSTOMER']),
+      getEffectivePermissions: jest.fn().mockResolvedValue([]),
+    };
     const service = new AuthService(
       {} as never,
       {} as never,
@@ -27,6 +31,7 @@ describe('AuthService user projection', () => {
       {} as never,
       {} as never,
       {} as never,
+      effectivePermissions as never,
     );
 
     const response = await service.me('user-1');

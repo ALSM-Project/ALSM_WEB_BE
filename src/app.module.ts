@@ -5,6 +5,7 @@ import { MongooseModule } from '@nestjs/mongoose';
 import { environmentValidationSchema } from './config/environment.validation';
 import { RequestIdMiddleware } from './shared/logging/request-id.middleware';
 import { JwtAuthGuard } from './shared/security/jwt-auth.guard';
+import { PermissionsGuard } from './shared/security/permissions.guard';
 import { User, UserSchema } from './modules/users/infrastructure/user.schema';
 import {
   Organization,
@@ -68,14 +69,39 @@ import { ProjectsController } from './modules/projects/presentation/projects.con
 import { ConversionJobService } from './modules/conversions/application/conversion-job.service';
 import { ConversionsController } from './modules/conversions/presentation/conversions.controller';
 import { HealthController } from './modules/health/health.controller';
+import { ConversionWorkerRunner } from './modules/conversions/infrastructure/conversion-worker.runner';
 import { ExportCodeService } from './modules/conversions/application/export-code.service';
 import { ExportController } from './modules/conversions/presentation/export.controller';
-import { ConversionWorkerRunner } from './modules/conversions/infrastructure/conversion-worker.runner';
+import { Subscription, SubscriptionSchema } from './modules/billing/infrastructure/subscription.schema';
+import { Invoice, InvoiceSchema } from './modules/billing/infrastructure/invoice.schema';
+import { Payment, PaymentSchema } from './modules/billing/infrastructure/payment.schema';
+import { Plan, PlanSchema } from './modules/billing/infrastructure/plan.schema';
+import { BankConfig, BankConfigSchema } from './modules/billing/infrastructure/bank-config.schema';
+import { BillingService } from './modules/billing/application/billing.service';
+import { PaymentService } from './modules/billing/application/payment.service';
+import { UsageService } from './modules/billing/application/usage.service';
+import { BillingController } from './modules/billing/presentation/billing.controller';
+import { PaymentController } from './modules/billing/presentation/payment.controller';
+import {
+  BANK_CONFIG_REPOSITORY,
+  INVOICE_REPOSITORY,
+  PAYMENT_REPOSITORY,
+  PLAN_REPOSITORY,
+  SUBSCRIPTION_REPOSITORY,
+} from './modules/billing/domain/billing.repository.interface';
+import { MongoSubscriptionRepository } from './modules/billing/infrastructure/persistence/mongo-subscription.repository';
+import { MongoInvoiceRepository } from './modules/billing/infrastructure/persistence/mongo-invoice.repository';
+import { MongoPaymentRepository } from './modules/billing/infrastructure/persistence/mongo-payment.repository';
+import { MongoPlanRepository } from './modules/billing/infrastructure/persistence/mongo-plan.repository';
+import { MongoBankConfigRepository } from './modules/billing/infrastructure/persistence/mongo-bank-config.repository';
+
+import { RbacModule } from './modules/rbac/rbac.module';
+import { MenuModule } from './modules/menus/menu.module';
 
 @Module({
   imports: [
     ConfigModule.forRoot({ isGlobal: true, validationSchema: environmentValidationSchema }),
-    JwtModule.register({}),
+    JwtModule.register({ global: true }),
     MongooseModule.forRootAsync({ useFactory: () => ({ uri: process.env.MONGODB_URI }) }),
     MongooseModule.forFeature([
       { name: User.name, schema: UserSchema },
@@ -84,9 +110,16 @@ import { ConversionWorkerRunner } from './modules/conversions/infrastructure/con
       { name: AuditLog.name, schema: AuditLogSchema },
       { name: Project.name, schema: ProjectSchema },
       { name: ConversionJob.name, schema: ConversionJobSchema },
+      { name: Subscription.name, schema: SubscriptionSchema },
+      { name: Invoice.name, schema: InvoiceSchema },
+      { name: Payment.name, schema: PaymentSchema },
+      { name: Plan.name, schema: PlanSchema },
+      { name: BankConfig.name, schema: BankConfigSchema },
       { name: PasswordReset.name, schema: PasswordResetSchema },
       { name: FieldMapping.name, schema: FieldMappingSchema },
     ]),
+    RbacModule,
+    MenuModule,
   ],
   controllers: [
     AuthController,
@@ -95,9 +128,12 @@ import { ConversionWorkerRunner } from './modules/conversions/infrastructure/con
     FieldMappingController,
     ExportController,
     HealthController,
+    BillingController,
+    PaymentController,
   ],
   providers: [
     JwtAuthGuard,
+    PermissionsGuard,
     AuthService,
     StartMfaSetupService,
     ConfirmMfaSetupService,
@@ -114,6 +150,14 @@ import { ConversionWorkerRunner } from './modules/conversions/infrastructure/con
     SaveFieldMappingService,
     ExportCodeService,
     ConversionWorkerRunner,
+    BillingService,
+    PaymentService,
+    UsageService,
+    MongoSubscriptionRepository,
+    MongoInvoiceRepository,
+    MongoPaymentRepository,
+    MongoPlanRepository,
+    MongoBankConfigRepository,
     { provide: MFA_SECURITY, useExisting: MfaSecurityService },
     { provide: USER_REPOSITORY, useClass: MongoUserRepository },
     { provide: ORGANIZATION_REPOSITORY, useClass: MongoOrganizationRepository },
@@ -121,6 +165,11 @@ import { ConversionWorkerRunner } from './modules/conversions/infrastructure/con
     { provide: AUDIT_REPOSITORY, useClass: MongoAuditRepository },
     { provide: PROJECT_REPOSITORY, useClass: MongoProjectRepository },
     { provide: CONVERSION_JOB_REPOSITORY, useClass: MongoConversionJobRepository },
+    { provide: SUBSCRIPTION_REPOSITORY, useClass: MongoSubscriptionRepository },
+    { provide: INVOICE_REPOSITORY, useClass: MongoInvoiceRepository },
+    { provide: PAYMENT_REPOSITORY, useClass: MongoPaymentRepository },
+    { provide: PLAN_REPOSITORY, useClass: MongoPlanRepository },
+    { provide: BANK_CONFIG_REPOSITORY, useClass: MongoBankConfigRepository },
     { provide: FIELD_MAPPING_REPOSITORY, useClass: MongoFieldMappingRepository },
     { provide: CONVERSION_QUEUE, useClass: BullMqConversionQueue },
     { provide: CONVERSION_ENGINE, useClass: UnconfiguredConversionEngineAdapter },

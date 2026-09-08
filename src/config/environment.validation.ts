@@ -25,6 +25,7 @@ export const environmentValidationSchema = Joi.object({
   CORS_ORIGINS: Joi.string().required(),
   GOOGLE_CLIENT_ID: Joi.string().allow('').default(''),
   CONVERSION_WORKER_ENABLED: Joi.boolean().default(false),
+  CASSO_API_KEY: Joi.string().allow('').default(''),
   SMTP_HOST: Joi.string().allow('').default(''),
   SMTP_PORT: Joi.number().port().default(587),
   SMTP_SECURE: Joi.boolean().default(false),
