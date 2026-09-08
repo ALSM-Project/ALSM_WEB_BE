@@ -72,7 +72,7 @@ export class PaymentController {
       dto.amountVnd || (dto.billingCycle === 'ANNUAL' ? 14990000 : 1499000);
     return this.paymentService.createQRPayment(
       user.userId,
-      (user as any).organizationId || user.userId,
+      (user as AuthenticatedUser & { organizationId?: string }).organizationId || user.userId,
       dto.planTier,
       amountVnd,
     );

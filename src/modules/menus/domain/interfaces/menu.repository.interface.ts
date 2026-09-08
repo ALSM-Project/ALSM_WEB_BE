@@ -1,5 +1,4 @@
 import { MenuEntity, MenuProps } from '../entities/menu.entity';
-import { IMenuItem } from '../value-objects/menu-item.vo';
 
 export const MENU_REPOSITORY = Symbol('MENU_REPOSITORY');
 export const USER_PREFERENCES_REPOSITORY = Symbol('USER_PREFERENCES_REPOSITORY');

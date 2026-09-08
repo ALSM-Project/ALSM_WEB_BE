@@ -1,4 +1,4 @@
-import { IMenuItem, MenuPosition, NavigationLevel } from '../value-objects/menu-item.vo';
+import { IMenuItem, NavigationLevel } from '../value-objects/menu-item.vo';
 
 export class NavigationService {
   /**

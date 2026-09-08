@@ -59,7 +59,7 @@ export class GetPersonalizedMenuService {
     const navigation = {
       topNav: this.buildTopNav(items, personalized),
       sidebarNav: this.buildSidebarNav(items, personalized),
-      secondaryNav: this.buildSecondaryNav(items, personalized),
+      secondaryNav: this.buildSecondaryNav(items),
       contextualNav: this.buildContextualNav(items),
       personalization: {
         pinnedItems: personalized.pinnedItems,
@@ -149,7 +149,7 @@ export class GetPersonalizedMenuService {
   /**
    * Xây dựng Top Navigation
    */
-  private buildTopNav(items: IMenuItem[], personalized: any): IMenuItem[] {
+  private buildTopNav(items: IMenuItem[], personalized: { pinnedItems?: IMenuItem[] }): IMenuItem[] {
     const topItems = items.filter(
       item =>
         item.level === NavigationLevel.GLOBAL &&
@@ -167,7 +167,7 @@ export class GetPersonalizedMenuService {
   /**
    * Xây dựng Sidebar Navigation
    */
-  private buildSidebarNav(items: IMenuItem[], personalized: any): IMenuItem[] {
+  private buildSidebarNav(items: IMenuItem[], personalized: { recentItems?: IMenuItem[] }): IMenuItem[] {
     let sidebarItems = items.filter(
       item =>
         item.level === NavigationLevel.PRIMARY &&
@@ -198,7 +198,6 @@ export class GetPersonalizedMenuService {
    */
   private buildSecondaryNav(
     items: IMenuItem[],
-    personalized: any,
   ): Record<string, IMenuItem[]> {
     const secondaryItems = items.filter(
       item => item.level === NavigationLevel.SECONDARY && item.isVisible,
@@ -229,7 +228,7 @@ export class GetPersonalizedMenuService {
     );
   }
 
-  private getFallbackMenu(): any {
+  private getFallbackMenu(): Record<string, unknown> {
     return {
       topNav: [],
       sidebarNav: [

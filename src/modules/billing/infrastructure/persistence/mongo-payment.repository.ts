@@ -50,7 +50,7 @@ export class MongoPaymentRepository implements IPaymentRepository {
     paidAt?: Date,
     cassoTxId?: string,
   ): Promise<PaymentProps | null> {
-    const update: any = { status };
+    const update: Record<string, unknown> = { status };
     if (paidAt) update.paidAt = paidAt;
     if (cassoTxId) update.cassoTransactionId = cassoTxId;
 

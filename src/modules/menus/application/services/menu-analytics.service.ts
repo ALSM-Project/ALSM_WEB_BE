@@ -18,7 +18,7 @@ export class MenuAnalyticsService {
     menuItemId: string;
     action: 'click' | 'hover' | 'search';
     sessionId: string;
-    metadata?: Record<string, any>;
+    metadata?: Record<string, unknown>;
   }) {
     const record = {
       ...data,
@@ -32,7 +32,7 @@ export class MenuAnalyticsService {
    * Lấy thống kê menu usage
    */
   async getMenuStats(menuItemId: string, timeRange?: { start: Date; end: Date }) {
-    const matchFilter: any = { menuItemId };
+    const matchFilter: Record<string, unknown> = { menuItemId };
     if (timeRange) {
       matchFilter.timestamp = {
         $gte: timeRange.start,

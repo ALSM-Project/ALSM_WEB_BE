@@ -13,7 +13,7 @@ export interface CommandItem {
   category: string;
   keywords: string[];
   action: 'navigate' | 'action' | 'quick_action';
-  data: Record<string, any>;
+  data: Record<string, unknown>;
   shortcut?: string[];
 }
 

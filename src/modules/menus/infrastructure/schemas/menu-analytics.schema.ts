@@ -18,7 +18,7 @@ export class MenuAnalytics {
   sessionId!: string;
 
   @Prop({ type: Object, default: {} })
-  metadata?: Record<string, any>;
+  metadata?: Record<string, unknown>;
 
   @Prop({ default: Date.now })
   timestamp!: Date;

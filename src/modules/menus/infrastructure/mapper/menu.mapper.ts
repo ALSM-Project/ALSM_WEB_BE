@@ -6,15 +6,16 @@ import { UserPreferencesDocument } from '../schemas/user-preferences.schema';
 export class MenuMapper {
   static toDomain(doc: MenuDocument | null): MenuEntity | null {
     if (!doc) return null;
+    const raw = doc as unknown as { createdAt?: Date; updatedAt?: Date };
     return new MenuEntity({
       id: doc._id.toString(),
       role: doc.role,
       isDefault: doc.isDefault ?? false,
       items: doc.items || [],
       createdBy: doc.createdBy,
-      createdAt: (doc as any).createdAt || new Date(),
+      createdAt: raw.createdAt || new Date(),
       updatedBy: doc.updatedBy,
-      updatedAt: (doc as any).updatedAt || new Date(),
+      updatedAt: raw.updatedAt || new Date(),
     });
   }
 

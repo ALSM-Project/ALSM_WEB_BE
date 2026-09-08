@@ -21,7 +21,7 @@ export class CommandPaletteController {
     @Query('q') query: string,
     @CurrentUser() user: AuthenticatedUser,
   ) {
-    const role = (user as any).role || 'user';
+    const role = (user as AuthenticatedUser & { role?: string }).role || 'user';
     const commands = await this.commandPaletteService.searchCommands(
       query || '',
       user.userId,
@@ -36,7 +36,7 @@ export class CommandPaletteController {
   async getAllCommands(
     @CurrentUser() user: AuthenticatedUser,
   ) {
-    const role = (user as any).role || 'user';
+    const role = (user as AuthenticatedUser & { role?: string }).role || 'user';
     const commands = await this.commandPaletteService.getCommands(
       user.userId,
       role,

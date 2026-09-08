@@ -9,6 +9,7 @@ import { PaymentDocument } from '../payment.schema';
 
 export class SubscriptionMapper {
   static toDomain(doc: SubscriptionDocument): SubscriptionProps {
+    const raw = doc as unknown as { createdAt?: Date; updatedAt?: Date };
     return {
       id: doc._id.toString(),
       userId: doc.userId.toString(),
@@ -24,14 +25,15 @@ export class SubscriptionMapper {
       cancelledAt: doc.cancelledAt,
       cancelReason: doc.cancelReason,
       cancelFeedback: doc.cancelFeedback,
-      createdAt: (doc as any).createdAt,
-      updatedAt: (doc as any).updatedAt,
+      createdAt: raw.createdAt,
+      updatedAt: raw.updatedAt,
     };
   }
 }
 
 export class InvoiceMapper {
   static toDomain(doc: InvoiceDocument): InvoiceProps {
+    const raw = doc as unknown as { createdAt?: Date };
     return {
       id: doc._id.toString(),
       userId: doc.userId.toString(),
@@ -46,13 +48,14 @@ export class InvoiceMapper {
       billingPeriodEnd: doc.billingPeriodEnd,
       paidAt: doc.paidAt,
       paymentMethod: doc.paymentMethod,
-      createdAt: (doc as any).createdAt,
+      createdAt: raw.createdAt,
     };
   }
 }
 
 export class PaymentMapper {
   static toDomain(doc: PaymentDocument): PaymentProps {
+    const raw = doc as unknown as { createdAt?: Date };
     return {
       id: doc._id.toString(),
       userId: doc.userId.toString(),
@@ -70,7 +73,7 @@ export class PaymentMapper {
       expiresAt: doc.expiresAt,
       paidAt: doc.paidAt,
       cassoTransactionId: doc.cassoTransactionId,
-      createdAt: (doc as any).createdAt,
+      createdAt: raw.createdAt,
     };
   }
 }

@@ -14,7 +14,7 @@ export enum MenuPosition {
 
 export interface MenuCondition {
   type: 'role' | 'permission' | 'custom' | 'feature_flag';
-  value: string | Record<string, any>;
+  value: string | Record<string, unknown>;
   operator: 'equals' | 'contains' | 'not_equals' | 'custom';
 }
 
@@ -57,7 +57,7 @@ export interface IMenuItem {
   groupName?: string;          // Nhóm (ví dụ: "Quản trị")
   description?: string;        // Mô tả
   target?: '_blank' | '_self'; // Mở trong tab mới
-  queryParams?: Record<string, any>; // Query parameters
+  queryParams?: Record<string, unknown>; // Query parameters
   fragment?: string;           // Anchor (#section)
   
   // Responsive

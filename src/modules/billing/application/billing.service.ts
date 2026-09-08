@@ -9,6 +9,7 @@ import {
 } from '@nestjs/common';
 import {
   BillingCycle,
+  InvoiceStatus,
   PLAN_CATALOGUE,
   PlanTier,
   SubscriptionStatus,
@@ -275,7 +276,7 @@ export class BillingService implements OnModuleInit {
       planTier,
       planName,
       amountVnd,
-      status: 'PENDING' as any,
+      status: InvoiceStatus.PENDING,
       billingPeriodStart: periodStart,
       billingPeriodEnd: periodEnd,
     });

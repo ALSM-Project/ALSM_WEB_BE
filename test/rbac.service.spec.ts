@@ -1,5 +1,4 @@
 import { EffectivePermissionsService } from '../src/modules/rbac/application/effective-permissions.service';
-import { RbacService } from '../src/modules/rbac/application/rbac.service';
 
 describe('RBAC & Effective Permissions', () => {
   it('calculates effective permissions as union of assigned roles', async () => {

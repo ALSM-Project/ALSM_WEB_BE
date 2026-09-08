@@ -1,5 +1,5 @@
 export class MenuPresenter {
-  static toPersonalizedResponse(navigationData: any) {
+  static toPersonalizedResponse(navigationData: unknown) {
     return {
       success: true,
       data: navigationData,
@@ -9,7 +9,7 @@ export class MenuPresenter {
     };
   }
 
-  static toCommandResponse(commands: any[], query?: string) {
+  static toCommandResponse(commands: unknown[], query?: string) {
     return {
       success: true,
       data: commands,

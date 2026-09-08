@@ -27,7 +27,7 @@ export class MongoUserPreferencesRepository implements IUserPreferencesRepositor
     userId: string,
     preferences: Partial<UserPreferencesProps>,
   ): Promise<UserPreferencesProps> {
-    const updateData: any = { ...preferences };
+    const updateData: Record<string, unknown> = { ...preferences };
 
     if (preferences.menuItemUsageCount) {
       updateData.menuItemUsageCount = new Map(Object.entries(preferences.menuItemUsageCount));

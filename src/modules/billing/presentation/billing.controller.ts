@@ -97,7 +97,7 @@ export class BillingController {
   @ApiResponse({ status: HttpStatus.UNAUTHORIZED, description: 'Missing or invalid authentication token' })
   @ApiResponse({ status: HttpStatus.CONFLICT, description: 'User already has an active subscription or trial' })
   async activateTrial(@CurrentUser() user: AuthenticatedUser) {
-    const orgId = (user as any).organizationId || user.userId;
+    const orgId = (user as AuthenticatedUser & { organizationId?: string }).organizationId || user.userId;
     const sub = await this.billingService.activateTrial(user.userId, orgId);
     return BillingPresenter.toSubscriptionResponse(sub);
   }
@@ -120,7 +120,7 @@ export class BillingController {
     @CurrentUser() user: AuthenticatedUser,
     @Body() dto: CreateSubscriptionDto,
   ) {
-    const orgId = (user as any).organizationId || user.userId;
+    const orgId = (user as AuthenticatedUser & { organizationId?: string }).organizationId || user.userId;
     const sub = await this.billingService.createPaidSubscription(
       user.userId,
       orgId,
@@ -250,11 +250,11 @@ export class BillingController {
   @ApiResponse({ status: HttpStatus.UNAUTHORIZED, description: 'Missing or invalid authentication token' })
   async downloadInvoicePdf(
     @CurrentUser() user: AuthenticatedUser,
-    @Param('id') _id: string,
+    @Param('id') id: string,
   ) {
     return {
-      message: 'Invoice PDF generation queued',
-      downloadUrl: `/api/v1/billing/invoices/sample-receipt.pdf`,
+      message: `Invoice PDF generation queued for invoice ${id} and user ${user.userId}`,
+      downloadUrl: `/api/v1/billing/invoices/${id}/receipt.pdf`,
     };
   }
 
@@ -274,7 +274,7 @@ export class BillingController {
   })
   @ApiResponse({ status: HttpStatus.UNAUTHORIZED, description: 'Missing or invalid authentication token' })
   async getUsageStats(@CurrentUser() user: AuthenticatedUser) {
-    const orgId = (user as any).organizationId || user.userId;
+    const orgId = (user as AuthenticatedUser & { organizationId?: string }).organizationId || user.userId;
     return this.usageService.getUsageStats(user.userId, orgId);
   }
 }

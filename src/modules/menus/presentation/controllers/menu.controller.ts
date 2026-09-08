@@ -34,7 +34,7 @@ export class MenuController {
     @CurrentUser() user: AuthenticatedUser,
     @Query('deviceType') deviceType?: 'desktop' | 'tablet' | 'mobile',
   ) {
-    const userRole = (user as any).role || 'user';
+    const userRole = (user as AuthenticatedUser & { role?: string }).role || 'user';
     const navigation = await this.getPersonalizedMenuService.execute(user.userId, {
       role: userRole,
       deviceType,
