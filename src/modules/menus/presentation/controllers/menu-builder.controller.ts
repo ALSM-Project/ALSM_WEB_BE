@@ -51,6 +51,12 @@ export class MenuBuilderController {
   @Post(':id/move')
   @RequirePermissions('menu.manage')
   async moveMenuItem(@Param('id') id: string, @Body() dto: MoveMenuItemDto) {
-    return this.menuBuilderService.moveMenuItem(id, dto.parentId ?? null, dto.targetOrder);
+    return this.menuBuilderService.moveMenuItem(
+      id,
+      dto.parentId !== undefined ? dto.parentId : null,
+      dto.targetOrder,
+      dto.targetId,
+      dto.placement,
+    );
   }
 }

@@ -106,6 +106,21 @@ export class NavigationService {
     };
 
     sortNodes(roots);
-    return roots;
+
+    // Prune GROUP nodes that have 0 children (Section 15: Parent/Child Navigation Rule)
+    const pruneEmptyGroups = (items: NavNode[]): NavNode[] => {
+      return items.filter((item) => {
+        if (item.children && item.children.length > 0) {
+          item.children = pruneEmptyGroups(item.children);
+        }
+        if (item.type === 'GROUP' && (!item.children || item.children.length === 0)) {
+          return false;
+        }
+        return true;
+      });
+    };
+
+    return pruneEmptyGroups(roots);
   }
 }
+

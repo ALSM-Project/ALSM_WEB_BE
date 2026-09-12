@@ -23,17 +23,21 @@ import {
 import { MongoMenuRepository } from './infrastructure/persistence/mongo-menu.repository';
 import { MongoUserPreferencesRepository } from './infrastructure/persistence/mongo-user-preferences.repository';
 
+import { Permission, PermissionSchema } from '../rbac/infrastructure/schemas/permission.schema';
+
 @Module({
   imports: [
     RbacModule,
     MongooseModule.forFeature([
       { name: MenuItem.name, schema: MenuItemSchema },
       { name: MenuItemPermission.name, schema: MenuItemPermissionSchema },
+      { name: Permission.name, schema: PermissionSchema },
       { name: Menu.name, schema: MenuSchema },
       { name: UserPreferences.name, schema: UserPreferencesSchema },
       { name: MenuAnalytics.name, schema: MenuAnalyticsSchema },
     ]),
   ],
+
   controllers: [
     NavigationController,
     MenuBuilderController,
