@@ -5,7 +5,7 @@ import { CreateMenuItemDto, MoveMenuItemDto, ReorderMenuItemsDto, UpdateMenuItem
 import { JwtAuthGuard } from '../../../../shared/security/jwt-auth.guard';
 import { PermissionsGuard } from '../../../../shared/security/permissions.guard';
 import { RequirePermissions } from '../../../../shared/security/require-permissions.decorator';
-import { ApplicationContext } from '../../infrastructure/schemas/menu-item.schema';
+import { ApplicationContext } from '../../domain/enums/menu.enums';
 
 @ApiTags('Menu Builder')
 @ApiBearerAuth()

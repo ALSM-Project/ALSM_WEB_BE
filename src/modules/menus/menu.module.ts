@@ -20,9 +20,16 @@ import {
   MENU_REPOSITORY,
   USER_PREFERENCES_REPOSITORY,
 } from './domain/interfaces/menu.repository.interface';
+import {
+  MENU_ANALYTICS_REPOSITORY,
+  MENU_BUILDER_REPOSITORY,
+  NAVIGATION_REPOSITORY,
+} from './domain/interfaces/menu-builder.repository.interface';
 import { MongoMenuRepository } from './infrastructure/persistence/mongo-menu.repository';
 import { MongoUserPreferencesRepository } from './infrastructure/persistence/mongo-user-preferences.repository';
-
+import { MongoMenuBuilderRepository } from './infrastructure/persistence/mongo-menu-builder.repository';
+import { MongoMenuAnalyticsRepository } from './infrastructure/persistence/mongo-menu-analytics.repository';
+import { MongoNavigationRepository } from './infrastructure/persistence/mongo-navigation.repository';
 import { Permission, PermissionSchema } from '../rbac/infrastructure/schemas/permission.schema';
 
 @Module({
@@ -53,9 +60,21 @@ import { Permission, PermissionSchema } from '../rbac/infrastructure/schemas/per
     MenuAnalyticsService,
     MongoMenuRepository,
     MongoUserPreferencesRepository,
+    MongoMenuBuilderRepository,
+    MongoMenuAnalyticsRepository,
+    MongoNavigationRepository,
     { provide: MENU_REPOSITORY, useClass: MongoMenuRepository },
     { provide: USER_PREFERENCES_REPOSITORY, useClass: MongoUserPreferencesRepository },
+    { provide: MENU_BUILDER_REPOSITORY, useClass: MongoMenuBuilderRepository },
+    { provide: MENU_ANALYTICS_REPOSITORY, useClass: MongoMenuAnalyticsRepository },
+    { provide: NAVIGATION_REPOSITORY, useClass: MongoNavigationRepository },
   ],
-  exports: [NavigationService, MenuBuilderService],
+  exports: [
+    NavigationService,
+    MenuBuilderService,
+    MENU_BUILDER_REPOSITORY,
+    MENU_ANALYTICS_REPOSITORY,
+    NAVIGATION_REPOSITORY,
+  ],
 })
 export class MenuModule {}

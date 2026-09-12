@@ -1,9 +1,10 @@
-import { Injectable } from '@nestjs/common';
-import { InjectModel } from '@nestjs/mongoose';
-import { Model } from 'mongoose';
-import { MenuItem, MenuItemDocument, ApplicationContext, MenuItemStatus } from '../../infrastructure/schemas/menu-item.schema';
-import { MenuItemPermission, MenuItemPermissionDocument } from '../../infrastructure/schemas/menu-item-permission.schema';
+import { Inject, Injectable } from '@nestjs/common';
+import { ApplicationContext, MenuItemStatus } from '../../domain/enums/menu.enums';
 import { EffectivePermissionsService } from '../../../rbac/application/effective-permissions.service';
+import {
+  INavigationRepository,
+  NAVIGATION_REPOSITORY,
+} from '../../domain/interfaces/menu-builder.repository.interface';
 
 export interface NavNode {
   id: string;
@@ -24,41 +25,25 @@ export interface NavNode {
 @Injectable()
 export class NavigationService {
   constructor(
-    @InjectModel(MenuItem.name) private readonly menuItemModel: Model<MenuItemDocument>,
-    @InjectModel(MenuItemPermission.name) private readonly menuItemPermissionModel: Model<MenuItemPermissionDocument>,
+    @Inject(NAVIGATION_REPOSITORY)
+    private readonly navigationRepo: INavigationRepository,
     private readonly effectivePermissionsService: EffectivePermissionsService,
   ) {}
 
   async getUserNavigation(userId: string, app: ApplicationContext): Promise<NavNode[]> {
     const userPermissions = await this.effectivePermissionsService.getEffectivePermissions(userId);
 
-    // Fetch active visible menu items for this application
-    const menuItems = await this.menuItemModel
-      .find({ application: app, visibility: true, status: MenuItemStatus.ACTIVE })
-      .sort({ order: 1 })
-      .exec();
-
+    const menuItems = await this.navigationRepo.findActiveVisibleMenuItems(app);
     const itemIds = menuItems.map((m) => m.id);
-    const itemPermissions = await this.menuItemPermissionModel
-      .find({ menuItemId: { $in: itemIds } })
-      .exec();
 
-    const itemPermsMap = new Map<string, string[]>();
-    for (const ip of itemPermissions) {
-      const existing = itemPermsMap.get(ip.menuItemId) || [];
-      existing.push(ip.permissionKey);
-      itemPermsMap.set(ip.menuItemId, existing);
-    }
+    const itemPermsMap = await this.navigationRepo.findMenuItemPermissionsByItemIds(itemIds);
 
-    // Filter items: User MUST possess ALL required permissions
     const permittedItems: NavNode[] = [];
-    const permittedIds = new Set<string>();
 
     for (const item of menuItems) {
       const required = itemPermsMap.get(item.id) || [];
       const isPermitted = required.length === 0 || required.every((req) => userPermissions.includes(req));
       if (isPermitted) {
-        permittedIds.add(item.id);
         permittedItems.push({
           id: item.id,
           key: item.key,
@@ -95,7 +80,6 @@ export class NavigationService {
       }
     }
 
-    // Sort children by order
     const sortNodes = (items: NavNode[]) => {
       items.sort((a, b) => a.order - b.order);
       for (const item of items) {
@@ -107,7 +91,6 @@ export class NavigationService {
 
     sortNodes(roots);
 
-    // Prune GROUP nodes that have 0 children (Section 15: Parent/Child Navigation Rule)
     const pruneEmptyGroups = (items: NavNode[]): NavNode[] => {
       return items.filter((item) => {
         if (item.children && item.children.length > 0) {
@@ -123,4 +106,3 @@ export class NavigationService {
     return pruneEmptyGroups(roots);
   }
 }
-

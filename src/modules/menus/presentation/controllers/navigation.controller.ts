@@ -4,7 +4,7 @@ import { NavigationService } from '../../application/services/navigation.service
 import { JwtAuthGuard } from '../../../../shared/security/jwt-auth.guard';
 import { CurrentUser } from '../../../../shared/security/current-user.decorator';
 import { AuthenticatedUser } from '../../../../shared/logging/request-id.middleware';
-import { ApplicationContext } from '../../infrastructure/schemas/menu-item.schema';
+import { ApplicationContext } from '../../domain/enums/menu.enums';
 
 @ApiTags('Navigation')
 @ApiBearerAuth()

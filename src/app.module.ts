@@ -84,6 +84,7 @@ import { BillingController } from './modules/billing/presentation/billing.contro
 import { PaymentController } from './modules/billing/presentation/payment.controller';
 import {
   BANK_CONFIG_REPOSITORY,
+  BILLING_USAGE_REPOSITORY,
   INVOICE_REPOSITORY,
   PAYMENT_REPOSITORY,
   PLAN_REPOSITORY,
@@ -94,6 +95,7 @@ import { MongoInvoiceRepository } from './modules/billing/infrastructure/persist
 import { MongoPaymentRepository } from './modules/billing/infrastructure/persistence/mongo-payment.repository';
 import { MongoPlanRepository } from './modules/billing/infrastructure/persistence/mongo-plan.repository';
 import { MongoBankConfigRepository } from './modules/billing/infrastructure/persistence/mongo-bank-config.repository';
+import { MongoBillingUsageRepository } from './modules/billing/infrastructure/persistence/mongo-billing-usage.repository';
 
 import { RbacModule } from './modules/rbac/rbac.module';
 import { MenuModule } from './modules/menus/menu.module';
@@ -174,6 +176,7 @@ import { MenuModule } from './modules/menus/menu.module';
     { provide: CONVERSION_QUEUE, useClass: BullMqConversionQueue },
     { provide: CONVERSION_ENGINE, useClass: UnconfiguredConversionEngineAdapter },
     { provide: EMAIL_PORT, useClass: SmtpEmailAdapter },
+    { provide: BILLING_USAGE_REPOSITORY, useClass: MongoBillingUsageRepository },
     { provide: PASSWORD_RESET_REPOSITORY, useClass: MongoPasswordResetRepository },
   ],
   exports: [ConversionWorkerRunner],

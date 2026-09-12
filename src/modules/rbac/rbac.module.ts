@@ -11,6 +11,8 @@ import { RbacService } from './application/rbac.service';
 import { EffectivePermissionsService } from './application/effective-permissions.service';
 import { SeedService } from './infrastructure/seed.service';
 import { RbacController } from './presentation/rbac.controller';
+import { RBAC_REPOSITORY } from './domain/rbac.repository.interface';
+import { MongoRbacRepository } from './infrastructure/persistence/mongo-rbac.repository';
 
 @Module({
   imports: [
@@ -25,7 +27,16 @@ import { RbacController } from './presentation/rbac.controller';
     ]),
   ],
   controllers: [RbacController],
-  providers: [RbacService, EffectivePermissionsService, SeedService],
-  exports: [RbacService, EffectivePermissionsService, SeedService],
+  providers: [
+    MongoRbacRepository,
+    {
+      provide: RBAC_REPOSITORY,
+      useExisting: MongoRbacRepository,
+    },
+    RbacService,
+    EffectivePermissionsService,
+    SeedService,
+  ],
+  exports: [RBAC_REPOSITORY, RbacService, EffectivePermissionsService, SeedService],
 })
 export class RbacModule {}
