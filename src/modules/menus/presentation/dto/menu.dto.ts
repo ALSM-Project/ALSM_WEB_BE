@@ -123,4 +123,12 @@ export class MoveMenuItemDto {
   @IsOptional()
   @IsInt()
   targetOrder?: number;
+
+  @IsOptional()
+  @IsString()
+  targetId?: string;
+
+  @IsOptional()
+  @IsEnum(['before', 'after', 'inside'])
+  placement?: 'before' | 'after' | 'inside';
 }
