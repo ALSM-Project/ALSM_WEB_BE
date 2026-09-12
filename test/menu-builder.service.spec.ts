@@ -19,6 +19,7 @@ describe('MenuBuilderService Hierarchy & Integrity Rules', () => {
     const service = new MenuBuilderService(
       menuItemModel as never,
       menuItemPermissionModel as never,
+      {} as never,
     );
 
     await expect(service.deleteMenuItem('parent-1')).rejects.toThrow(BadRequestException);
@@ -37,10 +38,11 @@ describe('MenuBuilderService Hierarchy & Integrity Rules', () => {
       }),
     };
 
-    const service = new MenuBuilderService(menuItemModel as never, {} as never);
+    const service = new MenuBuilderService(menuItemModel as never, {} as never, {} as never);
 
     await expect(
       service.updateMenuItem('item-1', { parentId: 'item-1' }),
     ).rejects.toThrow(BadRequestException);
   });
 });
+
