@@ -8,6 +8,11 @@ import { UserRole, UserRoleDocument } from '../schemas/user-role.schema';
 import { User, UserDocument } from '../../../users/infrastructure/user.schema';
 import { IRbacRepository, IRole, IPermission, IRbacUser } from '../../domain/rbac.repository.interface';
 
+interface TimestampsDoc {
+  createdAt?: Date;
+  updatedAt?: Date;
+}
+
 @Injectable()
 export class MongoRbacRepository implements IRbacRepository {
   constructor(
@@ -20,39 +25,44 @@ export class MongoRbacRepository implements IRbacRepository {
 
   async findRoles(): Promise<IRole[]> {
     const docs = await this.roleModel.find().exec();
-    return docs.map((d) => ({
-      id: d.id,
-      name: d.name,
-      description: d.description,
-      isSystem: d.isSystem,
-      createdAt: (d as any).createdAt,
-      updatedAt: (d as any).updatedAt,
-    }));
+    return docs.map((d) => {
+      const ts = d as unknown as TimestampsDoc;
+      return {
+        id: d.id,
+        name: d.name,
+        description: d.description,
+        isSystem: d.isSystem,
+        createdAt: ts.createdAt,
+        updatedAt: ts.updatedAt,
+      };
+    });
   }
 
   async findRoleById(id: string): Promise<IRole | null> {
     const d = await this.roleModel.findOne({ id }).exec();
     if (!d) return null;
+    const ts = d as unknown as TimestampsDoc;
     return {
       id: d.id,
       name: d.name,
       description: d.description,
       isSystem: d.isSystem,
-      createdAt: (d as any).createdAt,
-      updatedAt: (d as any).updatedAt,
+      createdAt: ts.createdAt,
+      updatedAt: ts.updatedAt,
     };
   }
 
   async createRole(data: { id: string; name: string; description: string; isSystem: boolean }): Promise<IRole> {
     const created = new this.roleModel(data);
     const saved = await created.save();
+    const ts = saved as unknown as TimestampsDoc;
     return {
       id: saved.id,
       name: saved.name,
       description: saved.description,
       isSystem: saved.isSystem,
-      createdAt: (saved as any).createdAt,
-      updatedAt: (saved as any).updatedAt,
+      createdAt: ts.createdAt,
+      updatedAt: ts.updatedAt,
     };
   }
 
@@ -62,13 +72,14 @@ export class MongoRbacRepository implements IRbacRepository {
     if (data.name !== undefined) role.name = data.name;
     if (data.description !== undefined) role.description = data.description;
     const saved = await role.save();
+    const ts = saved as unknown as TimestampsDoc;
     return {
       id: saved.id,
       name: saved.name,
       description: saved.description,
       isSystem: saved.isSystem,
-      createdAt: (saved as any).createdAt,
-      updatedAt: (saved as any).updatedAt,
+      createdAt: ts.createdAt,
+      updatedAt: ts.updatedAt,
     };
   }
 
@@ -90,39 +101,44 @@ export class MongoRbacRepository implements IRbacRepository {
 
   async findPermissions(): Promise<IPermission[]> {
     const docs = await this.permissionModel.find().exec();
-    return docs.map((d) => ({
-      key: d.key,
-      label: d.label,
-      group: d.group,
-      description: d.description,
-      createdAt: (d as any).createdAt,
-      updatedAt: (d as any).updatedAt,
-    }));
+    return docs.map((d) => {
+      const ts = d as unknown as TimestampsDoc;
+      return {
+        key: d.key,
+        label: d.label,
+        group: d.group,
+        description: d.description,
+        createdAt: ts.createdAt,
+        updatedAt: ts.updatedAt,
+      };
+    });
   }
 
   async findPermissionByKey(key: string): Promise<IPermission | null> {
     const d = await this.permissionModel.findOne({ key }).exec();
     if (!d) return null;
+    const ts = d as unknown as TimestampsDoc;
     return {
       key: d.key,
       label: d.label,
       group: d.group,
       description: d.description,
-      createdAt: (d as any).createdAt,
-      updatedAt: (d as any).updatedAt,
+      createdAt: ts.createdAt,
+      updatedAt: ts.updatedAt,
     };
   }
 
   async createPermission(data: { key: string; label: string; group: string; description: string }): Promise<IPermission> {
     const created = new this.permissionModel(data);
     const saved = await created.save();
+    const ts = saved as unknown as TimestampsDoc;
     return {
       key: saved.key,
       label: saved.label,
       group: saved.group,
       description: saved.description,
-      createdAt: (saved as any).createdAt,
-      updatedAt: (saved as any).updatedAt,
+      createdAt: ts.createdAt,
+      updatedAt: ts.updatedAt,
     };
   }
 
@@ -133,13 +149,14 @@ export class MongoRbacRepository implements IRbacRepository {
     if (data.group !== undefined) perm.group = data.group;
     if (data.description !== undefined) perm.description = data.description;
     const saved = await perm.save();
+    const ts = saved as unknown as TimestampsDoc;
     return {
       key: saved.key,
       label: saved.label,
       group: saved.group,
       description: saved.description,
-      createdAt: (saved as any).createdAt,
-      updatedAt: (saved as any).updatedAt,
+      createdAt: ts.createdAt,
+      updatedAt: ts.updatedAt,
     };
   }
 

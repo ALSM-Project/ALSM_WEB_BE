@@ -5,7 +5,7 @@ import { MenuItem, MenuItemDocument } from '../schemas/menu-item.schema';
 import { MenuItemPermission, MenuItemPermissionDocument } from '../schemas/menu-item-permission.schema';
 import { Permission, PermissionDocument } from '../../../rbac/infrastructure/schemas/permission.schema';
 import { IMenuBuilderRepository, IMenuItemData } from '../../domain/interfaces/menu-builder.repository.interface';
-import { ApplicationContext, MenuItemStatus, MenuItemType } from '../../domain/enums/menu.enums';
+import { ApplicationContext } from '../../domain/enums/menu.enums';
 
 @Injectable()
 export class MongoMenuBuilderRepository implements IMenuBuilderRepository {

@@ -1,13 +1,19 @@
 import { BadRequestException, ConflictException, ForbiddenException, Inject, Injectable, NotFoundException } from '@nestjs/common';
 import { IRbacRepository, RBAC_REPOSITORY, IRole, IPermission } from '../domain/rbac.repository.interface';
 
+export interface IRoleResponse extends IRole {
+  key: string;
+  permissionCount: number;
+  permissions?: string[];
+}
+
 @Injectable()
 export class RbacService {
   constructor(
     @Inject(RBAC_REPOSITORY) private readonly rbacRepo: IRbacRepository,
   ) {}
 
-  async getRoles(): Promise<any[]> {
+  async getRoles(): Promise<IRoleResponse[]> {
     const roles = await this.rbacRepo.findRoles();
     const allRps = await this.rbacRepo.findAllRolePermissions();
     const permCounts = new Map<string, number>();
@@ -23,7 +29,7 @@ export class RbacService {
     }));
   }
 
-  async getRoleById(id: string): Promise<any> {
+  async getRoleById(id: string): Promise<IRoleResponse> {
     const role = await this.rbacRepo.findRoleById(id);
     if (!role) {
       throw new NotFoundException({ code: 'ROLE_NOT_FOUND', message: `Role '${id}' not found` });
@@ -38,7 +44,7 @@ export class RbacService {
     };
   }
 
-  async createRole(rawKey: string, name: string, description?: string): Promise<any> {
+  async createRole(rawKey: string, name: string, description?: string): Promise<IRoleResponse> {
     if (!rawKey || !rawKey.trim()) {
       throw new BadRequestException({ code: 'ROLE_KEY_REQUIRED', message: 'Role key is required' });
     }

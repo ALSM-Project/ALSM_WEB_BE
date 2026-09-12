@@ -40,7 +40,7 @@ export interface IMenuAnalyticsRepository {
     metadata?: Record<string, unknown>;
   }): Promise<void>;
 
-  getMenuStats(menuItemId: string, timeRange?: { start: Date; end: Date }): Promise<any[]>;
+  getMenuStats(menuItemId: string, timeRange?: { start: Date; end: Date }): Promise<Array<{ action: string; count: number; uniqueUserCount: number }>>;
   getPopularItems(limit?: number): Promise<string[]>;
   getUnderperformingItems(limit?: number): Promise<string[]>;
 }

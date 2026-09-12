@@ -1,5 +1,5 @@
 import { Inject, Injectable } from '@nestjs/common';
-import { ApplicationContext, MenuItemStatus } from '../../domain/enums/menu.enums';
+import { ApplicationContext } from '../../domain/enums/menu.enums';
 import { EffectivePermissionsService } from '../../../rbac/application/effective-permissions.service';
 import {
   INavigationRepository,

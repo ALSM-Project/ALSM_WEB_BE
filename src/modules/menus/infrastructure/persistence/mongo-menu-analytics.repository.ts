@@ -23,7 +23,7 @@ export class MongoMenuAnalyticsRepository implements IMenuAnalyticsRepository {
     });
   }
 
-  async getMenuStats(menuItemId: string, timeRange?: { start: Date; end: Date }): Promise<any[]> {
+  async getMenuStats(menuItemId: string, timeRange?: { start: Date; end: Date }): Promise<Array<{ action: string; count: number; uniqueUserCount: number }>> {
     const matchFilter: Record<string, unknown> = { menuItemId };
     if (timeRange) {
       matchFilter.timestamp = {
