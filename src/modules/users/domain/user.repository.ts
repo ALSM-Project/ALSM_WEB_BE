@@ -12,6 +12,7 @@ export interface UserRecord {
   fullName: string;
   isPlatformAdmin: boolean;
   isActive: boolean;
+  isEmailVerified: boolean;
   mfa: MfaState;
   createdAt: Date;
   updatedAt: Date;
@@ -22,10 +23,11 @@ export interface MfaSetupFailureResult {
 }
 
 export interface UserRepository {
-  create(input: Pick<UserRecord, 'email' | 'passwordHash' | 'fullName'>): Promise<UserRecord>;
+  create(input: Pick<UserRecord, 'email' | 'passwordHash' | 'fullName'> & { isEmailVerified?: boolean }): Promise<UserRecord>;
   findByEmail(email: string): Promise<UserRecord | null>;
   findById(id: string): Promise<UserRecord | null>;
   updatePassword(id: string, passwordHash: string): Promise<void>;
+  markEmailVerified(userId: string): Promise<void>;
   findByIdForMfa(id: string): Promise<UserRecord | null>;
   beginMfaSetup(userId: string, encryptedSecret: string): Promise<UserRecord | null>;
   completeMfaSetup(

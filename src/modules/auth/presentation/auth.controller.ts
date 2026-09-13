@@ -1,20 +1,23 @@
 import {
   Body,
   Controller,
+  Delete,
   Get,
   Header,
   HttpCode,
   HttpStatus,
+  Param,
   Post,
   UseGuards,
 } from '@nestjs/common';
 import { ApiBearerAuth, ApiResponse, ApiTags } from '@nestjs/swagger';
-import { AuthService, AuthTokens } from '../application/auth.service';
+import { AuthService, AuthTokens, RegisterResult } from '../application/auth.service';
 import { ConfirmMfaSetupService } from '../application/confirm-mfa-setup.service';
 import { StartMfaSetupService } from '../application/start-mfa-setup.service';
 import { ForgotPasswordService } from '../application/forgot-password.service';
 import { ResetPasswordService } from '../application/reset-password.service';
 import { ChangePasswordService } from '../application/change-password.service';
+import { SetPasswordService } from '../application/set-password.service';
 import {
   ChangePasswordDto,
   ConfirmMfaSetupDto,
@@ -23,7 +26,10 @@ import {
   LoginDto,
   RefreshDto,
   RegisterDto,
+  ResendVerificationDto,
   ResetPasswordDto,
+  SetPasswordDto,
+  VerifyEmailDto,
 } from './auth.dto';
 import { MfaPresenter } from './mfa.presenter';
 import { CurrentUser } from '../../../shared/security/current-user.decorator';
@@ -40,11 +46,25 @@ export class AuthController {
     private readonly forgotPasswordService: ForgotPasswordService,
     private readonly resetPasswordService: ResetPasswordService,
     private readonly changePasswordService: ChangePasswordService,
+    private readonly setPasswordService: SetPasswordService,
   ) {}
 
   @Post('register')
-  async register(@Body() dto: RegisterDto): Promise<AuthTokens> {
+  async register(@Body() dto: RegisterDto): Promise<RegisterResult> {
     return this.auth.register(dto.email, dto.password, dto.fullName);
+  }
+
+  @HttpCode(HttpStatus.OK)
+  @Post('verify-email')
+  async verifyEmail(@Body() dto: VerifyEmailDto): Promise<AuthTokens> {
+    return this.auth.verifyEmail(dto.email, dto.code);
+  }
+
+  @HttpCode(HttpStatus.OK)
+  @Post('resend-verification')
+  async resendVerification(@Body() dto: ResendVerificationDto): Promise<{ ok: true }> {
+    await this.auth.resendVerification(dto.email);
+    return { ok: true };
   }
 
   @HttpCode(HttpStatus.OK)
@@ -70,6 +90,18 @@ export class AuthController {
   @Post('reset-password')
   async resetPassword(@Body() dto: ResetPasswordDto): Promise<{ ok: true }> {
     await this.resetPasswordService.execute(dto.token, dto.newPassword);
+    return { ok: true };
+  }
+
+  @ApiBearerAuth()
+  @UseGuards(JwtAuthGuard)
+  @HttpCode(HttpStatus.OK)
+  @Post('set-password')
+  async setPassword(
+    @CurrentUser() user: AuthenticatedUser,
+    @Body() dto: SetPasswordDto,
+  ): Promise<{ ok: true }> {
+    await this.setPasswordService.execute(user.userId, dto.newPassword);
     return { ok: true };
   }
 
@@ -106,6 +138,32 @@ export class AuthController {
 
   @ApiBearerAuth()
   @UseGuards(JwtAuthGuard)
+  @Get('sessions')
+  async getSessions(@CurrentUser() user: AuthenticatedUser) {
+    return this.auth.getActiveSessions(user.userId);
+  }
+
+  @ApiBearerAuth()
+  @UseGuards(JwtAuthGuard)
+  @HttpCode(HttpStatus.NO_CONTENT)
+  @Delete('sessions/:id')
+  async revokeSession(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('id') sessionId: string,
+  ): Promise<void> {
+    await this.auth.revokeSession(user.userId, sessionId);
+  }
+
+  @ApiBearerAuth()
+  @UseGuards(JwtAuthGuard)
+  @HttpCode(HttpStatus.NO_CONTENT)
+  @Post('sessions/revoke-others')
+  async revokeAllOtherSessions(@CurrentUser() user: AuthenticatedUser): Promise<void> {
+    await this.auth.revokeAllOtherSessions(user.userId);
+  }
+
+  @ApiBearerAuth()
+  @UseGuards(JwtAuthGuard)
   @ApiResponse({ status: HttpStatus.CONFLICT, description: 'MFA is already enabled' })
   @Header('Cache-Control', 'no-store')
   @Post('2fa/setup')
@@ -123,3 +181,4 @@ export class AuthController {
     return MfaPresenter.confirmation(await this.confirmMfaSetup.execute(user.userId, dto.code));
   }
 }
+

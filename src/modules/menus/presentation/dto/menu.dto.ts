@@ -9,7 +9,7 @@ import {
   ValidateNested,
 } from 'class-validator';
 import { Type } from 'class-transformer';
-import { ApplicationContext, MenuItemStatus, MenuItemType } from '../../infrastructure/schemas/menu-item.schema';
+import { ApplicationContext, MenuItemStatus, MenuItemType } from '../../domain/enums/menu.enums';
 
 export class CreateMenuItemDto {
   @IsNotEmpty()
@@ -123,4 +123,12 @@ export class MoveMenuItemDto {
   @IsOptional()
   @IsInt()
   targetOrder?: number;
+
+  @IsOptional()
+  @IsString()
+  targetId?: string;
+
+  @IsOptional()
+  @IsEnum(['before', 'after', 'inside'])
+  placement?: 'before' | 'after' | 'inside';
 }
