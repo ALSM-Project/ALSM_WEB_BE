@@ -16,7 +16,9 @@ describe('AuthController MFA endpoints', () => {
     {} as never,
     {} as never,
     {} as never,
+    {} as never,
   );
+
 
   beforeEach(() => jest.clearAllMocks());
 
