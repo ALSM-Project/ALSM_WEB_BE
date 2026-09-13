@@ -14,9 +14,17 @@ import { AUDIT_REPOSITORY, AuditRepository } from '../../audit/domain/audit.repo
 import { SESSION_REPOSITORY, SessionRepository } from '../domain/session.repository';
 import { EffectivePermissionsService } from '../../rbac/application/effective-permissions.service';
 
+import { EmailVerificationService } from './email-verification.service';
+
 export interface AuthTokens {
   accessToken: string;
   refreshToken: string;
+}
+
+export interface RegisterResult {
+  requiresEmailVerification: boolean;
+  email: string;
+  message: string;
 }
 
 @Injectable()
@@ -29,9 +37,10 @@ export class AuthService {
     @Inject(SESSION_REPOSITORY) private readonly sessions: SessionRepository,
     @Inject(AUDIT_REPOSITORY) private readonly audit: AuditRepository,
     private readonly effectivePermissionsService: EffectivePermissionsService,
+    private readonly emailVerificationService: EmailVerificationService,
   ) {}
 
-  async register(email: string, password: string, fullName: string): Promise<AuthTokens> {
+  async register(email: string, password: string, fullName: string): Promise<RegisterResult> {
     const normalizedEmail = email.trim().toLowerCase();
     if (await this.users.findByEmail(normalizedEmail)) {
       throw new ConflictException({
@@ -43,6 +52,7 @@ export class AuthService {
       email: normalizedEmail,
       passwordHash: await bcrypt.hash(password, 12),
       fullName: fullName.trim(),
+      isEmailVerified: false,
     });
     const organization = await this.organizations.create({
       name: `${user.fullName}'s Organization`,
@@ -56,7 +66,12 @@ export class AuthService {
       resourceType: 'USER',
       resourceId: user.id,
     });
-    return this.createSessionTokens(user);
+    await this.emailVerificationService.sendVerificationEmail(user);
+    return {
+      requiresEmailVerification: true,
+      email: user.email,
+      message: 'Account created. Please check your email to verify your account.',
+    };
   }
 
   async login(email: string, password: string): Promise<AuthTokens> {
@@ -72,6 +87,12 @@ export class AuthService {
         message: 'Invalid email or password',
       });
     }
+    if (!user.isEmailVerified) {
+      throw new UnauthorizedException({
+        code: 'EMAIL_NOT_VERIFIED',
+        message: 'Email address is not verified. Please verify your email before logging in.',
+      });
+    }
     await this.audit.append({
       actorUserId: user.id,
       action: 'USER_LOGIN',
@@ -79,6 +100,21 @@ export class AuthService {
       resourceId: user.id,
     });
     return this.createSessionTokens(user);
+  }
+
+  async verifyEmail(email: string, codeOrToken: string): Promise<AuthTokens> {
+    const user = await this.emailVerificationService.verify(email, codeOrToken);
+    await this.audit.append({
+      actorUserId: user.id,
+      action: 'USER_EMAIL_VERIFIED',
+      resourceType: 'USER',
+      resourceId: user.id,
+    });
+    return this.createSessionTokens(user);
+  }
+
+  async resendVerification(email: string): Promise<void> {
+    await this.emailVerificationService.resendVerification(email);
   }
 
   async loginWithGoogle(idToken: string): Promise<AuthTokens> {
@@ -90,6 +126,7 @@ export class AuthService {
       user = await this.users.create({
         email,
         fullName: payload.name?.trim() || email.split('@')[0],
+        isEmailVerified: true,
       });
       const organization = await this.organizations.create({
         name: `${user.fullName}'s Organization`,
@@ -109,6 +146,9 @@ export class AuthService {
           code: 'INVALID_CREDENTIALS',
           message: 'Account is inactive',
         });
+      }
+      if (!user.isEmailVerified) {
+        await this.users.markEmailVerified(user.id);
       }
       await this.audit.append({
         actorUserId: user.id,
@@ -164,6 +204,12 @@ export class AuthService {
     const roles = await this.effectivePermissionsService.getUserRoles(userId);
     const effectivePermissions = await this.effectivePermissionsService.getEffectivePermissions(userId);
 
+    const hasPassword = Boolean(user.passwordHash);
+    const twoFactorEnabled = Boolean(user.mfa?.enabled);
+    const providers: string[] = [];
+    if (hasPassword) providers.push('PASSWORD');
+    providers.push('GOOGLE');
+
     return {
       id: user.id,
       email: user.email,
@@ -172,12 +218,47 @@ export class AuthService {
       roles,
       effectivePermissions,
       isActive: user.isActive,
+      hasPassword,
+      twoFactorEnabled,
+      providers,
       createdAt: user.createdAt,
       updatedAt: user.updatedAt,
     };
   }
 
-  private async createSessionTokens(user: UserRecord): Promise<AuthTokens> {
+  async getActiveSessions(userId: string, currentTokenId?: string) {
+    const sessions = await this.sessions.findActiveByUserId(userId);
+    return sessions.map((s) => {
+      const browser = this.parseBrowser(s.userAgent);
+      const os = this.parseOS(s.userAgent);
+      return {
+        id: s.id,
+        device: `${browser} on ${os}`,
+        browser,
+        operatingSystem: os,
+        ipAddress: s.ipAddress || '127.0.0.1',
+        lastActiveAt: (s.createdAt || s.expiresAt).toISOString(),
+        createdAt: (s.createdAt || s.expiresAt).toISOString(),
+        isCurrent: Boolean(currentTokenId && s.tokenId === currentTokenId),
+      };
+    });
+  }
+
+  async revokeSession(userId: string, sessionId: string): Promise<boolean> {
+    return this.sessions.revokeUserSession(userId, sessionId);
+  }
+
+  async revokeAllOtherSessions(userId: string, currentTokenId?: string): Promise<void> {
+    if (currentTokenId) {
+      await this.sessions.revokeAllOther(userId, currentTokenId);
+    }
+  }
+
+  private async createSessionTokens(
+    user: UserRecord,
+    userAgent?: string,
+    ipAddress?: string,
+  ): Promise<AuthTokens> {
     const tokenId = randomUUID();
     const expiresAt = new Date(Date.now() + this.durationMs('JWT_REFRESH_EXPIRES_IN'));
     const session = await this.sessions.create({
@@ -185,6 +266,8 @@ export class AuthService {
       userId: user.id,
       refreshTokenHash: 'pending',
       expiresAt,
+      userAgent,
+      ipAddress,
     });
     const accessToken = await this.jwt.signAsync(
       { sub: user.id, email: user.email, isPlatformAdmin: user.isPlatformAdmin },
@@ -204,6 +287,26 @@ export class AuthService {
     return { accessToken, refreshToken };
   }
 
+  private parseBrowser(ua?: string): string {
+    if (!ua) return 'Web Browser';
+    if (ua.includes('Edg')) return 'Edge';
+    if (ua.includes('Chrome')) return 'Chrome';
+    if (ua.includes('Firefox')) return 'Firefox';
+    if (ua.includes('Safari')) return 'Safari';
+    return 'Web Browser';
+  }
+
+  private parseOS(ua?: string): string {
+    if (!ua) return 'Desktop';
+    if (ua.includes('Win')) return 'Windows';
+    if (ua.includes('Mac')) return 'macOS';
+    if (ua.includes('Linux')) return 'Linux';
+    if (ua.includes('Android')) return 'Android';
+    if (ua.includes('iPhone') || ua.includes('iPad')) return 'iOS';
+    return 'Desktop';
+  }
+
+
   private async verifyRefresh(token: string): Promise<{ sub: string; tid: string }> {
     try {
       return await this.jwt.verifyAsync<{ sub: string; tid: string }>(token, {
@@ -218,11 +321,11 @@ export class AuthService {
   }
 
   private async verifyGoogleIdToken(idToken: string): Promise<TokenPayload> {
-    const clientId = this.config.getOrThrow<string>('GOOGLE_CLIENT_ID');
+    const clientId = this.config.get<string>('GOOGLE_CLIENT_ID') || '';
     if (!clientId) {
       throw new UnauthorizedException({
         code: 'INVALID_CREDENTIALS',
-        message: 'Google sign-in is not configured',
+        message: 'Google sign-in is not configured on the backend',
       });
     }
     try {

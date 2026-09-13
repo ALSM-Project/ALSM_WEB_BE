@@ -9,5 +9,8 @@ export class UserSession {
   @Prop({ required: true, select: false }) refreshTokenHash!: string;
   @Prop({ required: true, index: { expires: 0 } }) expiresAt!: Date;
   @Prop() revokedAt?: Date;
+  @Prop() userAgent?: string;
+  @Prop() ipAddress?: string;
 }
 export const UserSessionSchema = SchemaFactory.createForClass(UserSession);
+
