@@ -279,14 +279,14 @@ export class SeedService implements OnModuleInit {
       const { permissions, ...menuItemData } = item;
       await this.menuItemModel.updateOne(
         { id: menuItemData.id },
-        { $set: menuItemData },
+        { $setOnInsert: menuItemData },
         { upsert: true }
       );
 
       for (const permKey of permissions) {
         await this.menuItemPermissionModel.updateOne(
           { menuItemId: menuItemData.id, permissionKey: permKey },
-          { $set: { menuItemId: menuItemData.id, permissionKey: permKey } },
+          { $setOnInsert: { menuItemId: menuItemData.id, permissionKey: permKey } },
           { upsert: true }
         );
       }
