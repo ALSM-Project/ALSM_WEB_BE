@@ -16,6 +16,10 @@ import {
   PasswordReset,
   PasswordResetSchema,
 } from './modules/auth/infrastructure/password-reset.schema';
+import {
+  EmailVerification,
+  EmailVerificationSchema,
+} from './modules/auth/infrastructure/email-verification.schema';
 import { AuditLog, AuditLogSchema } from './modules/audit/infrastructure/audit-log.schema';
 import { Project, ProjectSchema } from './modules/projects/infrastructure/project.schema';
 import {
@@ -57,10 +61,15 @@ import { MfaSecurityService } from './modules/auth/infrastructure/mfa-security.s
 import { ForgotPasswordService } from './modules/auth/application/forgot-password.service';
 import { ResetPasswordService } from './modules/auth/application/reset-password.service';
 import { ChangePasswordService } from './modules/auth/application/change-password.service';
+import { SetPasswordService } from './modules/auth/application/set-password.service';
 import { EMAIL_PORT } from './modules/auth/domain/email.port';
+
 import { SmtpEmailAdapter } from './modules/auth/infrastructure/smtp-email.adapter';
 import { PASSWORD_RESET_REPOSITORY } from './modules/auth/domain/password-reset.repository';
 import { MongoPasswordResetRepository } from './modules/auth/infrastructure/mongo-password-reset.repository';
+import { EMAIL_VERIFICATION_REPOSITORY } from './modules/auth/domain/email-verification.repository';
+import { MongoEmailVerificationRepository } from './modules/auth/infrastructure/mongo-email-verification.repository';
+import { EmailVerificationService } from './modules/auth/application/email-verification.service';
 import { AuthController } from './modules/auth/presentation/auth.controller';
 import { OrganizationAuthorizationService } from './modules/organizations/application/organization-authorization.service';
 import { OrganizationContextService } from './modules/organizations/application/organization-context.service';
@@ -118,6 +127,7 @@ import { MenuModule } from './modules/menus/menu.module';
       { name: Plan.name, schema: PlanSchema },
       { name: BankConfig.name, schema: BankConfigSchema },
       { name: PasswordReset.name, schema: PasswordResetSchema },
+      { name: EmailVerification.name, schema: EmailVerificationSchema },
       { name: FieldMapping.name, schema: FieldMappingSchema },
     ]),
     RbacModule,
@@ -143,7 +153,10 @@ import { MenuModule } from './modules/menus/menu.module';
     ForgotPasswordService,
     ResetPasswordService,
     ChangePasswordService,
+    SetPasswordService,
+    EmailVerificationService,
     SmtpEmailAdapter,
+
     OrganizationContextService,
     OrganizationAuthorizationService,
     ProjectService,
@@ -178,6 +191,7 @@ import { MenuModule } from './modules/menus/menu.module';
     { provide: EMAIL_PORT, useClass: SmtpEmailAdapter },
     { provide: BILLING_USAGE_REPOSITORY, useClass: MongoBillingUsageRepository },
     { provide: PASSWORD_RESET_REPOSITORY, useClass: MongoPasswordResetRepository },
+    { provide: EMAIL_VERIFICATION_REPOSITORY, useClass: MongoEmailVerificationRepository },
   ],
   exports: [ConversionWorkerRunner],
 })
