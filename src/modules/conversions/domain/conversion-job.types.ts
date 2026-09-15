@@ -48,6 +48,7 @@ export interface ConversionJobRepository {
   retry(id: string, organizationId: string): Promise<ConversionJobRecord | null>;
   markProcessing(id: string): Promise<ConversionJobRecord | null>;
   markFailed(id: string, code: string, message: string): Promise<void>;
+  markCompleted(id: string, output: { resultReference: string; toolVersion?: string }): Promise<void>;
 }
 export const CONVERSION_JOB_REPOSITORY = Symbol('CONVERSION_JOB_REPOSITORY');
 export interface ConversionQueuePort {
@@ -56,7 +57,9 @@ export interface ConversionQueuePort {
 export const CONVERSION_QUEUE = Symbol('CONVERSION_QUEUE');
 export interface ConversionEngineInput {
   conversionJobId: string;
+  organizationId: string;
   projectId: string;
+  screenId?: string;
   inputReference?: string;
   conversionType: ConversionType;
 }
