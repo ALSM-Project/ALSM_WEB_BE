@@ -25,6 +25,8 @@ export class MongoSessionRepository implements SessionRepository {
   }
 
   async findActiveByUserId(userId: string): Promise<SessionRecord[]> {
+    if (!Types.ObjectId.isValid(userId)) return [];
+
     const docs = await this.model
       .find({
         userId: new Types.ObjectId(userId),
@@ -47,12 +49,17 @@ export class MongoSessionRepository implements SessionRepository {
   }
 
   async revokeUserSession(userId: string, sessionId: string): Promise<boolean> {
+    if (!Types.ObjectId.isValid(userId) || !Types.ObjectId.isValid(sessionId)) {
+      return false;
+    }
+
     const result = await this.model
       .updateOne(
         {
           _id: sessionId,
           userId: new Types.ObjectId(userId),
           revokedAt: { $exists: false },
+          expiresAt: { $gt: new Date() },
         },
         { $set: { revokedAt: new Date() } },
       )
@@ -81,9 +88,13 @@ export class MongoSessionRepository implements SessionRepository {
       refreshTokenHash: doc.refreshTokenHash,
       expiresAt: doc.expiresAt,
       revokedAt: doc.revokedAt,
+      deviceType: doc.deviceType,
+      browser: doc.browser,
+      lastActiveAt: doc.lastActiveAt,
       userAgent: doc.userAgent,
       ipAddress: doc.ipAddress,
       createdAt: (doc as unknown as { createdAt?: Date }).createdAt,
+      updatedAt: (doc as unknown as { updatedAt?: Date }).updatedAt,
     };
   }
 }
