@@ -1,6 +1,7 @@
 import { Body, Controller, Get, Headers, Param, Post, UseGuards } from '@nestjs/common';
 import { ApiBearerAuth, ApiHeader, ApiOperation, ApiParam, ApiResponse, ApiTags } from '@nestjs/swagger';
 import { ConversionJobService } from '../application/conversion-job.service';
+import { GetConversionResultService } from '../application/get-conversion-result.service';
 import { BulkCreateConversionJobDto, CreateConversionJobDto } from './conversion.dto';
 import { JwtAuthGuard } from '../../../shared/security/jwt-auth.guard';
 import { CurrentUser } from '../../../shared/security/current-user.decorator';
@@ -12,7 +13,10 @@ import { AuthenticatedUser } from '../../../shared/logging/request-id.middleware
 @UseGuards(JwtAuthGuard)
 @Controller()
 export class ConversionsController {
-  constructor(private readonly conversions: ConversionJobService) {}
+  constructor(
+    private readonly conversions: ConversionJobService,
+    private readonly getResult: GetConversionResultService,
+  ) {}
 
   @Post('projects/:projectId/conversions')
   @ApiOperation({ summary: 'Submit single screen conversion job', description: 'Enqueues legacy screen source code for conversion.' })
@@ -76,6 +80,18 @@ export class ConversionsController {
     @Param('id') id: string,
   ) {
     return this.conversions.get(user.userId, organizationId, id);
+  }
+
+  @Get('conversions/:id/result')
+  @ApiOperation({ summary: 'Get generated code for a completed conversion job', description: 'Returns the real files produced by the external conversion tool.' })
+  @ApiParam({ name: 'id', description: 'Conversion Job ID' })
+  @ApiResponse({ status: 200, description: 'Conversion result files' })
+  async getResultFiles(
+    @CurrentUser() user: AuthenticatedUser,
+    @Headers('x-organization-id') organizationId: string | undefined,
+    @Param('id') id: string,
+  ) {
+    return this.getResult.execute(user.userId, organizationId, id);
   }
 
   @Post('conversions/:id/retry')

@@ -59,6 +59,7 @@ import { CobolJavaConversionAdapter } from './modules/conversions/infrastructure
 import { ConversionEngineRouter } from './modules/conversions/infrastructure/conversion-engine.router';
 import { UploadConversionSourceService } from './modules/conversions/application/upload-conversion-source.service';
 import { ConversionSourceController } from './modules/conversions/presentation/conversion-source.controller';
+import { GetConversionResultService } from './modules/conversions/application/get-conversion-result.service';
 import { FIELD_MAPPING_REPOSITORY } from './modules/conversions/domain/field-mapping.types';
 import { MongoFieldMappingRepository } from './modules/conversions/infrastructure/mongo-field-mapping.repository';
 import { GetFieldMappingService } from './modules/conversions/application/get-field-mapping.service';
@@ -180,6 +181,7 @@ import { MenuModule } from './modules/menus/menu.module';
     ProjectService,
     ConversionJobService,
     UploadConversionSourceService,
+    GetConversionResultService,
     GetFieldMappingService,
     SaveFieldMappingService,
     ExportCodeService,
