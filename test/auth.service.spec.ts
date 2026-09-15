@@ -1,4 +1,5 @@
 import { UnauthorizedException } from '@nestjs/common';
+import * as bcrypt from 'bcrypt';
 import { AuthService } from '../src/modules/auth/application/auth.service';
 import { OrganizationType } from '../src/modules/organizations/domain/organization.types';
 
@@ -17,7 +18,12 @@ describe('AuthService', () => {
   };
   const users = { findByEmail: jest.fn(), create: jest.fn(), findById: jest.fn() };
   const organizations = { create: jest.fn() };
-  const sessions = { create: jest.fn(), updateTokenHash: jest.fn(), findActive: jest.fn(), revoke: jest.fn() };
+  const sessions = {
+    create: jest.fn(),
+    updateTokenHash: jest.fn(),
+    findActive: jest.fn(),
+    revoke: jest.fn(),
+  };
   const audit = { append: jest.fn() };
   const effectivePermissions = {
     getUserRoles: jest.fn().mockResolvedValue([]),
@@ -44,22 +50,64 @@ describe('AuthService', () => {
 
   it('registers a user, self-service organization, owner membership, audit event, and sends verification email', async () => {
     users.findByEmail.mockResolvedValue(null);
-    users.create.mockResolvedValue({ id: 'u1', email: 'a@example.com', fullName: 'Ada', isPlatformAdmin: false, isActive: true, isEmailVerified: false });
+    users.create.mockResolvedValue({
+      id: 'u1',
+      email: 'a@example.com',
+      fullName: 'Ada',
+      isPlatformAdmin: false,
+      isActive: true,
+      isEmailVerified: false,
+    });
     organizations.create.mockResolvedValue({ id: 'o1' });
     sessions.create.mockResolvedValue({ id: 's1' });
 
     const result = await service.register('A@Example.com', 'a-strong-password', 'Ada');
 
     expect(organizations.create).toHaveBeenCalledWith(
-      expect.objectContaining({ type: OrganizationType.SELF_SERVICE, members: [{ userId: 'u1', role: 'OWNER' }] }),
+      expect.objectContaining({
+        type: OrganizationType.SELF_SERVICE,
+        members: [{ userId: 'u1', role: 'OWNER' }],
+      }),
     );
-    expect(audit.append).toHaveBeenCalledWith(expect.objectContaining({ action: 'USER_REGISTERED' }));
+    expect(audit.append).toHaveBeenCalledWith(
+      expect.objectContaining({ action: 'USER_REGISTERED' }),
+    );
     expect(emailVerificationService.sendVerificationEmail).toHaveBeenCalled();
     expect(result.requiresEmailVerification).toBe(true);
   });
 
   it('does not authenticate an invalid password', async () => {
     users.findByEmail.mockResolvedValue(null);
-    await expect(service.login('a@example.com', 'wrong')).rejects.toBeInstanceOf(UnauthorizedException);
+    await expect(service.login('a@example.com', 'wrong')).rejects.toBeInstanceOf(
+      UnauthorizedException,
+    );
+  });
+
+  it('persists normalized session metadata instead of the raw User-Agent when creating a login session', async () => {
+    users.findByEmail.mockResolvedValue({
+      id: 'u1',
+      email: 'a@example.com',
+      fullName: 'Ada',
+      passwordHash: await bcrypt.hash('a-strong-password', 4),
+      isPlatformAdmin: false,
+      isActive: true,
+      isEmailVerified: true,
+    });
+    sessions.create.mockResolvedValue({ id: 's1' });
+
+    await service.login(
+      'a@example.com',
+      'a-strong-password',
+      'Mozilla/5.0 (Windows NT 10.0) Chrome/140.0 Safari/537.36',
+    );
+
+    expect(sessions.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        deviceType: 'Desktop',
+        browser: 'Chrome',
+        lastActiveAt: expect.any(Date),
+      }),
+    );
+    expect(sessions.create.mock.calls[0][0]).not.toHaveProperty('userAgent');
   });
 });
