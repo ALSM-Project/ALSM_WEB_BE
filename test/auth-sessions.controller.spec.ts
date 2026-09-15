@@ -29,6 +29,7 @@ describe('AuthController session endpoints', () => {
     userId: 'authenticated-user',
     email: 'customer@example.com',
     isPlatformAdmin: false,
+    sessionId: 'current-session',
   };
 
   beforeEach(() => jest.clearAllMocks());
@@ -42,11 +43,11 @@ describe('AuthController session endpoints', () => {
     );
   });
 
-  it('uses only CurrentUser identity when listing and revoking sessions', async () => {
+  it('uses the authenticated user and session identity when listing and revoking sessions', async () => {
     const date = new Date('2030-01-01T00:00:00.000Z');
     listActiveSessions.execute.mockResolvedValue([
       {
-        id: 'owned-session',
+        id: 'current-session',
         deviceType: 'Desktop',
         browser: 'Firefox',
         lastActiveAt: date,
@@ -57,12 +58,13 @@ describe('AuthController session endpoints', () => {
 
     await expect(controller.getSessions(user)).resolves.toEqual([
       {
-        id: 'owned-session',
+        id: 'current-session',
         deviceType: 'Desktop',
         browser: 'Firefox',
         lastActiveAt: date.toISOString(),
         createdAt: date.toISOString(),
         expiresAt: date.toISOString(),
+        isCurrent: true,
       },
     ]);
     await controller.revokeSession(user, { sessionId: '507f1f77bcf86cd799439012' });
@@ -72,6 +74,57 @@ describe('AuthController session endpoints', () => {
       userId: 'authenticated-user',
       sessionId: '507f1f77bcf86cd799439012',
     });
+  });
+
+  it('marks only the session identified by the access token as current', async () => {
+    const date = new Date('2030-01-01T00:00:00.000Z');
+    listActiveSessions.execute.mockResolvedValue([
+      {
+        id: 'current-session',
+        deviceType: 'Desktop',
+        browser: 'Firefox',
+        lastActiveAt: date,
+        createdAt: date,
+        expiresAt: date,
+      },
+      {
+        id: 'other-session',
+        deviceType: 'Mobile',
+        browser: 'Safari',
+        lastActiveAt: date,
+        createdAt: date,
+        expiresAt: date,
+      },
+    ]);
+
+    const result = await controller.getSessions(user);
+
+    expect(result.map((session) => ({ id: session.id, isCurrent: session.isCurrent }))).toEqual([
+      { id: 'current-session', isCurrent: true },
+      { id: 'other-session', isCurrent: false },
+    ]);
+    expect(result[0]).not.toHaveProperty('tokenId');
+    expect(result[0]).not.toHaveProperty('refreshTokenHash');
+    expect(result[0]).not.toHaveProperty('accessToken');
+    expect(result[0]).not.toHaveProperty('refreshToken');
+  });
+
+  it('marks no session as current for access tokens issued before sid was introduced', async () => {
+    const date = new Date('2030-01-01T00:00:00.000Z');
+    listActiveSessions.execute.mockResolvedValue([
+      {
+        id: 'older-session',
+        deviceType: 'Desktop',
+        browser: 'Firefox',
+        lastActiveAt: date,
+        createdAt: date,
+        expiresAt: date,
+      },
+    ]);
+
+    await expect(controller.getSessions({ ...user, sessionId: undefined })).resolves.toEqual([
+      expect.objectContaining({ id: 'older-session', isCurrent: false }),
+    ]);
   });
 
   it('does not cache session-list responses and rejects malformed session IDs', async () => {

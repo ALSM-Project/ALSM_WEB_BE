@@ -248,7 +248,12 @@ export class AuthService {
       lastActiveAt,
     });
     const accessToken = await this.jwt.signAsync(
-      { sub: user.id, email: user.email, isPlatformAdmin: user.isPlatformAdmin },
+      {
+        sub: user.id,
+        email: user.email,
+        isPlatformAdmin: user.isPlatformAdmin,
+        sid: session.id,
+      },
       {
         secret: this.config.getOrThrow('JWT_ACCESS_SECRET'),
         expiresIn: this.durationSeconds('JWT_ACCESS_EXPIRES_IN'),
