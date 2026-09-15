@@ -6,7 +6,12 @@ import { SessionIdParamDto } from '../src/modules/auth/presentation/auth.dto';
 import { JwtAuthGuard } from '../src/shared/security/jwt-auth.guard';
 
 describe('AuthController session endpoints', () => {
-  const auth = { login: jest.fn() };
+  const auth = {
+    verifyEmail: jest.fn(),
+    login: jest.fn(),
+    loginWithGoogle: jest.fn(),
+    refresh: jest.fn(),
+  };
   const listActiveSessions = { execute: jest.fn() };
   const revokeSession = { execute: jest.fn() };
   const controller = new AuthController(
@@ -81,22 +86,50 @@ describe('AuthController session endpoints', () => {
     await expect(validate(malformed)).resolves.not.toHaveLength(0);
   });
 
-  it('passes the HTTP User-Agent to authentication without accepting session metadata from the body', async () => {
-    auth.login.mockResolvedValue({ accessToken: 'access', refreshToken: 'refresh' });
+  it.each([
+    {
+      name: 'verify-email',
+      invoke: (userAgent: string) =>
+        controller.verifyEmail({ email: 'customer@example.com', code: '123456' }, userAgent),
+      authMethod: auth.verifyEmail,
+      expectedArguments: ['customer@example.com', '123456'],
+    },
+    {
+      name: 'login',
+      invoke: (userAgent: string) =>
+        controller.login(
+          {
+            email: 'customer@example.com',
+            password: 'a-strong-password',
+            deviceType: 'Mobile',
+          } as never,
+          userAgent,
+        ),
+      authMethod: auth.login,
+      expectedArguments: ['customer@example.com', 'a-strong-password'],
+    },
+    {
+      name: 'Google login',
+      invoke: (userAgent: string) => controller.google({ idToken: 'google-id-token' }, userAgent),
+      authMethod: auth.loginWithGoogle,
+      expectedArguments: ['google-id-token'],
+    },
+    {
+      name: 'refresh',
+      invoke: (userAgent: string) =>
+        controller.refresh({ refreshToken: 'refresh-token' }, userAgent),
+      authMethod: auth.refresh,
+      expectedArguments: ['refresh-token'],
+    },
+  ])(
+    'passes the HTTP User-Agent through the $name session-creating path',
+    async ({ invoke, authMethod, expectedArguments }) => {
+      const userAgent = 'Mozilla/5.0 (Windows NT 10.0) Chrome/140.0 Safari/537.36';
+      authMethod.mockResolvedValue({ accessToken: 'access', refreshToken: 'refresh' });
 
-    await controller.login(
-      {
-        email: 'customer@example.com',
-        password: 'a-strong-password',
-        deviceType: 'Mobile',
-      } as never,
-      'Mozilla/5.0 (Windows NT 10.0) Chrome/140.0 Safari/537.36',
-    );
+      await invoke(userAgent);
 
-    expect(auth.login).toHaveBeenCalledWith(
-      'customer@example.com',
-      'a-strong-password',
-      'Mozilla/5.0 (Windows NT 10.0) Chrome/140.0 Safari/537.36',
-    );
-  });
+      expect(authMethod).toHaveBeenCalledWith(...expectedArguments, userAgent);
+    },
+  );
 });

@@ -17,6 +17,34 @@ describe('session client metadata', () => {
     ).toEqual({ deviceType: 'Tablet', browser: 'Edge' });
   });
 
+  it.each([
+    [
+      'an Android phone',
+      'Mozilla/5.0 (Linux; Android 14; Pixel 8) AppleWebKit/537.36 Chrome/140.0 Mobile Safari/537.36',
+      'Mobile',
+    ],
+    [
+      'an Android tablet',
+      'Mozilla/5.0 (Linux; Android 14; SM-X710) AppleWebKit/537.36 Chrome/140.0 Safari/537.36',
+      'Tablet',
+    ],
+  ])('classifies %s from its User-Agent', (_description, userAgent, deviceType) => {
+    expect(getSessionClientMetadata(userAgent).deviceType).toBe(deviceType);
+  });
+
+  it.each([
+    [
+      'Opera',
+      'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/140.0 Safari/537.36 OPR/121.0',
+    ],
+    [
+      'Samsung Internet',
+      'Mozilla/5.0 (Linux; Android 14; SM-S928B) AppleWebKit/537.36 Chrome/140.0 Mobile Safari/537.36 SamsungBrowser/26.0',
+    ],
+  ])('does not mislabel %s as Chrome', (browser, userAgent) => {
+    expect(getSessionClientMetadata(userAgent).browser).toBe(browser);
+  });
+
   it('uses safe Unknown values for missing or malformed user agents', () => {
     expect(getSessionClientMetadata()).toEqual({ deviceType: 'Unknown', browser: 'Unknown' });
     expect(getSessionClientMetadata('not-a-browser')).toEqual({
