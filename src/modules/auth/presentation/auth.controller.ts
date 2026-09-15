@@ -11,7 +11,15 @@ import {
   Post,
   UseGuards,
 } from '@nestjs/common';
-import { ApiBearerAuth, ApiResponse, ApiTags } from '@nestjs/swagger';
+import {
+  ApiBearerAuth,
+  ApiNoContentResponse,
+  ApiNotFoundResponse,
+  ApiOkResponse,
+  ApiResponse,
+  ApiTags,
+  ApiUnauthorizedResponse,
+} from '@nestjs/swagger';
 import { AuthService, AuthTokens, RegisterResult } from '../application/auth.service';
 import { ConfirmMfaSetupService } from '../application/confirm-mfa-setup.service';
 import { StartMfaSetupService } from '../application/start-mfa-setup.service';
@@ -19,6 +27,8 @@ import { ForgotPasswordService } from '../application/forgot-password.service';
 import { ResetPasswordService } from '../application/reset-password.service';
 import { ChangePasswordService } from '../application/change-password.service';
 import { SetPasswordService } from '../application/set-password.service';
+import { ListActiveSessionsService } from '../application/list-active-sessions.service';
+import { RevokeSessionService } from '../application/revoke-session.service';
 import {
   ChangePasswordDto,
   ConfirmMfaSetupDto,
@@ -30,12 +40,15 @@ import {
   ResendVerificationDto,
   ResetPasswordDto,
   SetPasswordDto,
+  ActiveSessionResponseDto,
+  SessionIdParamDto,
   VerifyEmailDto,
 } from './auth.dto';
 import { MfaPresenter } from './mfa.presenter';
 import { CurrentUser } from '../../../shared/security/current-user.decorator';
 import { AuthenticatedUser } from '../../../shared/logging/request-id.middleware';
 import { JwtAuthGuard } from '../../../shared/security/jwt-auth.guard';
+import { SessionPresenter } from './session.presenter';
 
 @ApiTags('Auth')
 @Controller('auth')
@@ -48,6 +61,8 @@ export class AuthController {
     private readonly resetPasswordService: ResetPasswordService,
     private readonly changePasswordService: ChangePasswordService,
     private readonly setPasswordService: SetPasswordService,
+    private readonly listActiveSessions: ListActiveSessionsService,
+    private readonly revokeSessionService: RevokeSessionService,
   ) {}
 
   @Post('register')
@@ -151,20 +166,26 @@ export class AuthController {
 
   @ApiBearerAuth()
   @UseGuards(JwtAuthGuard)
+  @ApiOkResponse({ type: ActiveSessionResponseDto, isArray: true })
+  @ApiUnauthorizedResponse({ description: 'A valid bearer access token is required' })
+  @Header('Cache-Control', 'no-store')
   @Get('sessions')
   async getSessions(@CurrentUser() user: AuthenticatedUser) {
-    return this.auth.getActiveSessions(user.userId);
+    return SessionPresenter.toResponseList(await this.listActiveSessions.execute(user.userId));
   }
 
   @ApiBearerAuth()
   @UseGuards(JwtAuthGuard)
+  @ApiNoContentResponse({ description: 'The active refresh-token session was revoked' })
+  @ApiNotFoundResponse({ description: 'The session is not active for the authenticated user' })
+  @ApiUnauthorizedResponse({ description: 'A valid bearer access token is required' })
   @HttpCode(HttpStatus.NO_CONTENT)
-  @Delete('sessions/:id')
+  @Delete('sessions/:sessionId')
   async revokeSession(
     @CurrentUser() user: AuthenticatedUser,
-    @Param('id') sessionId: string,
+    @Param() params: SessionIdParamDto,
   ): Promise<void> {
-    await this.auth.revokeSession(user.userId, sessionId);
+    await this.revokeSessionService.execute({ userId: user.userId, sessionId: params.sessionId });
   }
 
   @ApiBearerAuth()

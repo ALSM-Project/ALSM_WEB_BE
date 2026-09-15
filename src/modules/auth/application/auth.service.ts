@@ -228,24 +228,6 @@ export class AuthService {
     };
   }
 
-  async getActiveSessions(userId: string, currentTokenId?: string) {
-    const sessions = await this.sessions.findActiveByUserId(userId);
-    return sessions.map((s) => {
-      return {
-        id: s.id,
-        deviceType: s.deviceType ?? 'Unknown',
-        browser: s.browser ?? 'Unknown',
-        lastActiveAt: (s.lastActiveAt ?? s.updatedAt ?? s.createdAt ?? s.expiresAt).toISOString(),
-        createdAt: (s.createdAt || s.expiresAt).toISOString(),
-        expiresAt: s.expiresAt.toISOString(),
-      };
-    });
-  }
-
-  async revokeSession(userId: string, sessionId: string): Promise<boolean> {
-    return this.sessions.revokeUserSession(userId, sessionId);
-  }
-
   async revokeAllOtherSessions(userId: string, currentTokenId?: string): Promise<void> {
     if (currentTokenId) {
       await this.sessions.revokeAllOther(userId, currentTokenId);
