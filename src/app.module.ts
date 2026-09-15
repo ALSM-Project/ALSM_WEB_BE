@@ -31,6 +31,11 @@ import {
   FieldMappingSchema,
 } from './modules/conversions/infrastructure/field-mapping.schema';
 import { ErrorLog, ErrorLogSchema } from './modules/conversions/infrastructure/error-log.schema';
+import { Screen, ScreenSchema } from './modules/screens/infrastructure/screen.schema';
+import { MongoScreenRepository } from './modules/screens/infrastructure/mongo-screen.repository';
+import { ScreenService } from './modules/screens/application/screen.service';
+import { ScreensController } from './modules/screens/presentation/screens.controller';
+import { SCREEN_REPOSITORY } from './modules/screens/domain/screen.types';
 import { MongoErrorLogRepository } from './modules/conversions/infrastructure/mongo-error-log.repository';
 import { ErrorLogService } from './modules/conversions/application/error-log.service';
 import { ErrorLogController } from './modules/conversions/presentation/error-log.controller';
@@ -144,6 +149,7 @@ import { MenuModule } from './modules/menus/menu.module';
       { name: EmailVerification.name, schema: EmailVerificationSchema },
       { name: FieldMapping.name, schema: FieldMappingSchema },
       { name: ErrorLog.name, schema: ErrorLogSchema },
+      { name: Screen.name, schema: ScreenSchema },
     ]),
     RbacModule,
     MenuModule,
@@ -153,6 +159,7 @@ import { MenuModule } from './modules/menus/menu.module';
     ProjectsController,
     ConversionsController,
     ConversionSourceController,
+    ScreensController,
     FieldMappingController,
     ExportController,
     ErrorLogController,
@@ -182,6 +189,8 @@ import { MenuModule } from './modules/menus/menu.module';
     ConversionJobService,
     UploadConversionSourceService,
     GetConversionResultService,
+    ScreenService,
+    MongoScreenRepository,
     GetFieldMappingService,
     SaveFieldMappingService,
     ExportCodeService,
@@ -213,6 +222,7 @@ import { MenuModule } from './modules/menus/menu.module';
     { provide: BANK_CONFIG_REPOSITORY, useClass: MongoBankConfigRepository },
     { provide: FIELD_MAPPING_REPOSITORY, useClass: MongoFieldMappingRepository },
     { provide: ERROR_LOG_REPOSITORY, useExisting: MongoErrorLogRepository },
+    { provide: SCREEN_REPOSITORY, useExisting: MongoScreenRepository },
     { provide: CONVERSION_QUEUE, useClass: BullMqConversionQueue },
     { provide: CONVERSION_ENGINE, useClass: ConversionEngineRouter },
     { provide: STORAGE_PORT, useExisting: LocalDiskStorageAdapter },

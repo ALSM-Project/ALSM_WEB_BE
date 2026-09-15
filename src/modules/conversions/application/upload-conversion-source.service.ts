@@ -6,6 +6,8 @@ import { OrganizationContextService } from '../../organizations/application/orga
 import { OrganizationRole } from '../../organizations/domain/organization.types';
 import { ProjectService } from '../../projects/application/project.service';
 import { ConversionType } from '../../projects/domain/project.types';
+import { ScreenService } from '../../screens/application/screen.service';
+import { ScreenRecord, ScreenSourceType } from '../../screens/domain/screen.types';
 
 export interface UploadedSourceFile {
   originalname: string;
@@ -16,11 +18,21 @@ export interface UploadedSourceFile {
 export interface UploadConversionSourceResult {
   inputReference: string;
   files: { name: string; sizeBytes: number }[];
+  screens: ScreenRecord[];
 }
 
 const ALLOWED_EXTENSIONS: Record<ConversionType, string[]> = {
   [ConversionType.BMS_DSPF_TO_FRONTEND]: ['.bms', '.dspf'],
   [ConversionType.COBOL_TO_JAVA]: ['.cob', '.cbl', '.cpy'],
+};
+
+/** Extensions that create a real Screen record — copybooks (.cpy) are supporting
+ * files only, never a screen/program on their own. */
+const SCREEN_SOURCE_TYPE_BY_EXTENSION: Record<string, ScreenSourceType> = {
+  '.bms': ScreenSourceType.BMS,
+  '.dspf': ScreenSourceType.DSPF,
+  '.cob': ScreenSourceType.COBOL,
+  '.cbl': ScreenSourceType.COBOL,
 };
 
 @Injectable()
@@ -30,6 +42,7 @@ export class UploadConversionSourceService {
     private readonly organizationContext: OrganizationContextService,
     private readonly authorization: OrganizationAuthorizationService,
     private readonly projects: ProjectService,
+    private readonly screenService: ScreenService,
   ) {}
 
   async execute(
@@ -63,9 +76,29 @@ export class UploadConversionSourceService {
       `sources/${project.id}`,
       files.map((file) => ({ relativePath: file.originalname, content: file.buffer })),
     );
+
+    // Copybooks (.cpy) are supporting files only — they never become a screen of
+    // their own, but they do share this same inputReference bundle so the COBOL
+    // adapter can still resolve COPY statements against them later.
+    const screens: ScreenRecord[] = [];
+    for (const file of files) {
+      const ext = path.extname(file.originalname).toLowerCase();
+      const sourceType = SCREEN_SOURCE_TYPE_BY_EXTENSION[ext];
+      if (!sourceType) continue;
+      screens.push(
+        await this.screenService.create(organization.id, project.id, userId, {
+          name: file.originalname,
+          sourceType,
+          inputReference,
+          sizeBytes: file.size,
+        }),
+      );
+    }
+
     return {
       inputReference,
       files: files.map((file) => ({ name: file.originalname, sizeBytes: file.size })),
+      screens,
     };
   }
 }
