@@ -54,6 +54,8 @@ import { GetFieldMappingService } from './modules/conversions/application/get-fi
 import { SaveFieldMappingService } from './modules/conversions/application/save-field-mapping.service';
 import { FieldMappingController } from './modules/conversions/presentation/field-mapping.controller';
 import { AuthService } from './modules/auth/application/auth.service';
+import { ListActiveSessionsService } from './modules/auth/application/list-active-sessions.service';
+import { RevokeSessionService } from './modules/auth/application/revoke-session.service';
 import { ConfirmMfaSetupService } from './modules/auth/application/confirm-mfa-setup.service';
 import { MFA_SECURITY } from './modules/auth/application/mfa-security.port';
 import { StartMfaSetupService } from './modules/auth/application/start-mfa-setup.service';
@@ -147,6 +149,8 @@ import { MenuModule } from './modules/menus/menu.module';
     JwtAuthGuard,
     PermissionsGuard,
     AuthService,
+    ListActiveSessionsService,
+    RevokeSessionService,
     StartMfaSetupService,
     ConfirmMfaSetupService,
     MfaSecurityService,
