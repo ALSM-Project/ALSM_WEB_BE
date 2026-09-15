@@ -123,10 +123,16 @@ export interface IBankConfigRepository {
   updateConfig(props: Partial<BankConfigProps>): Promise<BankConfigProps>;
 }
 
+export interface IBillingUsageRepository {
+  findActiveSubscription(userId: string): Promise<SubscriptionProps | null>;
+  countProjectsByOrganization(organizationId: string): Promise<number>;
+  countConversionsByOrganizationSince(organizationId: string, sinceDate: Date): Promise<number>;
+  getMonthlyConversions(organizationId: string, sinceDate: Date): Promise<Array<{ month: string; count: number }>>;
+}
+
 export const SUBSCRIPTION_REPOSITORY = Symbol('SUBSCRIPTION_REPOSITORY');
 export const INVOICE_REPOSITORY = Symbol('INVOICE_REPOSITORY');
 export const PAYMENT_REPOSITORY = Symbol('PAYMENT_REPOSITORY');
 export const PLAN_REPOSITORY = Symbol('PLAN_REPOSITORY');
 export const BANK_CONFIG_REPOSITORY = Symbol('BANK_CONFIG_REPOSITORY');
-
-
+export const BILLING_USAGE_REPOSITORY = Symbol('BILLING_USAGE_REPOSITORY');

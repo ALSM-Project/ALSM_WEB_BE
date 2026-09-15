@@ -14,9 +14,18 @@ import { AUDIT_REPOSITORY, AuditRepository } from '../../audit/domain/audit.repo
 import { SESSION_REPOSITORY, SessionRepository } from '../domain/session.repository';
 import { EffectivePermissionsService } from '../../rbac/application/effective-permissions.service';
 
+import { EmailVerificationService } from './email-verification.service';
+import { getSessionClientMetadata } from './session-client-metadata';
+
 export interface AuthTokens {
   accessToken: string;
   refreshToken: string;
+}
+
+export interface RegisterResult {
+  requiresEmailVerification: boolean;
+  email: string;
+  message: string;
 }
 
 @Injectable()
@@ -29,9 +38,10 @@ export class AuthService {
     @Inject(SESSION_REPOSITORY) private readonly sessions: SessionRepository,
     @Inject(AUDIT_REPOSITORY) private readonly audit: AuditRepository,
     private readonly effectivePermissionsService: EffectivePermissionsService,
+    private readonly emailVerificationService: EmailVerificationService,
   ) {}
 
-  async register(email: string, password: string, fullName: string): Promise<AuthTokens> {
+  async register(email: string, password: string, fullName: string): Promise<RegisterResult> {
     const normalizedEmail = email.trim().toLowerCase();
     if (await this.users.findByEmail(normalizedEmail)) {
       throw new ConflictException({
@@ -43,6 +53,7 @@ export class AuthService {
       email: normalizedEmail,
       passwordHash: await bcrypt.hash(password, 12),
       fullName: fullName.trim(),
+      isEmailVerified: false,
     });
     const organization = await this.organizations.create({
       name: `${user.fullName}'s Organization`,
@@ -56,10 +67,15 @@ export class AuthService {
       resourceType: 'USER',
       resourceId: user.id,
     });
-    return this.createSessionTokens(user);
+    await this.emailVerificationService.sendVerificationEmail(user);
+    return {
+      requiresEmailVerification: true,
+      email: user.email,
+      message: 'Account created. Please check your email to verify your account.',
+    };
   }
 
-  async login(email: string, password: string): Promise<AuthTokens> {
+  async login(email: string, password: string, userAgent?: string): Promise<AuthTokens> {
     const user = await this.users.findByEmail(email.trim().toLowerCase());
     if (
       !user ||
@@ -72,16 +88,37 @@ export class AuthService {
         message: 'Invalid email or password',
       });
     }
+    if (!user.isEmailVerified) {
+      throw new UnauthorizedException({
+        code: 'EMAIL_NOT_VERIFIED',
+        message: 'Email address is not verified. Please verify your email before logging in.',
+      });
+    }
     await this.audit.append({
       actorUserId: user.id,
       action: 'USER_LOGIN',
       resourceType: 'USER',
       resourceId: user.id,
     });
-    return this.createSessionTokens(user);
+    return this.createSessionTokens(user, userAgent);
   }
 
-  async loginWithGoogle(idToken: string): Promise<AuthTokens> {
+  async verifyEmail(email: string, codeOrToken: string, userAgent?: string): Promise<AuthTokens> {
+    const user = await this.emailVerificationService.verify(email, codeOrToken);
+    await this.audit.append({
+      actorUserId: user.id,
+      action: 'USER_EMAIL_VERIFIED',
+      resourceType: 'USER',
+      resourceId: user.id,
+    });
+    return this.createSessionTokens(user, userAgent);
+  }
+
+  async resendVerification(email: string): Promise<void> {
+    await this.emailVerificationService.resendVerification(email);
+  }
+
+  async loginWithGoogle(idToken: string, userAgent?: string): Promise<AuthTokens> {
     const payload = await this.verifyGoogleIdToken(idToken);
     const email = (payload.email ?? '').trim().toLowerCase();
 
@@ -90,6 +127,7 @@ export class AuthService {
       user = await this.users.create({
         email,
         fullName: payload.name?.trim() || email.split('@')[0],
+        isEmailVerified: true,
       });
       const organization = await this.organizations.create({
         name: `${user.fullName}'s Organization`,
@@ -110,6 +148,9 @@ export class AuthService {
           message: 'Account is inactive',
         });
       }
+      if (!user.isEmailVerified) {
+        await this.users.markEmailVerified(user.id);
+      }
       await this.audit.append({
         actorUserId: user.id,
         action: 'USER_LOGIN_GOOGLE',
@@ -118,10 +159,10 @@ export class AuthService {
       });
     }
 
-    return this.createSessionTokens(user);
+    return this.createSessionTokens(user, userAgent);
   }
 
-  async refresh(refreshToken: string): Promise<AuthTokens> {
+  async refresh(refreshToken: string, userAgent?: string): Promise<AuthTokens> {
     const payload = await this.verifyRefresh(refreshToken);
     const session = await this.sessions.findActive(payload.tid);
     if (
@@ -142,7 +183,7 @@ export class AuthService {
       });
     }
     await this.sessions.revoke(session.id);
-    return this.createSessionTokens(user);
+    return this.createSessionTokens(user, userAgent);
   }
 
   async logout(refreshToken: string): Promise<void> {
@@ -162,7 +203,14 @@ export class AuthService {
     }
 
     const roles = await this.effectivePermissionsService.getUserRoles(userId);
-    const effectivePermissions = await this.effectivePermissionsService.getEffectivePermissions(userId);
+    const effectivePermissions =
+      await this.effectivePermissionsService.getEffectivePermissions(userId);
+
+    const hasPassword = Boolean(user.passwordHash);
+    const twoFactorEnabled = Boolean(user.mfa?.enabled);
+    const providers: string[] = [];
+    if (hasPassword) providers.push('PASSWORD');
+    providers.push('GOOGLE');
 
     return {
       id: user.id,
@@ -172,19 +220,32 @@ export class AuthService {
       roles,
       effectivePermissions,
       isActive: user.isActive,
+      hasPassword,
+      twoFactorEnabled,
+      providers,
       createdAt: user.createdAt,
       updatedAt: user.updatedAt,
     };
   }
 
-  private async createSessionTokens(user: UserRecord): Promise<AuthTokens> {
+  async revokeAllOtherSessions(userId: string, currentTokenId?: string): Promise<void> {
+    if (currentTokenId) {
+      await this.sessions.revokeAllOther(userId, currentTokenId);
+    }
+  }
+
+  private async createSessionTokens(user: UserRecord, userAgent?: string): Promise<AuthTokens> {
     const tokenId = randomUUID();
+    const sessionMetadata = getSessionClientMetadata(userAgent);
+    const lastActiveAt = new Date();
     const expiresAt = new Date(Date.now() + this.durationMs('JWT_REFRESH_EXPIRES_IN'));
     const session = await this.sessions.create({
       tokenId,
       userId: user.id,
       refreshTokenHash: 'pending',
       expiresAt,
+      ...sessionMetadata,
+      lastActiveAt,
     });
     const accessToken = await this.jwt.signAsync(
       { sub: user.id, email: user.email, isPlatformAdmin: user.isPlatformAdmin },
@@ -218,11 +279,11 @@ export class AuthService {
   }
 
   private async verifyGoogleIdToken(idToken: string): Promise<TokenPayload> {
-    const clientId = this.config.getOrThrow<string>('GOOGLE_CLIENT_ID');
+    const clientId = this.config.get<string>('GOOGLE_CLIENT_ID') || '';
     if (!clientId) {
       throw new UnauthorizedException({
         code: 'INVALID_CREDENTIALS',
-        message: 'Google sign-in is not configured',
+        message: 'Google sign-in is not configured on the backend',
       });
     }
     try {

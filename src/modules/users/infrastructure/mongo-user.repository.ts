@@ -9,7 +9,7 @@ export class MongoUserRepository implements UserRepository {
   constructor(@InjectModel(User.name) private readonly model: Model<User>) {}
 
   async create(
-    input: Pick<UserRecord, 'email' | 'passwordHash' | 'fullName'>,
+    input: Pick<UserRecord, 'email' | 'passwordHash' | 'fullName'> & { isEmailVerified?: boolean },
   ): Promise<UserRecord> {
     return this.map(await this.model.create(input));
   }
@@ -26,6 +26,10 @@ export class MongoUserRepository implements UserRepository {
 
   async updatePassword(id: string, passwordHash: string): Promise<void> {
     await this.model.updateOne({ _id: id }, { $set: { passwordHash } }).exec();
+  }
+
+  async markEmailVerified(userId: string): Promise<void> {
+    await this.model.updateOne({ _id: userId }, { $set: { isEmailVerified: true } }).exec();
   }
 
   async findByIdForMfa(id: string): Promise<UserRecord | null> {
@@ -128,6 +132,7 @@ export class MongoUserRepository implements UserRepository {
       fullName: doc.fullName,
       isPlatformAdmin: doc.isPlatformAdmin,
       isActive: doc.isActive,
+      isEmailVerified: doc.isEmailVerified ?? true,
       mfa: {
         enabled: doc.mfa?.enabled ?? false,
         secret: doc.mfa?.secret ?? null,

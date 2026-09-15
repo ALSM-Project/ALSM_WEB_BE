@@ -1,18 +1,16 @@
-import { Injectable } from '@nestjs/common';
-import { InjectModel } from '@nestjs/mongoose';
-import { Model } from 'mongoose';
-import { MenuAnalytics, MenuAnalyticsDocument } from '../../infrastructure/schemas/menu-analytics.schema';
+import { Inject, Injectable } from '@nestjs/common';
+import {
+  IMenuAnalyticsRepository,
+  MENU_ANALYTICS_REPOSITORY,
+} from '../../domain/interfaces/menu-builder.repository.interface';
 
 @Injectable()
 export class MenuAnalyticsService {
   constructor(
-    @InjectModel(MenuAnalytics.name)
-    private readonly analyticsModel: Model<MenuAnalyticsDocument>,
+    @Inject(MENU_ANALYTICS_REPOSITORY)
+    private readonly analyticsRepo: IMenuAnalyticsRepository,
   ) {}
 
-  /**
-   * Track menu interaction
-   */
   async trackInteraction(data: {
     userId: string;
     menuItemId: string;
@@ -20,81 +18,26 @@ export class MenuAnalyticsService {
     sessionId: string;
     metadata?: Record<string, unknown>;
   }) {
-    const record = {
-      ...data,
-      timestamp: new Date(),
-    };
-
-    await this.analyticsModel.create(record);
+    await this.analyticsRepo.trackInteraction(data);
   }
 
-  /**
-   * Lấy thống kê menu usage
-   */
   async getMenuStats(menuItemId: string, timeRange?: { start: Date; end: Date }) {
-    const matchFilter: Record<string, unknown> = { menuItemId };
-    if (timeRange) {
-      matchFilter.timestamp = {
-        $gte: timeRange.start,
-        $lte: timeRange.end,
-      };
-    }
-
-    const stats = await this.analyticsModel.aggregate([
-      { $match: matchFilter },
-      {
-        $group: {
-          _id: '$action',
-          count: { $sum: 1 },
-          uniqueUsers: { $addToSet: '$userId' },
-        },
-      },
-      {
-        $project: {
-          action: '$_id',
-          count: 1,
-          uniqueUserCount: { $size: '$uniqueUsers' },
-        },
-      },
-    ]);
-
-    return stats;
+    return this.analyticsRepo.getMenuStats(menuItemId, timeRange);
   }
 
-  /**
-   * Gợi ý cải thiện menu dựa trên analytics
-   */
   async suggestImprovements(): Promise<{
     popularItems: string[];
     underperforming: string[];
     suggestions: string[];
   }> {
-    const popularItems = await this.getPopularItems();
-    const underperforming = await this.getUnderperformingItems();
+    const popularItems = await this.analyticsRepo.getPopularItems(5);
+    const underperforming = await this.analyticsRepo.getUnderperformingItems(5);
 
     return {
       popularItems,
       underperforming,
       suggestions: this.generateSuggestions(popularItems, underperforming),
     };
-  }
-
-  private async getPopularItems(): Promise<string[]> {
-    const results = await this.analyticsModel.aggregate([
-      { $group: { _id: '$menuItemId', totalClicks: { $sum: 1 } } },
-      { $sort: { totalClicks: -1 } },
-      { $limit: 5 },
-    ]);
-    return results.map(r => r._id);
-  }
-
-  private async getUnderperformingItems(): Promise<string[]> {
-    const results = await this.analyticsModel.aggregate([
-      { $group: { _id: '$menuItemId', totalClicks: { $sum: 1 } } },
-      { $sort: { totalClicks: 1 } },
-      { $limit: 5 },
-    ]);
-    return results.map(r => r._id);
   }
 
   private generateSuggestions(popular: string[], underperforming: string[]): string[] {

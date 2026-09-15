@@ -26,6 +26,7 @@ function user(mfa: MfaState = pendingMfa): UserRecord {
     fullName: 'Customer',
     isPlatformAdmin: false,
     isActive: true,
+    isEmailVerified: true,
     mfa,
     createdAt: new Date(),
     updatedAt: new Date(),

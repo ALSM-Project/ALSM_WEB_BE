@@ -1,24 +1,9 @@
 import { Prop, Schema, SchemaFactory } from '@nestjs/mongoose';
 import { Document } from 'mongoose';
+import { ApplicationContext, MenuItemStatus, MenuItemType } from '../../domain/enums/menu.enums';
 
 export type MenuItemDocument = MenuItem & Document;
-
-export enum ApplicationContext {
-  WEB_1 = 'WEB_1',
-  WEB_2 = 'WEB_2',
-  WEB_3 = 'WEB_3',
-}
-
-export enum MenuItemType {
-  GROUP = 'GROUP',
-  PAGE = 'PAGE',
-  EXTERNAL = 'EXTERNAL',
-}
-
-export enum MenuItemStatus {
-  ACTIVE = 'ACTIVE',
-  INACTIVE = 'INACTIVE',
-}
+export { ApplicationContext, MenuItemStatus, MenuItemType };
 
 @Schema({ collection: 'menu_items', timestamps: true })
 export class MenuItem {

@@ -9,8 +9,9 @@ import { MenuItem, MenuItemSchema } from '../menus/infrastructure/schemas/menu-i
 import { MenuItemPermission, MenuItemPermissionSchema } from '../menus/infrastructure/schemas/menu-item-permission.schema';
 import { RbacService } from './application/rbac.service';
 import { EffectivePermissionsService } from './application/effective-permissions.service';
-import { SeedService } from './infrastructure/seed.service';
 import { RbacController } from './presentation/rbac.controller';
+import { RBAC_REPOSITORY } from './domain/rbac.repository.interface';
+import { MongoRbacRepository } from './infrastructure/persistence/mongo-rbac.repository';
 
 @Module({
   imports: [
@@ -25,7 +26,15 @@ import { RbacController } from './presentation/rbac.controller';
     ]),
   ],
   controllers: [RbacController],
-  providers: [RbacService, EffectivePermissionsService, SeedService],
-  exports: [RbacService, EffectivePermissionsService, SeedService],
+  providers: [
+    MongoRbacRepository,
+    {
+      provide: RBAC_REPOSITORY,
+      useExisting: MongoRbacRepository,
+    },
+    RbacService,
+    EffectivePermissionsService,
+  ],
+  exports: [RBAC_REPOSITORY, RbacService, EffectivePermissionsService],
 })
 export class RbacModule {}
