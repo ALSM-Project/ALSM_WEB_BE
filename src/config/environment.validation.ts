@@ -29,6 +29,8 @@ export const environmentValidationSchema = Joi.object({
   PYTHON_EXECUTABLE: Joi.string().default('python'),
   TOOL_CONVERT_DIR: Joi.string().allow('').default(''),
   CONVERSION_TOOL_TIMEOUT_MS: Joi.number().integer().positive().default(120000),
+  JAVA_EXECUTABLE: Joi.string().default('java'),
+  TOOL2JAVA_JAR_PATH: Joi.string().allow('').default(''),
   CASSO_API_KEY: Joi.string().allow('').default(''),
   SMTP_HOST: Joi.string().allow('').default(''),
   SMTP_PORT: Joi.number().port().default(587),

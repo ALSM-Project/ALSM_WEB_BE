@@ -52,10 +52,11 @@ import {
 } from './modules/conversions/domain/conversion-job.types';
 import { MongoConversionJobRepository } from './modules/conversions/infrastructure/mongo-conversion-job.repository';
 import { BullMqConversionQueue } from './modules/conversions/infrastructure/bullmq-conversion.queue';
-import { UnconfiguredConversionEngineAdapter } from './modules/conversions/infrastructure/unconfigured-conversion-engine.adapter';
 import { STORAGE_PORT } from './shared/storage/storage.port';
 import { LocalDiskStorageAdapter } from './shared/storage/local-disk-storage.adapter';
 import { BmsDspfConversionAdapter } from './modules/conversions/infrastructure/bms-dspf-conversion.adapter';
+import { CobolJavaConversionAdapter } from './modules/conversions/infrastructure/cobol-java-conversion.adapter';
+import { ConversionEngineRouter } from './modules/conversions/infrastructure/conversion-engine.router';
 import { FIELD_MAPPING_REPOSITORY } from './modules/conversions/domain/field-mapping.types';
 import { MongoFieldMappingRepository } from './modules/conversions/infrastructure/mongo-field-mapping.repository';
 import { GetFieldMappingService } from './modules/conversions/application/get-field-mapping.service';
@@ -191,6 +192,7 @@ import { MenuModule } from './modules/menus/menu.module';
     MongoBankConfigRepository,
     LocalDiskStorageAdapter,
     BmsDspfConversionAdapter,
+    CobolJavaConversionAdapter,
     { provide: MFA_SECURITY, useExisting: MfaSecurityService },
     { provide: USER_REPOSITORY, useClass: MongoUserRepository },
     { provide: ORGANIZATION_REPOSITORY, useClass: MongoOrganizationRepository },
@@ -206,7 +208,7 @@ import { MenuModule } from './modules/menus/menu.module';
     { provide: FIELD_MAPPING_REPOSITORY, useClass: MongoFieldMappingRepository },
     { provide: ERROR_LOG_REPOSITORY, useExisting: MongoErrorLogRepository },
     { provide: CONVERSION_QUEUE, useClass: BullMqConversionQueue },
-    { provide: CONVERSION_ENGINE, useClass: UnconfiguredConversionEngineAdapter },
+    { provide: CONVERSION_ENGINE, useClass: ConversionEngineRouter },
     { provide: STORAGE_PORT, useExisting: LocalDiskStorageAdapter },
     { provide: EMAIL_PORT, useClass: SmtpEmailAdapter },
     { provide: BILLING_USAGE_REPOSITORY, useClass: MongoBillingUsageRepository },
