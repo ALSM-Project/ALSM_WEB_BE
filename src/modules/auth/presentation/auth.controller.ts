@@ -171,7 +171,10 @@ export class AuthController {
   @Header('Cache-Control', 'no-store')
   @Get('sessions')
   async getSessions(@CurrentUser() user: AuthenticatedUser) {
-    return SessionPresenter.toResponseList(await this.listActiveSessions.execute(user.userId));
+    return SessionPresenter.toResponseList(
+      await this.listActiveSessions.execute(user.userId),
+      user.sessionId,
+    );
   }
 
   @ApiBearerAuth()

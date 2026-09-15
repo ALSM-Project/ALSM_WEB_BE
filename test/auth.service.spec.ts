@@ -109,5 +109,39 @@ describe('AuthService', () => {
       }),
     );
     expect(sessions.create.mock.calls[0][0]).not.toHaveProperty('userAgent');
+    expect(jwt.signAsync).toHaveBeenCalledWith(
+      expect.objectContaining({
+        sub: 'u1',
+        email: 'a@example.com',
+        isPlatformAdmin: false,
+        sid: 's1',
+      }),
+      expect.objectContaining({ secret: 'a' }),
+    );
+  });
+
+  it('rotates refresh sessions and signs the replacement access token with the new session ID', async () => {
+    const refreshToken = 'valid-refresh-token';
+    jwt.verifyAsync.mockResolvedValue({ sub: 'u1', tid: 'old-token-id' });
+    sessions.findActive.mockResolvedValue({
+      id: 'old-session',
+      userId: 'u1',
+      refreshTokenHash: await bcrypt.hash(refreshToken, 4),
+    });
+    users.findById.mockResolvedValue({
+      id: 'u1',
+      email: 'a@example.com',
+      isPlatformAdmin: false,
+      isActive: true,
+    });
+    sessions.create.mockResolvedValue({ id: 'new-session' });
+
+    await service.refresh(refreshToken);
+
+    expect(sessions.revoke).toHaveBeenCalledWith('old-session');
+    expect(jwt.signAsync).toHaveBeenCalledWith(
+      expect.objectContaining({ sid: 'new-session' }),
+      expect.objectContaining({ secret: 'a' }),
+    );
   });
 });
