@@ -53,6 +53,8 @@ import {
 import { MongoConversionJobRepository } from './modules/conversions/infrastructure/mongo-conversion-job.repository';
 import { BullMqConversionQueue } from './modules/conversions/infrastructure/bullmq-conversion.queue';
 import { UnconfiguredConversionEngineAdapter } from './modules/conversions/infrastructure/unconfigured-conversion-engine.adapter';
+import { STORAGE_PORT } from './shared/storage/storage.port';
+import { LocalDiskStorageAdapter } from './shared/storage/local-disk-storage.adapter';
 import { FIELD_MAPPING_REPOSITORY } from './modules/conversions/domain/field-mapping.types';
 import { MongoFieldMappingRepository } from './modules/conversions/infrastructure/mongo-field-mapping.repository';
 import { GetFieldMappingService } from './modules/conversions/application/get-field-mapping.service';
@@ -186,6 +188,7 @@ import { MenuModule } from './modules/menus/menu.module';
     MongoPaymentRepository,
     MongoPlanRepository,
     MongoBankConfigRepository,
+    LocalDiskStorageAdapter,
     { provide: MFA_SECURITY, useExisting: MfaSecurityService },
     { provide: USER_REPOSITORY, useClass: MongoUserRepository },
     { provide: ORGANIZATION_REPOSITORY, useClass: MongoOrganizationRepository },
@@ -202,6 +205,7 @@ import { MenuModule } from './modules/menus/menu.module';
     { provide: ERROR_LOG_REPOSITORY, useExisting: MongoErrorLogRepository },
     { provide: CONVERSION_QUEUE, useClass: BullMqConversionQueue },
     { provide: CONVERSION_ENGINE, useClass: UnconfiguredConversionEngineAdapter },
+    { provide: STORAGE_PORT, useExisting: LocalDiskStorageAdapter },
     { provide: EMAIL_PORT, useClass: SmtpEmailAdapter },
     { provide: BILLING_USAGE_REPOSITORY, useClass: MongoBillingUsageRepository },
     { provide: PASSWORD_RESET_REPOSITORY, useClass: MongoPasswordResetRepository },
