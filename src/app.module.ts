@@ -26,6 +26,11 @@ import {
   FieldMapping,
   FieldMappingSchema,
 } from './modules/conversions/infrastructure/field-mapping.schema';
+import { ErrorLog, ErrorLogSchema } from './modules/conversions/infrastructure/error-log.schema';
+import { MongoErrorLogRepository } from './modules/conversions/infrastructure/mongo-error-log.repository';
+import { ErrorLogService } from './modules/conversions/application/error-log.service';
+import { ErrorLogController } from './modules/conversions/presentation/error-log.controller';
+import { ERROR_LOG_REPOSITORY } from './modules/conversions/domain/error-log.types';
 import { USER_REPOSITORY } from './modules/users/domain/user.repository';
 import { MongoUserRepository } from './modules/users/infrastructure/mongo-user.repository';
 import { ORGANIZATION_REPOSITORY } from './modules/organizations/domain/organization.repository';
@@ -117,6 +122,7 @@ import { MenuModule } from './modules/menus/menu.module';
       { name: BankConfig.name, schema: BankConfigSchema },
       { name: PasswordReset.name, schema: PasswordResetSchema },
       { name: FieldMapping.name, schema: FieldMappingSchema },
+      { name: ErrorLog.name, schema: ErrorLogSchema },
     ]),
     RbacModule,
     MenuModule,
@@ -127,6 +133,7 @@ import { MenuModule } from './modules/menus/menu.module';
     ConversionsController,
     FieldMappingController,
     ExportController,
+    ErrorLogController,
     HealthController,
     BillingController,
     PaymentController,
@@ -149,6 +156,8 @@ import { MenuModule } from './modules/menus/menu.module';
     GetFieldMappingService,
     SaveFieldMappingService,
     ExportCodeService,
+    ErrorLogService,
+    MongoErrorLogRepository,
     ConversionWorkerRunner,
     BillingService,
     PaymentService,
@@ -171,6 +180,7 @@ import { MenuModule } from './modules/menus/menu.module';
     { provide: PLAN_REPOSITORY, useClass: MongoPlanRepository },
     { provide: BANK_CONFIG_REPOSITORY, useClass: MongoBankConfigRepository },
     { provide: FIELD_MAPPING_REPOSITORY, useClass: MongoFieldMappingRepository },
+    { provide: ERROR_LOG_REPOSITORY, useExisting: MongoErrorLogRepository },
     { provide: CONVERSION_QUEUE, useClass: BullMqConversionQueue },
     { provide: CONVERSION_ENGINE, useClass: UnconfiguredConversionEngineAdapter },
     { provide: EMAIL_PORT, useClass: SmtpEmailAdapter },
