@@ -70,4 +70,6 @@ export class ActiveSessionResponseDto {
   @ApiProperty({ format: 'date-time' }) lastActiveAt!: string;
   @ApiProperty({ format: 'date-time' }) createdAt!: string;
   @ApiProperty({ format: 'date-time' }) expiresAt!: string;
+  @ApiProperty({ description: 'Whether this session issued the calling access token' })
+  isCurrent!: boolean;
 }

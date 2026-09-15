@@ -11,8 +11,18 @@ export class JwtAuthGuard implements CanActivate {
     const token = request.headers.authorization?.replace(/^Bearer\s+/i, '');
     if (!token) throw new UnauthorizedException({ code: 'UNAUTHORIZED', message: 'Access token is required' });
     try {
-      const payload = await this.jwt.verifyAsync<{ sub: string; email: string; isPlatformAdmin: boolean }>(token, { secret: this.config.getOrThrow('JWT_ACCESS_SECRET') });
-      request.user = { userId: payload.sub, email: payload.email, isPlatformAdmin: payload.isPlatformAdmin };
+      const payload = await this.jwt.verifyAsync<{
+        sub: string;
+        email: string;
+        isPlatformAdmin: boolean;
+        sid?: string;
+      }>(token, { secret: this.config.getOrThrow('JWT_ACCESS_SECRET') });
+      request.user = {
+        userId: payload.sub,
+        email: payload.email,
+        isPlatformAdmin: payload.isPlatformAdmin,
+        sessionId: payload.sid,
+      };
       return true;
     } catch { throw new UnauthorizedException({ code: 'UNAUTHORIZED', message: 'Invalid or expired access token' }); }
   }

@@ -3,7 +3,12 @@ import { randomUUID } from 'crypto';
 import { NextFunction, Request, Response } from 'express';
 
 export type RequestWithContext = Request & { requestId?: string; user?: AuthenticatedUser };
-export interface AuthenticatedUser { userId: string; email: string; isPlatformAdmin: boolean; }
+export interface AuthenticatedUser {
+  userId: string;
+  email: string;
+  isPlatformAdmin: boolean;
+  sessionId?: string;
+}
 
 @Injectable()
 export class RequestIdMiddleware implements NestMiddleware {
