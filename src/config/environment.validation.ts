@@ -31,6 +31,7 @@ export const environmentValidationSchema = Joi.object({
   CONVERSION_TOOL_TIMEOUT_MS: Joi.number().integer().positive().default(120000),
   JAVA_EXECUTABLE: Joi.string().default('java'),
   TOOL2JAVA_JAR_PATH: Joi.string().allow('').default(''),
+  MAX_UPLOAD_FILE_SIZE_MB: Joi.number().integer().positive().default(50),
   CASSO_API_KEY: Joi.string().allow('').default(''),
   SMTP_HOST: Joi.string().allow('').default(''),
   SMTP_PORT: Joi.number().port().default(587),

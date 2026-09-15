@@ -57,6 +57,8 @@ import { LocalDiskStorageAdapter } from './shared/storage/local-disk-storage.ada
 import { BmsDspfConversionAdapter } from './modules/conversions/infrastructure/bms-dspf-conversion.adapter';
 import { CobolJavaConversionAdapter } from './modules/conversions/infrastructure/cobol-java-conversion.adapter';
 import { ConversionEngineRouter } from './modules/conversions/infrastructure/conversion-engine.router';
+import { UploadConversionSourceService } from './modules/conversions/application/upload-conversion-source.service';
+import { ConversionSourceController } from './modules/conversions/presentation/conversion-source.controller';
 import { FIELD_MAPPING_REPOSITORY } from './modules/conversions/domain/field-mapping.types';
 import { MongoFieldMappingRepository } from './modules/conversions/infrastructure/mongo-field-mapping.repository';
 import { GetFieldMappingService } from './modules/conversions/application/get-field-mapping.service';
@@ -149,6 +151,7 @@ import { MenuModule } from './modules/menus/menu.module';
     AuthController,
     ProjectsController,
     ConversionsController,
+    ConversionSourceController,
     FieldMappingController,
     ExportController,
     ErrorLogController,
@@ -176,6 +179,7 @@ import { MenuModule } from './modules/menus/menu.module';
     OrganizationAuthorizationService,
     ProjectService,
     ConversionJobService,
+    UploadConversionSourceService,
     GetFieldMappingService,
     SaveFieldMappingService,
     ExportCodeService,
