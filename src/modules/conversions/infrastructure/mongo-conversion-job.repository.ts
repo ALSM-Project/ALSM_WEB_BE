@@ -92,6 +92,24 @@ export class MongoConversionJobRepository implements ConversionJobRepository {
       )
       .exec();
   }
+  async markCompleted(
+    id: string,
+    output: { resultReference: string; toolVersion?: string },
+  ): Promise<void> {
+    await this.model
+      .updateOne(
+        { _id: id },
+        {
+          $set: {
+            status: ConversionJobStatus.COMPLETED,
+            resultReference: output.resultReference,
+            toolVersion: output.toolVersion,
+            completedAt: new Date(),
+          },
+        },
+      )
+      .exec();
+  }
   private map(doc: ConversionJobDocument): ConversionJobRecord {
     return {
       id: doc.id,
