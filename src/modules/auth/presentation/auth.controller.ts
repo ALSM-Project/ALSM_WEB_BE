@@ -4,6 +4,7 @@ import {
   Delete,
   Get,
   Header,
+  Headers,
   HttpCode,
   HttpStatus,
   Param,
@@ -56,8 +57,11 @@ export class AuthController {
 
   @HttpCode(HttpStatus.OK)
   @Post('verify-email')
-  async verifyEmail(@Body() dto: VerifyEmailDto): Promise<AuthTokens> {
-    return this.auth.verifyEmail(dto.email, dto.code);
+  async verifyEmail(
+    @Body() dto: VerifyEmailDto,
+    @Headers('user-agent') userAgent?: string,
+  ): Promise<AuthTokens> {
+    return this.auth.verifyEmail(dto.email, dto.code, userAgent);
   }
 
   @HttpCode(HttpStatus.OK)
@@ -69,14 +73,20 @@ export class AuthController {
 
   @HttpCode(HttpStatus.OK)
   @Post('login')
-  async login(@Body() dto: LoginDto): Promise<AuthTokens> {
-    return this.auth.login(dto.email, dto.password);
+  async login(
+    @Body() dto: LoginDto,
+    @Headers('user-agent') userAgent?: string,
+  ): Promise<AuthTokens> {
+    return this.auth.login(dto.email, dto.password, userAgent);
   }
 
   @HttpCode(HttpStatus.OK)
   @Post('google')
-  async google(@Body() dto: GoogleLoginDto): Promise<AuthTokens> {
-    return this.auth.loginWithGoogle(dto.idToken);
+  async google(
+    @Body() dto: GoogleLoginDto,
+    @Headers('user-agent') userAgent?: string,
+  ): Promise<AuthTokens> {
+    return this.auth.loginWithGoogle(dto.idToken, userAgent);
   }
 
   @HttpCode(HttpStatus.OK)
@@ -119,8 +129,11 @@ export class AuthController {
 
   @HttpCode(HttpStatus.OK)
   @Post('refresh')
-  async refresh(@Body() dto: RefreshDto): Promise<AuthTokens> {
-    return this.auth.refresh(dto.refreshToken);
+  async refresh(
+    @Body() dto: RefreshDto,
+    @Headers('user-agent') userAgent?: string,
+  ): Promise<AuthTokens> {
+    return this.auth.refresh(dto.refreshToken, userAgent);
   }
 
   @HttpCode(HttpStatus.NO_CONTENT)
@@ -181,4 +194,3 @@ export class AuthController {
     return MfaPresenter.confirmation(await this.confirmMfaSetup.execute(user.userId, dto.code));
   }
 }
-
