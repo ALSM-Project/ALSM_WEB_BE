@@ -1,0 +1,127 @@
+import * as fs from 'fs';
+import * as os from 'os';
+import * as path from 'path';
+import { ConfigService } from '@nestjs/config';
+import { CobolJavaConversionAdapter } from '../src/modules/conversions/infrastructure/cobol-java-conversion.adapter';
+import { ConversionType } from '../src/modules/projects/domain/project.types';
+import { ErrorLogRepository } from '../src/modules/conversions/domain/error-log.types';
+import { StoragePort } from '../src/shared/storage/storage.port';
+import * as toolRunner from '../src/modules/conversions/infrastructure/conversion-tool-runner.util';
+
+jest.mock('../src/modules/conversions/infrastructure/conversion-tool-runner.util', () => ({
+  ...jest.requireActual('../src/modules/conversions/infrastructure/conversion-tool-runner.util'),
+  runConversionTool: jest.fn(),
+}));
+
+describe('CobolJavaConversionAdapter', () => {
+  let sourceDir: string;
+  const configValues: Record<string, unknown> = {
+    TOOL2JAVA_JAR_PATH: '/tools/akaBatch-1.0.jar',
+    JAVA_EXECUTABLE: 'java',
+    CONVERSION_TOOL_TIMEOUT_MS: 5000,
+  };
+  const config = { get: jest.fn((key: string) => configValues[key]) };
+  const storage: Partial<StoragePort> = {
+    resolvePath: jest.fn(),
+    writeFiles: jest.fn(),
+  };
+  const errorLogs = { create: jest.fn() };
+
+  const baseInput = {
+    conversionJobId: 'job-2',
+    organizationId: 'org-1',
+    projectId: 'p1',
+    inputReference: 'src-ref',
+    conversionType: ConversionType.COBOL_TO_JAVA,
+  };
+
+  beforeEach(async () => {
+    jest.clearAllMocks();
+    sourceDir = await fs.promises.mkdtemp(path.join(os.tmpdir(), 'alsm-test-cobol-src-'));
+    (storage.resolvePath as jest.Mock).mockReturnValue(sourceDir);
+    (storage.writeFiles as jest.Mock).mockResolvedValue('results/p1/job-2/uuid');
+  });
+
+  afterEach(async () => {
+    await fs.promises.rm(sourceDir, { recursive: true, force: true });
+  });
+
+  function buildAdapter(): CobolJavaConversionAdapter {
+    return new CobolJavaConversionAdapter(
+      config as unknown as ConfigService,
+      storage as StoragePort,
+      errorLogs as unknown as ErrorLogRepository,
+    );
+  }
+
+  it('translates COBOL and stores the generated .java files even though exit code is always 0', async () => {
+    await fs.promises.writeFile(path.join(sourceDir, 'BUBBLESORT.cob'), 'COBOL SOURCE');
+    (toolRunner.runConversionTool as jest.Mock).mockImplementation(async (_exe: string, args: string[]) => {
+      const outDir = args[4];
+      await fs.promises.mkdir(path.join(outDir, 'cobolprogramclasses'), { recursive: true });
+      await fs.promises.writeFile(
+        path.join(outDir, 'cobolprogramclasses', 'Bubblesort.java'),
+        'public class Bubblesort {}',
+      );
+      return {
+        code: 0,
+        stdout: 'Parsing Cobol started for: BUBBLESORT.cob\nDone in 0s.',
+        stderr: '',
+        timedOut: false,
+      };
+    });
+
+    const output = await buildAdapter().execute(baseInput);
+
+    expect(output).toEqual({ resultReference: 'results/p1/job-2/uuid', toolVersion: 'tool2java' });
+    expect(storage.writeFiles).toHaveBeenCalledWith(
+      'results/p1/job-2',
+      expect.arrayContaining([
+        expect.objectContaining({ relativePath: 'cobolprogramclasses/Bubblesort.java' }),
+      ]),
+    );
+    expect(errorLogs.create).not.toHaveBeenCalled();
+  });
+
+  it('records an ErrorLogRecord parsed from a ParseException block', async () => {
+    await fs.promises.writeFile(path.join(sourceDir, 'OK.cob'), 'COBOL');
+    await fs.promises.writeFile(path.join(sourceDir, 'BROKEN.cob'), 'COBOL');
+    (toolRunner.runConversionTool as jest.Mock).mockImplementation(async (_exe: string, args: string[]) => {
+      const outDir = args[4];
+      await fs.promises.writeFile(path.join(outDir, 'Ok.java'), 'public class Ok {}');
+      return {
+        code: 0,
+        stdout: [
+          'Parsing Cobol started for: BROKEN.cob',
+          'com.res.cobol.parser.ParseException: Encountered "x" at line 4, column 8.',
+          'Errors encountered. Processing terminated.',
+        ].join('\n'),
+        stderr: '',
+        timedOut: false,
+      };
+    });
+
+    await buildAdapter().execute(baseInput);
+
+    expect(errorLogs.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        errorCode: 'COBOL_TRANSLATION_FAILED',
+        offendingCode: 'BROKEN.cob',
+        lineNumber: 4,
+      }),
+    );
+  });
+
+  it('throws when no .java files were generated', async () => {
+    await fs.promises.writeFile(path.join(sourceDir, 'BROKEN.cob'), 'COBOL');
+    (toolRunner.runConversionTool as jest.Mock).mockResolvedValue({
+      code: 0,
+      stdout: 'Errors encountered. Processing terminated.',
+      stderr: '',
+      timedOut: false,
+    });
+
+    await expect(buildAdapter().execute(baseInput)).rejects.toThrow(/No Java files were generated/);
+    expect(storage.writeFiles).not.toHaveBeenCalled();
+  });
+});
