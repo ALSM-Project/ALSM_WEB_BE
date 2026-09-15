@@ -1,0 +1,134 @@
+import { Inject, Injectable, Logger } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
+import * as fs from 'fs';
+import * as os from 'os';
+import * as path from 'path';
+import { STORAGE_PORT, StoragePort } from '../../../shared/storage/storage.port';
+import { ConversionEngineInput, ConversionEngineOutput } from '../domain/conversion-job.types';
+import {
+  ERROR_LOG_REPOSITORY,
+  ErrorLogRepository,
+  ErrorLogSeverity,
+  ErrorLogStatus,
+} from '../domain/error-log.types';
+import { runConversionTool, stripAnsi } from './conversion-tool-runner.util';
+
+const SCRIPT_BY_EXTENSION: Record<string, { script: string; flag: string }> = {
+  '.bms': { script: 'bms2react.py', flag: '-bms' },
+  '.dspf': { script: 'dspf2react.py', flag: '-dspf' },
+};
+
+/** Shells out to convert2fe (Tool_Convert/py/convert2fe) — a stdlib-only Python tool. No parser logic is reimplemented here. */
+@Injectable()
+export class BmsDspfConversionAdapter {
+  private readonly logger = new Logger(BmsDspfConversionAdapter.name);
+
+  constructor(
+    private readonly config: ConfigService,
+    @Inject(STORAGE_PORT) private readonly storage: StoragePort,
+    @Inject(ERROR_LOG_REPOSITORY) private readonly errorLogs: ErrorLogRepository,
+  ) {}
+
+  async execute(input: ConversionEngineInput): Promise<ConversionEngineOutput> {
+    if (!input.inputReference) {
+      throw new Error('BMS/DSPF conversion requires an uploaded source (inputReference is missing)');
+    }
+    const toolDir = this.config.get<string>('TOOL_CONVERT_DIR');
+    if (!toolDir) {
+      throw new Error('TOOL_CONVERT_DIR is not configured');
+    }
+
+    const sourceDir = this.storage.resolvePath(input.inputReference);
+    const sourceFiles = await fs.promises.readdir(sourceDir);
+    const extensions = Array.from(
+      new Set(
+        sourceFiles
+          .map((f) => path.extname(f).toLowerCase())
+          .filter((ext) => Object.prototype.hasOwnProperty.call(SCRIPT_BY_EXTENSION, ext)),
+      ),
+    );
+    if (extensions.length === 0) {
+      throw new Error('No .bms or .dspf files found in uploaded source');
+    }
+
+    const workDir = path.join(os.tmpdir(), 'alsm-conversions', input.conversionJobId);
+    const outDir = path.join(workDir, 'out');
+    await fs.promises.mkdir(outDir, { recursive: true });
+    const timeoutMs = this.config.get<number>('CONVERSION_TOOL_TIMEOUT_MS') ?? 120000;
+    const pythonExecutable = this.config.get<string>('PYTHON_EXECUTABLE') || 'python';
+
+    try {
+      let combinedStdout = '';
+      for (const ext of extensions) {
+        const { script, flag } = SCRIPT_BY_EXTENSION[ext];
+        const result = await runConversionTool(
+          pythonExecutable,
+          [script, flag, sourceDir, '-react', outDir],
+          { cwd: toolDir, timeoutMs },
+        );
+        combinedStdout += result.stdout;
+        if (result.timedOut) {
+          throw new Error(`convert2fe (${script}) timed out after ${timeoutMs}ms`);
+        }
+      }
+
+      const outputFiles = await fs.promises.readdir(outDir);
+      const generatedComponents = outputFiles.filter(
+        (f) => f.toLowerCase().endsWith('.tsx') && !f.toLowerCase().endsWith('routes.tsx'),
+      );
+      if (generatedComponents.length === 0) {
+        throw new Error(
+          `No React components were generated. Tool output: ${stripAnsi(combinedStdout).slice(0, 2000)}`,
+        );
+      }
+
+      await this.recordFailedFiles(input, sourceFiles, extensions, generatedComponents);
+
+      const files = await Promise.all(
+        outputFiles.map(async (name) => ({
+          relativePath: name,
+          content: await fs.promises.readFile(path.join(outDir, name)),
+        })),
+      );
+      const resultReference = await this.storage.writeFiles(
+        `results/${input.projectId}/${input.conversionJobId}`,
+        files,
+      );
+      return { resultReference, toolVersion: 'convert2fe' };
+    } finally {
+      await fs.promises.rm(workDir, { recursive: true, force: true }).catch((error: unknown) => {
+        this.logger.warn(`Failed to clean up workspace ${workDir}: ${String(error)}`);
+      });
+    }
+  }
+
+  private async recordFailedFiles(
+    input: ConversionEngineInput,
+    sourceFiles: string[],
+    extensions: string[],
+    generatedComponents: string[],
+  ): Promise<void> {
+    const expectedNames = sourceFiles
+      .filter((f) => extensions.includes(path.extname(f).toLowerCase()))
+      .map((f) => path.parse(f).name);
+    const generatedNames = new Set(generatedComponents.map((f) => path.parse(f).name));
+    const missing = expectedNames.filter((name) => !generatedNames.has(name));
+    for (const name of missing) {
+      await this.errorLogs.create({
+        projectId: input.projectId,
+        organizationId: input.organizationId,
+        screenName: input.screenId ?? name,
+        errorCode: 'BMS_DSPF_PARSE_FAILED',
+        severity: ErrorLogSeverity.ERROR,
+        status: ErrorLogStatus.UNRESOLVED,
+        lineNumber: 0,
+        offendingCode: name,
+        suggestedPatch: {
+          offendingLine: '',
+          suggestedLine: '',
+          reason: 'convert2fe could not parse this file — manual review required.',
+        },
+      });
+    }
+  }
+}
