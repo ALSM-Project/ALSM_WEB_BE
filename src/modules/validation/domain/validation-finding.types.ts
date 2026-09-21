@@ -47,6 +47,7 @@ export interface ValidationFindingRecord {
   organizationId: string;
   projectId: string;
   conversionJobId: string;
+  validationRunId: string;
   screenId?: string;
   source: ValidationFindingSource;
   category: ValidationFindingCategory;
