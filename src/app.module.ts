@@ -31,6 +31,14 @@ import {
   FieldMappingSchema,
 } from './modules/conversions/infrastructure/field-mapping.schema';
 import { ErrorLog, ErrorLogSchema } from './modules/conversions/infrastructure/error-log.schema';
+import {
+  ValidationRun,
+  ValidationRunSchema,
+} from './modules/validation/infrastructure/validation-run.schema';
+import {
+  ValidationFinding,
+  ValidationFindingSchema,
+} from './modules/validation/infrastructure/validation-finding.schema';
 import { Screen, ScreenSchema } from './modules/screens/infrastructure/screen.schema';
 import { MongoScreenRepository } from './modules/screens/infrastructure/mongo-screen.repository';
 import { ScreenService } from './modules/screens/application/screen.service';
@@ -39,7 +47,14 @@ import { SCREEN_REPOSITORY } from './modules/screens/domain/screen.types';
 import { MongoErrorLogRepository } from './modules/conversions/infrastructure/mongo-error-log.repository';
 import { ErrorLogService } from './modules/conversions/application/error-log.service';
 import { ErrorLogController } from './modules/conversions/presentation/error-log.controller';
+import { ValidationController } from './modules/validation/presentation/validation.controller';
 import { ERROR_LOG_REPOSITORY } from './modules/conversions/domain/error-log.types';
+import { VALIDATION_RUN_REPOSITORY } from './modules/validation/domain/validation-run.repository';
+import { VALIDATION_FINDING_REPOSITORY } from './modules/validation/domain/validation-finding.repository';
+import { MongoValidationRunRepository } from './modules/validation/infrastructure/mongo-validation-run.repository';
+import { MongoValidationFindingRepository } from './modules/validation/infrastructure/mongo-validation-finding.repository';
+import { BuildValidationContextService } from './modules/validation/application/build-validation-context.service';
+import { ValidationReadService } from './modules/validation/application/validation-read.service';
 import { USER_REPOSITORY } from './modules/users/domain/user.repository';
 import { MongoUserRepository } from './modules/users/infrastructure/mongo-user.repository';
 import { ORGANIZATION_REPOSITORY } from './modules/organizations/domain/organization.repository';
@@ -150,6 +165,8 @@ import { MenuModule } from './modules/menus/menu.module';
       { name: FieldMapping.name, schema: FieldMappingSchema },
       { name: ErrorLog.name, schema: ErrorLogSchema },
       { name: Screen.name, schema: ScreenSchema },
+      { name: ValidationRun.name, schema: ValidationRunSchema },
+      { name: ValidationFinding.name, schema: ValidationFindingSchema },
     ]),
     RbacModule,
     MenuModule,
@@ -163,6 +180,7 @@ import { MenuModule } from './modules/menus/menu.module';
     FieldMappingController,
     ExportController,
     ErrorLogController,
+    ValidationController,
     HealthController,
     BillingController,
     PaymentController,
@@ -195,6 +213,8 @@ import { MenuModule } from './modules/menus/menu.module';
     SaveFieldMappingService,
     ExportCodeService,
     ErrorLogService,
+    BuildValidationContextService,
+    ValidationReadService,
     MongoErrorLogRepository,
     ConversionWorkerRunner,
     BillingService,
@@ -222,6 +242,8 @@ import { MenuModule } from './modules/menus/menu.module';
     { provide: BANK_CONFIG_REPOSITORY, useClass: MongoBankConfigRepository },
     { provide: FIELD_MAPPING_REPOSITORY, useClass: MongoFieldMappingRepository },
     { provide: ERROR_LOG_REPOSITORY, useExisting: MongoErrorLogRepository },
+    { provide: VALIDATION_RUN_REPOSITORY, useClass: MongoValidationRunRepository },
+    { provide: VALIDATION_FINDING_REPOSITORY, useClass: MongoValidationFindingRepository },
     { provide: SCREEN_REPOSITORY, useExisting: MongoScreenRepository },
     { provide: CONVERSION_QUEUE, useClass: BullMqConversionQueue },
     { provide: CONVERSION_ENGINE, useClass: ConversionEngineRouter },
