@@ -7,5 +7,6 @@
     "strict": true, "noImplicitOverride": true, "skipLibCheck": true,
     "paths": { "@/*": ["src/*"] },
     "ignoreDeprecations": "5.0"
-  }
+  },
+  "exclude": ["node_modules", "dist", "storage"]
 }
