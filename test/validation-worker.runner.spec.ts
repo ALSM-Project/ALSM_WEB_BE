@@ -172,6 +172,34 @@ describe('ValidationWorkerRunner', () => {
     expect(validationRuns.markFailed).not.toHaveBeenCalled();
   });
 
+  it('classifies an initial database failure as retryable', async () => {
+    validationRuns.findById.mockRejectedValue(new Error('temporary database failure'));
+    start();
+
+    await expect(capturedProcessor!(job)).rejects.toMatchObject({
+      code: 'VALIDATION_EXECUTION_TRANSIENT_FAILURE',
+      retryable: true,
+    });
+    expect(validationRuns.markFailed).not.toHaveBeenCalled();
+  });
+
+  it('reloads and fails the persisted run after a final initial database failure', async () => {
+    validationRuns.findById
+      .mockRejectedValueOnce(new Error('temporary database failure'))
+      .mockResolvedValueOnce(processingRun);
+    start();
+
+    await expect(capturedProcessor!({ ...job, attemptsMade: 1 })).rejects.toMatchObject({
+      code: 'VALIDATION_EXECUTION_TRANSIENT_FAILURE',
+    });
+    expect(validationRuns.markFailed).toHaveBeenCalledWith(
+      'run-1',
+      'project-1',
+      'org-1',
+      expect.objectContaining({ failureCode: 'VALIDATION_EXECUTION_TRANSIENT_FAILURE' }),
+    );
+  });
+
   it('marks the same run FAILED after the final retryable attempt', async () => {
     executeAiValidation.execute.mockRejectedValue(
       new ValidationExecutionError('AI_PROVIDER_TIMEOUT', 'AI provider request timed out', true),

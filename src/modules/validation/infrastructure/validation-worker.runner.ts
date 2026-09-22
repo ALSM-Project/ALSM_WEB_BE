@@ -51,56 +51,80 @@ export class ValidationWorkerRunner implements OnModuleDestroy {
 
   private async process(job: Job<ValidationQueueJob>): Promise<void> {
     const payload = job.data;
-    let run = await this.validationRuns.findById(
+    let run: ValidationRunRecord | null = null;
+    try {
+      run = await this.validationRuns.findById(
+        payload.validationRunId,
+        payload.projectId,
+        payload.organizationId,
+      );
+      if (!run) {
+        this.logger.warn(
+          `Validation run ${payload.validationRunId} was not found for queued work.`,
+        );
+        return;
+      }
+      if (run.conversionJobId !== payload.conversionJobId) {
+        await this.failRun(
+          run,
+          'VALIDATION_JOB_PAYLOAD_MISMATCH',
+          'Validation job metadata is invalid',
+        );
+        return;
+      }
+      if (this.isTerminal(run)) return;
+
+      if (run.status === ValidationRunStatus.QUEUED) {
+        const claimed = await this.validationRuns.markProcessing(
+          run.id,
+          run.projectId,
+          run.organizationId,
+        );
+        if (!claimed) {
+          run = await this.validationRuns.findById(run.id, run.projectId, run.organizationId);
+          if (!run || this.isTerminal(run)) return;
+          if (run.status !== ValidationRunStatus.PROCESSING) return;
+        } else {
+          run = claimed;
+        }
+      }
+      if (run.status !== ValidationRunStatus.PROCESSING) return;
+
+      await this.executeAiValidation.execute(payload);
+    } catch (error) {
+      await this.handleFailure(job, run, error);
+    }
+  }
+
+  private async handleFailure(
+    job: Job<ValidationQueueJob>,
+    run: ValidationRunRecord | null,
+    error: unknown,
+  ): Promise<void> {
+    const failure = this.classify(error);
+    const configuredAttempts = this.config.getOrThrow<number>('VALIDATION_JOB_ATTEMPTS');
+    const maximumAttempts =
+      typeof job.opts.attempts === 'number' ? job.opts.attempts : configuredAttempts;
+    const isFinalAttempt = job.attemptsMade + 1 >= maximumAttempts;
+
+    if (!failure.retryable || isFinalAttempt) {
+      const failureRun = run ?? (await this.reloadForFinalFailure(job.data));
+      if (failureRun && !this.isTerminal(failureRun)) {
+        await this.failRun(failureRun, failure.code, failure.message);
+      }
+      if (!failure.retryable) return;
+    }
+    throw failure;
+  }
+
+  private async reloadForFinalFailure(
+    payload: ValidationQueueJob,
+  ): Promise<ValidationRunRecord | null> {
+    return this.validationRuns.findById(
       payload.validationRunId,
       payload.projectId,
       payload.organizationId,
     );
-    if (!run) {
-      this.logger.warn(`Validation run ${payload.validationRunId} was not found for queued work.`);
-      return;
-    }
-    if (run.conversionJobId !== payload.conversionJobId) {
-      await this.failRun(
-        run,
-        'VALIDATION_JOB_PAYLOAD_MISMATCH',
-        'Validation job metadata is invalid',
-      );
-      return;
-    }
-    if (this.isTerminal(run)) return;
-
-    if (run.status === ValidationRunStatus.QUEUED) {
-      const claimed = await this.validationRuns.markProcessing(
-        run.id,
-        run.projectId,
-        run.organizationId,
-      );
-      if (!claimed) {
-        run = await this.validationRuns.findById(run.id, run.projectId, run.organizationId);
-        if (!run || this.isTerminal(run)) return;
-        if (run.status !== ValidationRunStatus.PROCESSING) return;
-      } else {
-        run = claimed;
-      }
-    }
-    if (run.status !== ValidationRunStatus.PROCESSING) return;
-
-    try {
-      await this.executeAiValidation.execute(payload);
-    } catch (error) {
-      const failure = this.classify(error);
-      const configuredAttempts = this.config.getOrThrow<number>('VALIDATION_JOB_ATTEMPTS');
-      const maximumAttempts =
-        typeof job.opts.attempts === 'number' ? job.opts.attempts : configuredAttempts;
-      const isFinalAttempt = job.attemptsMade + 1 >= maximumAttempts;
-
-      if (!failure.retryable || isFinalAttempt) {
-        await this.failRun(run, failure.code, failure.message);
-        if (!failure.retryable) return;
-      }
-      throw failure;
-    }
   }
 
   private isTerminal(run: ValidationRunRecord): boolean {

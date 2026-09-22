@@ -8,7 +8,7 @@ import {
   VALIDATION_RUN_REPOSITORY,
   ValidationRunRepository,
 } from '../domain/validation-run.repository';
-import { ValidationRunRecord } from '../domain/validation-run.types';
+import { ValidationRunRecord, ValidationRunStatus } from '../domain/validation-run.types';
 
 @Injectable()
 export class ReconcileValidationRunService {
@@ -41,12 +41,30 @@ export class ReconcileValidationRunService {
       );
     }
 
-    await this.validationRuns.markCompleted(run.id, run.projectId, run.organizationId, {
-      findingCount: actualFindingCount,
-      redactionCount: run.redactionCount ?? 0,
-      selectedFileCount: run.selectedFileCount ?? 0,
-      inputCharacterCount: run.inputCharacterCount ?? 0,
-    });
+    const completed = await this.validationRuns.markCompleted(
+      run.id,
+      run.projectId,
+      run.organizationId,
+      {
+        findingCount: actualFindingCount,
+        redactionCount: run.redactionCount ?? 0,
+        selectedFileCount: run.selectedFileCount ?? 0,
+        inputCharacterCount: run.inputCharacterCount ?? 0,
+      },
+    );
+    if (!completed) {
+      const latest = await this.validationRuns.findById(run.id, run.projectId, run.organizationId);
+      if (
+        latest?.status !== ValidationRunStatus.COMPLETED ||
+        latest.findingCount !== actualFindingCount
+      ) {
+        throw new ValidationExecutionError(
+          'VALIDATION_RUN_FINALIZATION_CONFLICT',
+          'AI validation run could not be finalized safely',
+          false,
+        );
+      }
+    }
     return actualFindingCount;
   }
 }

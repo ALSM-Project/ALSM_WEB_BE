@@ -85,7 +85,7 @@ describe('MongoValidationRunRepository query isolation', () => {
   });
 
   it('marks completion with run, project, and organization scope', async () => {
-    const exec = jest.fn().mockResolvedValue(undefined);
+    const exec = jest.fn().mockResolvedValue({ matchedCount: 1 });
     const updateOne = jest.fn().mockReturnValue({ exec });
     const repository = new MongoValidationRunRepository({ updateOne } as never);
 
@@ -112,7 +112,7 @@ describe('MongoValidationRunRepository query isolation', () => {
   });
 
   it('marks failure with run, project, and organization scope', async () => {
-    const exec = jest.fn().mockResolvedValue(undefined);
+    const exec = jest.fn().mockResolvedValue({ matchedCount: 1 });
     const updateOne = jest.fn().mockReturnValue({ exec });
     const repository = new MongoValidationRunRepository({ updateOne } as never);
 
@@ -160,7 +160,7 @@ describe('MongoValidationRunRepository query isolation', () => {
   });
 
   it('persists a zero-finding result marker while the run is processing', async () => {
-    const exec = jest.fn().mockResolvedValue(undefined);
+    const exec = jest.fn().mockResolvedValue({ matchedCount: 1 });
     const updateOne = jest.fn().mockReturnValue({ exec });
     const repository = new MongoValidationRunRepository({ updateOne } as never);
     const resultsPersistedAt = new Date();

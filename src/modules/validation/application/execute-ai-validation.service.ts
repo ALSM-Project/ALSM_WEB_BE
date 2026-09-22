@@ -98,13 +98,25 @@ export class ExecuteAiValidationService {
 
       await this.validationFindings.upsertManyForRun(findings);
       const resultsPersistedAt = new Date();
-      await this.validationRuns.markResultsPersisted(run.id, run.projectId, run.organizationId, {
-        findingCount: findings.length,
-        redactionCount: prepared.redactionCount,
-        selectedFileCount: prepared.selectedFileCount,
-        inputCharacterCount: prepared.inputCharacterCount,
-        resultsPersistedAt,
-      });
+      const markerPersisted = await this.validationRuns.markResultsPersisted(
+        run.id,
+        run.projectId,
+        run.organizationId,
+        {
+          findingCount: findings.length,
+          redactionCount: prepared.redactionCount,
+          selectedFileCount: prepared.selectedFileCount,
+          inputCharacterCount: prepared.inputCharacterCount,
+          resultsPersistedAt,
+        },
+      );
+      if (!markerPersisted) {
+        throw new ValidationExecutionError(
+          'VALIDATION_RUN_STATE_CONFLICT',
+          'AI validation run state changed during result persistence',
+          false,
+        );
+      }
 
       const persistedRun: ValidationRunRecord = {
         ...run,

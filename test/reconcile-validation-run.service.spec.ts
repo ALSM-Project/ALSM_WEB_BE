@@ -4,7 +4,7 @@ import { ValidationRunRepository } from '../src/modules/validation/domain/valida
 import { ValidationRunStatus } from '../src/modules/validation/domain/validation-run.types';
 
 describe('ReconcileValidationRunService', () => {
-  const validationRuns = { markCompleted: jest.fn() };
+  const validationRuns = { markCompleted: jest.fn(), findById: jest.fn() };
   const validationFindings = { countByRun: jest.fn() };
   const service = new ReconcileValidationRunService(
     validationRuns as unknown as ValidationRunRepository,
@@ -31,7 +31,8 @@ describe('ReconcileValidationRunService', () => {
   beforeEach(() => {
     jest.clearAllMocks();
     validationFindings.countByRun.mockResolvedValue(2);
-    validationRuns.markCompleted.mockResolvedValue(undefined);
+    validationRuns.markCompleted.mockResolvedValue(true);
+    validationRuns.findById.mockResolvedValue(null);
   });
 
   it('retries only the completion transition when persisted findings match the marker', async () => {
@@ -67,5 +68,26 @@ describe('ReconcileValidationRunService', () => {
       retryable: false,
     });
     expect(validationRuns.markCompleted).not.toHaveBeenCalled();
+  });
+
+  it('accepts an idempotent completion race only when the latest run is completed consistently', async () => {
+    validationRuns.markCompleted.mockResolvedValue(false);
+    validationRuns.findById.mockResolvedValue({
+      ...run,
+      status: ValidationRunStatus.COMPLETED,
+      findingCount: 2,
+    });
+
+    await expect(service.execute(run)).resolves.toBe(2);
+  });
+
+  it('safely retries completion after an initial persistence failure', async () => {
+    validationRuns.markCompleted
+      .mockRejectedValueOnce(new Error('temporary database failure'))
+      .mockResolvedValueOnce(true);
+
+    await expect(service.execute(run)).rejects.toThrow('temporary database failure');
+    await expect(service.execute(run)).resolves.toBe(2);
+    expect(validationRuns.markCompleted).toHaveBeenCalledTimes(2);
   });
 });

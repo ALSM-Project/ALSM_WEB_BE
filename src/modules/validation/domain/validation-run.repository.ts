@@ -51,13 +51,13 @@ export interface ValidationRunRepository {
     projectId: string,
     organizationId: string,
     input: PersistValidationResultsInput,
-  ): Promise<void>;
+  ): Promise<boolean>;
   markCompleted(
     id: string,
     projectId: string,
     organizationId: string,
     input: CompleteValidationRunInput,
-  ): Promise<void>;
+  ): Promise<boolean>;
   markFailed(
     id: string,
     projectId: string,

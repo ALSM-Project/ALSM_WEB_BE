@@ -104,7 +104,7 @@ describe('ExecuteAiValidationService', () => {
     });
     validator.validate.mockResolvedValue({ findings: [finding] });
     validationFindings.upsertManyForRun.mockResolvedValue(undefined);
-    validationRuns.markResultsPersisted.mockResolvedValue(undefined);
+    validationRuns.markResultsPersisted.mockResolvedValue(true);
     reconcileRun.execute.mockResolvedValue(1);
   });
 
@@ -184,6 +184,16 @@ describe('ExecuteAiValidationService', () => {
       retryable: false,
     });
     expect(validator.validate).not.toHaveBeenCalled();
+  });
+
+  it('fails closed when the result marker loses its PROCESSING compare-and-set', async () => {
+    validationRuns.markResultsPersisted.mockResolvedValue(false);
+
+    await expect(service.execute(input)).rejects.toMatchObject({
+      code: 'VALIDATION_RUN_STATE_CONFLICT',
+      retryable: false,
+    });
+    expect(reconcileRun.execute).not.toHaveBeenCalled();
   });
 
   it.each([

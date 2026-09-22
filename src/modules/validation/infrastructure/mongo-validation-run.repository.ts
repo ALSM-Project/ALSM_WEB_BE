@@ -116,8 +116,8 @@ export class MongoValidationRunRepository implements ValidationRunRepository {
     projectId: string,
     organizationId: string,
     input: PersistValidationResultsInput,
-  ): Promise<void> {
-    await this.model
+  ): Promise<boolean> {
+    const result = await this.model
       .updateOne(
         {
           _id: id,
@@ -137,6 +137,7 @@ export class MongoValidationRunRepository implements ValidationRunRepository {
         },
       )
       .exec();
+    return result.matchedCount > 0;
   }
 
   async markCompleted(
@@ -144,8 +145,8 @@ export class MongoValidationRunRepository implements ValidationRunRepository {
     projectId: string,
     organizationId: string,
     input: CompleteValidationRunInput,
-  ): Promise<void> {
-    await this.model
+  ): Promise<boolean> {
+    const result = await this.model
       .updateOne(
         {
           _id: id,
@@ -169,6 +170,7 @@ export class MongoValidationRunRepository implements ValidationRunRepository {
         },
       )
       .exec();
+    return result.matchedCount > 0;
   }
 
   async markFailed(
