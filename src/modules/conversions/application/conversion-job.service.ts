@@ -15,6 +15,7 @@ import {
 } from '../domain/conversion-job.types';
 import { OrganizationRecord } from '../../organizations/domain/organization.repository';
 import { ProjectRecord } from '../../projects/domain/project.types';
+import { SCREEN_REPOSITORY, ScreenRepository } from '../../screens/domain/screen.types';
 @Injectable()
 export class ConversionJobService {
   constructor(
@@ -24,6 +25,7 @@ export class ConversionJobService {
     private readonly organizationContext: OrganizationContextService,
     private readonly authorization: OrganizationAuthorizationService,
     @Inject(AUDIT_REPOSITORY) private readonly audit: AuditRepository,
+    @Inject(SCREEN_REPOSITORY) private readonly screens: ScreenRepository,
   ) {}
   async create(
     userId: string,
@@ -71,6 +73,15 @@ export class ConversionJobService {
     userId: string,
     input: { screenId?: string; priority?: ConversionPriority; inputReference?: string },
   ): Promise<ConversionJobRecord> {
+    // The screen (once one exists) is the source of truth for where its real uploaded
+    // file lives — resolve inputReference from it server-side rather than trusting
+    // whatever (if anything) the caller passed. This is what makes bulk conversion work:
+    // the bulk endpoint only ever received one shared inputReference for the whole
+    // batch (or none), which is wrong for every screen but the first.
+    const screen = input.screenId
+      ? await this.screens.findById(input.screenId, organization.id)
+      : null;
+    const inputReference = screen?.inputReference ?? input.inputReference;
     const job = await this.jobs.create({
       organizationId: organization.id,
       projectId: project.id,
@@ -80,7 +91,7 @@ export class ConversionJobService {
       priority: input.priority ?? ConversionPriority.NORMAL,
       attemptCount: 0,
       maxAttempts: 3,
-      inputReference: input.inputReference,
+      inputReference,
       createdBy: userId,
     });
     try {
