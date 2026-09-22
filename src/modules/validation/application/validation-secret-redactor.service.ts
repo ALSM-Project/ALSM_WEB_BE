@@ -14,7 +14,10 @@ const REDACTION_RULES: RedactionRule[] = [
   {
     pattern:
       /-----BEGIN (?:RSA |EC |DSA |OPENSSH )?PRIVATE KEY-----[\s\S]*?-----END (?:RSA |EC |DSA |OPENSSH )?PRIVATE KEY-----/g,
-    replace: () => '[REDACTED:PRIVATE_KEY]',
+    replace: (match) => {
+      const newlineCount = match.match(/\r\n|\n|\r/g)?.length ?? 0;
+      return `[REDACTED:PRIVATE_KEY]${'\n'.repeat(newlineCount)}`;
+    },
   },
   {
     pattern: /(\bAuthorization\s*[:=]\s*Bearer\s+)([^\s"',;]+)/gi,

@@ -41,7 +41,9 @@ describe('ValidationSecretRedactorService', () => {
       ].join('\n'),
     );
 
-    expect(result.content).toBe('before\n[REDACTED:PRIVATE_KEY]\nafter');
+    expect(result.content).toBe('before\n[REDACTED:PRIVATE_KEY]\n\n\nafter');
+    expect(result.content.split('\n')).toHaveLength(5);
+    expect(result.content.split('\n')[4]).toBe('after');
     expect(result.content).not.toContain('SYNTHETIC-PRIVATE-KEY-MATERIAL');
     expect(result.redactionCount).toBe(1);
   });
