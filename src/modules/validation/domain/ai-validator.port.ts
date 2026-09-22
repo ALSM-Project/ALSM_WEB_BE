@@ -40,7 +40,14 @@ export interface AiValidationResult {
   findings: AiValidationFindingDraft[];
 }
 
+export interface AiValidatorMetadata {
+  provider: string;
+  model: string;
+  promptVersion: string;
+}
+
 export interface AiValidatorPort {
+  getMetadata(): AiValidatorMetadata;
   validate(input: AiValidationInput): Promise<AiValidationResult>;
 }
 

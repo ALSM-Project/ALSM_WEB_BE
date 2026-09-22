@@ -4,6 +4,12 @@ describe('FakeAiValidatorAdapter', () => {
   it('returns no findings without pretending validation was performed', async () => {
     const adapter = new FakeAiValidatorAdapter();
 
+    expect(adapter.getMetadata()).toEqual({
+      provider: 'fake',
+      model: 'none',
+      promptVersion: 'none',
+    });
+
     await expect(
       adapter.validate({
         conversionJobId: 'conversion-job-1',
