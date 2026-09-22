@@ -34,6 +34,9 @@ export class ValidationRun {
   @Prop() startedAt?: Date;
   @Prop() completedAt?: Date;
 
+  /** Internal uniqueness claim; never mapped to the application/API record. */
+  @Prop() activeExecutionKey?: string;
+
   createdAt!: Date;
   updatedAt!: Date;
 }
@@ -45,3 +48,7 @@ ValidationRunSchema.index({
   conversionJobId: 1,
   createdAt: -1,
 });
+ValidationRunSchema.index(
+  { activeExecutionKey: 1 },
+  { unique: true, sparse: true, name: 'unique_active_ai_validation_execution' },
+);

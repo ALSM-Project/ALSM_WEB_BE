@@ -2,6 +2,11 @@ import { ValidationRunRecord } from './validation-run.types';
 
 export type CreateValidationRunInput = Omit<ValidationRunRecord, 'id' | 'createdAt' | 'updatedAt'>;
 
+export interface CreateOrGetActiveValidationRunResult {
+  run: ValidationRunRecord;
+  created: boolean;
+}
+
 export interface CompleteValidationRunInput {
   findingCount: number;
   redactionCount: number;
@@ -19,6 +24,9 @@ export interface FailValidationRunInput {
 
 export interface ValidationRunRepository {
   create(input: CreateValidationRunInput): Promise<ValidationRunRecord>;
+  createOrGetActiveAiRun(
+    input: CreateValidationRunInput,
+  ): Promise<CreateOrGetActiveValidationRunResult>;
   findById(
     id: string,
     projectId: string,

@@ -1,4 +1,13 @@
-import { Controller, Get, Headers, Param, UseGuards } from '@nestjs/common';
+import {
+  Controller,
+  Get,
+  Headers,
+  HttpCode,
+  HttpStatus,
+  Param,
+  Post,
+  UseGuards,
+} from '@nestjs/common';
 import {
   ApiBearerAuth,
   ApiHeader,
@@ -11,6 +20,7 @@ import { AuthenticatedUser } from '../../../shared/logging/request-id.middleware
 import { CurrentUser } from '../../../shared/security/current-user.decorator';
 import { JwtAuthGuard } from '../../../shared/security/jwt-auth.guard';
 import { ValidationReadService } from '../application/validation-read.service';
+import { TriggerAiValidationService } from '../application/trigger-ai-validation.service';
 import { ValidationFindingResponseDto, ValidationRunResponseDto } from './validation.dto';
 
 @ApiTags('Validation')
@@ -23,7 +33,35 @@ import { ValidationFindingResponseDto, ValidationRunResponseDto } from './valida
 @UseGuards(JwtAuthGuard)
 @Controller()
 export class ValidationController {
-  constructor(private readonly validationReads: ValidationReadService) {}
+  constructor(
+    private readonly validationReads: ValidationReadService,
+    private readonly triggerAiValidation: TriggerAiValidationService,
+  ) {}
+
+  @Post('projects/:projectId/conversions/:conversionJobId/validation-runs')
+  @HttpCode(HttpStatus.ACCEPTED)
+  @ApiOperation({ summary: 'Queue an AI validation run for a completed conversion' })
+  @ApiParam({ name: 'projectId', description: 'Project ID' })
+  @ApiParam({ name: 'conversionJobId', description: 'Conversion Job ID' })
+  @ApiResponse({ status: 202, type: ValidationRunResponseDto })
+  @ApiResponse({ status: 400, description: 'Conversion is not eligible for AI validation' })
+  @ApiResponse({ status: 403, description: 'Organization role cannot trigger validation' })
+  @ApiResponse({ status: 404, description: 'Project or conversion job not found' })
+  @ApiResponse({ status: 503, description: 'AI validation or its queue is unavailable' })
+  async trigger(
+    @CurrentUser() user: AuthenticatedUser,
+    @Headers('x-organization-id') organizationId: string | undefined,
+    @Param('projectId') projectId: string,
+    @Param('conversionJobId') conversionJobId: string,
+  ) {
+    const result = await this.triggerAiValidation.execute(
+      user.userId,
+      organizationId,
+      projectId,
+      conversionJobId,
+    );
+    return result.run;
+  }
 
   @Get('projects/:projectId/conversions/:conversionJobId/validation-runs')
   @ApiOperation({ summary: 'List validation runs for a conversion job' })

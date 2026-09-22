@@ -1,8 +1,10 @@
 import { Injectable } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model, Types } from 'mongoose';
+import { createHash } from 'crypto';
 import {
   CompleteValidationRunInput,
+  CreateOrGetActiveValidationRunResult,
   CreateValidationRunInput,
   FailValidationRunInput,
   ValidationRunRepository,
@@ -22,6 +24,41 @@ export class MongoValidationRunRepository implements ValidationRunRepository {
       conversionJobId: new Types.ObjectId(input.conversionJobId),
     });
     return this.map(document);
+  }
+
+  async createOrGetActiveAiRun(
+    input: CreateValidationRunInput,
+  ): Promise<CreateOrGetActiveValidationRunResult> {
+    const activeExecutionKey = this.activeExecutionKey(input);
+
+    for (let attempt = 0; attempt < 2; attempt += 1) {
+      try {
+        const document = await this.model.create({
+          ...input,
+          organizationId: new Types.ObjectId(input.organizationId),
+          projectId: new Types.ObjectId(input.projectId),
+          conversionJobId: new Types.ObjectId(input.conversionJobId),
+          activeExecutionKey,
+        });
+        return { run: this.map(document), created: true };
+      } catch (error) {
+        if (!this.isDuplicateKey(error)) throw error;
+        const existing = await this.model
+          .findOne({
+            activeExecutionKey,
+            organizationId: input.organizationId,
+            projectId: input.projectId,
+            conversionJobId: input.conversionJobId,
+            status: {
+              $in: [ValidationRunStatus.QUEUED, ValidationRunStatus.PROCESSING],
+            },
+          })
+          .exec();
+        if (existing) return { run: this.map(existing), created: false };
+      }
+    }
+
+    throw new Error('Unable to claim an active AI validation run');
   }
 
   async findById(
@@ -65,6 +102,7 @@ export class MongoValidationRunRepository implements ValidationRunRepository {
             failureMessage: undefined,
             completedAt: new Date(),
           },
+          $unset: { activeExecutionKey: 1 },
         },
       )
       .exec();
@@ -90,9 +128,20 @@ export class MongoValidationRunRepository implements ValidationRunRepository {
             inputCharacterCount: input.inputCharacterCount,
             completedAt: new Date(),
           },
+          $unset: { activeExecutionKey: 1 },
         },
       )
       .exec();
+  }
+
+  private activeExecutionKey(input: CreateValidationRunInput): string {
+    return createHash('sha256')
+      .update(`${input.organizationId}\0${input.projectId}\0${input.conversionJobId}\0AI`)
+      .digest('hex');
+  }
+
+  private isDuplicateKey(error: unknown): boolean {
+    return typeof error === 'object' && error !== null && 'code' in error && error.code === 11_000;
   }
 
   private map(document: ValidationRunDocument): ValidationRunRecord {
