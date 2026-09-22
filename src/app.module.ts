@@ -55,6 +55,12 @@ import { MongoValidationRunRepository } from './modules/validation/infrastructur
 import { MongoValidationFindingRepository } from './modules/validation/infrastructure/mongo-validation-finding.repository';
 import { BuildValidationContextService } from './modules/validation/application/build-validation-context.service';
 import { ValidationReadService } from './modules/validation/application/validation-read.service';
+import { ExecuteAiValidationService } from './modules/validation/application/execute-ai-validation.service';
+import { PrepareAiValidationContextService } from './modules/validation/application/prepare-ai-validation-context.service';
+import { ValidationSecretRedactorService } from './modules/validation/application/validation-secret-redactor.service';
+import { FakeAiValidatorAdapter } from './modules/validation/infrastructure/fake-ai-validator.adapter';
+import { OpenAiValidatorAdapter } from './modules/validation/infrastructure/openai-ai-validator.adapter';
+import { aiValidatorProvider } from './modules/validation/infrastructure/ai-validator.provider';
 import { USER_REPOSITORY } from './modules/users/domain/user.repository';
 import { MongoUserRepository } from './modules/users/infrastructure/mongo-user.repository';
 import { ORGANIZATION_REPOSITORY } from './modules/organizations/domain/organization.repository';
@@ -214,7 +220,13 @@ import { MenuModule } from './modules/menus/menu.module';
     ExportCodeService,
     ErrorLogService,
     BuildValidationContextService,
+    PrepareAiValidationContextService,
+    ValidationSecretRedactorService,
+    ExecuteAiValidationService,
     ValidationReadService,
+    FakeAiValidatorAdapter,
+    OpenAiValidatorAdapter,
+    aiValidatorProvider,
     MongoErrorLogRepository,
     ConversionWorkerRunner,
     BillingService,

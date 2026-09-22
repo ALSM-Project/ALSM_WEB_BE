@@ -2,13 +2,14 @@ import {
   CodeLocation,
   ValidationFindingCategory,
   ValidationFindingSeverity,
-  ValidationFindingSource,
-  ValidationFindingStatus,
 } from './validation-finding.types';
 
 export interface AiValidationCodeFile {
   path: string;
+  /** Sanitized, provider-only content with stable one-based line prefixes. */
   content: string;
+  /** Original source line count used to validate provider locations. */
+  lineCount: number;
 }
 
 /**
@@ -22,10 +23,8 @@ export interface AiValidationInput {
 }
 
 export interface AiValidationFindingDraft {
-  source: ValidationFindingSource;
   category: ValidationFindingCategory;
   severity: ValidationFindingSeverity;
-  status: ValidationFindingStatus;
   title: string;
   explanation: string;
   expectedBehavior?: string;
@@ -35,15 +34,20 @@ export interface AiValidationFindingDraft {
   targetLocation?: CodeLocation;
   /** Advisory model confidence only; never a correctness score, proof, or review decision. */
   confidence?: number;
-  modelProvider?: string;
-  modelName?: string;
 }
 
 export interface AiValidationResult {
   findings: AiValidationFindingDraft[];
 }
 
+export interface AiValidatorMetadata {
+  provider: string;
+  model: string;
+  promptVersion: string;
+}
+
 export interface AiValidatorPort {
+  getMetadata(): AiValidatorMetadata;
   validate(input: AiValidationInput): Promise<AiValidationResult>;
 }
 

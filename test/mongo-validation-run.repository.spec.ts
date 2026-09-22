@@ -32,4 +32,46 @@ describe('MongoValidationRunRepository query isolation', () => {
     });
     expect(sort).toHaveBeenCalledWith({ createdAt: -1 });
   });
+
+  it('marks completion with run, project, and organization scope', async () => {
+    const exec = jest.fn().mockResolvedValue(undefined);
+    const updateOne = jest.fn().mockReturnValue({ exec });
+    const repository = new MongoValidationRunRepository({ updateOne } as never);
+
+    await repository.markCompleted('run-1', 'project-1', 'org-1', {
+      findingCount: 2,
+      redactionCount: 1,
+      selectedFileCount: 3,
+      inputCharacterCount: 500,
+    });
+
+    expect(updateOne).toHaveBeenCalledWith(
+      { _id: 'run-1', projectId: 'project-1', organizationId: 'org-1' },
+      expect.objectContaining({
+        $set: expect.objectContaining({ status: 'COMPLETED', findingCount: 2 }),
+      }),
+    );
+  });
+
+  it('marks failure with run, project, and organization scope', async () => {
+    const exec = jest.fn().mockResolvedValue(undefined);
+    const updateOne = jest.fn().mockReturnValue({ exec });
+    const repository = new MongoValidationRunRepository({ updateOne } as never);
+
+    await repository.markFailed('run-1', 'project-1', 'org-1', {
+      failureCode: 'AI_PROVIDER_TIMEOUT',
+      failureMessage: 'AI provider request timed out',
+    });
+
+    expect(updateOne).toHaveBeenCalledWith(
+      { _id: 'run-1', projectId: 'project-1', organizationId: 'org-1' },
+      expect.objectContaining({
+        $set: expect.objectContaining({
+          status: 'FAILED',
+          findingCount: 0,
+          failureCode: 'AI_PROVIDER_TIMEOUT',
+        }),
+      }),
+    );
+  });
 });

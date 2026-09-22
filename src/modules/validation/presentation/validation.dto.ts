@@ -17,6 +17,14 @@ export class ValidationRunResponseDto {
   @ApiProperty() ruleValidationEnabled!: boolean;
   @ApiProperty() aiValidationEnabled!: boolean;
   @ApiProperty() findingCount!: number;
+  @ApiPropertyOptional() provider?: string;
+  @ApiPropertyOptional() model?: string;
+  @ApiPropertyOptional() promptVersion?: string;
+  @ApiPropertyOptional() redactionCount?: number;
+  @ApiPropertyOptional() selectedFileCount?: number;
+  @ApiPropertyOptional() inputCharacterCount?: number;
+  @ApiPropertyOptional() failureCode?: string;
+  @ApiPropertyOptional() failureMessage?: string;
   @ApiPropertyOptional() startedAt?: Date;
   @ApiPropertyOptional() completedAt?: Date;
   @ApiProperty() createdAt!: Date;

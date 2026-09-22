@@ -42,4 +42,31 @@ export const environmentValidationSchema = Joi.object({
   APP_BASE_URL: Joi.string()
     .uri({ scheme: ['http', 'https'] })
     .default('http://localhost:5173'),
+  AI_VALIDATION_ENABLED: Joi.boolean().default(false),
+  AI_PROVIDER: Joi.string().valid('fake', 'openai').default('fake'),
+  OPENAI_API_KEY: Joi.when('AI_VALIDATION_ENABLED', {
+    is: true,
+    then: Joi.when('AI_PROVIDER', {
+      is: 'openai',
+      then: Joi.string().min(1).required(),
+      otherwise: Joi.string().allow('').default(''),
+    }),
+    otherwise: Joi.string().allow('').default(''),
+  }),
+  OPENAI_MODEL: Joi.when('AI_VALIDATION_ENABLED', {
+    is: true,
+    then: Joi.when('AI_PROVIDER', {
+      is: 'openai',
+      then: Joi.string().min(1).required(),
+      otherwise: Joi.string().allow('').default(''),
+    }),
+    otherwise: Joi.string().allow('').default(''),
+  }),
+  AI_TIMEOUT_MS: Joi.number().integer().min(1_000).max(300_000).default(60_000),
+  AI_MAX_RETRIES: Joi.number().integer().min(0).max(5).default(2),
+  AI_MAX_FILES: Joi.number().integer().min(2).max(500).default(50),
+  AI_MAX_FILE_CHARS: Joi.number().integer().min(1).max(2_000_000).default(200_000),
+  AI_MAX_TOTAL_CHARS: Joi.number().integer().min(1).max(5_000_000).default(500_000),
+  AI_MAX_FINDINGS: Joi.number().integer().min(1).max(200).default(50),
+  AI_PROMPT_VERSION: Joi.string().valid('semantic-cobol-java-v1').default('semantic-cobol-java-v1'),
 });
