@@ -2,10 +2,12 @@ import { Injectable } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model, Types } from 'mongoose';
 import {
+  CompleteValidationRunInput,
   CreateValidationRunInput,
+  FailValidationRunInput,
   ValidationRunRepository,
 } from '../domain/validation-run.repository';
-import { ValidationRunRecord } from '../domain/validation-run.types';
+import { ValidationRunRecord, ValidationRunStatus } from '../domain/validation-run.types';
 import { ValidationRun, ValidationRunDocument } from './validation-run.schema';
 
 @Injectable()
@@ -43,6 +45,56 @@ export class MongoValidationRunRepository implements ValidationRunRepository {
     return documents.map((document) => this.map(document));
   }
 
+  async markCompleted(
+    id: string,
+    projectId: string,
+    organizationId: string,
+    input: CompleteValidationRunInput,
+  ): Promise<void> {
+    await this.model
+      .updateOne(
+        { _id: id, projectId, organizationId },
+        {
+          $set: {
+            status: ValidationRunStatus.COMPLETED,
+            findingCount: input.findingCount,
+            redactionCount: input.redactionCount,
+            selectedFileCount: input.selectedFileCount,
+            inputCharacterCount: input.inputCharacterCount,
+            failureCode: undefined,
+            failureMessage: undefined,
+            completedAt: new Date(),
+          },
+        },
+      )
+      .exec();
+  }
+
+  async markFailed(
+    id: string,
+    projectId: string,
+    organizationId: string,
+    input: FailValidationRunInput,
+  ): Promise<void> {
+    await this.model
+      .updateOne(
+        { _id: id, projectId, organizationId },
+        {
+          $set: {
+            status: ValidationRunStatus.FAILED,
+            findingCount: 0,
+            failureCode: input.failureCode,
+            failureMessage: input.failureMessage,
+            redactionCount: input.redactionCount,
+            selectedFileCount: input.selectedFileCount,
+            inputCharacterCount: input.inputCharacterCount,
+            completedAt: new Date(),
+          },
+        },
+      )
+      .exec();
+  }
+
   private map(document: ValidationRunDocument): ValidationRunRecord {
     return {
       id: document.id,
@@ -54,6 +106,14 @@ export class MongoValidationRunRepository implements ValidationRunRepository {
       ruleValidationEnabled: document.ruleValidationEnabled,
       aiValidationEnabled: document.aiValidationEnabled,
       findingCount: document.findingCount,
+      provider: document.provider,
+      model: document.model,
+      promptVersion: document.promptVersion,
+      redactionCount: document.redactionCount,
+      selectedFileCount: document.selectedFileCount,
+      inputCharacterCount: document.inputCharacterCount,
+      failureCode: document.failureCode,
+      failureMessage: document.failureMessage,
       startedAt: document.startedAt,
       completedAt: document.completedAt,
       createdAt: document.createdAt,

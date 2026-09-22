@@ -15,6 +15,14 @@ export interface ValidationRunRecord {
   ruleValidationEnabled: boolean;
   aiValidationEnabled: boolean;
   findingCount: number;
+  provider?: string;
+  model?: string;
+  promptVersion?: string;
+  redactionCount?: number;
+  selectedFileCount?: number;
+  inputCharacterCount?: number;
+  failureCode?: string;
+  failureMessage?: string;
   startedAt?: Date;
   completedAt?: Date;
   createdAt: Date;

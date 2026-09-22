@@ -23,6 +23,14 @@ export class ValidationRun {
   @Prop({ required: true }) ruleValidationEnabled!: boolean;
   @Prop({ required: true }) aiValidationEnabled!: boolean;
   @Prop({ required: true, min: 0 }) findingCount!: number;
+  @Prop() provider?: string;
+  @Prop() model?: string;
+  @Prop() promptVersion?: string;
+  @Prop({ min: 0 }) redactionCount?: number;
+  @Prop({ min: 0 }) selectedFileCount?: number;
+  @Prop({ min: 0 }) inputCharacterCount?: number;
+  @Prop() failureCode?: string;
+  @Prop() failureMessage?: string;
   @Prop() startedAt?: Date;
   @Prop() completedAt?: Date;
 
