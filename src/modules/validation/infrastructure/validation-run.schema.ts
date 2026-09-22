@@ -29,6 +29,8 @@ export class ValidationRun {
   @Prop({ min: 0 }) redactionCount?: number;
   @Prop({ min: 0 }) selectedFileCount?: number;
   @Prop({ min: 0 }) inputCharacterCount?: number;
+  @Prop({ min: 0 }) expectedFindingCount?: number;
+  @Prop() resultsPersistedAt?: Date;
   @Prop() failureCode?: string;
   @Prop() failureMessage?: string;
   @Prop() startedAt?: Date;

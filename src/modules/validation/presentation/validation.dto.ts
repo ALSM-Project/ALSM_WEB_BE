@@ -23,6 +23,8 @@ export class ValidationRunResponseDto {
   @ApiPropertyOptional() redactionCount?: number;
   @ApiPropertyOptional() selectedFileCount?: number;
   @ApiPropertyOptional() inputCharacterCount?: number;
+  @ApiPropertyOptional() expectedFindingCount?: number;
+  @ApiPropertyOptional() resultsPersistedAt?: Date;
   @ApiPropertyOptional() failureCode?: string;
   @ApiPropertyOptional() failureMessage?: string;
   @ApiPropertyOptional() startedAt?: Date;

@@ -14,6 +14,10 @@ export interface CompleteValidationRunInput {
   inputCharacterCount: number;
 }
 
+export interface PersistValidationResultsInput extends CompleteValidationRunInput {
+  resultsPersistedAt: Date;
+}
+
 export interface FailValidationRunInput {
   failureCode: string;
   failureMessage: string;
@@ -37,6 +41,17 @@ export interface ValidationRunRepository {
     projectId: string,
     organizationId: string,
   ): Promise<ValidationRunRecord[]>;
+  markProcessing(
+    id: string,
+    projectId: string,
+    organizationId: string,
+  ): Promise<ValidationRunRecord | null>;
+  markResultsPersisted(
+    id: string,
+    projectId: string,
+    organizationId: string,
+    input: PersistValidationResultsInput,
+  ): Promise<void>;
   markCompleted(
     id: string,
     projectId: string,

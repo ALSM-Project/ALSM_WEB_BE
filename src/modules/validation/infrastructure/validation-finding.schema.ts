@@ -55,6 +55,8 @@ export class ValidationFinding {
   @Prop({ min: 0, max: 1 }) confidence?: number;
   @Prop() modelProvider?: string;
   @Prop() modelName?: string;
+  /** Internal retry identity; never mapped to the application/API record. */
+  @Prop() fingerprint?: string;
   @Prop({ type: MongooseSchema.Types.ObjectId }) reviewedBy?: Types.ObjectId;
   @Prop() reviewedAt?: Date;
 
@@ -69,3 +71,7 @@ ValidationFindingSchema.index({
   validationRunId: 1,
   createdAt: -1,
 });
+ValidationFindingSchema.index(
+  { organizationId: 1, projectId: 1, validationRunId: 1, fingerprint: 1 },
+  { unique: true, sparse: true, name: 'unique_validation_finding_fingerprint' },
+);

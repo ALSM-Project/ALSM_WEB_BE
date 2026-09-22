@@ -97,7 +97,13 @@ describe('MongoValidationRunRepository query isolation', () => {
     });
 
     expect(updateOne).toHaveBeenCalledWith(
-      { _id: 'run-1', projectId: 'project-1', organizationId: 'org-1' },
+      {
+        _id: 'run-1',
+        projectId: 'project-1',
+        organizationId: 'org-1',
+        status: 'PROCESSING',
+        resultsPersistedAt: { $exists: true },
+      },
       expect.objectContaining({
         $set: expect.objectContaining({ status: 'COMPLETED', findingCount: 2 }),
         $unset: { activeExecutionKey: 1 },
@@ -116,15 +122,71 @@ describe('MongoValidationRunRepository query isolation', () => {
     });
 
     expect(updateOne).toHaveBeenCalledWith(
-      { _id: 'run-1', projectId: 'project-1', organizationId: 'org-1' },
+      {
+        _id: 'run-1',
+        projectId: 'project-1',
+        organizationId: 'org-1',
+        status: { $in: ['QUEUED', 'PROCESSING'] },
+      },
       expect.objectContaining({
         $set: expect.objectContaining({
           status: 'FAILED',
-          findingCount: 0,
           failureCode: 'AI_PROVIDER_TIMEOUT',
         }),
         $unset: { activeExecutionKey: 1 },
       }),
+    );
+  });
+
+  it('claims only a queued tenant-scoped run for processing', async () => {
+    const exec = jest.fn().mockResolvedValue(null);
+    const findOneAndUpdate = jest.fn().mockReturnValue({ exec });
+    const repository = new MongoValidationRunRepository({ findOneAndUpdate } as never);
+
+    await expect(repository.markProcessing('run-1', 'project-1', 'org-1')).resolves.toBeNull();
+
+    expect(findOneAndUpdate).toHaveBeenCalledWith(
+      {
+        _id: 'run-1',
+        projectId: 'project-1',
+        organizationId: 'org-1',
+        status: 'QUEUED',
+      },
+      expect.objectContaining({
+        $set: expect.objectContaining({ status: 'PROCESSING', startedAt: expect.any(Date) }),
+      }),
+      { new: true },
+    );
+  });
+
+  it('persists a zero-finding result marker while the run is processing', async () => {
+    const exec = jest.fn().mockResolvedValue(undefined);
+    const updateOne = jest.fn().mockReturnValue({ exec });
+    const repository = new MongoValidationRunRepository({ updateOne } as never);
+    const resultsPersistedAt = new Date();
+
+    await repository.markResultsPersisted('run-1', 'project-1', 'org-1', {
+      findingCount: 0,
+      redactionCount: 0,
+      selectedFileCount: 2,
+      inputCharacterCount: 100,
+      resultsPersistedAt,
+    });
+
+    expect(updateOne).toHaveBeenCalledWith(
+      {
+        _id: 'run-1',
+        projectId: 'project-1',
+        organizationId: 'org-1',
+        status: 'PROCESSING',
+      },
+      {
+        $set: expect.objectContaining({
+          findingCount: 0,
+          expectedFindingCount: 0,
+          resultsPersistedAt,
+        }),
+      },
     );
   });
 });

@@ -7,6 +7,7 @@ import {
   CreateOrGetActiveValidationRunResult,
   CreateValidationRunInput,
   FailValidationRunInput,
+  PersistValidationResultsInput,
   ValidationRunRepository,
 } from '../domain/validation-run.repository';
 import { ValidationRunRecord, ValidationRunStatus } from '../domain/validation-run.types';
@@ -82,6 +83,62 @@ export class MongoValidationRunRepository implements ValidationRunRepository {
     return documents.map((document) => this.map(document));
   }
 
+  async markProcessing(
+    id: string,
+    projectId: string,
+    organizationId: string,
+  ): Promise<ValidationRunRecord | null> {
+    const document = await this.model
+      .findOneAndUpdate(
+        {
+          _id: id,
+          projectId,
+          organizationId,
+          status: ValidationRunStatus.QUEUED,
+        },
+        {
+          $set: {
+            status: ValidationRunStatus.PROCESSING,
+            startedAt: new Date(),
+            completedAt: undefined,
+            failureCode: undefined,
+            failureMessage: undefined,
+          },
+        },
+        { new: true },
+      )
+      .exec();
+    return document ? this.map(document) : null;
+  }
+
+  async markResultsPersisted(
+    id: string,
+    projectId: string,
+    organizationId: string,
+    input: PersistValidationResultsInput,
+  ): Promise<void> {
+    await this.model
+      .updateOne(
+        {
+          _id: id,
+          projectId,
+          organizationId,
+          status: ValidationRunStatus.PROCESSING,
+        },
+        {
+          $set: {
+            findingCount: input.findingCount,
+            expectedFindingCount: input.findingCount,
+            redactionCount: input.redactionCount,
+            selectedFileCount: input.selectedFileCount,
+            inputCharacterCount: input.inputCharacterCount,
+            resultsPersistedAt: input.resultsPersistedAt,
+          },
+        },
+      )
+      .exec();
+  }
+
   async markCompleted(
     id: string,
     projectId: string,
@@ -90,7 +147,13 @@ export class MongoValidationRunRepository implements ValidationRunRepository {
   ): Promise<void> {
     await this.model
       .updateOne(
-        { _id: id, projectId, organizationId },
+        {
+          _id: id,
+          projectId,
+          organizationId,
+          status: ValidationRunStatus.PROCESSING,
+          resultsPersistedAt: { $exists: true },
+        },
         {
           $set: {
             status: ValidationRunStatus.COMPLETED,
@@ -116,11 +179,15 @@ export class MongoValidationRunRepository implements ValidationRunRepository {
   ): Promise<void> {
     await this.model
       .updateOne(
-        { _id: id, projectId, organizationId },
+        {
+          _id: id,
+          projectId,
+          organizationId,
+          status: { $in: [ValidationRunStatus.QUEUED, ValidationRunStatus.PROCESSING] },
+        },
         {
           $set: {
             status: ValidationRunStatus.FAILED,
-            findingCount: 0,
             failureCode: input.failureCode,
             failureMessage: input.failureMessage,
             redactionCount: input.redactionCount,
@@ -161,6 +228,8 @@ export class MongoValidationRunRepository implements ValidationRunRepository {
       redactionCount: document.redactionCount,
       selectedFileCount: document.selectedFileCount,
       inputCharacterCount: document.inputCharacterCount,
+      expectedFindingCount: document.expectedFindingCount,
+      resultsPersistedAt: document.resultsPersistedAt,
       failureCode: document.failureCode,
       failureMessage: document.failureMessage,
       startedAt: document.startedAt,

@@ -63,6 +63,7 @@ import { OpenAiValidatorAdapter } from './modules/validation/infrastructure/open
 import { aiValidatorProvider } from './modules/validation/infrastructure/ai-validator.provider';
 import { AiValidationRuntimeGuard } from './modules/validation/application/ai-validation-runtime.guard';
 import { TriggerAiValidationService } from './modules/validation/application/trigger-ai-validation.service';
+import { ReconcileValidationRunService } from './modules/validation/application/reconcile-validation-run.service';
 import { VALIDATION_QUEUE } from './modules/validation/domain/validation-queue.port';
 import { BullMqValidationQueue } from './modules/validation/infrastructure/bullmq-validation.queue';
 import { USER_REPOSITORY } from './modules/users/domain/user.repository';
@@ -233,6 +234,7 @@ import { MenuModule } from './modules/menus/menu.module';
     ValidationReadService,
     AiValidationRuntimeGuard,
     TriggerAiValidationService,
+    ReconcileValidationRunService,
     FakeAiValidatorAdapter,
     OpenAiValidatorAdapter,
     aiValidatorProvider,
