@@ -73,5 +73,9 @@ ValidationFindingSchema.index({
 });
 ValidationFindingSchema.index(
   { organizationId: 1, projectId: 1, validationRunId: 1, fingerprint: 1 },
-  { unique: true, sparse: true, name: 'unique_validation_finding_fingerprint' },
+  {
+    unique: true,
+    partialFilterExpression: { fingerprint: { $type: 'string' } },
+    name: 'unique_validation_finding_fingerprint',
+  },
 );

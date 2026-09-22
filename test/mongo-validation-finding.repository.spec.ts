@@ -8,12 +8,12 @@ import {
 } from '../src/modules/validation/domain/validation-finding.types';
 
 describe('MongoValidationFindingRepository query isolation', () => {
-  it('defines a tenant/run-scoped unique sparse fingerprint index', () => {
+  it('defines a tenant/run-scoped unique fingerprint index for fingerprinted findings', () => {
     expect(ValidationFindingSchema.indexes()).toContainEqual([
       { organizationId: 1, projectId: 1, validationRunId: 1, fingerprint: 1 },
       expect.objectContaining({
         unique: true,
-        sparse: true,
+        partialFilterExpression: { fingerprint: { $type: 'string' } },
         name: 'unique_validation_finding_fingerprint',
       }),
     ]);
