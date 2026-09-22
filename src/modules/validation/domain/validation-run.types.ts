@@ -21,6 +21,8 @@ export interface ValidationRunRecord {
   redactionCount?: number;
   selectedFileCount?: number;
   inputCharacterCount?: number;
+  expectedFindingCount?: number;
+  resultsPersistedAt?: Date;
   failureCode?: string;
   failureMessage?: string;
   startedAt?: Date;

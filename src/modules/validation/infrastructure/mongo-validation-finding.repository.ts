@@ -3,6 +3,7 @@ import { InjectModel } from '@nestjs/mongoose';
 import { Model, Types } from 'mongoose';
 import {
   CreateValidationFindingInput,
+  UpsertValidationFindingInput,
   ValidationFindingRepository,
 } from '../domain/validation-finding.repository';
 import { CodeLocation, ValidationFindingRecord } from '../domain/validation-finding.types';
@@ -33,6 +34,41 @@ export class MongoValidationFindingRepository implements ValidationFindingReposi
     if (inputs.length === 0) return [];
     const documents = await this.model.insertMany(inputs.map((input) => this.toPersistence(input)));
     return documents.map((document) => this.map(document));
+  }
+
+  async upsertManyForRun(inputs: UpsertValidationFindingInput[]): Promise<void> {
+    if (inputs.length === 0) return;
+    const uniqueInputs = [
+      ...new Map(
+        inputs.map((input) => [
+          `${input.organizationId}\0${input.projectId}\0${input.validationRunId}\0${input.fingerprint}`,
+          input,
+        ]),
+      ).values(),
+    ];
+    await this.model.bulkWrite(
+      uniqueInputs.map((input) => ({
+        updateOne: {
+          filter: {
+            organizationId: new Types.ObjectId(input.organizationId),
+            projectId: new Types.ObjectId(input.projectId),
+            validationRunId: new Types.ObjectId(input.validationRunId),
+            fingerprint: input.fingerprint,
+          },
+          update: { $setOnInsert: this.toPersistence(input) },
+          upsert: true,
+        },
+      })),
+      { ordered: false },
+    );
+  }
+
+  async countByRun(
+    validationRunId: string,
+    projectId: string,
+    organizationId: string,
+  ): Promise<number> {
+    return this.model.countDocuments({ validationRunId, projectId, organizationId }).exec();
   }
 
   async findById(

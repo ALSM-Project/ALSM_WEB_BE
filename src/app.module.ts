@@ -61,6 +61,12 @@ import { ValidationSecretRedactorService } from './modules/validation/applicatio
 import { FakeAiValidatorAdapter } from './modules/validation/infrastructure/fake-ai-validator.adapter';
 import { OpenAiValidatorAdapter } from './modules/validation/infrastructure/openai-ai-validator.adapter';
 import { aiValidatorProvider } from './modules/validation/infrastructure/ai-validator.provider';
+import { AiValidationRuntimeGuard } from './modules/validation/application/ai-validation-runtime.guard';
+import { TriggerAiValidationService } from './modules/validation/application/trigger-ai-validation.service';
+import { ReconcileValidationRunService } from './modules/validation/application/reconcile-validation-run.service';
+import { VALIDATION_QUEUE } from './modules/validation/domain/validation-queue.port';
+import { BullMqValidationQueue } from './modules/validation/infrastructure/bullmq-validation.queue';
+import { ValidationWorkerRunner } from './modules/validation/infrastructure/validation-worker.runner';
 import { USER_REPOSITORY } from './modules/users/domain/user.repository';
 import { MongoUserRepository } from './modules/users/infrastructure/mongo-user.repository';
 import { ORGANIZATION_REPOSITORY } from './modules/organizations/domain/organization.repository';
@@ -121,7 +127,10 @@ import { HealthController } from './modules/health/health.controller';
 import { ConversionWorkerRunner } from './modules/conversions/infrastructure/conversion-worker.runner';
 import { ExportCodeService } from './modules/conversions/application/export-code.service';
 import { ExportController } from './modules/conversions/presentation/export.controller';
-import { Subscription, SubscriptionSchema } from './modules/billing/infrastructure/subscription.schema';
+import {
+  Subscription,
+  SubscriptionSchema,
+} from './modules/billing/infrastructure/subscription.schema';
 import { Invoice, InvoiceSchema } from './modules/billing/infrastructure/invoice.schema';
 import { Payment, PaymentSchema } from './modules/billing/infrastructure/payment.schema';
 import { Plan, PlanSchema } from './modules/billing/infrastructure/plan.schema';
@@ -224,6 +233,10 @@ import { MenuModule } from './modules/menus/menu.module';
     ValidationSecretRedactorService,
     ExecuteAiValidationService,
     ValidationReadService,
+    AiValidationRuntimeGuard,
+    TriggerAiValidationService,
+    ReconcileValidationRunService,
+    ValidationWorkerRunner,
     FakeAiValidatorAdapter,
     OpenAiValidatorAdapter,
     aiValidatorProvider,
@@ -256,6 +269,7 @@ import { MenuModule } from './modules/menus/menu.module';
     { provide: ERROR_LOG_REPOSITORY, useExisting: MongoErrorLogRepository },
     { provide: VALIDATION_RUN_REPOSITORY, useClass: MongoValidationRunRepository },
     { provide: VALIDATION_FINDING_REPOSITORY, useClass: MongoValidationFindingRepository },
+    { provide: VALIDATION_QUEUE, useClass: BullMqValidationQueue },
     { provide: SCREEN_REPOSITORY, useExisting: MongoScreenRepository },
     { provide: CONVERSION_QUEUE, useClass: BullMqConversionQueue },
     { provide: CONVERSION_ENGINE, useClass: ConversionEngineRouter },
@@ -265,7 +279,7 @@ import { MenuModule } from './modules/menus/menu.module';
     { provide: PASSWORD_RESET_REPOSITORY, useClass: MongoPasswordResetRepository },
     { provide: EMAIL_VERIFICATION_REPOSITORY, useClass: MongoEmailVerificationRepository },
   ],
-  exports: [ConversionWorkerRunner],
+  exports: [ConversionWorkerRunner, ValidationWorkerRunner],
 })
 export class AppModule implements NestModule {
   configure(consumer: MiddlewareConsumer): void {
