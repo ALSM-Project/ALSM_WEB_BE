@@ -45,4 +45,32 @@ describe('AI environment validation', () => {
 
     expect(result.error).toBeUndefined();
   });
+
+  it('applies bounded validation queue defaults without requiring the worker', () => {
+    const result = environmentValidationSchema.validate(requiredEnvironment);
+
+    expect(result.error).toBeUndefined();
+    expect(result.value).toEqual(
+      expect.objectContaining({
+        VALIDATION_WORKER_ENABLED: false,
+        VALIDATION_WORKER_CONCURRENCY: 1,
+        VALIDATION_JOB_ATTEMPTS: 2,
+        VALIDATION_JOB_BACKOFF_MS: 5_000,
+      }),
+    );
+  });
+
+  it.each([
+    ['VALIDATION_WORKER_CONCURRENCY', 0],
+    ['VALIDATION_JOB_ATTEMPTS', 0],
+    ['VALIDATION_JOB_ATTEMPTS', 6],
+    ['VALIDATION_JOB_BACKOFF_MS', -1],
+  ])('rejects an unsafe %s value', (key, value) => {
+    const result = environmentValidationSchema.validate({
+      ...requiredEnvironment,
+      [key]: value,
+    });
+
+    expect(result.error).toBeDefined();
+  });
 });
