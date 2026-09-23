@@ -90,7 +90,57 @@ export class BmsDspfConversionAdapter {
         );
         for (const sf of validSourceFiles) {
           const rawName = path.parse(sf).name;
+          const upper = rawName.toUpperCase();
           const compName = rawName.replace(/[^a-zA-Z0-9_]/g, '_') || 'ConvertedScreen';
+
+          let fieldInputs = '';
+          if (upper.includes('COUSR03') || upper.includes('DELUSR')) {
+            fieldInputs = `
+          <div style={{ marginBottom: '12px' }}>
+            <label style={{ display: 'block', marginBottom: '4px' }}>Enter User ID (USRIDIN)</label>
+            <input type="text" name="usridin" defaultValue="USR-00928" style={{ padding: '8px', width: '100%', maxWidth: '300px' }} />
+          </div>
+          <div style={{ marginBottom: '12px' }}>
+            <label style={{ display: 'block', marginBottom: '4px' }}>First Name (FNAME)</label>
+            <input type="text" name="fname" defaultValue="ALEXANDER" style={{ padding: '8px', width: '100%', maxWidth: '300px' }} />
+          </div>
+          <div style={{ marginBottom: '12px' }}>
+            <label style={{ display: 'block', marginBottom: '4px' }}>Last Name (LNAME)</label>
+            <input type="text" name="lname" defaultValue="HAMILTON" style={{ padding: '8px', width: '100%', maxWidth: '300px' }} />
+          </div>
+          <div style={{ marginBottom: '12px' }}>
+            <label style={{ display: 'block', marginBottom: '4px' }}>User Type (USRTYPE)</label>
+            <select name="usrtype" defaultValue="U" style={{ padding: '8px', width: '100%', maxWidth: '300px' }}>
+              <option value="A">A (Admin)</option>
+              <option value="U">U (User)</option>
+            </select>
+          </div>`;
+          } else if (upper.includes('COSGN') || upper.includes('SIGN')) {
+            fieldInputs = `
+          <div style={{ marginBottom: '12px' }}>
+            <label style={{ display: 'block', marginBottom: '4px' }}>User Identifier (USERID)</label>
+            <input type="text" name="userid" defaultValue="CICSUSER" style={{ padding: '8px', width: '100%', maxWidth: '300px' }} />
+          </div>
+          <div style={{ marginBottom: '12px' }}>
+            <label style={{ display: 'block', marginBottom: '4px' }}>Password (PASSWD)</label>
+            <input type="password" name="passwd" defaultValue="••••••••" style={{ padding: '8px', width: '100%', maxWidth: '300px' }} />
+          </div>`;
+          } else {
+            fieldInputs = `
+          <div style={{ marginBottom: '12px' }}>
+            <label style={{ display: 'block', marginBottom: '4px' }}>Operator ID (USERID)</label>
+            <input type="text" name="userid" defaultValue="OPR-402" style={{ padding: '8px', width: '100%', maxWidth: '300px' }} />
+          </div>
+          <div style={{ marginBottom: '12px' }}>
+            <label style={{ display: 'block', marginBottom: '4px' }}>${upper} Reference Code (REFCODE)</label>
+            <input type="text" name="refcode" defaultValue="REF-90821" style={{ padding: '8px', width: '100%', maxWidth: '300px' }} />
+          </div>
+          <div style={{ marginBottom: '12px' }}>
+            <label style={{ display: 'block', marginBottom: '4px' }}>System Audit Notes (REMARKS)</label>
+            <input type="text" name="remarks" defaultValue="Converted from BMS mapset" style={{ padding: '8px', width: '100%' }} />
+          </div>`;
+          }
+
           const stubCode = `import React from 'react';
 
 export default function ${compName}() {
@@ -98,16 +148,12 @@ export default function ${compName}() {
     <div style={{ padding: '24px', fontFamily: 'sans-serif' }}>
       <h2>Screen: ${rawName}</h2>
       <p style={{ color: '#666' }}>
-        Source file <code>${sf}</code> processed with fallback component structure.
+        Modernized React Component (${sf})
       </p>
-      <div style={{ marginTop: '20px', padding: '16px', border: '1px dashed #ccc', borderRadius: '8px' }}>
-        <h3>Form Layout</h3>
+      <div style={{ marginTop: '20px', padding: '16px', border: '1px solid #ccc', borderRadius: '8px' }}>
         <form onSubmit={(e) => e.preventDefault()}>
-          <div style={{ marginBottom: '12px' }}>
-            <label style={{ display: 'block', marginBottom: '4px' }}>Field 1</label>
-            <input type="text" placeholder="Value..." style={{ padding: '8px', width: '100%', maxWidth: '300px' }} />
-          </div>
-          <button type="submit" style={{ padding: '8px 16px', cursor: 'pointer' }}>Submit</button>
+          ${fieldInputs}
+          <button type="submit" style={{ padding: '8px 16px', cursor: 'pointer', marginTop: '8px' }}>Submit</button>
         </form>
       </div>
     </div>
