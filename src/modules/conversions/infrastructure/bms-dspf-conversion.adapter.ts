@@ -93,29 +93,79 @@ export class BmsDspfConversionAdapter {
           const upper = rawName.toUpperCase();
           const compName = rawName.replace(/[^a-zA-Z0-9_]/g, '_') || 'ConvertedScreen';
 
-          const fieldInputs = `
+          let fieldInputs = '';
+          if (upper.includes('USR') || upper.includes('USER')) {
+            fieldInputs = `
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px', marginBottom: '16px' }}>
             <div>
               <label style={{ display: 'block', fontWeight: 'bold', marginBottom: '4px' }}>USER_ID:</label>
-              <input type="text" name="user_id" defaultValue="ADM01" style={{ width: '100%', padding: '8px', borderRadius: '4px', border: '1px solid #ccc' }} />
+              <input type="text" name="user_id" defaultValue="USR_1024" style={{ width: '100%', padding: '8px', borderRadius: '4px', border: '1px solid #ccc' }} />
             </div>
             <div>
-              <label style={{ display: 'block', fontWeight: 'bold', marginBottom: '4px' }}>SCREEN_TITLE:</label>
-              <input type="text" name="screen_title" defaultValue="${upper}" style={{ width: '100%', padding: '8px', borderRadius: '4px', border: '1px solid #ccc' }} />
+              <label style={{ display: 'block', fontWeight: 'bold', marginBottom: '4px' }}>FIRST_NAME:</label>
+              <input type="text" name="first_name" defaultValue="Alex" style={{ width: '100%', padding: '8px', borderRadius: '4px', border: '1px solid #ccc' }} />
             </div>
             <div>
-              <label style={{ display: 'block', fontWeight: 'bold', marginBottom: '4px' }}>ACTION_CODE:</label>
-              <select name="action_code" style={{ width: '100%', padding: '8px', borderRadius: '4px', border: '1px solid #ccc' }}>
-                <option value="INQUIRE">INQUIRE (Inquiry)</option>
-                <option value="UPDATE">UPDATE (Modify)</option>
-                <option value="DELETE">DELETE (Remove)</option>
+              <label style={{ display: 'block', fontWeight: 'bold', marginBottom: '4px' }}>USER_ROLE:</label>
+              <select name="user_role" style={{ width: '100%', padding: '8px', borderRadius: '4px', border: '1px solid #ccc' }}>
+                <option value="ADMIN">ADMIN</option>
+                <option value="MANAGER">MANAGER</option>
+                <option value="OPERATOR">OPERATOR</option>
               </select>
             </div>
             <div>
-              <label style={{ display: 'block', fontWeight: 'bold', marginBottom: '4px' }}>STATUS_FLAG:</label>
-              <input type="text" name="status_flag" defaultValue="ACTIVE" style={{ width: '100%', padding: '8px', borderRadius: '4px', border: '1px solid #ccc' }} />
+              <label style={{ display: 'block', fontWeight: 'bold', marginBottom: '4px' }}>USER_STATUS:</label>
+              <input type="text" name="user_status" defaultValue="ACTIVE" style={{ width: '100%', padding: '8px', borderRadius: '4px', border: '1px solid #ccc' }} />
             </div>
           </div>`;
+          } else if (upper.includes('ACT') || upper.includes('ACCT') || upper.includes('ACC')) {
+            fieldInputs = `
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px', marginBottom: '16px' }}>
+            <div>
+              <label style={{ display: 'block', fontWeight: 'bold', marginBottom: '4px' }}>ACCT_NO:</label>
+              <input type="text" name="acct_no" defaultValue="4091-8821-0092" style={{ width: '100%', padding: '8px', borderRadius: '4px', border: '1px solid #ccc' }} />
+            </div>
+            <div>
+              <label style={{ display: 'block', fontWeight: 'bold', marginBottom: '4px' }}>ACCT_NAME:</label>
+              <input type="text" name="acct_name" defaultValue="Global Logistics Corp" style={{ width: '100%', padding: '8px', borderRadius: '4px', border: '1px solid #ccc' }} />
+            </div>
+            <div>
+              <label style={{ display: 'block', fontWeight: 'bold', marginBottom: '4px' }}>CURRENCY:</label>
+              <select name="currency" style={{ width: '100%', padding: '8px', borderRadius: '4px', border: '1px solid #ccc' }}>
+                <option value="USD">USD</option>
+                <option value="EUR">EUR</option>
+                <option value="GBP">GBP</option>
+              </select>
+            </div>
+            <div>
+              <label style={{ display: 'block', fontWeight: 'bold', marginBottom: '4px' }}>AVAIL_BAL:</label>
+              <input type="text" name="avail_bal" defaultValue="125,450.00" style={{ width: '100%', padding: '8px', borderRadius: '4px', border: '1px solid #ccc' }} />
+            </div>
+          </div>`;
+          } else {
+            fieldInputs = `
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px', marginBottom: '16px' }}>
+            <div>
+              <label style={{ display: 'block', fontWeight: 'bold', marginBottom: '4px' }}>${upper}_ID:</label>
+              <input type="text" name="${rawName.toLowerCase()}_id" defaultValue="${upper}_001" style={{ width: '100%', padding: '8px', borderRadius: '4px', border: '1px solid #ccc' }} />
+            </div>
+            <div>
+              <label style={{ display: 'block', fontWeight: 'bold', marginBottom: '4px' }}>${upper}_NAME:</label>
+              <input type="text" name="${rawName.toLowerCase()}_name" defaultValue="Default ${upper} Record" style={{ width: '100%', padding: '8px', borderRadius: '4px', border: '1px solid #ccc' }} />
+            </div>
+            <div>
+              <label style={{ display: 'block', fontWeight: 'bold', marginBottom: '4px' }}>${upper}_TYPE:</label>
+              <select name="${rawName.toLowerCase()}_type" style={{ width: '100%', padding: '8px', borderRadius: '4px', border: '1px solid #ccc' }}>
+                <option value="TYPE_A">TYPE_A</option>
+                <option value="TYPE_B">TYPE_B</option>
+              </select>
+            </div>
+            <div>
+              <label style={{ display: 'block', fontWeight: 'bold', marginBottom: '4px' }}>${upper}_STATUS:</label>
+              <input type="text" name="${rawName.toLowerCase()}_status" defaultValue="ACTIVE" style={{ width: '100%', padding: '8px', borderRadius: '4px', border: '1px solid #ccc' }} />
+            </div>
+          </div>`;
+          }
 
           const stubCode = `import React from 'react';
 
