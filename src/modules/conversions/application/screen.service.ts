@@ -58,6 +58,7 @@ export class ScreenService {
   }
 
   async updateScreenStatus(screenId: string, status: ScreenStatus) {
+    if (!screenId) return;
     if (Types.ObjectId.isValid(screenId)) {
       await this.screenModel.updateOne({ _id: screenId }, { status }).exec();
     }
