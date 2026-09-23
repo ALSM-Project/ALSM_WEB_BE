@@ -1,6 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
-import { Model, Types } from 'mongoose';
+import { Model } from 'mongoose';
 import { ConversionJob, ConversionJobDocument } from './conversion-job.schema';
 import {
   ConversionJobRecord,
@@ -28,7 +28,8 @@ export class MongoConversionJobRepository implements ConversionJobRepository {
 
   async findById(id: string, organizationId: string): Promise<ConversionJobRecord | null> {
     const jobObjId = toValidObjectId(id);
-    const doc = await this.model.findOne({ _id: jobObjId }).exec();
+    const orgObjId = toValidObjectId(organizationId);
+    const doc = await this.model.findOne({ _id: jobObjId, organizationId: orgObjId }).exec();
     return doc ? this.map(doc) : null;
   }
 
@@ -40,7 +41,8 @@ export class MongoConversionJobRepository implements ConversionJobRepository {
 
   async listByProject(projectId: string, organizationId: string): Promise<ConversionJobRecord[]> {
     const projObjId = toValidObjectId(projectId);
-    const docs = await this.model.find({ projectId: projObjId }).sort({ createdAt: -1 }).exec();
+    const orgObjId = toValidObjectId(organizationId);
+    const docs = await this.model.find({ projectId: projObjId, organizationId: orgObjId }).sort({ createdAt: -1 }).exec();
     return docs.map((doc) => this.map(doc));
   }
 
@@ -50,8 +52,10 @@ export class MongoConversionJobRepository implements ConversionJobRepository {
     organizationId: string,
   ): Promise<ConversionJobRecord[]> {
     const projObjId = toValidObjectId(projectId);
+    const orgObjId = toValidObjectId(organizationId);
     const docs = await this.model
       .find({
+        organizationId: orgObjId,
         projectId: projObjId,
         screenId,
       })
@@ -62,10 +66,12 @@ export class MongoConversionJobRepository implements ConversionJobRepository {
 
   async retry(id: string, organizationId: string): Promise<ConversionJobRecord | null> {
     const jobObjId = toValidObjectId(id);
+    const orgObjId = toValidObjectId(organizationId);
     const doc = await this.model
       .findOneAndUpdate(
         {
           _id: jobObjId,
+          organizationId: orgObjId,
           status: { $in: [ConversionJobStatus.FAILED, ConversionJobStatus.DEAD] },
         },
         {

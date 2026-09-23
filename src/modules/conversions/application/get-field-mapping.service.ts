@@ -46,7 +46,7 @@ export class GetFieldMappingService {
       return {
         projectId: project.id,
         screenId: input.screenId,
-        mappings: this.generateDefaultMappings(input.screenId),
+        mappings: this.generateDefaultMappings(),
         updatedBy: null,
         updatedAt: null,
       };
@@ -61,7 +61,7 @@ export class GetFieldMappingService {
     };
   }
 
-  private generateDefaultMappings(screenId: string): FieldMappingEntry[] {
+  private generateDefaultMappings(): FieldMappingEntry[] {
     return [
       {
         legacyField: {

@@ -128,6 +128,7 @@ export class ScreenService {
   }
 
   private toResponseDto(doc: ScreenDocument) {
+    const rawDoc = doc as unknown as { createdAt?: Date; updatedAt?: Date };
     return {
       id: doc._id.toString(),
       projectId: doc.projectId,
@@ -136,8 +137,8 @@ export class ScreenService {
       status: doc.status,
       inputReference: doc.inputReference,
       sizeBytes: doc.sizeBytes,
-      createdAt: (doc as any).createdAt ? (doc as any).createdAt.toISOString() : new Date().toISOString(),
-      updatedAt: (doc as any).updatedAt ? (doc as any).updatedAt.toISOString() : new Date().toISOString(),
+      createdAt: rawDoc.createdAt ? new Date(rawDoc.createdAt).toISOString() : new Date().toISOString(),
+      updatedAt: rawDoc.updatedAt ? new Date(rawDoc.updatedAt).toISOString() : new Date().toISOString(),
     };
   }
 }

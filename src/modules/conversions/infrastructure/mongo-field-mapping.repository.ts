@@ -1,6 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
-import { Model, Types } from 'mongoose';
+import { Model } from 'mongoose';
 import { FieldMapping, FieldMappingDocument } from './field-mapping.schema';
 import {
   FieldMappingEntry,
@@ -22,7 +22,7 @@ export class MongoFieldMappingRepository implements FieldMappingRepository {
     const orgObjId = toValidObjectId(organizationId);
     const projObjId = toValidObjectId(projectId);
 
-    let doc = await this.model
+    const doc = await this.model
       .findOne({
         $or: [
           { organizationId: orgObjId, projectId: projObjId, screenId },

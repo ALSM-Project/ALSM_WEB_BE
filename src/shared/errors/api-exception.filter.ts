@@ -8,7 +8,8 @@ export class ApiExceptionFilter implements ExceptionFilter {
     const request = host.switchToHttp().getRequest<Request & { requestId?: string }>();
 
     // Handle Mongoose / BSON Cast Errors for non-ObjectId parameter strings (e.g. scr-acct010, proj-acme)
-    if ((exception as any)?.name === 'CastError' || (exception as any)?.name === 'BSONError') {
+    const errName = (exception as { name?: string })?.name;
+    if (errName === 'CastError' || errName === 'BSONError') {
       response.status(HttpStatus.NOT_FOUND).json({
         statusCode: HttpStatus.NOT_FOUND,
         code: 'RESOURCE_NOT_FOUND',

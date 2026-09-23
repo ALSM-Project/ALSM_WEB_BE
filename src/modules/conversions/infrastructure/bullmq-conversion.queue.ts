@@ -27,7 +27,7 @@ export class BullMqConversionQueue implements ConversionQueuePort, OnModuleDestr
           },
         });
         this.queue.on('error', () => {});
-        (this.queue as any).client?.on('error', () => {});
+        (this.queue as unknown as { client?: { on: (event: string, fn: () => void) => void } }).client?.on('error', () => {});
       } catch {
         // Suppress Redis queue initialization error if Redis is down
       }
