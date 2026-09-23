@@ -3,6 +3,8 @@ import { InjectModel } from '@nestjs/mongoose';
 import { Model, Types } from 'mongoose';
 import {
   CreateValidationFindingInput,
+  ReviewValidationFindingInput,
+  ReviewValidationFindingResult,
   UpsertValidationFindingInput,
   ValidationFindingRepository,
 } from '../domain/validation-finding.repository';
@@ -83,6 +85,33 @@ export class MongoValidationFindingRepository implements ValidationFindingReposi
     return document ? this.map(document) : null;
   }
 
+  async reviewFinding(input: ReviewValidationFindingInput): Promise<ReviewValidationFindingResult> {
+    const scope = {
+      _id: input.findingId,
+      validationRunId: input.validationRunId,
+      projectId: input.projectId,
+      organizationId: input.organizationId,
+    };
+    const reviewUpdate = {
+      status: input.newStatus,
+      reviewedBy: new Types.ObjectId(input.reviewedBy),
+      reviewedAt: input.reviewedAt,
+      ...(input.reviewNote === undefined ? {} : { reviewNote: input.reviewNote }),
+    };
+    const update =
+      input.reviewNote === undefined
+        ? { $set: reviewUpdate, $unset: { reviewNote: 1 } }
+        : { $set: reviewUpdate };
+    const document = await this.model
+      .findOneAndUpdate({ ...scope, status: input.expectedStatus }, update, { new: true })
+      .exec();
+
+    if (document) return { outcome: 'UPDATED', finding: this.map(document) };
+
+    const existsWithinScope = await this.model.exists(scope).exec();
+    return existsWithinScope ? { outcome: 'CONFLICT' } : { outcome: 'NOT_FOUND' };
+  }
+
   async listByRun(
     validationRunId: string,
     projectId: string,
@@ -130,6 +159,7 @@ export class MongoValidationFindingRepository implements ValidationFindingReposi
       modelName: document.modelName,
       reviewedBy: document.reviewedBy?.toString(),
       reviewedAt: document.reviewedAt,
+      reviewNote: document.reviewNote,
       createdAt: document.createdAt,
       updatedAt: document.updatedAt,
     };
