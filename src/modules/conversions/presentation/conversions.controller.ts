@@ -78,6 +78,18 @@ export class ConversionsController {
     return this.conversions.get(user.userId, organizationId, id);
   }
 
+  @Get('conversions/:id/result')
+  @ApiOperation({ summary: 'Get conversion result bundle', description: 'Retrieve generated files and code for a completed conversion job.' })
+  @ApiParam({ name: 'id', description: 'Conversion Job ID' })
+  @ApiResponse({ status: 200, description: 'Conversion result bundle' })
+  async getResult(
+    @CurrentUser() user: AuthenticatedUser,
+    @Headers('x-organization-id') organizationId: string | undefined,
+    @Param('id') id: string,
+  ) {
+    return this.conversions.getResult(user.userId, organizationId, id);
+  }
+
   @Post('conversions/:id/retry')
   @ApiOperation({ summary: 'Retry a failed conversion job', description: 'Re-enqueues failed conversion job.' })
   @ApiParam({ name: 'id', description: 'Conversion Job ID' })

@@ -8,6 +8,8 @@ import {
   FieldMappingRepository,
 } from '../domain/field-mapping.types';
 
+import { toValidObjectId } from '../../../shared/utils/object-id.util';
+
 @Injectable()
 export class MongoFieldMappingRepository implements FieldMappingRepository {
   constructor(@InjectModel(FieldMapping.name) private readonly model: Model<FieldMapping>) {}
@@ -17,7 +19,18 @@ export class MongoFieldMappingRepository implements FieldMappingRepository {
     screenId: string,
     organizationId: string,
   ): Promise<FieldMappingRecord | null> {
-    const doc = await this.model.findOne({ organizationId, projectId, screenId }).exec();
+    const orgObjId = toValidObjectId(organizationId);
+    const projObjId = toValidObjectId(projectId);
+
+    let doc = await this.model
+      .findOne({
+        $or: [
+          { organizationId: orgObjId, projectId: projObjId, screenId },
+          { screenId },
+        ],
+      })
+      .exec();
+
     return doc ? this.map(doc) : null;
   }
 
@@ -28,17 +41,21 @@ export class MongoFieldMappingRepository implements FieldMappingRepository {
     mappings: FieldMappingEntry[];
     updatedBy: string;
   }): Promise<FieldMappingRecord> {
+    const orgObjId = toValidObjectId(input.organizationId);
+    const projObjId = toValidObjectId(input.projectId);
+    const updatedByObjId = toValidObjectId(input.updatedBy);
+
     const doc = await this.model
       .findOneAndUpdate(
         {
-          organizationId: input.organizationId,
-          projectId: input.projectId,
+          organizationId: orgObjId,
+          projectId: projObjId,
           screenId: input.screenId,
         },
         {
           $set: {
             mappings: input.mappings,
-            updatedBy: new Types.ObjectId(input.updatedBy),
+            updatedBy: updatedByObjId,
           },
         },
         { new: true, upsert: true },
