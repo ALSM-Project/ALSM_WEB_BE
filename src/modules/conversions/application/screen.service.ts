@@ -26,16 +26,27 @@ export class ScreenService {
     const completedJobs = await this.conversionJobModel.find({ status: 'COMPLETED' }).exec();
     const completedIdentifiers = new Set<string>();
     for (const job of completedJobs) {
-      if (job.screenId) completedIdentifiers.add(job.screenId.toString());
+      if (job.screenId) {
+        const raw = job.screenId.toString();
+        completedIdentifiers.add(raw);
+        const clean = raw.replace(/\.(bms|dspf|cob|cbl|cpy)$/i, '');
+        completedIdentifiers.add(clean);
+        completedIdentifiers.add(`${clean}.bms`);
+        completedIdentifiers.add(`${clean}.dspf`);
+        completedIdentifiers.add(`${clean}.cob`);
+        completedIdentifiers.add(`${clean}.cbl`);
+      }
       if (job.inputReference) completedIdentifiers.add(job.inputReference.toString());
     }
 
     return Promise.all(
       screens.map(async (doc) => {
         const dto = this.toResponseDto(doc);
+        const docCleanName = doc.name ? doc.name.replace(/\.(bms|dspf|cob|cbl|cpy)$/i, '') : '';
         const isCompleted =
           completedIdentifiers.has(doc._id.toString()) ||
           completedIdentifiers.has(doc.name) ||
+          completedIdentifiers.has(docCleanName) ||
           (doc.inputReference && completedIdentifiers.has(doc.inputReference));
         if (isCompleted && doc.status !== 'COMPLETED') {
           await this.screenModel.updateOne({ _id: doc._id }, { status: 'COMPLETED' }).exec();
@@ -50,9 +61,13 @@ export class ScreenService {
     if (Types.ObjectId.isValid(screenId)) {
       await this.screenModel.updateOne({ _id: screenId }, { status }).exec();
     }
+    const clean = screenId.replace(/\.(bms|dspf|cob|cbl|cpy)$/i, '');
+    const nameRegex = new RegExp(`^${clean}(\\.(bms|dspf|cob|cbl|cpy))?$`, 'i');
     await this.screenModel
       .updateMany(
-        { $or: [{ name: screenId }, { inputReference: screenId }] },
+        {
+          $or: [{ name: screenId }, { name: nameRegex }, { inputReference: screenId }],
+        },
         { status },
       )
       .exec();
@@ -64,9 +79,11 @@ export class ScreenService {
       screen = await this.screenModel.findById(screenId).exec();
     }
     if (!screen) {
+      const clean = screenId.replace(/\.(bms|dspf|cob|cbl|cpy)$/i, '');
+      const nameRegex = new RegExp(`^${clean}(\\.(bms|dspf|cob|cbl|cpy))?$`, 'i');
       screen = await this.screenModel
         .findOne({
-          $or: [{ name: screenId }, { inputReference: screenId }],
+          $or: [{ name: screenId }, { name: nameRegex }, { inputReference: screenId }],
         })
         .exec();
     }
@@ -76,6 +93,23 @@ export class ScreenService {
         message: `Screen with identifier ${screenId} was not found`,
       });
     }
+
+    const docCleanName = screen.name ? screen.name.replace(/\.(bms|dspf|cob|cbl|cpy)$/i, '') : '';
+    const completedJob = await this.conversionJobModel.findOne({
+      status: 'COMPLETED',
+      $or: [
+        { screenId: screen._id.toString() },
+        { screenId: screen.name },
+        { screenId: docCleanName },
+        { inputReference: screen.inputReference },
+      ],
+    }).exec();
+
+    if (completedJob && screen.status !== 'COMPLETED') {
+      await this.screenModel.updateOne({ _id: screen._id }, { status: 'COMPLETED' }).exec();
+      screen.status = 'COMPLETED';
+    }
+
     return this.toResponseDto(screen);
   }
 
