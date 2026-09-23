@@ -66,7 +66,11 @@ describe('Field mapping organization isolation', () => {
     expect(result).toEqual({
       projectId: 'project-a',
       screenId: 'scr-login',
-      mappings: [],
+      mappings: expect.arrayContaining([
+        expect.objectContaining({
+          legacyField: expect.objectContaining({ name: 'ACCTNO' }),
+        }),
+      ]),
       updatedBy: null,
       updatedAt: null,
     });

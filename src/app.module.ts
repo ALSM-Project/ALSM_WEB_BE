@@ -39,6 +39,12 @@ import {
   ValidationFinding,
   ValidationFindingSchema,
 } from './modules/validation/infrastructure/validation-finding.schema';
+import {
+  ScreenDocument,
+  ScreenSchema as ConversionScreenSchema,
+} from './modules/conversions/infrastructure/screen.schema';
+import { ScreenService as ConversionScreenService } from './modules/conversions/application/screen.service';
+import { ScreensController as ConversionScreensController } from './modules/conversions/presentation/screens.controller';
 import { Screen, ScreenSchema } from './modules/screens/infrastructure/screen.schema';
 import { MongoScreenRepository } from './modules/screens/infrastructure/mongo-screen.repository';
 import { ScreenService } from './modules/screens/application/screen.service';
@@ -159,6 +165,11 @@ import { MongoBillingUsageRepository } from './modules/billing/infrastructure/pe
 import { RbacModule } from './modules/rbac/rbac.module';
 import { MenuModule } from './modules/menus/menu.module';
 
+import { VALIDATION_REPOSITORY } from './modules/conversions/domain/validation.types';
+import { MongoValidationRepository } from './modules/conversions/infrastructure/mongo-validation.repository';
+import { RuleValidatorService } from './modules/conversions/application/rule-validator.service';
+import { ValidationController as RuleValidationController } from './modules/conversions/presentation/validation.controller';
+
 @Module({
   imports: [
     ConfigModule.forRoot({ isGlobal: true, validationSchema: environmentValidationSchema }),
@@ -180,6 +191,7 @@ import { MenuModule } from './modules/menus/menu.module';
       { name: EmailVerification.name, schema: EmailVerificationSchema },
       { name: FieldMapping.name, schema: FieldMappingSchema },
       { name: ErrorLog.name, schema: ErrorLogSchema },
+      { name: ScreenDocument.name, schema: ConversionScreenSchema },
       { name: Screen.name, schema: ScreenSchema },
       { name: ValidationRun.name, schema: ValidationRunSchema },
       { name: ValidationFinding.name, schema: ValidationFindingSchema },
@@ -193,15 +205,18 @@ import { MenuModule } from './modules/menus/menu.module';
     ConversionsController,
     ConversionSourceController,
     ScreensController,
+    ConversionScreensController,
     FieldMappingController,
     ExportController,
     ErrorLogController,
     ValidationController,
+    RuleValidationController,
     HealthController,
     BillingController,
     PaymentController,
   ],
   providers: [
+    ScreenService,
     JwtAuthGuard,
     PermissionsGuard,
     AuthService,
@@ -223,10 +238,11 @@ import { MenuModule } from './modules/menus/menu.module';
     ConversionJobService,
     UploadConversionSourceService,
     GetConversionResultService,
-    ScreenService,
+    ConversionScreenService,
     MongoScreenRepository,
     GetFieldMappingService,
     SaveFieldMappingService,
+    RuleValidatorService,
     ExportCodeService,
     ErrorLogService,
     BuildValidationContextService,
@@ -262,6 +278,7 @@ import { MenuModule } from './modules/menus/menu.module';
     { provide: AUDIT_REPOSITORY, useClass: MongoAuditRepository },
     { provide: PROJECT_REPOSITORY, useClass: MongoProjectRepository },
     { provide: CONVERSION_JOB_REPOSITORY, useClass: MongoConversionJobRepository },
+    { provide: VALIDATION_REPOSITORY, useClass: MongoValidationRepository },
     { provide: SUBSCRIPTION_REPOSITORY, useClass: MongoSubscriptionRepository },
     { provide: INVOICE_REPOSITORY, useClass: MongoInvoiceRepository },
     { provide: PAYMENT_REPOSITORY, useClass: MongoPaymentRepository },
