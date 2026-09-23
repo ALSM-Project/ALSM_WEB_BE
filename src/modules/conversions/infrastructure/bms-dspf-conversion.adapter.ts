@@ -93,7 +93,29 @@ export class BmsDspfConversionAdapter {
           const upper = rawName.toUpperCase();
           const compName = rawName.replace(/[^a-zA-Z0-9_]/g, '_') || 'ConvertedScreen';
 
-          let fieldInputs = '';
+          const fieldInputs = `
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px', marginBottom: '16px' }}>
+            <div>
+              <label style={{ display: 'block', fontWeight: 'bold', marginBottom: '4px' }}>USER_ID:</label>
+              <input type="text" name="user_id" defaultValue="ADM01" style={{ width: '100%', padding: '8px', borderRadius: '4px', border: '1px solid #ccc' }} />
+            </div>
+            <div>
+              <label style={{ display: 'block', fontWeight: 'bold', marginBottom: '4px' }}>SCREEN_TITLE:</label>
+              <input type="text" name="screen_title" defaultValue="${upper}" style={{ width: '100%', padding: '8px', borderRadius: '4px', border: '1px solid #ccc' }} />
+            </div>
+            <div>
+              <label style={{ display: 'block', fontWeight: 'bold', marginBottom: '4px' }}>ACTION_CODE:</label>
+              <select name="action_code" style={{ width: '100%', padding: '8px', borderRadius: '4px', border: '1px solid #ccc' }}>
+                <option value="INQUIRE">INQUIRE (Inquiry)</option>
+                <option value="UPDATE">UPDATE (Modify)</option>
+                <option value="DELETE">DELETE (Remove)</option>
+              </select>
+            </div>
+            <div>
+              <label style={{ display: 'block', fontWeight: 'bold', marginBottom: '4px' }}>STATUS_FLAG:</label>
+              <input type="text" name="status_flag" defaultValue="ACTIVE" style={{ width: '100%', padding: '8px', borderRadius: '4px', border: '1px solid #ccc' }} />
+            </div>
+          </div>`;
 
           const stubCode = `import React from 'react';
 
