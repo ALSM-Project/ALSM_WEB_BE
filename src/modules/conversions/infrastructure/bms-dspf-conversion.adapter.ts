@@ -83,105 +83,72 @@ export class BmsDspfConversionAdapter {
       );
       if (generatedComponents.length === 0) {
         this.logger.warn(
-          `convert2fe produced no .tsx components. Generating fallback components. Output: ${stripAnsi(combinedStdout).slice(0, 500)}`,
+          `convert2fe produced no .tsx components. Parsing BMS source directly for fallback. Output: ${stripAnsi(combinedStdout).slice(0, 500)}`,
         );
         const validSourceFiles = sourceFiles.filter((f) =>
           extensions.includes(path.extname(f).toLowerCase()),
         );
         for (const sf of validSourceFiles) {
           const rawName = path.parse(sf).name;
-          const upper = rawName.toUpperCase();
           const compName = rawName.replace(/[^a-zA-Z0-9_]/g, '_') || 'ConvertedScreen';
 
+          // Read and parse the actual BMS source file to extract real DFHMDF fields
+          const bmsContent = await fs.promises.readFile(path.join(sourceDir, sf), 'utf8');
+          const parsedFields = this.parseBmsFields(bmsContent);
+
+          // Build JSX inputs from parsed BMS fields
           let fieldInputs = '';
-          if (upper.includes('USR') || upper.includes('USER')) {
+          if (parsedFields.inputs.length > 0 || parsedFields.labels.length > 0) {
+            const inputJsx = parsedFields.inputs.map((f) => {
+              const inputType = f.isNumeric ? 'number' : 'text';
+              return `
+            <div>
+              <label style={{ display: 'block', fontWeight: 'bold', marginBottom: '4px' }}>${f.label || f.name}:</label>
+              <input type="${inputType}" name="${f.name.toLowerCase()}" maxLength={${f.length}} style={{ width: '100%', padding: '8px', borderRadius: '4px', border: '1px solid #ccc' }} />
+            </div>`;
+            }).join('\n');
+
             fieldInputs = `
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px', marginBottom: '16px' }}>
-            <div>
-              <label style={{ display: 'block', fontWeight: 'bold', marginBottom: '4px' }}>USER_ID:</label>
-              <input type="text" name="user_id" defaultValue="USR_1024" style={{ width: '100%', padding: '8px', borderRadius: '4px', border: '1px solid #ccc' }} />
-            </div>
-            <div>
-              <label style={{ display: 'block', fontWeight: 'bold', marginBottom: '4px' }}>FIRST_NAME:</label>
-              <input type="text" name="first_name" defaultValue="Alex" style={{ width: '100%', padding: '8px', borderRadius: '4px', border: '1px solid #ccc' }} />
-            </div>
-            <div>
-              <label style={{ display: 'block', fontWeight: 'bold', marginBottom: '4px' }}>USER_ROLE:</label>
-              <select name="user_role" style={{ width: '100%', padding: '8px', borderRadius: '4px', border: '1px solid #ccc' }}>
-                <option value="ADMIN">ADMIN</option>
-                <option value="MANAGER">MANAGER</option>
-                <option value="OPERATOR">OPERATOR</option>
-              </select>
-            </div>
-            <div>
-              <label style={{ display: 'block', fontWeight: 'bold', marginBottom: '4px' }}>USER_STATUS:</label>
-              <input type="text" name="user_status" defaultValue="ACTIVE" style={{ width: '100%', padding: '8px', borderRadius: '4px', border: '1px solid #ccc' }} />
-            </div>
-          </div>`;
-          } else if (upper.includes('ACT') || upper.includes('ACCT') || upper.includes('ACC')) {
-            fieldInputs = `
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px', marginBottom: '16px' }}>
-            <div>
-              <label style={{ display: 'block', fontWeight: 'bold', marginBottom: '4px' }}>ACCT_NO:</label>
-              <input type="text" name="acct_no" defaultValue="4091-8821-0092" style={{ width: '100%', padding: '8px', borderRadius: '4px', border: '1px solid #ccc' }} />
-            </div>
-            <div>
-              <label style={{ display: 'block', fontWeight: 'bold', marginBottom: '4px' }}>ACCT_NAME:</label>
-              <input type="text" name="acct_name" defaultValue="Global Logistics Corp" style={{ width: '100%', padding: '8px', borderRadius: '4px', border: '1px solid #ccc' }} />
-            </div>
-            <div>
-              <label style={{ display: 'block', fontWeight: 'bold', marginBottom: '4px' }}>CURRENCY:</label>
-              <select name="currency" style={{ width: '100%', padding: '8px', borderRadius: '4px', border: '1px solid #ccc' }}>
-                <option value="USD">USD</option>
-                <option value="EUR">EUR</option>
-                <option value="GBP">GBP</option>
-              </select>
-            </div>
-            <div>
-              <label style={{ display: 'block', fontWeight: 'bold', marginBottom: '4px' }}>AVAIL_BAL:</label>
-              <input type="text" name="avail_bal" defaultValue="125,450.00" style={{ width: '100%', padding: '8px', borderRadius: '4px', border: '1px solid #ccc' }} />
-            </div>
-          </div>`;
-          } else {
-            fieldInputs = `
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px', marginBottom: '16px' }}>
-            <div>
-              <label style={{ display: 'block', fontWeight: 'bold', marginBottom: '4px' }}>${upper}_ID:</label>
-              <input type="text" name="${rawName.toLowerCase()}_id" defaultValue="${upper}_001" style={{ width: '100%', padding: '8px', borderRadius: '4px', border: '1px solid #ccc' }} />
-            </div>
-            <div>
-              <label style={{ display: 'block', fontWeight: 'bold', marginBottom: '4px' }}>${upper}_NAME:</label>
-              <input type="text" name="${rawName.toLowerCase()}_name" defaultValue="Default ${upper} Record" style={{ width: '100%', padding: '8px', borderRadius: '4px', border: '1px solid #ccc' }} />
-            </div>
-            <div>
-              <label style={{ display: 'block', fontWeight: 'bold', marginBottom: '4px' }}>${upper}_TYPE:</label>
-              <select name="${rawName.toLowerCase()}_type" style={{ width: '100%', padding: '8px', borderRadius: '4px', border: '1px solid #ccc' }}>
-                <option value="TYPE_A">TYPE_A</option>
-                <option value="TYPE_B">TYPE_B</option>
-              </select>
-            </div>
-            <div>
-              <label style={{ display: 'block', fontWeight: 'bold', marginBottom: '4px' }}>${upper}_STATUS:</label>
-              <input type="text" name="${rawName.toLowerCase()}_status" defaultValue="ACTIVE" style={{ width: '100%', padding: '8px', borderRadius: '4px', border: '1px solid #ccc' }} />
-            </div>
+${inputJsx}
           </div>`;
           }
+
+          // Build label displays for output/protected fields
+          let labelDisplays = '';
+          if (parsedFields.labels.length > 0) {
+            labelDisplays = parsedFields.labels.map((l) => {
+              if (l.initial) {
+                return `\n          <span style={{ color: '${l.color || '#333'}', display: 'inline-block', marginRight: '8px' }}>${l.initial}</span>`;
+              }
+              if (l.name) {
+                return `\n          <span style={{ display: 'inline-block', marginRight: '16px' }}><strong>${l.name}:</strong> <span id="${l.name.toLowerCase()}" style={{ color: '${l.color || '#0066cc'}', textDecoration: 'underline' }}>—</span></span>`;
+              }
+              return '';
+            }).join('');
+          }
+
+          // Build the screen title from BMS TITLE if found
+          const screenTitle = parsedFields.screenTitle || rawName;
 
           const stubCode = `import React from 'react';
 
 export default function ${compName}() {
   return (
     <div style={{ padding: '24px', fontFamily: 'sans-serif' }}>
-      <h2>Screen: ${rawName}</h2>
+      <h2>Screen: ${screenTitle}</h2>
       <p style={{ color: '#666' }}>
         Modernized React Component (${sf})
       </p>
+      ${labelDisplays ? `<div style={{ marginTop: '12px', padding: '12px', background: '#f8f9fa', borderRadius: '6px', fontSize: '13px' }}>${labelDisplays}
+      </div>` : ''}
       <div style={{ marginTop: '20px', padding: '16px', border: '1px solid #ccc', borderRadius: '8px' }}>
         <form onSubmit={(e) => e.preventDefault()}>
           ${fieldInputs}
           <button type="submit" style={{ padding: '8px 16px', cursor: 'pointer', marginTop: '8px' }}>Submit</button>
         </form>
       </div>
+      ${parsedFields.functionKeys.length > 0 ? `<div style={{ marginTop: '12px', fontSize: '12px', color: '#888' }}>${parsedFields.functionKeys.join('  ')}</div>` : ''}
     </div>
   );
 }
@@ -242,5 +209,105 @@ export default function ${compName}() {
         },
       });
     }
+  }
+
+  /**
+   * Parses raw BMS source content to extract DFHMDF field definitions.
+   * This mirrors the logic of bms2react.py's extract_map_items / extract_property.
+   */
+  private parseBmsFields(bmsContent: string): {
+    inputs: { name: string; label: string; length: number; isNumeric: boolean }[];
+    labels: { name?: string; initial?: string; color?: string }[];
+    screenTitle: string;
+    functionKeys: string[];
+  } {
+    const inputs: { name: string; label: string; length: number; isNumeric: boolean }[] = [];
+    const labels: { name?: string; initial?: string; color?: string }[] = [];
+    let screenTitle = '';
+    const functionKeys: string[] = [];
+    const addedNames = new Set<string>();
+
+    // Join continuation lines (lines ending with - followed by next line)
+    const joined = bmsContent.replace(/\s*-\s*\r?\n\s*/g, '');
+    const lines = joined.split(/\r?\n/);
+
+    // Track the last label INITIAL to use as label text for the next input field
+    let lastLabelInitial = '';
+
+    for (const line of lines) {
+      const trimmed = line.trim();
+      if (!trimmed || trimmed.startsWith('*')) continue;
+
+      // Extract DFHMDF items
+      const dfhmdfMatch = trimmed.match(/^(\w+)?\s*DFHMDF\s+(.*)/i);
+      if (!dfhmdfMatch) {
+        // Check for function key instructions in INITIAL
+        const fkeyMatch = trimmed.match(/INITIAL='([^']*F\d+[^']*)'/i);
+        if (fkeyMatch) {
+          functionKeys.push(fkeyMatch[1]);
+        }
+        continue;
+      }
+
+      const fieldName = dfhmdfMatch[1] || '';
+      const propsStr = dfhmdfMatch[2];
+
+      // Parse properties
+      const attrb = propsStr.match(/ATTRB=\(([^)]+)\)/i)?.[1]?.split(',').map((s) => s.trim()) || [];
+      const lengthMatch = propsStr.match(/LENGTH=(\d+)/i);
+      const length = lengthMatch ? parseInt(lengthMatch[1], 10) : 0;
+      const initialMatch = propsStr.match(/INITIAL='([^']*)'/i);
+      const initial = initialMatch ? initialMatch[1] : '';
+      const colorMatch = propsStr.match(/COLOR=(\w+)/i);
+      const color = colorMatch ? colorMatch[1].toLowerCase() : '';
+      const posMatch = propsStr.match(/POS=\((\d+),(\d+)\)/i);
+      const isNumeric = attrb.includes('NUM');
+
+      // Classify: UNPROT or IC → input field, PROT/ASKIP with INITIAL → label
+      const isUnprot = attrb.includes('UNPROT') || attrb.includes('IC');
+      const isProt = attrb.includes('PROT') || attrb.includes('ASKIP');
+
+      if (isUnprot && fieldName && !addedNames.has(fieldName)) {
+        addedNames.add(fieldName);
+        inputs.push({
+          name: fieldName,
+          label: lastLabelInitial || fieldName,
+          length: length || 20,
+          isNumeric,
+        });
+        lastLabelInitial = ''; // consumed
+      } else if (initial && isProt) {
+        // Check if this is a screen title
+        if (!screenTitle && posMatch) {
+          const row = parseInt(posMatch[1], 10);
+          const col = parseInt(posMatch[2], 10);
+          if (row <= 4 && col >= 15 && col <= 40 && initial.length > 5) {
+            screenTitle = initial;
+          }
+        }
+
+        // Check for function keys line
+        if (initial.includes('F3=') || initial.includes('F5=') || initial.includes('ENTER=')) {
+          functionKeys.push(initial);
+        } else {
+          labels.push({ name: fieldName || undefined, initial, color: color || undefined });
+          // Store INITIAL as potential label for next input
+          if (initial.endsWith(':') || initial.endsWith(': ')) {
+            lastLabelInitial = initial.replace(/:?\s*$/, '');
+          } else {
+            lastLabelInitial = initial;
+          }
+        }
+      } else if (fieldName && isProt && !initial && !addedNames.has(fieldName)) {
+        // Protected named field without INITIAL = output/display field
+        addedNames.add(fieldName);
+        labels.push({ name: fieldName, color: color || undefined });
+        lastLabelInitial = '';
+      } else {
+        lastLabelInitial = '';
+      }
+    }
+
+    return { inputs, labels, screenTitle, functionKeys };
   }
 }
