@@ -4,7 +4,7 @@ import { Document } from 'mongoose';
 export type ScreenSourceType = 'BMS' | 'DSPF' | 'COBOL';
 export type ScreenStatus = 'READY' | 'PROCESSING' | 'COMPLETED' | 'REVIEW_REQUIRED' | 'FAILED';
 
-@Schema({ timestamps: true })
+@Schema({ timestamps: true, collection: 'screens' })
 export class ScreenDocument extends Document {
   @Prop({ required: true })
   projectId!: string;

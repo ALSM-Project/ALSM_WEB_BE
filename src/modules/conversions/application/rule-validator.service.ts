@@ -25,7 +25,7 @@ export class RuleValidatorService {
     run: ValidationRunRecord;
     findings: ValidationFindingRecord[];
   }> {
-    const screenId = job.screenId ?? 'COACTUP.bms';
+    const screenId = job.screenId ?? 'Screen';
     const mappingRecord = await this.mappingRepo.findByScreen(job.projectId, screenId, organizationId);
     const mappings = mappingRecord?.mappings ?? [];
 
@@ -109,9 +109,13 @@ export class RuleValidatorService {
     const run = await this.validationRepo.createRun({
       conversionJobId: job.id,
       projectId: job.projectId,
+      organizationId,
       screenId,
       status: 'COMPLETED',
       totalFindings: rawFindings.length,
+      findingCount: rawFindings.length,
+      aiValidationEnabled: false,
+      ruleValidationEnabled: true,
       openCount,
       confirmedCount: 0,
       rejectedCount: 0,

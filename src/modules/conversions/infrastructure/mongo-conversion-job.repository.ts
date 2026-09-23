@@ -53,11 +53,21 @@ export class MongoConversionJobRepository implements ConversionJobRepository {
   ): Promise<ConversionJobRecord[]> {
     const projObjId = toValidObjectId(projectId);
     const orgObjId = toValidObjectId(organizationId);
+
+    const clean = screenId ? screenId.replace(/\.(bms|dspf|cob|cbl|cpy)$/i, '') : '';
+    const nameRegex = clean ? new RegExp(`^${clean}(\\.(bms|dspf|cob|cbl|cpy))?$`, 'i') : null;
+
+    const screenConditions: Record<string, unknown>[] = [{ screenId }];
+    if (clean) screenConditions.push({ screenId: clean });
+    if (nameRegex) screenConditions.push({ screenId: nameRegex });
+    screenConditions.push({ inputReference: screenId });
+    if (clean) screenConditions.push({ inputReference: clean });
+
     const docs = await this.model
       .find({
         organizationId: orgObjId,
         projectId: projObjId,
-        screenId,
+        $or: screenConditions,
       })
       .sort({ createdAt: -1 })
       .exec();

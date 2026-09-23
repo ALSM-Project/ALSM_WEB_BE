@@ -12,6 +12,8 @@ export interface FieldComponentMapping {
   minLength: number;
   maxLength: number;
   regexPattern: string;
+  displayRow?: number;
+  displayCol?: number;
 }
 
 export interface FieldMappingEntry {

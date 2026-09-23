@@ -119,8 +119,14 @@ export class ConversionJobService {
       if (input.screenId) {
         await this.screens.updateScreenStatus(input.screenId, 'COMPLETED');
       }
+      if (job.screenId) {
+        await this.screens.updateScreenStatus(job.screenId, 'COMPLETED');
+      }
       if (input.inputReference) {
         await this.screens.updateScreenStatus(input.inputReference, 'COMPLETED');
+      }
+      if (job.inputReference) {
+        await this.screens.updateScreenStatus(job.inputReference, 'COMPLETED');
       }
     } catch (error) {
       console.error('[createJobRecord] Processing failed:', error);
@@ -128,6 +134,9 @@ export class ConversionJobService {
       await this.jobs.markFailed(job.id, 'CONVERSION_FAILED', message);
       if (input.screenId) {
         await this.screens.updateScreenStatus(input.screenId, 'FAILED');
+      }
+      if (job.screenId) {
+        await this.screens.updateScreenStatus(job.screenId, 'FAILED');
       }
     }
 

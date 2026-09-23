@@ -29,6 +29,7 @@ export class MongoValidationRepository implements ValidationRepository {
       ...input,
       conversionJobId: toValidObjectId(input.conversionJobId),
       projectId: toValidObjectId(input.projectId),
+      organizationId: toValidObjectId(input.organizationId),
     });
     return this.mapRun(doc);
   }
@@ -99,9 +100,13 @@ export class MongoValidationRepository implements ValidationRepository {
       id: doc.id,
       conversionJobId: doc.conversionJobId.toString(),
       projectId: doc.projectId.toString(),
+      organizationId: doc.organizationId?.toString() || 'org-default',
       screenId: doc.screenId,
       status: doc.status,
       totalFindings: doc.totalFindings,
+      findingCount: doc.findingCount,
+      aiValidationEnabled: doc.aiValidationEnabled,
+      ruleValidationEnabled: doc.ruleValidationEnabled,
       openCount: doc.openCount,
       confirmedCount: doc.confirmedCount,
       rejectedCount: doc.rejectedCount,

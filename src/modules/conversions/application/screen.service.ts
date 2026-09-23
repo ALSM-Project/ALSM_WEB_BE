@@ -26,31 +26,49 @@ export class ScreenService {
     const completedJobs = await this.conversionJobModel.find({ status: 'COMPLETED' }).exec();
     const completedIdentifiers = new Set<string>();
     for (const job of completedJobs) {
-      if (job.screenId) completedIdentifiers.add(job.screenId);
-      if (job.inputReference) completedIdentifiers.add(job.inputReference);
+      if (job.screenId) {
+        const raw = job.screenId.toString();
+        completedIdentifiers.add(raw);
+        const clean = raw.replace(/\.(bms|dspf|cob|cbl|cpy)$/i, '');
+        completedIdentifiers.add(clean);
+        completedIdentifiers.add(`${clean}.bms`);
+        completedIdentifiers.add(`${clean}.dspf`);
+        completedIdentifiers.add(`${clean}.cob`);
+        completedIdentifiers.add(`${clean}.cbl`);
+      }
+      if (job.inputReference) completedIdentifiers.add(job.inputReference.toString());
     }
 
-    return screens.map((doc) => {
-      const dto = this.toResponseDto(doc);
-      if (
-        dto.status === 'READY' &&
-        (completedIdentifiers.has(doc._id.toString()) ||
+    return Promise.all(
+      screens.map(async (doc) => {
+        const dto = this.toResponseDto(doc);
+        const docCleanName = doc.name ? doc.name.replace(/\.(bms|dspf|cob|cbl|cpy)$/i, '') : '';
+        const isCompleted =
+          completedIdentifiers.has(doc._id.toString()) ||
           completedIdentifiers.has(doc.name) ||
-          completedIdentifiers.has(doc.inputReference))
-      ) {
-        dto.status = 'COMPLETED';
-      }
-      return dto;
-    });
+          completedIdentifiers.has(docCleanName) ||
+          (doc.inputReference && completedIdentifiers.has(doc.inputReference));
+        if (isCompleted && doc.status !== 'COMPLETED') {
+          await this.screenModel.updateOne({ _id: doc._id }, { status: 'COMPLETED' }).exec();
+          dto.status = 'COMPLETED';
+        }
+        return dto;
+      }),
+    );
   }
 
   async updateScreenStatus(screenId: string, status: ScreenStatus) {
+    if (!screenId) return;
     if (Types.ObjectId.isValid(screenId)) {
       await this.screenModel.updateOne({ _id: screenId }, { status }).exec();
     }
+    const clean = screenId.replace(/\.(bms|dspf|cob|cbl|cpy)$/i, '');
+    const nameRegex = new RegExp(`^${clean}(\\.(bms|dspf|cob|cbl|cpy))?$`, 'i');
     await this.screenModel
       .updateMany(
-        { $or: [{ name: screenId }, { inputReference: screenId }] },
+        {
+          $or: [{ name: screenId }, { name: nameRegex }, { inputReference: screenId }],
+        },
         { status },
       )
       .exec();
@@ -62,9 +80,11 @@ export class ScreenService {
       screen = await this.screenModel.findById(screenId).exec();
     }
     if (!screen) {
+      const clean = screenId.replace(/\.(bms|dspf|cob|cbl|cpy)$/i, '');
+      const nameRegex = new RegExp(`^${clean}(\\.(bms|dspf|cob|cbl|cpy))?$`, 'i');
       screen = await this.screenModel
         .findOne({
-          $or: [{ name: screenId }, { inputReference: screenId }],
+          $or: [{ name: screenId }, { name: nameRegex }, { inputReference: screenId }],
         })
         .exec();
     }
@@ -74,6 +94,23 @@ export class ScreenService {
         message: `Screen with identifier ${screenId} was not found`,
       });
     }
+
+    const docCleanName = screen.name ? screen.name.replace(/\.(bms|dspf|cob|cbl|cpy)$/i, '') : '';
+    const completedJob = await this.conversionJobModel.findOne({
+      status: 'COMPLETED',
+      $or: [
+        { screenId: screen._id.toString() },
+        { screenId: screen.name },
+        { screenId: docCleanName },
+        { inputReference: screen.inputReference },
+      ],
+    }).exec();
+
+    if (completedJob && screen.status !== 'COMPLETED') {
+      await this.screenModel.updateOne({ _id: screen._id }, { status: 'COMPLETED' }).exec();
+      screen.status = 'COMPLETED';
+    }
+
     return this.toResponseDto(screen);
   }
 
@@ -112,19 +149,31 @@ export class ScreenService {
   async deleteScreen(projectId: string, screenId: string) {
     let screen: ScreenDocument | null = null;
     if (Types.ObjectId.isValid(screenId)) {
-      screen = await this.screenModel.findOne({ _id: screenId, projectId }).exec();
+      screen = await this.screenModel.findById(screenId).exec();
     }
     if (!screen) {
-      screen = await this.screenModel.findOne({ name: screenId, projectId }).exec();
+      screen = await this.screenModel
+        .findOne({
+          $or: [{ name: screenId }, { inputReference: screenId }],
+        })
+        .exec();
     }
-    if (!screen) {
-      throw new NotFoundException({
-        code: 'SCREEN_NOT_FOUND',
-        message: `Screen with identifier ${screenId} was not found in project ${projectId}`,
-      });
+
+    if (screen) {
+      // Purge all records with matching ID, matching file name, or matching inputReference
+      await this.screenModel
+        .deleteMany({
+          $or: [{ _id: screen._id }, { name: screen.name }, { inputReference: screen.inputReference }],
+        })
+        .exec();
+    } else {
+      const deleteConditions: Record<string, unknown>[] = [{ name: screenId }, { inputReference: screenId }];
+      if (Types.ObjectId.isValid(screenId)) {
+        deleteConditions.push({ _id: screenId });
+      }
+      await this.screenModel.deleteMany({ $or: deleteConditions }).exec();
     }
-    await this.screenModel.deleteOne({ _id: screen._id }).exec();
-    return { deleted: true, id: screen._id.toString() };
+    return { deleted: true, id: screenId };
   }
 
   private toResponseDto(doc: ScreenDocument) {
