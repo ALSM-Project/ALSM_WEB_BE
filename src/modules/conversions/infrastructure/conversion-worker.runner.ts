@@ -1,4 +1,15 @@
-import { Inject, Injectable, Logger, OnModuleDestroy } from '@nestjs/common'; import { ConfigService } from '@nestjs/config'; import { Worker } from 'bullmq'; import { CONVERSION_ENGINE, CONVERSION_JOB_REPOSITORY, ConversionEnginePort, ConversionJobRepository } from '../domain/conversion-job.types'; import { CONVERSION_QUEUE_NAME } from './bullmq-conversion.queue';
+import { Inject, Injectable, Logger, OnModuleDestroy } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
+import { Worker } from 'bullmq';
+import {
+  CONVERSION_ENGINE,
+  CONVERSION_JOB_REPOSITORY,
+  ConversionEnginePort,
+  ConversionJobRepository,
+} from '../domain/conversion-job.types';
+import { CONVERSION_QUEUE_NAME } from './bullmq-conversion.queue';
+import { SCREEN_REPOSITORY, ScreenRepository, ScreenStatus } from '../../screens/domain/screen.types';
+
 @Injectable()
 export class ConversionWorkerRunner implements OnModuleDestroy {
   private readonly logger = new Logger(ConversionWorkerRunner.name);
@@ -8,7 +19,21 @@ export class ConversionWorkerRunner implements OnModuleDestroy {
     private readonly config: ConfigService,
     @Inject(CONVERSION_JOB_REPOSITORY) private readonly jobs: ConversionJobRepository,
     @Inject(CONVERSION_ENGINE) private readonly engine: ConversionEnginePort,
+    @Inject(SCREEN_REPOSITORY) private readonly screens: ScreenRepository,
   ) {}
+
+  /** Best-effort: a screen's status is a UI convenience derived from its latest job, never the source of truth (the job record is) — a failure here must never fail the job itself. */
+  private async syncScreenStatus(
+    job: { screenId?: string; organizationId: string },
+    status: ScreenStatus,
+  ): Promise<void> {
+    if (!job.screenId) return;
+    try {
+      await this.screens.updateStatus(job.screenId, job.organizationId, status);
+    } catch (error) {
+      this.logger.warn(`Failed to sync screen ${job.screenId} status to ${status}: ${String(error)}`);
+    }
+  }
 
   start(): void {
     if (!this.config.get<boolean>('CONVERSION_WORKER_ENABLED')) {
@@ -22,17 +47,22 @@ export class ConversionWorkerRunner implements OnModuleDestroy {
       async (queueJob) => {
         const job = await this.jobs.markProcessing(queueJob.data.conversionJobId);
         if (!job) return;
+        await this.syncScreenStatus(job, ScreenStatus.PROCESSING);
         try {
           const output = await this.engine.execute({
             conversionJobId: job.id,
+            organizationId: job.organizationId,
             projectId: job.projectId,
+            screenId: job.screenId,
             inputReference: job.inputReference,
             conversionType: job.conversionType,
           });
-          await this.jobs.markCompleted(job.id, output.resultReference, output.toolVersion);
+          await this.jobs.markCompleted(job.id, output);
+          await this.syncScreenStatus(job, ScreenStatus.COMPLETED);
         } catch (error) {
           const message = error instanceof Error ? error.message : 'External conversion engine failed';
           await this.jobs.markFailed(job.id, 'CONVERSION_ENGINE_UNAVAILABLE', message);
+          await this.syncScreenStatus(job, ScreenStatus.FAILED);
           throw error;
         }
       },

@@ -15,6 +15,7 @@ import { SESSION_REPOSITORY, SessionRepository } from '../domain/session.reposit
 import { EffectivePermissionsService } from '../../rbac/application/effective-permissions.service';
 
 import { EmailVerificationService } from './email-verification.service';
+import { getSessionClientMetadata } from './session-client-metadata';
 
 export interface AuthTokens {
   accessToken: string;
@@ -74,7 +75,7 @@ export class AuthService {
     };
   }
 
-  async login(email: string, password: string): Promise<AuthTokens> {
+  async login(email: string, password: string, userAgent?: string): Promise<AuthTokens> {
     const user = await this.users.findByEmail(email.trim().toLowerCase());
     if (
       !user ||
@@ -99,10 +100,10 @@ export class AuthService {
       resourceType: 'USER',
       resourceId: user.id,
     });
-    return this.createSessionTokens(user);
+    return this.createSessionTokens(user, userAgent);
   }
 
-  async verifyEmail(email: string, codeOrToken: string): Promise<AuthTokens> {
+  async verifyEmail(email: string, codeOrToken: string, userAgent?: string): Promise<AuthTokens> {
     const user = await this.emailVerificationService.verify(email, codeOrToken);
     await this.audit.append({
       actorUserId: user.id,
@@ -110,14 +111,14 @@ export class AuthService {
       resourceType: 'USER',
       resourceId: user.id,
     });
-    return this.createSessionTokens(user);
+    return this.createSessionTokens(user, userAgent);
   }
 
   async resendVerification(email: string): Promise<void> {
     await this.emailVerificationService.resendVerification(email);
   }
 
-  async loginWithGoogle(idToken: string): Promise<AuthTokens> {
+  async loginWithGoogle(idToken: string, userAgent?: string): Promise<AuthTokens> {
     const payload = await this.verifyGoogleIdToken(idToken);
     const email = (payload.email ?? '').trim().toLowerCase();
 
@@ -158,10 +159,10 @@ export class AuthService {
       });
     }
 
-    return this.createSessionTokens(user);
+    return this.createSessionTokens(user, userAgent);
   }
 
-  async refresh(refreshToken: string): Promise<AuthTokens> {
+  async refresh(refreshToken: string, userAgent?: string): Promise<AuthTokens> {
     const payload = await this.verifyRefresh(refreshToken);
     const session = await this.sessions.findActive(payload.tid);
     if (
@@ -182,7 +183,7 @@ export class AuthService {
       });
     }
     await this.sessions.revoke(session.id);
-    return this.createSessionTokens(user);
+    return this.createSessionTokens(user, userAgent);
   }
 
   async logout(refreshToken: string): Promise<void> {
@@ -202,7 +203,8 @@ export class AuthService {
     }
 
     const roles = await this.effectivePermissionsService.getUserRoles(userId);
-    const effectivePermissions = await this.effectivePermissionsService.getEffectivePermissions(userId);
+    const effectivePermissions =
+      await this.effectivePermissionsService.getEffectivePermissions(userId);
 
     const hasPassword = Boolean(user.passwordHash);
     const twoFactorEnabled = Boolean(user.mfa?.enabled);
@@ -226,51 +228,32 @@ export class AuthService {
     };
   }
 
-  async getActiveSessions(userId: string, currentTokenId?: string) {
-    const sessions = await this.sessions.findActiveByUserId(userId);
-    return sessions.map((s) => {
-      const browser = this.parseBrowser(s.userAgent);
-      const os = this.parseOS(s.userAgent);
-      return {
-        id: s.id,
-        device: `${browser} on ${os}`,
-        browser,
-        operatingSystem: os,
-        ipAddress: s.ipAddress || '127.0.0.1',
-        lastActiveAt: (s.createdAt || s.expiresAt).toISOString(),
-        createdAt: (s.createdAt || s.expiresAt).toISOString(),
-        isCurrent: Boolean(currentTokenId && s.tokenId === currentTokenId),
-      };
-    });
-  }
-
-  async revokeSession(userId: string, sessionId: string): Promise<boolean> {
-    return this.sessions.revokeUserSession(userId, sessionId);
-  }
-
   async revokeAllOtherSessions(userId: string, currentTokenId?: string): Promise<void> {
     if (currentTokenId) {
       await this.sessions.revokeAllOther(userId, currentTokenId);
     }
   }
 
-  private async createSessionTokens(
-    user: UserRecord,
-    userAgent?: string,
-    ipAddress?: string,
-  ): Promise<AuthTokens> {
+  private async createSessionTokens(user: UserRecord, userAgent?: string): Promise<AuthTokens> {
     const tokenId = randomUUID();
+    const sessionMetadata = getSessionClientMetadata(userAgent);
+    const lastActiveAt = new Date();
     const expiresAt = new Date(Date.now() + this.durationMs('JWT_REFRESH_EXPIRES_IN'));
     const session = await this.sessions.create({
       tokenId,
       userId: user.id,
       refreshTokenHash: 'pending',
       expiresAt,
-      userAgent,
-      ipAddress,
+      ...sessionMetadata,
+      lastActiveAt,
     });
     const accessToken = await this.jwt.signAsync(
-      { sub: user.id, email: user.email, isPlatformAdmin: user.isPlatformAdmin },
+      {
+        sub: user.id,
+        email: user.email,
+        isPlatformAdmin: user.isPlatformAdmin,
+        sid: session.id,
+      },
       {
         secret: this.config.getOrThrow('JWT_ACCESS_SECRET'),
         expiresIn: this.durationSeconds('JWT_ACCESS_EXPIRES_IN'),
@@ -286,26 +269,6 @@ export class AuthService {
     await this.sessions.updateTokenHash(session.id, await bcrypt.hash(refreshToken, 12));
     return { accessToken, refreshToken };
   }
-
-  private parseBrowser(ua?: string): string {
-    if (!ua) return 'Web Browser';
-    if (ua.includes('Edg')) return 'Edge';
-    if (ua.includes('Chrome')) return 'Chrome';
-    if (ua.includes('Firefox')) return 'Firefox';
-    if (ua.includes('Safari')) return 'Safari';
-    return 'Web Browser';
-  }
-
-  private parseOS(ua?: string): string {
-    if (!ua) return 'Desktop';
-    if (ua.includes('Win')) return 'Windows';
-    if (ua.includes('Mac')) return 'macOS';
-    if (ua.includes('Linux')) return 'Linux';
-    if (ua.includes('Android')) return 'Android';
-    if (ua.includes('iPhone') || ua.includes('iPad')) return 'iOS';
-    return 'Desktop';
-  }
-
 
   private async verifyRefresh(token: string): Promise<{ sub: string; tid: string }> {
     try {

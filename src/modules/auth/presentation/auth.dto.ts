@@ -1,5 +1,5 @@
 import { ApiProperty } from '@nestjs/swagger';
-import { IsEmail, IsString, Matches, MinLength } from 'class-validator';
+import { IsEmail, IsMongoId, IsString, Matches, MinLength } from 'class-validator';
 
 export class RegisterDto {
   @ApiProperty({ example: 'alex@example.com' }) @IsEmail() email!: string;
@@ -55,4 +55,21 @@ export class VerifyEmailDto {
 
 export class ResendVerificationDto {
   @ApiProperty({ example: 'alex@example.com' }) @IsEmail() email!: string;
+}
+
+export class SessionIdParamDto {
+  @ApiProperty({ description: 'MongoDB user session identifier' })
+  @IsMongoId()
+  sessionId!: string;
+}
+
+export class ActiveSessionResponseDto {
+  @ApiProperty() id!: string;
+  @ApiProperty({ example: 'Desktop' }) deviceType!: string;
+  @ApiProperty({ example: 'Chrome' }) browser!: string;
+  @ApiProperty({ format: 'date-time' }) lastActiveAt!: string;
+  @ApiProperty({ format: 'date-time' }) createdAt!: string;
+  @ApiProperty({ format: 'date-time' }) expiresAt!: string;
+  @ApiProperty({ description: 'Whether this session issued the calling access token' })
+  isCurrent!: boolean;
 }

@@ -5,9 +5,13 @@ export interface SessionRecord {
   refreshTokenHash: string;
   expiresAt: Date;
   revokedAt?: Date;
+  deviceType?: string;
+  browser?: string;
+  lastActiveAt?: Date;
   userAgent?: string;
   ipAddress?: string;
   createdAt?: Date;
+  updatedAt?: Date;
 }
 
 export interface SessionRepository {

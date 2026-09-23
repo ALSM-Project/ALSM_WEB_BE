@@ -17,6 +17,8 @@ describe('AuthController MFA endpoints', () => {
     {} as never,
     {} as never,
     {} as never,
+    {} as never,
+    {} as never,
   );
 
 

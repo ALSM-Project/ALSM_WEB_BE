@@ -107,18 +107,27 @@ export class MongoConversionJobRepository implements ConversionJobRepository {
 
   async markCompleted(
     id: string,
-    resultReference: string,
+    resultReferenceOrOutput: string | { resultReference: string; toolVersion?: string },
     toolVersion?: string,
   ): Promise<ConversionJobRecord | null> {
     const jobObjId = toValidObjectId(id);
+    const resultRef =
+      typeof resultReferenceOrOutput === 'string'
+        ? resultReferenceOrOutput
+        : resultReferenceOrOutput.resultReference;
+    const version =
+      typeof resultReferenceOrOutput === 'string'
+        ? toolVersion
+        : resultReferenceOrOutput.toolVersion;
+
     const doc = await this.model
       .findOneAndUpdate(
         { _id: jobObjId },
         {
           $set: {
             status: ConversionJobStatus.COMPLETED,
-            resultReference,
-            toolVersion: toolVersion ?? 'v1.0.0-alsm-conversion-engine',
+            resultReference: resultRef,
+            toolVersion: version ?? 'v1.0.0-alsm-conversion-engine',
             completedAt: new Date(),
           },
         },
@@ -144,7 +153,6 @@ export class MongoConversionJobRepository implements ConversionJobRepository {
       )
       .exec();
   }
-
   private map(doc: ConversionJobDocument): ConversionJobRecord {
     return {
       id: doc.id,

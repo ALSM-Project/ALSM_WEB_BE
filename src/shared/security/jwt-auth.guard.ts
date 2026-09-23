@@ -20,11 +20,18 @@ export class JwtAuthGuard implements CanActivate {
     }
 
     try {
-      const payload = await this.jwt.verifyAsync<{ sub: string; email: string; isPlatformAdmin: boolean }>(
-        token,
-        { secret: this.config.getOrThrow('JWT_ACCESS_SECRET') },
-      );
-      request.user = { userId: payload.sub, email: payload.email, isPlatformAdmin: payload.isPlatformAdmin };
+      const payload = await this.jwt.verifyAsync<{
+        sub: string;
+        email: string;
+        isPlatformAdmin: boolean;
+        sid?: string;
+      }>(token, { secret: this.config.getOrThrow('JWT_ACCESS_SECRET') });
+      request.user = {
+        userId: payload.sub,
+        email: payload.email,
+        isPlatformAdmin: payload.isPlatformAdmin,
+        sessionId: payload.sid,
+      };
       return true;
     } catch {
       if (process.env.NODE_ENV !== 'production') {

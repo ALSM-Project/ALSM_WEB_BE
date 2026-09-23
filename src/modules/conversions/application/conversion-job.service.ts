@@ -104,7 +104,9 @@ export class ConversionJobService {
       await this.jobs.markProcessing(job.id);
       const output = await this.engine.execute({
         conversionJobId: job.id,
+        organizationId: organization.id,
         projectId: project.id,
+        screenId: job.screenId,
         inputReference: input.inputReference,
         conversionType: project.conversionType,
       });
