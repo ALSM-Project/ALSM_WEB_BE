@@ -159,23 +159,36 @@ export class CobolJavaConversionAdapter {
     return files;
   }
 
+  /** Best-effort: -dld compiles every program in the shared bundle in one run, so a single
+   * job's stdout can contain parse errors for programs that have nothing to do with the
+   * screen actually being converted. Logging one of those must never fail the whole job —
+   * a schema/DB issue while writing one ErrorLogRecord previously crashed conversions for
+   * completely unrelated, otherwise-successful screens. */
   private async recordParseErrors(input: ConversionEngineInput, stdout: string): Promise<void> {
     for (const error of this.parseToolErrors(stdout)) {
-      await this.errorLogs.create({
-        projectId: input.projectId,
-        organizationId: input.organizationId,
-        screenName: input.screenId ?? error.fileName,
-        errorCode: 'COBOL_TRANSLATION_FAILED',
-        severity: ErrorLogSeverity.ERROR,
-        status: ErrorLogStatus.UNRESOLVED,
-        lineNumber: error.lineNumber,
-        offendingCode: error.fileName,
-        suggestedPatch: {
-          offendingLine: '',
-          suggestedLine: '',
-          reason: error.message.slice(0, 500) || 'tool2java could not translate this file — manual review required.',
-        },
-      });
+      try {
+        await this.errorLogs.create({
+          projectId: input.projectId,
+          organizationId: input.organizationId,
+          screenName: input.screenId ?? error.fileName,
+          errorCode: 'COBOL_TRANSLATION_FAILED',
+          severity: ErrorLogSeverity.ERROR,
+          status: ErrorLogStatus.UNRESOLVED,
+          lineNumber: error.lineNumber,
+          offendingCode: error.fileName,
+          suggestedPatch: {
+            // tool2java's own compiler errors have no "suggested fix" the way an AI-assisted
+            // patch would — these fields exist for that other use case and are required by
+            // the shared ErrorLog schema, so they get a clear placeholder here instead of ''
+            // (Mongoose's required validator rejects an empty string too).
+            offendingLine: 'N/A',
+            suggestedLine: 'N/A',
+            reason: error.message.slice(0, 500) || 'tool2java could not translate this file — manual review required.',
+          },
+        });
+      } catch (logError) {
+        this.logger.warn(`Failed to record parse error for ${error.fileName}: ${String(logError)}`);
+      }
     }
   }
 

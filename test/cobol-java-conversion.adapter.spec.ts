@@ -116,8 +116,32 @@ describe('CobolJavaConversionAdapter', () => {
         errorCode: 'COBOL_TRANSLATION_FAILED',
         offendingCode: 'BROKEN.cob',
         lineNumber: 4,
+        suggestedPatch: expect.objectContaining({ offendingLine: 'N/A', suggestedLine: 'N/A' }),
       }),
     );
+  });
+
+  it('does not fail the job when recording a parse error fails (e.g. a DB validation error for an unrelated program in the same -dld batch)', async () => {
+    await fs.promises.writeFile(path.join(sourceDir, 'OK.cob'), 'COBOL');
+    (toolRunner.runConversionTool as jest.Mock).mockImplementation(async (_exe: string, args: string[]) => {
+      const outDir = args[4];
+      await fs.promises.writeFile(path.join(outDir, 'Ok.java'), 'public class Ok {}');
+      return {
+        code: 0,
+        stdout: [
+          'Parsing Cobol started for: UNRELATED.cob',
+          'com.res.cobol.parser.ParseException: Encountered "x" at line 4, column 8.',
+          'Errors encountered. Processing terminated.',
+        ].join('\n'),
+        stderr: '',
+        timedOut: false,
+      };
+    });
+    (errorLogs.create as jest.Mock).mockRejectedValue(new Error('ErrorLog validation failed'));
+
+    const output = await buildAdapter().execute(baseInput);
+
+    expect(output).toEqual({ resultReference: 'results/p1/job-2/uuid', toolVersion: 'tool2java' });
   });
 
   it('throws when no .java files were generated', async () => {
