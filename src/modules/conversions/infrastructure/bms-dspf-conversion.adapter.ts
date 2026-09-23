@@ -33,9 +33,14 @@ export class BmsDspfConversionAdapter {
     if (!input.inputReference) {
       throw new Error('BMS/DSPF conversion requires an uploaded source (inputReference is missing)');
     }
-    const toolDir = this.config.get<string>('TOOL_CONVERT_DIR');
+    let toolDir = this.config.get<string>('TOOL_CONVERT_DIR');
     if (!toolDir) {
-      throw new Error('TOOL_CONVERT_DIR is not configured');
+      const autoPath = path.resolve(process.cwd(), '../ALSM_TOOL/py/convert2fe');
+      if (fs.existsSync(autoPath)) {
+        toolDir = autoPath;
+      } else {
+        throw new Error('TOOL_CONVERT_DIR is not configured and ../ALSM_TOOL/py/convert2fe was not found');
+      }
     }
 
     const sourceDir = this.storage.resolvePath(input.inputReference);
