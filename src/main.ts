@@ -7,7 +7,12 @@ import { ApiExceptionFilter } from './shared/errors/api-exception.filter';
 
 async function bootstrap(): Promise<void> {
   const app = await NestFactory.create(AppModule);
-  app.use(helmet());
+  app.use(
+    helmet({
+      crossOriginOpenerPolicy: false,
+      crossOriginResourcePolicy: { policy: 'cross-origin' },
+    }),
+  );
 
   const configuredOrigins = (process.env.CORS_ORIGINS ?? '')
     .split(',')

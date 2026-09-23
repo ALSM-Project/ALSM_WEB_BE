@@ -59,6 +59,7 @@ export class ValidationFinding {
   @Prop() fingerprint?: string;
   @Prop({ type: MongooseSchema.Types.ObjectId }) reviewedBy?: Types.ObjectId;
   @Prop() reviewedAt?: Date;
+  @Prop({ maxlength: 1000 }) reviewNote?: string;
 
   createdAt!: Date;
   updatedAt!: Date;
