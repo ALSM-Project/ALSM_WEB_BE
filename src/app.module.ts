@@ -70,6 +70,7 @@ import { aiValidatorProvider } from './modules/validation/infrastructure/ai-vali
 import { AiValidationRuntimeGuard } from './modules/validation/application/ai-validation-runtime.guard';
 import { TriggerAiValidationService } from './modules/validation/application/trigger-ai-validation.service';
 import { ReconcileValidationRunService } from './modules/validation/application/reconcile-validation-run.service';
+import { ReviewValidationFindingService } from './modules/validation/application/review-validation-finding.service';
 import { VALIDATION_QUEUE } from './modules/validation/domain/validation-queue.port';
 import { BullMqValidationQueue } from './modules/validation/infrastructure/bullmq-validation.queue';
 import { ValidationWorkerRunner } from './modules/validation/infrastructure/validation-worker.runner';
@@ -252,6 +253,7 @@ import { ValidationController as RuleValidationController } from './modules/conv
     AiValidationRuntimeGuard,
     TriggerAiValidationService,
     ReconcileValidationRunService,
+    ReviewValidationFindingService,
     ValidationWorkerRunner,
     FakeAiValidatorAdapter,
     OpenAiValidatorAdapter,

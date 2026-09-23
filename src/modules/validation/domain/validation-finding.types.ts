@@ -68,4 +68,5 @@ export interface ValidationFindingRecord {
   updatedAt: Date;
   reviewedBy?: string;
   reviewedAt?: Date;
+  reviewNote?: string;
 }
