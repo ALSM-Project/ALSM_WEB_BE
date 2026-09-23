@@ -119,4 +119,16 @@ describe('UploadConversionSourceService', () => {
 
     expect(screenService.recordDependencyDiagnostics).not.toHaveBeenCalled();
   });
+
+  it('rejects an upload containing two different files with the same name (case-insensitive)', async () => {
+    projects.getForOrganization.mockResolvedValue({ id: 'p1', conversionType: ConversionType.COBOL_TO_JAVA });
+
+    await expect(
+      service.execute('u1', 'org-1', 'p1', [
+        { originalname: 'CVACT01Y.cpy', buffer: Buffer.from('a'), size: 1 },
+        { originalname: 'cvact01y.CPY', buffer: Buffer.from('b'), size: 1 },
+      ]),
+    ).rejects.toBeInstanceOf(BadRequestException);
+    expect(storage.writeFiles).not.toHaveBeenCalled();
+  });
 });

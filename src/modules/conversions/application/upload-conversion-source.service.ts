@@ -73,6 +73,23 @@ export class UploadConversionSourceService {
       }
     }
 
+    // Files are stored flat by basename (see storage.writeFiles below), so two different local
+    // files sharing a basename (e.g. picked from two different subfolders) would silently
+    // overwrite one another on disk — and any dependency analysis run against the original
+    // upload list would then disagree with what actually landed in storage. Reject up front
+    // instead of guessing which one should "win".
+    const namesSeen = new Map<string, string>();
+    for (const file of files) {
+      const key = file.originalname.toLowerCase();
+      if (namesSeen.has(key)) {
+        throw new BadRequestException({
+          code: 'DUPLICATE_FILE_NAME',
+          message: `Two different files named "${file.originalname}" were selected in this upload (likely from two different subfolders). Remove the duplicate and try again — files are stored by name only, so both would otherwise silently collide.`,
+        });
+      }
+      namesSeen.set(key, file.originalname);
+    }
+
     const inputReference = await this.storage.writeFiles(
       `sources/${project.id}`,
       files.map((file) => ({ relativePath: file.originalname, content: file.buffer })),
