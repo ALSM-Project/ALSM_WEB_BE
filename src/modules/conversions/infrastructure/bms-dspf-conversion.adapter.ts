@@ -134,7 +134,7 @@ ${inputJsx}
           // Generate Legacy View JSX
           const legacyItemsJsx = [
             ...parsedFields.labels.filter(l => l.row > 0 && l.col > 0).map(l => 
-              `<div style={{ position: 'absolute', top: '${l.row - 1}em', left: '${l.col - 1}ch', color: '${l.color === 'blue' ? '#87ceeb' : '#00ff00'}', whiteSpace: 'pre' }}>${l.initial || (l.name ? \`[\${l.name}]\` : '')}</div>`
+              `<div style={{ position: 'absolute', top: '${l.row - 1}em', left: '${l.col - 1}ch', color: '${l.color === 'blue' ? '#87ceeb' : '#00ff00'}', whiteSpace: 'pre' }}>${l.initial || (l.name ? "[" + l.name + "]" : "")}</div>`
             ),
             ...parsedFields.inputs.filter(i => i.row > 0 && i.col > 0).map(i => 
               `<div style={{ position: 'absolute', top: '${i.row - 1}em', left: '${i.col - 1}ch' }}>
@@ -146,7 +146,7 @@ ${inputJsx}
           const stubCode = `import React, { useState } from 'react';
 
 export default function ${compName}() {
-  const [viewMode, setViewMode] = useState<'modern' | 'legacy'>('modern');
+  const [viewMode, setViewMode] = useState<'modern' | 'legacy'>('legacy');
 
   return (
     <div style={{ padding: '24px', fontFamily: 'sans-serif' }}>
@@ -189,7 +189,7 @@ export default function ${compName}() {
     </div>
   );
 }
-\`;
+`;
           await fs.promises.writeFile(path.join(outDir, `${rawName}.tsx`), stubCode, 'utf8');
         }
         outputFiles = await fs.promises.readdir(outDir);
