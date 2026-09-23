@@ -5,6 +5,8 @@ import { ConfigService } from '@nestjs/config';
 import { CobolJavaConversionAdapter } from '../src/modules/conversions/infrastructure/cobol-java-conversion.adapter';
 import { ConversionType } from '../src/modules/projects/domain/project.types';
 import { ErrorLogRepository } from '../src/modules/conversions/domain/error-log.types';
+import { CopybookDependencyBlockedError } from '../src/modules/conversions/domain/copybook-dependency-blocked.error';
+import { ScreenRepository } from '../src/modules/screens/domain/screen.types';
 import { StoragePort } from '../src/shared/storage/storage.port';
 import * as toolRunner from '../src/modules/conversions/infrastructure/conversion-tool-runner.util';
 
@@ -26,6 +28,7 @@ describe('CobolJavaConversionAdapter', () => {
     writeFiles: jest.fn(),
   };
   const errorLogs = { create: jest.fn() };
+  const screens: Partial<ScreenRepository> = { findById: jest.fn() };
 
   const baseInput = {
     conversionJobId: 'job-2',
@@ -40,6 +43,7 @@ describe('CobolJavaConversionAdapter', () => {
     sourceDir = await fs.promises.mkdtemp(path.join(os.tmpdir(), 'alsm-test-cobol-src-'));
     (storage.resolvePath as jest.Mock).mockReturnValue(sourceDir);
     (storage.writeFiles as jest.Mock).mockResolvedValue('results/p1/job-2/uuid');
+    (screens.findById as jest.Mock).mockResolvedValue(null);
   });
 
   afterEach(async () => {
@@ -51,6 +55,7 @@ describe('CobolJavaConversionAdapter', () => {
       config as unknown as ConfigService,
       storage as StoragePort,
       errorLogs as unknown as ErrorLogRepository,
+      screens as ScreenRepository,
     );
   }
 
@@ -123,5 +128,32 @@ describe('CobolJavaConversionAdapter', () => {
 
     await expect(buildAdapter().execute(baseInput)).rejects.toThrow(/No Java files were generated/);
     expect(storage.writeFiles).not.toHaveBeenCalled();
+  });
+
+  it('throws CopybookDependencyBlockedError and never shells out to tool2java when the screen is BLOCKED', async () => {
+    (screens.findById as jest.Mock).mockResolvedValue({
+      id: 'scr-1',
+      dependencyStatus: 'BLOCKED',
+      dependencies: [{ copyName: 'ACCTFILE-STATUS', status: 'MISSING', message: "COPYBOOK 'ACCTFILE-STATUS' referenced by 'CBACT01C.cbl' could not be found." }],
+    });
+
+    await expect(buildAdapter().execute({ ...baseInput, screenId: 'scr-1' })).rejects.toBeInstanceOf(
+      CopybookDependencyBlockedError,
+    );
+    expect(toolRunner.runConversionTool).not.toHaveBeenCalled();
+  });
+
+  it('proceeds to run tool2java when the screen is READY_FOR_CONVERSION', async () => {
+    (screens.findById as jest.Mock).mockResolvedValue({ id: 'scr-1', dependencyStatus: 'READY_FOR_CONVERSION' });
+    await fs.promises.writeFile(path.join(sourceDir, 'OK.cob'), 'COBOL SOURCE');
+    (toolRunner.runConversionTool as jest.Mock).mockImplementation(async (_exe: string, args: string[]) => {
+      const outDir = args[4];
+      await fs.promises.writeFile(path.join(outDir, 'Ok.java'), 'public class Ok {}');
+      return { code: 0, stdout: 'Done in 0s.', stderr: '', timedOut: false };
+    });
+
+    await buildAdapter().execute({ ...baseInput, screenId: 'scr-1' });
+
+    expect(toolRunner.runConversionTool).toHaveBeenCalled();
   });
 });

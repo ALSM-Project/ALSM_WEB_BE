@@ -11,6 +11,9 @@ import {
   ErrorLogSeverity,
   ErrorLogStatus,
 } from '../domain/error-log.types';
+import { CopybookDependencyBlockedError } from '../domain/copybook-dependency-blocked.error';
+import type { DependencyEntry } from '../domain/copybook-dependency.types';
+import { SCREEN_REPOSITORY, ScreenRepository } from '../../screens/domain/screen.types';
 import { runConversionTool } from './conversion-tool-runner.util';
 
 interface ParsedToolError {
@@ -32,12 +35,21 @@ export class CobolJavaConversionAdapter {
     private readonly config: ConfigService,
     @Inject(STORAGE_PORT) private readonly storage: StoragePort,
     @Inject(ERROR_LOG_REPOSITORY) private readonly errorLogs: ErrorLogRepository,
+    @Inject(SCREEN_REPOSITORY) private readonly screens: ScreenRepository,
   ) {}
 
   async execute(input: ConversionEngineInput): Promise<ConversionEngineOutput> {
     if (!input.inputReference) {
       throw new Error('COBOL conversion requires an uploaded source (inputReference is missing)');
     }
+
+    if (input.screenId) {
+      const screen = await this.screens.findById(input.screenId, input.organizationId);
+      if (screen?.dependencyStatus === 'BLOCKED') {
+        throw new CopybookDependencyBlockedError(this.buildBlockedMessage(screen.dependencies ?? []));
+      }
+    }
+
     const jarPath = this.config.get<string>('TOOL2JAVA_JAR_PATH');
     if (!jarPath) {
       throw new Error('TOOL2JAVA_JAR_PATH is not configured');
@@ -85,6 +97,23 @@ export class CobolJavaConversionAdapter {
         this.logger.warn(`Failed to clean up workspace ${jobWorkDir}: ${String(error)}`);
       });
     }
+  }
+
+  /** Flattens the unresolved entries (top-level and nested) of a BLOCKED dependency tree into
+   * one clear, actionable message — surfaced as the job's errorMessage. */
+  private buildBlockedMessage(dependencies: DependencyEntry[]): string {
+    const unresolved: string[] = [];
+    const collect = (entries: DependencyEntry[]) => {
+      for (const entry of entries) {
+        if (entry.status !== 'RESOLVED') {
+          unresolved.push(entry.message ?? `${entry.copyName}: ${entry.status}`);
+        } else if (entry.dependencies) {
+          collect(entry.dependencies);
+        }
+      }
+    };
+    collect(dependencies);
+    return `Blocked by unresolved copybook dependencies: ${unresolved.join(' | ')}`;
   }
 
   private async listJavaFiles(dir: string): Promise<string[]> {
