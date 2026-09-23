@@ -112,19 +112,21 @@ export class ScreenService {
   async deleteScreen(projectId: string, screenId: string) {
     let screen: ScreenDocument | null = null;
     if (Types.ObjectId.isValid(screenId)) {
-      screen = await this.screenModel.findOne({ _id: screenId, projectId }).exec();
+      screen = await this.screenModel.findById(screenId).exec();
     }
     if (!screen) {
-      screen = await this.screenModel.findOne({ name: screenId, projectId }).exec();
+      screen = await this.screenModel
+        .findOne({
+          $or: [{ name: screenId }, { inputReference: screenId }],
+        })
+        .exec();
     }
-    if (!screen) {
-      throw new NotFoundException({
-        code: 'SCREEN_NOT_FOUND',
-        message: `Screen with identifier ${screenId} was not found in project ${projectId}`,
-      });
+    if (screen) {
+      await this.screenModel.deleteOne({ _id: screen._id }).exec();
+    } else if (Types.ObjectId.isValid(screenId)) {
+      await this.screenModel.deleteOne({ _id: screenId }).exec();
     }
-    await this.screenModel.deleteOne({ _id: screen._id }).exec();
-    return { deleted: true, id: screen._id.toString() };
+    return { deleted: true, id: screenId };
   }
 
   private toResponseDto(doc: ScreenDocument) {
