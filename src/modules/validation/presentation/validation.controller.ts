@@ -1,10 +1,12 @@
 import {
+  Body,
   Controller,
   Get,
   Headers,
   HttpCode,
   HttpStatus,
   Param,
+  Patch,
   Post,
   UseGuards,
 } from '@nestjs/common';
@@ -20,8 +22,13 @@ import { AuthenticatedUser } from '../../../shared/logging/request-id.middleware
 import { CurrentUser } from '../../../shared/security/current-user.decorator';
 import { JwtAuthGuard } from '../../../shared/security/jwt-auth.guard';
 import { ValidationReadService } from '../application/validation-read.service';
+import { ReviewValidationFindingService } from '../application/review-validation-finding.service';
 import { TriggerAiValidationService } from '../application/trigger-ai-validation.service';
-import { ValidationFindingResponseDto, ValidationRunResponseDto } from './validation.dto';
+import {
+  ReviewValidationFindingRequestDto,
+  ValidationFindingResponseDto,
+  ValidationRunResponseDto,
+} from './validation.dto';
 
 @ApiTags('Validation')
 @ApiBearerAuth()
@@ -36,6 +43,7 @@ export class ValidationController {
   constructor(
     private readonly validationReads: ValidationReadService,
     private readonly triggerAiValidation: TriggerAiValidationService,
+    private readonly reviewValidationFinding: ReviewValidationFindingService,
   ) {}
 
   @Post('projects/:projectId/conversions/:conversionJobId/validation-runs')
@@ -114,5 +122,34 @@ export class ValidationController {
       projectId,
       validationRunId,
     );
+  }
+
+  @Patch('projects/:projectId/validation-runs/:validationRunId/findings/:findingId/review')
+  @ApiOperation({ summary: 'Record an authoritative human review of a validation finding' })
+  @ApiParam({ name: 'projectId', description: 'Project ID' })
+  @ApiParam({ name: 'validationRunId', description: 'Validation Run ID' })
+  @ApiParam({ name: 'findingId', description: 'Validation Finding ID' })
+  @ApiResponse({ status: 200, type: ValidationFindingResponseDto })
+  @ApiResponse({ status: 400, description: 'Invalid review status, transition, or note' })
+  @ApiResponse({ status: 403, description: 'Organization role cannot review findings' })
+  @ApiResponse({ status: 404, description: 'Project, validation run, or finding not found' })
+  @ApiResponse({ status: 409, description: 'Finding changed during review' })
+  async review(
+    @CurrentUser() user: AuthenticatedUser,
+    @Headers('x-organization-id') organizationId: string | undefined,
+    @Param('projectId') projectId: string,
+    @Param('validationRunId') validationRunId: string,
+    @Param('findingId') findingId: string,
+    @Body() body: ReviewValidationFindingRequestDto,
+  ) {
+    return this.reviewValidationFinding.execute({
+      userId: user.userId,
+      organizationHeader: organizationId,
+      projectId,
+      validationRunId,
+      findingId,
+      status: body.status,
+      reviewNote: body.reviewNote,
+    });
   }
 }
