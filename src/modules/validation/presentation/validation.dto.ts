@@ -1,4 +1,10 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
+import { IsIn, IsOptional, IsString, MaxLength } from 'class-validator';
+import {
+  HUMAN_REVIEW_TARGET_STATUSES,
+  HumanReviewTargetStatus,
+  MAX_REVIEW_NOTE_LENGTH,
+} from '../application/validation-finding-review.policy';
 import {
   ValidationFindingCategory,
   ValidationFindingSeverity,
@@ -6,6 +12,18 @@ import {
   ValidationFindingStatus,
 } from '../domain/validation-finding.types';
 import { ValidationRunStatus } from '../domain/validation-run.types';
+
+export class ReviewValidationFindingRequestDto {
+  @ApiProperty({ enum: HUMAN_REVIEW_TARGET_STATUSES })
+  @IsIn(HUMAN_REVIEW_TARGET_STATUSES)
+  status!: HumanReviewTargetStatus;
+
+  @ApiPropertyOptional({ maxLength: MAX_REVIEW_NOTE_LENGTH })
+  @IsOptional()
+  @IsString()
+  @MaxLength(MAX_REVIEW_NOTE_LENGTH)
+  reviewNote?: string;
+}
 
 export class ValidationRunResponseDto {
   @ApiProperty() id!: string;
@@ -65,6 +83,7 @@ export class ValidationFindingResponseDto {
   @ApiPropertyOptional() modelName?: string;
   @ApiPropertyOptional() reviewedBy?: string;
   @ApiPropertyOptional() reviewedAt?: Date;
+  @ApiPropertyOptional({ maxLength: MAX_REVIEW_NOTE_LENGTH }) reviewNote?: string;
   @ApiProperty() createdAt!: Date;
   @ApiProperty() updatedAt!: Date;
 }
