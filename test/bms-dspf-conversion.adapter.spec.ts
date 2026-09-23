@@ -46,11 +46,14 @@ describe('BmsDspfConversionAdapter', () => {
     await fs.promises.rm(sourceDir, { recursive: true, force: true });
   });
 
+  const fieldMappings = { findByScreen: jest.fn().mockResolvedValue(null) };
+
   function buildAdapter(): BmsDspfConversionAdapter {
     return new BmsDspfConversionAdapter(
       config as unknown as ConfigService,
       storage as StoragePort,
       errorLogs as unknown as ErrorLogRepository,
+      fieldMappings as any,
     );
   }
 

@@ -11,6 +11,10 @@ import {
   ErrorLogSeverity,
   ErrorLogStatus,
 } from '../domain/error-log.types';
+import {
+  FIELD_MAPPING_REPOSITORY,
+  FieldMappingRepository,
+} from '../domain/field-mapping.types';
 import { runConversionTool, stripAnsi } from './conversion-tool-runner.util';
 
 const SCRIPT_BY_EXTENSION: Record<string, { script: string; flag: string }> = {
@@ -27,6 +31,7 @@ export class BmsDspfConversionAdapter {
     private readonly config: ConfigService,
     @Inject(STORAGE_PORT) private readonly storage: StoragePort,
     @Inject(ERROR_LOG_REPOSITORY) private readonly errorLogs: ErrorLogRepository,
+    @Inject(FIELD_MAPPING_REPOSITORY) private readonly fieldMappings: FieldMappingRepository,
   ) {}
 
   async execute(input: ConversionEngineInput): Promise<ConversionEngineOutput> {
@@ -95,6 +100,27 @@ export class BmsDspfConversionAdapter {
           // Read and parse the actual BMS source file to extract real DFHMDF fields
           const bmsContent = await fs.promises.readFile(path.join(sourceDir, sf), 'utf8');
           const parsedFields = this.parseBmsFields(bmsContent);
+
+          if (input.screenId) {
+            const record = await this.fieldMappings.findByScreen(input.projectId, input.screenId, input.organizationId);
+            if (record && record.mappings) {
+              for (const mapping of record.mappings) {
+                const { displayRow, displayCol } = mapping.componentMapping;
+                if (displayRow !== undefined || displayCol !== undefined) {
+                  const inputField = parsedFields.inputs.find(i => i.name === mapping.legacyField.name);
+                  if (inputField) {
+                    if (displayRow !== undefined && displayRow > 0) inputField.row = displayRow;
+                    if (displayCol !== undefined && displayCol > 0) inputField.col = displayCol;
+                  }
+                  const labelField = parsedFields.labels.find(l => l.name === mapping.legacyField.name);
+                  if (labelField) {
+                    if (displayRow !== undefined && displayRow > 0) labelField.row = displayRow;
+                    if (displayCol !== undefined && displayCol > 0) labelField.col = displayCol;
+                  }
+                }
+              }
+            }
+          }
 
           // Build JSX inputs from parsed BMS fields
           let fieldInputs = '';
@@ -191,6 +217,7 @@ export default function ${compName}() {
 }
 `;
           await fs.promises.writeFile(path.join(outDir, `${rawName}.tsx`), stubCode, 'utf8');
+          await fs.promises.writeFile(path.join(outDir, `${rawName}.metadata.json`), JSON.stringify(parsedFields, null, 2), 'utf8');
         }
         outputFiles = await fs.promises.readdir(outDir);
         generatedComponents = outputFiles.filter(
