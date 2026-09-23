@@ -123,10 +123,20 @@ export class ScreenService {
         })
         .exec();
     }
+
     if (screen) {
-      await this.screenModel.deleteOne({ _id: screen._id }).exec();
-    } else if (Types.ObjectId.isValid(screenId)) {
-      await this.screenModel.deleteOne({ _id: screenId }).exec();
+      // Purge all records with matching ID, matching file name, or matching inputReference
+      await this.screenModel
+        .deleteMany({
+          $or: [{ _id: screen._id }, { name: screen.name }, { inputReference: screen.inputReference }],
+        })
+        .exec();
+    } else {
+      const deleteConditions: Record<string, any>[] = [{ name: screenId }, { inputReference: screenId }];
+      if (Types.ObjectId.isValid(screenId)) {
+        deleteConditions.push({ _id: screenId });
+      }
+      await this.screenModel.deleteMany({ $or: deleteConditions }).exec();
     }
     return { deleted: true, id: screenId };
   }
