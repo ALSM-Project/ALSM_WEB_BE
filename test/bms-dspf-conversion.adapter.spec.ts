@@ -99,7 +99,7 @@ describe('BmsDspfConversionAdapter', () => {
     );
   });
 
-  it('throws when no React components were generated at all', async () => {
+  it('falls back to parsing BMS source when no React components were generated', async () => {
     await fs.promises.writeFile(path.join(sourceDir, 'BROKEN.bms'), 'BMS');
     (toolRunner.runConversionTool as jest.Mock).mockResolvedValue({
       code: 0,
@@ -108,8 +108,10 @@ describe('BmsDspfConversionAdapter', () => {
       timedOut: false,
     });
 
-    await expect(buildAdapter().execute(baseInput)).rejects.toThrow(/No React components were generated/);
-    expect(storage.writeFiles).not.toHaveBeenCalled();
+    const result = await buildAdapter().execute(baseInput);
+    
+    expect(result.resultReference).toEqual('results/p1/job-1/uuid');
+    expect(storage.writeFiles).toHaveBeenCalled();
   });
 
   it('throws when the uploaded source has no .bms/.dspf files', async () => {
