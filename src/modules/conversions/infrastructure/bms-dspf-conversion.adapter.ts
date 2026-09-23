@@ -130,29 +130,66 @@ ${inputJsx}
 
           // Build the screen title from BMS TITLE if found
           const screenTitle = parsedFields.screenTitle || rawName;
+          
+          // Generate Legacy View JSX
+          const legacyItemsJsx = [
+            ...parsedFields.labels.filter(l => l.row > 0 && l.col > 0).map(l => 
+              `<div style={{ position: 'absolute', top: '${l.row - 1}em', left: '${l.col - 1}ch', color: '${l.color === 'blue' ? '#87ceeb' : '#00ff00'}', whiteSpace: 'pre' }}>${l.initial || (l.name ? \`[\${l.name}]\` : '')}</div>`
+            ),
+            ...parsedFields.inputs.filter(i => i.row > 0 && i.col > 0).map(i => 
+              `<div style={{ position: 'absolute', top: '${i.row - 1}em', left: '${i.col - 1}ch' }}>
+                 <input type="text" name="${i.name.toLowerCase()}" placeholder="${i.name}" maxLength={${i.length}} style={{ width: '${i.length}ch', backgroundColor: '#002200', color: '#00ff00', border: '1px solid #00ff00', outline: 'none', fontFamily: 'monospace', padding: 0, margin: 0, lineHeight: 1 }} />
+               </div>`
+            )
+          ].join('\\n            ');
 
-          const stubCode = `import React from 'react';
+          const stubCode = `import React, { useState } from 'react';
 
 export default function ${compName}() {
+  const [viewMode, setViewMode] = useState<'modern' | 'legacy'>('modern');
+
   return (
     <div style={{ padding: '24px', fontFamily: 'sans-serif' }}>
-      <h2>Screen: ${screenTitle}</h2>
-      <p style={{ color: '#666' }}>
-        Modernized React Component (${sf})
-      </p>
-      ${labelDisplays ? `<div style={{ marginTop: '12px', padding: '12px', background: '#f8f9fa', borderRadius: '6px', fontSize: '13px' }}>${labelDisplays}
-      </div>` : ''}
-      <div style={{ marginTop: '20px', padding: '16px', border: '1px solid #ccc', borderRadius: '8px' }}>
-        <form onSubmit={(e) => e.preventDefault()}>
-          ${fieldInputs}
-          <button type="submit" style={{ padding: '8px 16px', cursor: 'pointer', marginTop: '8px' }}>Submit</button>
-        </form>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid #eee', paddingBottom: '12px', marginBottom: '20px' }}>
+        <div>
+          <h2 style={{ margin: 0 }}>Screen: ${screenTitle}</h2>
+          <p style={{ color: '#666', margin: '4px 0 0 0' }}>Modernized React Component (${sf})</p>
+        </div>
+        <div>
+          <button 
+            type="button"
+            onClick={() => setViewMode(v => v === 'modern' ? 'legacy' : 'modern')}
+            style={{ padding: '8px 16px', background: viewMode === 'modern' ? '#0f172a' : '#10b981', color: 'white', border: 'none', borderRadius: '6px', cursor: 'pointer', fontWeight: 500 }}
+          >
+            {viewMode === 'modern' ? 'Switch to Legacy Terminal View' : 'Switch to Modern View'}
+          </button>
+        </div>
       </div>
-      ${parsedFields.functionKeys.length > 0 ? `<div style={{ marginTop: '12px', fontSize: '12px', color: '#888' }}>${parsedFields.functionKeys.join('  ')}</div>` : ''}
+
+      {viewMode === 'modern' ? (
+        <div>
+          ${labelDisplays ? `<div style={{ marginBottom: '20px', padding: '12px', background: '#f8f9fa', borderRadius: '6px', fontSize: '13px' }}>${labelDisplays}
+          </div>` : ''}
+          <div style={{ padding: '20px', border: '1px solid #e2e8f0', borderRadius: '8px', background: 'white' }}>
+            <form onSubmit={(e) => e.preventDefault()}>
+              ${fieldInputs}
+              <button type="submit" style={{ padding: '10px 24px', background: '#2563eb', color: 'white', border: 'none', borderRadius: '6px', cursor: 'pointer', fontWeight: 500 }}>Submit Form</button>
+            </form>
+          </div>
+          ${parsedFields.functionKeys.length > 0 ? `<div style={{ marginTop: '16px', fontSize: '13px', color: '#64748b', display: 'flex', gap: '16px', flexWrap: 'wrap' }}>${parsedFields.functionKeys.map(k => `<span style={{ background: '#f1f5f9', padding: '4px 8px', borderRadius: '4px' }}>${k}</span>`).join('')}</div>` : ''}
+        </div>
+      ) : (
+        <div style={{ backgroundColor: 'black', padding: '24px', borderRadius: '8px', overflowX: 'auto', display: 'flex', justifyContent: 'center' }}>
+          <div style={{ position: 'relative', width: '80ch', height: '25em', fontFamily: 'monospace', fontSize: '16px', backgroundColor: 'black', lineHeight: 1 }}>
+            ${legacyItemsJsx}
+            ${parsedFields.functionKeys.length > 0 ? `<div style={{ position: 'absolute', bottom: 0, left: 0, color: '#888', whiteSpace: 'pre' }}>${parsedFields.functionKeys.join('  ')}</div>` : ''}
+          </div>
+        </div>
+      )}
     </div>
   );
 }
-`;
+\`;
           await fs.promises.writeFile(path.join(outDir, `${rawName}.tsx`), stubCode, 'utf8');
         }
         outputFiles = await fs.promises.readdir(outDir);
@@ -216,13 +253,13 @@ export default function ${compName}() {
    * This mirrors the logic of bms2react.py's extract_map_items / extract_property.
    */
   private parseBmsFields(bmsContent: string): {
-    inputs: { name: string; label: string; length: number; isNumeric: boolean }[];
-    labels: { name?: string; initial?: string; color?: string }[];
+    inputs: { name: string; label: string; length: number; isNumeric: boolean; row: number; col: number }[];
+    labels: { name?: string; initial?: string; color?: string; row: number; col: number }[];
     screenTitle: string;
     functionKeys: string[];
   } {
-    const inputs: { name: string; label: string; length: number; isNumeric: boolean }[] = [];
-    const labels: { name?: string; initial?: string; color?: string }[] = [];
+    const inputs: { name: string; label: string; length: number; isNumeric: boolean; row: number; col: number }[] = [];
+    const labels: { name?: string; initial?: string; color?: string; row: number; col: number }[] = [];
     let screenTitle = '';
     const functionKeys: string[] = [];
     const addedNames = new Set<string>();
@@ -263,6 +300,9 @@ export default function ${compName}() {
       const posMatch = propsStr.match(/POS=\((\d+),(\d+)\)/i);
       const isNumeric = attrb.includes('NUM');
 
+      const row = posMatch ? parseInt(posMatch[1], 10) : 0;
+      const col = posMatch ? parseInt(posMatch[2], 10) : 0;
+
       // Classify: UNPROT or IC → input field, PROT/ASKIP with INITIAL → label
       const isUnprot = attrb.includes('UNPROT') || attrb.includes('IC');
       const isProt = attrb.includes('PROT') || attrb.includes('ASKIP');
@@ -274,13 +314,13 @@ export default function ${compName}() {
           label: lastLabelInitial || fieldName,
           length: length || 20,
           isNumeric,
+          row,
+          col,
         });
         lastLabelInitial = ''; // consumed
       } else if (initial && isProt) {
         // Check if this is a screen title
         if (!screenTitle && posMatch) {
-          const row = parseInt(posMatch[1], 10);
-          const col = parseInt(posMatch[2], 10);
           if (row <= 4 && col >= 15 && col <= 40 && initial.length > 5) {
             screenTitle = initial;
           }
@@ -290,7 +330,7 @@ export default function ${compName}() {
         if (initial.includes('F3=') || initial.includes('F5=') || initial.includes('ENTER=')) {
           functionKeys.push(initial);
         } else {
-          labels.push({ name: fieldName || undefined, initial, color: color || undefined });
+          labels.push({ name: fieldName || undefined, initial, color: color || undefined, row, col });
           // Store INITIAL as potential label for next input
           if (initial.endsWith(':') || initial.endsWith(': ')) {
             lastLabelInitial = initial.replace(/:?\s*$/, '');
@@ -301,7 +341,7 @@ export default function ${compName}() {
       } else if (fieldName && isProt && !initial && !addedNames.has(fieldName)) {
         // Protected named field without INITIAL = output/display field
         addedNames.add(fieldName);
-        labels.push({ name: fieldName, color: color || undefined });
+        labels.push({ name: fieldName, color: color || undefined, row, col });
         lastLabelInitial = '';
       } else {
         lastLabelInitial = '';
