@@ -8,6 +8,7 @@ import {
   ScreenSourceType,
   ScreenStatus,
 } from '../domain/screen.types';
+import type { ProgramAnalysis } from '../../conversions/domain/copybook-dependency.types';
 
 @Injectable()
 export class ScreenService {
@@ -57,5 +58,21 @@ export class ScreenService {
       throw new NotFoundException({ code: 'SCREEN_NOT_FOUND', message: 'Screen was not found' });
     }
     return screen;
+  }
+
+  /** Static COPY-statement dependency analysis result for one COBOL screen, computed once at
+   * upload time (see UploadConversionSourceService). 'NOT_ANALYZED' covers non-COBOL screens
+   * and any COBOL screen uploaded before this analysis existed. */
+  async getCopybookDependencies(
+    userId: string,
+    organizationHeader: string | undefined,
+    screenId: string,
+  ): Promise<ProgramAnalysis> {
+    const screen = await this.getById(userId, organizationHeader, screenId);
+    return {
+      program: screen.name,
+      status: screen.dependencyStatus ?? 'NOT_ANALYZED',
+      dependencies: screen.dependencies ?? [],
+    };
   }
 }

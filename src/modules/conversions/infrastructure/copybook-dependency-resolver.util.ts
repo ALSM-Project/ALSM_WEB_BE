@@ -9,24 +9,9 @@
  * outside that scope would be a false positive the real conversion could never back up.
  */
 
-export type DependencyStatus = 'RESOLVED' | 'MISSING' | 'AMBIGUOUS' | 'CIRCULAR_DEPENDENCY' | 'PARSE_ERROR';
-export type ProgramDependencyStatus = 'READY_FOR_CONVERSION' | 'BLOCKED' | 'NOT_ANALYZED';
+import type { DependencyEntry, DependencyStatus, ProgramAnalysis } from '../domain/copybook-dependency.types';
 
-export interface DependencyEntry {
-  copyName: string;
-  resolvedFile?: string;
-  status: DependencyStatus;
-  candidates?: string[];
-  message?: string;
-  lineNumber?: number;
-  dependencies?: DependencyEntry[];
-}
-
-export interface ProgramAnalysis {
-  program: string;
-  status: ProgramDependencyStatus;
-  dependencies: DependencyEntry[];
-}
+export type { DependencyStatus, ProgramDependencyStatus, DependencyEntry, ProgramAnalysis } from '../domain/copybook-dependency.types';
 
 export interface BundleFile {
   name: string;
