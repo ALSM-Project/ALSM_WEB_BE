@@ -9,9 +9,9 @@
  * outside that scope would be a false positive the real conversion could never back up.
  */
 
-import type { DependencyEntry, DependencyStatus, ProgramAnalysis } from '../domain/copybook-dependency.types';
+import type { DependencyEntry, DependencyStatus, ProgramAnalysis } from './copybook-dependency.types';
 
-export type { DependencyStatus, ProgramDependencyStatus, DependencyEntry, ProgramAnalysis } from '../domain/copybook-dependency.types';
+export type { DependencyStatus, ProgramDependencyStatus, DependencyEntry, ProgramAnalysis } from './copybook-dependency.types';
 
 export interface BundleFile {
   name: string;

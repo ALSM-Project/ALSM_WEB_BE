@@ -4,7 +4,7 @@ import {
   extractCopyStatements,
   resolveProgram,
   type BundleFile,
-} from '../src/modules/conversions/infrastructure/copybook-dependency-resolver.util';
+} from '../src/modules/conversions/domain/copybook-dependency-resolver';
 
 function bundle(files: Record<string, string>): BundleFile[] {
   return Object.entries(files).map(([name, content]) => ({ name, content }));

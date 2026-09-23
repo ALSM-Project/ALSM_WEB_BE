@@ -8,6 +8,7 @@ import { ProjectService } from '../../projects/application/project.service';
 import { ConversionType } from '../../projects/domain/project.types';
 import { ScreenService } from '../../screens/application/screen.service';
 import { ScreenRecord, ScreenSourceType } from '../../screens/domain/screen.types';
+import { analyzeBundle } from '../domain/copybook-dependency-resolver';
 
 export interface UploadedSourceFile {
   originalname: string;
@@ -93,6 +94,26 @@ export class UploadConversionSourceService {
           sizeBytes: file.size,
         }),
       );
+    }
+
+    // Copybook Dependency Resolver: one static-analysis pass over the whole bundle (builds
+    // its file index once), run only for COBOL projects, right after screens exist so each
+    // program's analysis can be persisted onto its own screen immediately.
+    if (project.conversionType === ConversionType.COBOL_TO_JAVA) {
+      const analysis = analyzeBundle(files.map((file) => ({ name: file.originalname, content: file.buffer.toString('utf8') })));
+      const analyzedAt = new Date();
+      for (const screen of screens) {
+        const programAnalysis = analysis.get(screen.name);
+        if (!programAnalysis) continue;
+        await this.screenService.recordDependencyDiagnostics(organization.id, screen.id, {
+          status: programAnalysis.status,
+          dependencies: programAnalysis.dependencies,
+          analyzedAt,
+        });
+        screen.dependencyStatus = programAnalysis.status;
+        screen.dependencies = programAnalysis.dependencies;
+        screen.dependencyAnalyzedAt = analyzedAt;
+      }
     }
 
     return {

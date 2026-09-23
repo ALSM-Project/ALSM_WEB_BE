@@ -3,6 +3,7 @@ import { OrganizationContextService } from '../../organizations/application/orga
 import { ProjectService } from '../../projects/application/project.service';
 import {
   SCREEN_REPOSITORY,
+  ScreenDependencyDiagnostics,
   ScreenRecord,
   ScreenRepository,
   ScreenSourceType,
@@ -35,6 +36,16 @@ export class ScreenService {
       sizeBytes: input.sizeBytes,
       createdBy: userId,
     });
+  }
+
+  /** Internal, called by UploadConversionSourceService right after it creates a COBOL screen
+   * — org/project auth has already been resolved for the upload itself, same as create(). */
+  async recordDependencyDiagnostics(
+    organizationId: string,
+    screenId: string,
+    diagnostics: ScreenDependencyDiagnostics,
+  ): Promise<void> {
+    await this.screens.updateDependencyDiagnostics(screenId, organizationId, diagnostics);
   }
 
   async list(
