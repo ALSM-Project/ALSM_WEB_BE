@@ -30,6 +30,12 @@ import {
   FieldMapping,
   FieldMappingSchema,
 } from './modules/conversions/infrastructure/field-mapping.schema';
+import {
+  ScreenDocument,
+  ScreenSchema,
+} from './modules/conversions/infrastructure/screen.schema';
+import { ScreenService } from './modules/conversions/application/screen.service';
+import { ScreensController } from './modules/conversions/presentation/screens.controller';
 import { USER_REPOSITORY } from './modules/users/domain/user.repository';
 import { MongoUserRepository } from './modules/users/infrastructure/mongo-user.repository';
 import { ORGANIZATION_REPOSITORY } from './modules/organizations/domain/organization.repository';
@@ -109,6 +115,17 @@ import { MongoBillingUsageRepository } from './modules/billing/infrastructure/pe
 import { RbacModule } from './modules/rbac/rbac.module';
 import { MenuModule } from './modules/menus/menu.module';
 
+import {
+  ValidationRun,
+  ValidationRunSchema,
+  ValidationFinding,
+  ValidationFindingSchema,
+} from './modules/conversions/infrastructure/validation.schema';
+import { VALIDATION_REPOSITORY } from './modules/conversions/domain/validation.types';
+import { MongoValidationRepository } from './modules/conversions/infrastructure/mongo-validation.repository';
+import { RuleValidatorService } from './modules/conversions/application/rule-validator.service';
+import { ValidationController } from './modules/conversions/presentation/validation.controller';
+
 @Module({
   imports: [
     ConfigModule.forRoot({ isGlobal: true, validationSchema: environmentValidationSchema }),
@@ -129,6 +146,9 @@ import { MenuModule } from './modules/menus/menu.module';
       { name: PasswordReset.name, schema: PasswordResetSchema },
       { name: EmailVerification.name, schema: EmailVerificationSchema },
       { name: FieldMapping.name, schema: FieldMappingSchema },
+      { name: ScreenDocument.name, schema: ScreenSchema },
+      { name: ValidationRun.name, schema: ValidationRunSchema },
+      { name: ValidationFinding.name, schema: ValidationFindingSchema },
     ]),
     RbacModule,
     MenuModule,
@@ -137,13 +157,16 @@ import { MenuModule } from './modules/menus/menu.module';
     AuthController,
     ProjectsController,
     ConversionsController,
+    ScreensController,
     FieldMappingController,
     ExportController,
+    ValidationController,
     HealthController,
     BillingController,
     PaymentController,
   ],
   providers: [
+    ScreenService,
     JwtAuthGuard,
     PermissionsGuard,
     AuthService,
@@ -163,6 +186,7 @@ import { MenuModule } from './modules/menus/menu.module';
     ConversionJobService,
     GetFieldMappingService,
     SaveFieldMappingService,
+    RuleValidatorService,
     ExportCodeService,
     ConversionWorkerRunner,
     BillingService,
@@ -180,6 +204,7 @@ import { MenuModule } from './modules/menus/menu.module';
     { provide: AUDIT_REPOSITORY, useClass: MongoAuditRepository },
     { provide: PROJECT_REPOSITORY, useClass: MongoProjectRepository },
     { provide: CONVERSION_JOB_REPOSITORY, useClass: MongoConversionJobRepository },
+    { provide: VALIDATION_REPOSITORY, useClass: MongoValidationRepository },
     { provide: SUBSCRIPTION_REPOSITORY, useClass: MongoSubscriptionRepository },
     { provide: INVOICE_REPOSITORY, useClass: MongoInvoiceRepository },
     { provide: PAYMENT_REPOSITORY, useClass: MongoPaymentRepository },
