@@ -13,6 +13,8 @@ jest.mock('../src/modules/conversions/infrastructure/conversion-tool-runner.util
   runConversionTool: jest.fn(),
 }));
 
+import { FieldMappingRepository } from '../src/modules/conversions/domain/field-mapping.types';
+
 describe('BmsDspfConversionAdapter', () => {
   let sourceDir: string;
   const configValues: Record<string, unknown> = {
@@ -53,7 +55,7 @@ describe('BmsDspfConversionAdapter', () => {
       config as unknown as ConfigService,
       storage as StoragePort,
       errorLogs as unknown as ErrorLogRepository,
-      fieldMappings as any,
+      fieldMappings as unknown as FieldMappingRepository,
     );
   }
 

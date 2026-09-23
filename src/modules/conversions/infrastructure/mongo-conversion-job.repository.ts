@@ -57,7 +57,7 @@ export class MongoConversionJobRepository implements ConversionJobRepository {
     const clean = screenId ? screenId.replace(/\.(bms|dspf|cob|cbl|cpy)$/i, '') : '';
     const nameRegex = clean ? new RegExp(`^${clean}(\\.(bms|dspf|cob|cbl|cpy))?$`, 'i') : null;
 
-    const screenConditions: any[] = [{ screenId }];
+    const screenConditions: Record<string, unknown>[] = [{ screenId }];
     if (clean) screenConditions.push({ screenId: clean });
     if (nameRegex) screenConditions.push({ screenId: nameRegex });
     screenConditions.push({ inputReference: screenId });

@@ -47,7 +47,7 @@ export class MongoScreenRepository implements ScreenRepository {
         $or: [{ _id: screen._id }, { name: screen.name }, { inputReference: screen.inputReference }],
       }).exec();
     } else {
-      const deleteConditions: Record<string, any>[] = [{ name: id }, { inputReference: id }];
+      const deleteConditions: Record<string, unknown>[] = [{ name: id }, { inputReference: id }];
       if (Types.ObjectId.isValid(id)) {
         deleteConditions.push({ _id: id });
       }

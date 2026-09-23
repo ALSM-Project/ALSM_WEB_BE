@@ -167,7 +167,7 @@ export class ScreenService {
         })
         .exec();
     } else {
-      const deleteConditions: Record<string, any>[] = [{ name: screenId }, { inputReference: screenId }];
+      const deleteConditions: Record<string, unknown>[] = [{ name: screenId }, { inputReference: screenId }];
       if (Types.ObjectId.isValid(screenId)) {
         deleteConditions.push({ _id: screenId });
       }

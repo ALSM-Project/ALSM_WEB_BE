@@ -23,9 +23,9 @@ export function generateBackendScreenBundle(screenName: string): GeneratedScreen
   const pascalName = cleanName.charAt(0).toUpperCase() + cleanName.slice(1).replace(/[^A-Za-z0-9]/g, '');
   const upper = cleanName.toUpperCase();
 
-  let fields: ScreenField[] = [];
-  let title = `${upper} Modernized Screen`;
-  let subtitle = `Legacy BMS/DSPF Screen (${screenName} → React Component)`;
+  const fields: ScreenField[] = [];
+  const title = `${upper} Modernized Screen`;
+  const subtitle = `Legacy BMS/DSPF Screen (${screenName} → React Component)`;
 
   const tsxContent = `import React from 'react';
 
