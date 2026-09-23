@@ -26,22 +26,24 @@ export class ScreenService {
     const completedJobs = await this.conversionJobModel.find({ status: 'COMPLETED' }).exec();
     const completedIdentifiers = new Set<string>();
     for (const job of completedJobs) {
-      if (job.screenId) completedIdentifiers.add(job.screenId);
-      if (job.inputReference) completedIdentifiers.add(job.inputReference);
+      if (job.screenId) completedIdentifiers.add(job.screenId.toString());
+      if (job.inputReference) completedIdentifiers.add(job.inputReference.toString());
     }
 
-    return screens.map((doc) => {
-      const dto = this.toResponseDto(doc);
-      if (
-        dto.status === 'READY' &&
-        (completedIdentifiers.has(doc._id.toString()) ||
+    return Promise.all(
+      screens.map(async (doc) => {
+        const dto = this.toResponseDto(doc);
+        const isCompleted =
+          completedIdentifiers.has(doc._id.toString()) ||
           completedIdentifiers.has(doc.name) ||
-          completedIdentifiers.has(doc.inputReference))
-      ) {
-        dto.status = 'COMPLETED';
-      }
-      return dto;
-    });
+          (doc.inputReference && completedIdentifiers.has(doc.inputReference));
+        if (isCompleted && doc.status !== 'COMPLETED') {
+          await this.screenModel.updateOne({ _id: doc._id }, { status: 'COMPLETED' }).exec();
+          dto.status = 'COMPLETED';
+        }
+        return dto;
+      }),
+    );
   }
 
   async updateScreenStatus(screenId: string, status: ScreenStatus) {
