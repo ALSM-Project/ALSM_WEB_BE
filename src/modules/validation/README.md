@@ -20,8 +20,9 @@ reviews it.
 - authenticated asynchronous AI validation trigger and dedicated BullMQ worker;
 - active-run, queue-job, and finding retry idempotency;
 - partial result-persistence reconciliation;
+- authoritative human review of validation findings;
+- tenant-scoped optimistic concurrency and review audit trails;
 - future deterministic rule validation;
-- future human review workflow integration.
 
 The intended relationship is:
 
@@ -95,6 +96,63 @@ GET /projects/:projectId/validation-runs/:validationRunId/findings
 ```
 
 Phase 4 retains these GET endpoints for polling and adds one authenticated asynchronous trigger.
+
+## Phase 5A Human Review Workflow
+
+Human review is authoritative. AI and provider adapters can create advisory findings in `PENDING`
+state, but they cannot select or change a human-review status.
+
+```text
+AI Finding
+    ↓
+PENDING
+    ↓
+Human Reviewer
+    ↓
+Needs Correction / Manual Review / Not Applicable / Resolved
+    ↓
+Reviewer Metadata
+    ↓
+Audit Trail
+```
+
+The authenticated review endpoint is:
+
+```text
+PATCH /api/v1/projects/:projectId/validation-runs/:validationRunId/findings/:findingId/review
+```
+
+The request accepts only `status` and optional `reviewNote`. `reviewedBy` is always the
+authenticated user ID, and `reviewedAt` is always the server time. `NOT_APPLICABLE` requires a
+trimmed, non-empty note. All notes are limited to 1000 characters. The endpoint uses the same
+project-write role policy as conversion actions: `OWNER`, `ADMIN`, and `MEMBER` may review;
+`VIEWER` remains read-only.
+
+Allowed transitions are explicit:
+
+```text
+PENDING          -> NEEDS_CORRECTION | MANUAL_REVIEW | NOT_APPLICABLE
+NEEDS_CORRECTION -> RESOLVED | MANUAL_REVIEW
+MANUAL_REVIEW    -> NEEDS_CORRECTION | NOT_APPLICABLE | RESOLVED
+NOT_APPLICABLE   -> MANUAL_REVIEW
+RESOLVED         -> MANUAL_REVIEW
+```
+
+`PENDING` is never an allowed review target. `MANUAL_REVIEW` is the safe reopening state for an
+already reviewed finding.
+
+Review persistence uses compare-and-set on finding ID, validation run ID, project ID,
+organization ID, and the status read by the reviewer. If another reviewer changes the finding
+first, the stale update receives `409 Conflict` and cannot silently overwrite the winning review.
+If no finding exists within the complete tenant/project/run scope, the endpoint returns `404`
+without revealing whether the identifier exists for another tenant.
+
+Every successful transition appends `VALIDATION_FINDING_REVIEWED` for resource type
+`validation_finding`. Audit metadata contains only relationship IDs, previous/new status, and
+whether a note was provided. It never includes the note text, finding explanation, source code,
+generated Java, prompts, or provider responses. Consistent with existing ALSM mutation services,
+the persistence mutation occurs before the synchronous audit append; an audit failure propagates
+and is not silently ignored.
 
 ## Phase 3 Secure AI Validation Pipeline
 
@@ -374,6 +432,10 @@ OpenAI adapter, strict provider-output validation, and the internal AI run persi
 Phase 4 adds the authenticated asynchronous trigger, atomic active-run claim, dedicated validation
 queue and worker, bounded same-run retries, idempotent finding persistence, and partial completion
 reconciliation.
+
+Phase 5A adds authenticated human finding decisions, a bounded generic review note, explicit
+transition policy, tenant-scoped compare-and-set persistence, server-owned reviewer metadata, and
+a safe audit trail. It does not alter AI prompts, provider behavior, or the Phase 4 queue/worker.
 
 The following remain future work:
 
