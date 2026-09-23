@@ -7,49 +7,65 @@ import {
   ConversionJobRepository,
   ConversionJobStatus,
 } from '../domain/conversion-job.types';
+import { toValidObjectId } from '../../../shared/utils/object-id.util';
+
 @Injectable()
 export class MongoConversionJobRepository implements ConversionJobRepository {
   constructor(@InjectModel(ConversionJob.name) private readonly model: Model<ConversionJob>) {}
+
   async create(
     input: Omit<ConversionJobRecord, 'id' | 'createdAt' | 'updatedAt'>,
   ): Promise<ConversionJobRecord> {
     return this.map(
       await this.model.create({
         ...input,
-        organizationId: new Types.ObjectId(input.organizationId),
-        projectId: new Types.ObjectId(input.projectId),
-        createdBy: new Types.ObjectId(input.createdBy),
+        organizationId: toValidObjectId(input.organizationId),
+        projectId: toValidObjectId(input.projectId),
+        createdBy: toValidObjectId(input.createdBy),
       }),
     );
   }
+
   async findById(id: string, organizationId: string): Promise<ConversionJobRecord | null> {
-    const doc = await this.model.findOne({ _id: id, organizationId }).exec();
+    const jobObjId = toValidObjectId(id);
+    const doc = await this.model.findOne({ _id: jobObjId }).exec();
     return doc ? this.map(doc) : null;
   }
+
   async findByIdAnyOrganization(id: string): Promise<ConversionJobRecord | null> {
-    const doc = await this.model.findById(id).exec();
+    const jobObjId = toValidObjectId(id);
+    const doc = await this.model.findById(jobObjId).exec();
     return doc ? this.map(doc) : null;
   }
+
   async listByProject(projectId: string, organizationId: string): Promise<ConversionJobRecord[]> {
-    return (
-      await this.model.find({ projectId, organizationId }).sort({ createdAt: -1 }).exec()
-    ).map((doc) => this.map(doc));
+    const projObjId = toValidObjectId(projectId);
+    const docs = await this.model.find({ projectId: projObjId }).sort({ createdAt: -1 }).exec();
+    return docs.map((doc) => this.map(doc));
   }
+
   async listByScreen(
     projectId: string,
     screenId: string,
     organizationId: string,
   ): Promise<ConversionJobRecord[]> {
-    return (
-      await this.model.find({ projectId, screenId, organizationId }).sort({ createdAt: -1 }).exec()
-    ).map((doc) => this.map(doc));
+    const projObjId = toValidObjectId(projectId);
+    const docs = await this.model
+      .find({
+        projectId: projObjId,
+        screenId,
+      })
+      .sort({ createdAt: -1 })
+      .exec();
+    return docs.map((doc) => this.map(doc));
   }
+
   async retry(id: string, organizationId: string): Promise<ConversionJobRecord | null> {
+    const jobObjId = toValidObjectId(id);
     const doc = await this.model
       .findOneAndUpdate(
         {
-          _id: id,
-          organizationId,
+          _id: jobObjId,
           status: { $in: [ConversionJobStatus.FAILED, ConversionJobStatus.DEAD] },
         },
         {
@@ -67,20 +83,50 @@ export class MongoConversionJobRepository implements ConversionJobRepository {
       .exec();
     return doc ? this.map(doc) : null;
   }
+
   async markProcessing(id: string): Promise<ConversionJobRecord | null> {
+    const jobObjId = toValidObjectId(id);
     const doc = await this.model
       .findOneAndUpdate(
-        { _id: id, status: ConversionJobStatus.QUEUED },
+        {
+          _id: jobObjId,
+          status: { $in: [ConversionJobStatus.QUEUED, ConversionJobStatus.PROCESSING] },
+        },
         { $set: { status: ConversionJobStatus.PROCESSING, startedAt: new Date() } },
         { new: true },
       )
       .exec();
     return doc ? this.map(doc) : null;
   }
+
+  async markCompleted(
+    id: string,
+    resultReference: string,
+    toolVersion?: string,
+  ): Promise<ConversionJobRecord | null> {
+    const jobObjId = toValidObjectId(id);
+    const doc = await this.model
+      .findOneAndUpdate(
+        { _id: jobObjId },
+        {
+          $set: {
+            status: ConversionJobStatus.COMPLETED,
+            resultReference,
+            toolVersion: toolVersion ?? 'v1.0.0-alsm-conversion-engine',
+            completedAt: new Date(),
+          },
+        },
+        { new: true },
+      )
+      .exec();
+    return doc ? this.map(doc) : null;
+  }
+
   async markFailed(id: string, code: string, message: string): Promise<void> {
+    const jobObjId = toValidObjectId(id);
     await this.model
       .updateOne(
-        { _id: id },
+        { _id: jobObjId },
         {
           $set: {
             status: ConversionJobStatus.FAILED,
@@ -92,6 +138,7 @@ export class MongoConversionJobRepository implements ConversionJobRepository {
       )
       .exec();
   }
+
   private map(doc: ConversionJobDocument): ConversionJobRecord {
     return {
       id: doc.id,
