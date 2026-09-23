@@ -62,5 +62,4 @@ export class Payment {
 }
 
 export const PaymentSchema = SchemaFactory.createForClass(Payment);
-PaymentSchema.index({ referenceCode: 1 });
 PaymentSchema.index({ status: 1, expiresAt: 1 });

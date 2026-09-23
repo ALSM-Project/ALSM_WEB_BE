@@ -39,6 +39,12 @@ import {
   ValidationFinding,
   ValidationFindingSchema,
 } from './modules/validation/infrastructure/validation-finding.schema';
+import {
+  ScreenDocument,
+  ScreenSchema as ConversionScreenSchema,
+} from './modules/conversions/infrastructure/screen.schema';
+import { ScreenService as ConversionScreenService } from './modules/conversions/application/screen.service';
+import { ScreensController as ConversionScreensController } from './modules/conversions/presentation/screens.controller';
 import { Screen, ScreenSchema } from './modules/screens/infrastructure/screen.schema';
 import { MongoScreenRepository } from './modules/screens/infrastructure/mongo-screen.repository';
 import { ScreenService } from './modules/screens/application/screen.service';
@@ -184,6 +190,7 @@ import { ValidationController as RuleValidationController } from './modules/conv
       { name: EmailVerification.name, schema: EmailVerificationSchema },
       { name: FieldMapping.name, schema: FieldMappingSchema },
       { name: ErrorLog.name, schema: ErrorLogSchema },
+      { name: ScreenDocument.name, schema: ConversionScreenSchema },
       { name: Screen.name, schema: ScreenSchema },
       { name: ValidationRun.name, schema: ValidationRunSchema },
       { name: ValidationFinding.name, schema: ValidationFindingSchema },
@@ -197,6 +204,7 @@ import { ValidationController as RuleValidationController } from './modules/conv
     ConversionsController,
     ConversionSourceController,
     ScreensController,
+    ConversionScreensController,
     FieldMappingController,
     ExportController,
     ErrorLogController,
@@ -229,7 +237,7 @@ import { ValidationController as RuleValidationController } from './modules/conv
     ConversionJobService,
     UploadConversionSourceService,
     GetConversionResultService,
-    ScreenService,
+    ConversionScreenService,
     MongoScreenRepository,
     GetFieldMappingService,
     SaveFieldMappingService,
