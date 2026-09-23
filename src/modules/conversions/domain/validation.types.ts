@@ -49,13 +49,17 @@ export interface ValidationRunRecord {
   id: string;
   conversionJobId: string;
   projectId: string;
+  organizationId: string;
   screenId: string;
   status: 'RUNNING' | 'COMPLETED' | 'FAILED';
   totalFindings: number;
+  findingCount: number;
   openCount: number;
   confirmedCount: number;
   rejectedCount: number;
   resolvedCount: number;
+  aiValidationEnabled: boolean;
+  ruleValidationEnabled: boolean;
   createdAt: Date;
   updatedAt: Date;
 }

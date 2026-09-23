@@ -16,8 +16,20 @@ export class ValidationRun {
   @Prop({ required: true, index: true })
   screenId!: string;
 
+  @Prop({ type: MongooseSchema.Types.ObjectId, required: true, index: true })
+  organizationId!: Types.ObjectId;
+
   @Prop({ required: true, enum: ['RUNNING', 'COMPLETED', 'FAILED'], default: 'COMPLETED' })
   status!: 'RUNNING' | 'COMPLETED' | 'FAILED';
+
+  @Prop({ required: true, default: false })
+  aiValidationEnabled!: boolean;
+
+  @Prop({ required: true, default: true })
+  ruleValidationEnabled!: boolean;
+
+  @Prop({ required: true, default: 0 })
+  findingCount!: number;
 
   @Prop({ default: 0 })
   totalFindings!: number;

@@ -109,9 +109,13 @@ export class RuleValidatorService {
     const run = await this.validationRepo.createRun({
       conversionJobId: job.id,
       projectId: job.projectId,
+      organizationId,
       screenId,
       status: 'COMPLETED',
       totalFindings: rawFindings.length,
+      findingCount: rawFindings.length,
+      aiValidationEnabled: false,
+      ruleValidationEnabled: true,
       openCount,
       confirmedCount: 0,
       rejectedCount: 0,
