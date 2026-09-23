@@ -61,20 +61,23 @@ describe('CobolJavaConversionAdapter', () => {
 
   it('translates COBOL and stores the generated .java files even though exit code is always 0', async () => {
     await fs.promises.writeFile(path.join(sourceDir, 'BUBBLESORT.cob'), 'COBOL SOURCE');
-    (toolRunner.runConversionTool as jest.Mock).mockImplementation(async (_exe: string, args: string[]) => {
-      const outDir = args[4];
-      await fs.promises.mkdir(path.join(outDir, 'cobolprogramclasses'), { recursive: true });
-      await fs.promises.writeFile(
-        path.join(outDir, 'cobolprogramclasses', 'Bubblesort.java'),
-        'public class Bubblesort {}',
-      );
-      return {
-        code: 0,
-        stdout: 'Parsing Cobol started for: BUBBLESORT.cob\nDone in 0s.',
-        stderr: '',
-        timedOut: false,
-      };
-    });
+    (toolRunner.runConversionTool as jest.Mock).mockImplementation(
+      async (_exe: string, _args: string[], options: { cwd: string }) => {
+        // tool2java only reliably honors -odir for the first file it writes; real runs show
+        // subsequent programs land under "<cwd>/cobolprogramclasses/<program>/..." instead —
+        // reproduce that here rather than writing into the (unused, from the tool's own
+        // perspective) -odir value.
+        const generatedDir = path.join(options.cwd, 'cobolprogramclasses');
+        await fs.promises.mkdir(generatedDir, { recursive: true });
+        await fs.promises.writeFile(path.join(generatedDir, 'Bubblesort.java'), 'public class Bubblesort {}');
+        return {
+          code: 0,
+          stdout: 'Parsing Cobol started for: BUBBLESORT.cob\nDone in 0s.',
+          stderr: '',
+          timedOut: false,
+        };
+      },
+    );
 
     const output = await buildAdapter().execute(baseInput);
 

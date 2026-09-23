@@ -67,14 +67,38 @@ export class CobolJavaConversionAdapter {
     try {
       const result = await runConversionTool(
         javaExecutable,
-        ['-jar', jarPath, '-dld', '-odir', outDir, '-dp0', '-fixed', '-c2', '-overwrite', sourceDir],
+        [
+          '-jar',
+          jarPath,
+          '-dld',
+          '-odir',
+          // tool2java concatenates outputDir + fileName with no separator of its own
+          // (Files.java openClassFile(outputDir, filePath)) — without a trailing separator
+          // here it writes garbled paths like "outClassName.java" and can throw.
+          outDir + path.sep,
+          // Without -pp, RESConfig.getProgramPackage() is null and every file write throws
+          // a NullPointerException inside tool2java (silently caught, logged, and skipped —
+          // "No Java files were generated" with no other indication why).
+          '-pp',
+          'cobolprogramclasses',
+          '-dp0',
+          '-fixed',
+          '-c2',
+          '-overwrite',
+          sourceDir,
+        ],
         { cwd: jobWorkDir, timeoutMs },
       );
       if (result.timedOut) {
         throw new Error(`tool2java timed out after ${timeoutMs}ms`);
       }
 
-      const generatedFiles = await this.listJavaFiles(outDir);
+      // tool2java only reliably honors -odir for the very first class file it writes; after
+      // that its own internal RESConfig output-dir state resets per program and it falls back
+      // to writing "<package>/<program>/<Class>.java" relative to the process CWD instead
+      // (confirmed by direct reproduction — real files land as siblings of -odir, not inside
+      // it). Search the whole job working directory rather than trusting -odir alone.
+      const generatedFiles = await this.listJavaFiles(jobWorkDir);
       if (generatedFiles.length === 0) {
         throw new Error(`No Java files were generated. Tool output: ${result.stdout.slice(0, 2000)}`);
       }
@@ -83,7 +107,7 @@ export class CobolJavaConversionAdapter {
 
       const files = await Promise.all(
         generatedFiles.map(async (absolutePath) => ({
-          relativePath: path.relative(outDir, absolutePath).split(path.sep).join('/'),
+          relativePath: path.relative(jobWorkDir, absolutePath).split(path.sep).join('/'),
           content: await fs.promises.readFile(absolutePath),
         })),
       );
