@@ -1,4 +1,4 @@
-import { BadRequestException, Inject, Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, Inject, Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { AUDIT_REPOSITORY, AuditRepository } from '../../audit/domain/audit.repository';
 import { OrganizationAuthorizationService } from '../../organizations/application/organization-authorization.service';
 import { OrganizationContextService } from '../../organizations/application/organization-context.service';
@@ -18,6 +18,8 @@ import { ProjectRecord } from '../../projects/domain/project.types';
 import { SCREEN_REPOSITORY, ScreenRepository } from '../../screens/domain/screen.types';
 @Injectable()
 export class ConversionJobService {
+  private readonly logger = new Logger(ConversionJobService.name);
+
   constructor(
     @Inject(CONVERSION_JOB_REPOSITORY) private readonly jobs: ConversionJobRepository,
     @Inject(CONVERSION_QUEUE) private readonly queue: ConversionQueuePort,
@@ -103,6 +105,10 @@ export class ConversionJobService {
     try {
       await this.queue.enqueue(job.id, job.priority);
     } catch (error) {
+      // A BadRequestException is never logged by the global exception filter (it only logs
+      // unhandled 500s) — without this, an enqueue failure reaches the user with no trace
+      // anywhere on the server, which is no better than the silent swallow this replaced.
+      this.logger.error(`Failed to enqueue conversion job ${job.id}: ${String(error)}`);
       throw new BadRequestException({
         code: 'CONVERSION_QUEUE_UNAVAILABLE',
         message: 'Conversion job could not be queued',
