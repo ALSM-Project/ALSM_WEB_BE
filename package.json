@@ -37,7 +37,8 @@
     "test:watch": "jest --watch",
     "test:e2e": "jest --config ./test/jest-e2e.json --passWithNoTests",
     "eval:ai:validate": "ts-node evaluation/ai-validation/src/validate-dataset.cli.ts",
-    "eval:ai:score": "ts-node evaluation/ai-validation/src/score.cli.ts"
+    "eval:ai:score": "ts-node evaluation/ai-validation/src/score.cli.ts",
+    "eval:ai:run": "ts-node evaluation/ai-validation/src/live-run.cli.ts"
   },
   "dependencies": {
     "@nestjs/common": "^11.1.6",
