@@ -30,6 +30,10 @@ import {
   FieldMapping,
   FieldMappingSchema,
 } from './modules/conversions/infrastructure/field-mapping.schema';
+import {
+  MethodMapping,
+  MethodMappingSchema,
+} from './modules/conversions/infrastructure/method-mapping.schema';
 import { ErrorLog, ErrorLogSchema } from './modules/conversions/infrastructure/error-log.schema';
 import {
   ValidationRun,
@@ -104,6 +108,11 @@ import { MongoFieldMappingRepository } from './modules/conversions/infrastructur
 import { GetFieldMappingService } from './modules/conversions/application/get-field-mapping.service';
 import { SaveFieldMappingService } from './modules/conversions/application/save-field-mapping.service';
 import { FieldMappingController } from './modules/conversions/presentation/field-mapping.controller';
+import { METHOD_MAPPING_REPOSITORY } from './modules/conversions/domain/method-mapping.types';
+import { MongoMethodMappingRepository } from './modules/conversions/infrastructure/mongo-method-mapping.repository';
+import { GetMethodMappingService } from './modules/conversions/application/get-method-mapping.service';
+import { SaveMethodMappingService } from './modules/conversions/application/save-method-mapping.service';
+import { MethodMappingController } from './modules/conversions/presentation/method-mapping.controller';
 import { AuthService } from './modules/auth/application/auth.service';
 import { ListActiveSessionsService } from './modules/auth/application/list-active-sessions.service';
 import { RevokeSessionService } from './modules/auth/application/revoke-session.service';
@@ -190,6 +199,7 @@ import { ValidationController as RuleValidationController } from './modules/conv
       { name: PasswordReset.name, schema: PasswordResetSchema },
       { name: EmailVerification.name, schema: EmailVerificationSchema },
       { name: FieldMapping.name, schema: FieldMappingSchema },
+      { name: MethodMapping.name, schema: MethodMappingSchema },
       { name: ErrorLog.name, schema: ErrorLogSchema },
       { name: ScreenDocument.name, schema: ConversionScreenSchema },
       { name: Screen.name, schema: ScreenSchema },
@@ -207,6 +217,7 @@ import { ValidationController as RuleValidationController } from './modules/conv
     ScreensController,
     ConversionScreensController,
     FieldMappingController,
+    MethodMappingController,
     ExportController,
     ErrorLogController,
     ValidationController,
@@ -242,6 +253,8 @@ import { ValidationController as RuleValidationController } from './modules/conv
     MongoScreenRepository,
     GetFieldMappingService,
     SaveFieldMappingService,
+    GetMethodMappingService,
+    SaveMethodMappingService,
     RuleValidatorService,
     ExportCodeService,
     ErrorLogService,
@@ -285,6 +298,7 @@ import { ValidationController as RuleValidationController } from './modules/conv
     { provide: PLAN_REPOSITORY, useClass: MongoPlanRepository },
     { provide: BANK_CONFIG_REPOSITORY, useClass: MongoBankConfigRepository },
     { provide: FIELD_MAPPING_REPOSITORY, useClass: MongoFieldMappingRepository },
+    { provide: METHOD_MAPPING_REPOSITORY, useClass: MongoMethodMappingRepository },
     { provide: ERROR_LOG_REPOSITORY, useExisting: MongoErrorLogRepository },
     { provide: VALIDATION_RUN_REPOSITORY, useClass: MongoValidationRunRepository },
     { provide: VALIDATION_FINDING_REPOSITORY, useClass: MongoValidationFindingRepository },
