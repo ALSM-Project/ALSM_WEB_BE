@@ -21,7 +21,9 @@ const codeFileSchema = Joi.object({
 }).unknown(false);
 const expectedFindingSchema = Joi.object({
   findingId: Joi.string().trim().min(1).required(),
-  category: Joi.string().valid(...categories).required(),
+  category: Joi.string()
+    .valid(...categories)
+    .required(),
   acceptedCategories: Joi.array()
     .items(Joi.string().valid(...categories))
     .unique()
@@ -31,7 +33,9 @@ const expectedFindingSchema = Joi.object({
     then: Joi.string().trim().min(1).required(),
     otherwise: Joi.forbidden(),
   }),
-  severity: Joi.string().valid(...severities).required(),
+  severity: Joi.string()
+    .valid(...severities)
+    .required(),
   sourceLocation: locationSchema,
   targetLocation: locationSchema,
   allowCategoryOnly: Joi.boolean(),
@@ -60,7 +64,9 @@ const caseSchema = Joi.object({
 }).unknown(false);
 const datasetSchema = Joi.object({
   datasetId: Joi.string().trim().min(1).required(),
-  version: Joi.string().pattern(/^\d+\.\d+\.\d+$/).required(),
+  version: Joi.string()
+    .pattern(/^\d+\.\d+\.\d+$/)
+    .required(),
   type: Joi.string().valid('synthetic-curated').required(),
   description: Joi.string().trim().min(1).required(),
   caseCount: Joi.number().integer().min(1).required(),
@@ -70,8 +76,12 @@ const datasetSchema = Joi.object({
 }).unknown(false);
 
 const predictedFindingSchema = Joi.object({
-  category: Joi.string().valid(...categories).required(),
-  severity: Joi.string().valid(...severities).required(),
+  category: Joi.string()
+    .valid(...categories)
+    .required(),
+  severity: Joi.string()
+    .valid(...severities)
+    .required(),
   title: Joi.string().trim().min(1).required(),
   explanation: Joi.string().trim().min(1).required(),
   sourceLocation: locationSchema,
@@ -124,17 +134,22 @@ export function validateDataset(value: unknown): AiEvaluationDataset {
 
   for (const benchmarkCase of dataset.cases) {
     assertUnique(caseIds, benchmarkCase.caseId, `duplicate caseId ${benchmarkCase.caseId}`);
-    assertFileSet(benchmarkCase.caseId, benchmarkCase.sourceFiles, 'source');
-    assertFileSet(benchmarkCase.caseId, benchmarkCase.targetFiles, 'target');
+    const caseFilePaths = new Set<string>();
+    assertFileSet(benchmarkCase.caseId, benchmarkCase.sourceFiles, 'source', caseFilePaths);
+    assertFileSet(benchmarkCase.caseId, benchmarkCase.targetFiles, 'target', caseFilePaths);
 
     if (benchmarkCase.isClean) {
       if (benchmarkCase.expectedFindings.length > 0 || benchmarkCase.mutations) {
-        throw new Error(`Invalid dataset: clean case ${benchmarkCase.caseId} cannot define findings or mutations`);
+        throw new Error(
+          `Invalid dataset: clean case ${benchmarkCase.caseId} cannot define findings or mutations`,
+        );
       }
       continue;
     }
     if (!benchmarkCase.mutations?.length || !benchmarkCase.expectedFindings.length) {
-      throw new Error(`Invalid dataset: mutated case ${benchmarkCase.caseId} requires mutations and findings`);
+      throw new Error(
+        `Invalid dataset: mutated case ${benchmarkCase.caseId} requires mutations and findings`,
+      );
     }
 
     const caseMutationIds = new Set<string>();
@@ -198,7 +213,9 @@ export function validatePredictions(
 function validate<T>(schema: Joi.Schema, value: unknown, label: string): T {
   const result = schema.validate(value, { abortEarly: false, convert: false });
   if (result.error) {
-    throw new Error(`Invalid ${label}: ${result.error.details.map((detail) => detail.message).join('; ')}`);
+    throw new Error(
+      `Invalid ${label}: ${result.error.details.map((detail) => detail.message).join('; ')}`,
+    );
   }
   return result.value as T;
 }
@@ -208,15 +225,23 @@ function assertUnique(values: Set<string>, value: string, message: string): void
   values.add(value);
 }
 
-function assertFileSet(caseId: string, files: EvaluationCodeFile[], kind: string): void {
-  const paths = new Set<string>();
+function assertFileSet(
+  caseId: string,
+  files: EvaluationCodeFile[],
+  kind: string,
+  paths: Set<string>,
+): void {
   for (const file of files) {
     const normalized = normalizePath(file.path);
-    if (normalized.startsWith('/') || normalized.split('/').includes('..')) {
+    if (
+      normalized.startsWith('/') ||
+      /^[a-z]:\//.test(normalized) ||
+      normalized.split('/').includes('..')
+    ) {
       throw new Error(`Invalid dataset: unsafe ${kind} path in ${caseId}`);
     }
     if (paths.has(normalized)) {
-      throw new Error(`Invalid dataset: duplicate ${kind} file path in ${caseId}`);
+      throw new Error(`Invalid dataset: duplicate file path in ${caseId}`);
     }
     paths.add(normalized);
   }
@@ -228,9 +253,13 @@ function assertLocationFile(
   files: EvaluationCodeFile[],
 ): void {
   if (!location) return;
-  const file = files.find((candidate) => normalizePath(candidate.path) === normalizePath(location.file));
+  const file = files.find(
+    (candidate) => normalizePath(candidate.path) === normalizePath(location.file),
+  );
   if (!file) {
-    throw new Error(`Invalid dataset: location in ${caseId} references nonexistent file ${location.file}`);
+    throw new Error(
+      `Invalid dataset: location in ${caseId} references nonexistent file ${location.file}`,
+    );
   }
   const lineCount = file.content.split(/\r\n|\n|\r/).length;
   if (location.endLine > lineCount) {
