@@ -1,0 +1,2 @@
+{"task_id":"HumanEval/7","entry_point":"find_closest_elements","COBOL_canonical_solution":"       IDENTIFICATION DIVISION.\n       PROGRAM-ID. FINDCLOSE.","COBOL_prompt":"COBOL problem description","Java_prompt":"Java problem description","Java_canonical_solution":"final class FindClosest { }","Java_tests":"assert true;","tests":[{"test":[1,2],"result":[1,2]}]}
+{"task_id":"HumanEval/8","entry_point":"missing_java","COBOL_canonical_solution":"       IDENTIFICATION DIVISION.","COBOL_prompt":"COBOL only","Java_prompt":"","Java_canonical_solution":"","Java_tests":"","tests":[]}

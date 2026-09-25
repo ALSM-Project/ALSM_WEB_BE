@@ -238,11 +238,7 @@ export function validateImportedReviewManifest(
 
 function assertDatasetRules(candidate: ImportedCandidateManifest['candidates'][number]): void {
   if (candidate.sourceDataset === 'COBOL_JAVATRANS') {
-    if (
-      candidate.groundTruthStatus !== 'PENDING_ALSM_REVIEW' ||
-      !candidate.targetFiles?.length ||
-      !candidate.provenance.upstreamCaseId
-    ) {
+    if (candidate.groundTruthStatus !== 'PENDING_ALSM_REVIEW' || !candidate.targetFiles?.length) {
       throw new Error(
         `Invalid candidate manifest: invalid COBOL-JavaTrans candidate ${candidate.candidateId}`,
       );
