@@ -86,4 +86,14 @@ export class ScreenService {
       dependencies: screen.dependencies ?? [],
     };
   }
+
+  async delete(
+    userId: string,
+    organizationHeader: string | undefined,
+    screenId: string,
+  ): Promise<{ deleted: boolean }> {
+    const organization = await this.organizationContext.resolve(userId, organizationHeader);
+    await this.screens.delete(screenId, organization.id);
+    return { deleted: true };
+  }
 }

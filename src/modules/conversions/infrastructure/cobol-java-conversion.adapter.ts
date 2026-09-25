@@ -50,9 +50,14 @@ export class CobolJavaConversionAdapter {
       }
     }
 
-    const jarPath = this.config.get<string>('TOOL2JAVA_JAR_PATH');
+    let jarPath = this.config.get<string>('TOOL2JAVA_JAR_PATH');
     if (!jarPath) {
-      throw new Error('TOOL2JAVA_JAR_PATH is not configured');
+      const autoPath = path.resolve(process.cwd(), '../ALSM_TOOL/tool2java/target/akaBatch-1.0.jar');
+      if (fs.existsSync(autoPath)) {
+        jarPath = autoPath;
+      } else {
+        throw new Error('TOOL2JAVA_JAR_PATH is not configured and ../ALSM_TOOL/tool2java/target/akaBatch-1.0.jar was not found');
+      }
     }
 
     const sourceDir = this.storage.resolvePath(input.inputReference);

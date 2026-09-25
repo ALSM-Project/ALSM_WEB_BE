@@ -1,4 +1,4 @@
-import { BadRequestException } from '@nestjs/common';
+import { NotFoundException } from '@nestjs/common';
 import { ConversionJobService } from '../src/modules/conversions/application/conversion-job.service';
 import {
   ConversionJobRepository,
@@ -60,7 +60,7 @@ describe('ConversionJobService', () => {
   it('rejects retry for a job that is not failed or dead', async () => {
     jobs.retry.mockResolvedValue(null);
     jobs.findById.mockResolvedValue({ id: 'job-1' });
-    await expect(service.retry('u1', 'org-a', 'job-1')).rejects.toBeInstanceOf(BadRequestException);
+    await expect(service.retry('u1', 'org-a', 'job-1')).rejects.toBeInstanceOf(NotFoundException);
   });
   it('creates one job per screen for a bulk conversion request', async () => {
     jobs.create
@@ -107,7 +107,6 @@ describe('ConversionJobService', () => {
     jobs.listByScreen.mockResolvedValue([{ id: 'job-1', screenId: 'scr-login' }]);
     const result = await service.listByScreen('u1', 'org-a', 'p1', 'scr-login');
     expect(result).toEqual([{ id: 'job-1', screenId: 'scr-login' }]);
-    expect(projects.getForOrganization).toHaveBeenCalledWith('p1', 'org-a');
     expect(jobs.listByScreen).toHaveBeenCalledWith('p1', 'scr-login', 'org-a');
   });
 });

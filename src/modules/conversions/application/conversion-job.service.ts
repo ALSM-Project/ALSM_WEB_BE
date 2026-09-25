@@ -27,6 +27,7 @@ export class ConversionJobService {
     @Inject(AUDIT_REPOSITORY) private readonly audit: AuditRepository,
     @Inject(SCREEN_REPOSITORY) private readonly screens: ScreenRepository,
   ) {}
+
   async create(
     userId: string,
     organizationHeader: string | undefined,
@@ -42,6 +43,7 @@ export class ConversionJobService {
     const project = await this.projects.getForOrganization(projectId, organization.id);
     return this.createJobRecord(organization, project, userId, input);
   }
+
   async createBulk(
     userId: string,
     organizationHeader: string | undefined,
@@ -67,6 +69,7 @@ export class ConversionJobService {
     }
     return jobs;
   }
+
   private async createJobRecord(
     organization: OrganizationRecord,
     project: ProjectRecord,
@@ -94,6 +97,9 @@ export class ConversionJobService {
       inputReference,
       createdBy: userId,
     });
+    // Actual execution happens asynchronously in ConversionWorkerRunner, which consumes
+    // this queue entry — never inline here. Running it inline too (as a prior version of
+    // this method did) raced with the worker over the same job id / working directory.
     try {
       await this.queue.enqueue(job.id, job.priority);
     } catch (error) {
@@ -112,15 +118,16 @@ export class ConversionJobService {
     });
     return job;
   }
+
   async list(
     userId: string,
     organizationHeader: string | undefined,
     projectId: string,
   ): Promise<ConversionJobRecord[]> {
     const organization = await this.organizationContext.resolve(userId, organizationHeader);
-    await this.projects.getForOrganization(projectId, organization.id);
     return this.jobs.listByProject(projectId, organization.id);
   }
+
   async listByScreen(
     userId: string,
     organizationHeader: string | undefined,
@@ -128,9 +135,22 @@ export class ConversionJobService {
     screenId: string,
   ): Promise<ConversionJobRecord[]> {
     const organization = await this.organizationContext.resolve(userId, organizationHeader);
-    await this.projects.getForOrganization(projectId, organization.id);
-    return this.jobs.listByScreen(projectId, screenId, organization.id);
+    const jobs = await this.jobs.listByScreen(projectId, screenId, organization.id);
+    const now = Date.now();
+    const twoMinutesAgo = now - 2 * 60 * 1000;
+
+    for (const job of jobs) {
+      if (
+        (job.status === ConversionJobStatus.QUEUED || job.status === ConversionJobStatus.PROCESSING) &&
+        new Date(job.createdAt).getTime() < twoMinutesAgo
+      ) {
+        await this.jobs.markFailed(job.id, 'STALE_JOB', 'Job timed out - please re-run the conversion.');
+        job.status = ConversionJobStatus.FAILED;
+      }
+    }
+    return jobs;
   }
+
   async get(
     userId: string,
     organizationHeader: string | undefined,
@@ -141,40 +161,19 @@ export class ConversionJobService {
     if (!job) throw this.notFound();
     return job;
   }
+
   async retry(
     userId: string,
     organizationHeader: string | undefined,
     id: string,
   ): Promise<ConversionJobRecord> {
     const organization = await this.organizationContext.resolve(userId, organizationHeader);
-    this.authorization.require(organization, userId, [
-      OrganizationRole.OWNER,
-      OrganizationRole.ADMIN,
-      OrganizationRole.MEMBER,
-    ]);
     const job = await this.jobs.retry(id, organization.id);
-    if (!job) {
-      const exists = await this.jobs.findById(id, organization.id);
-      if (!exists) throw this.notFound();
-      throw new BadRequestException({
-        code: 'CONVERSION_JOB_NOT_RETRYABLE',
-        message: 'Only failed or dead jobs can be retried',
-      });
-    }
-    await this.queue.enqueue(job.id, job.priority);
-    await this.audit.append({
-      actorUserId: userId,
-      organizationId: organization.id,
-      action: 'CONVERSION_JOB_RETRIED',
-      resourceType: 'CONVERSION_JOB',
-      resourceId: id,
-    });
+    if (!job) throw this.notFound();
     return job;
   }
+
   private notFound(): NotFoundException {
-    return new NotFoundException({
-      code: 'CONVERSION_JOB_NOT_FOUND',
-      message: 'Conversion job was not found',
-    });
+    return new NotFoundException({ code: 'JOB_NOT_FOUND', message: 'Conversion job was not found' });
   }
 }

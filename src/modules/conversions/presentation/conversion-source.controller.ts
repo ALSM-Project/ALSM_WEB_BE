@@ -1,3 +1,4 @@
+import 'multer';
 import {
   Controller,
   Headers,
@@ -12,7 +13,7 @@ import { ApiBearerAuth, ApiConsumes, ApiHeader, ApiOperation, ApiParam, ApiRespo
 import { CurrentUser } from '../../../shared/security/current-user.decorator';
 import { JwtAuthGuard } from '../../../shared/security/jwt-auth.guard';
 import { AuthenticatedUser } from '../../../shared/logging/request-id.middleware';
-import { UploadConversionSourceService } from '../application/upload-conversion-source.service';
+import { UploadConversionSourceService, UploadedSourceFile } from '../application/upload-conversion-source.service';
 
 const maxUploadSizeBytes = Number(process.env.MAX_UPLOAD_FILE_SIZE_MB || 50) * 1024 * 1024;
 // Program bundles (a COBOL source together with every copybook it needs) can legitimately
@@ -44,7 +45,7 @@ export class ConversionSourceController {
     @CurrentUser() user: AuthenticatedUser,
     @Headers('x-organization-id') organizationId: string | undefined,
     @Param('projectId') projectId: string,
-    @UploadedFiles() files: Array<Express.Multer.File>,
+    @UploadedFiles() files: UploadedSourceFile[],
   ) {
     return this.uploadSource.execute(user.userId, organizationId, projectId, files ?? []);
   }

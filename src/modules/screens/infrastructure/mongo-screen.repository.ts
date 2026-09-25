@@ -53,6 +53,27 @@ export class MongoScreenRepository implements ScreenRepository {
       .exec();
   }
 
+  async delete(id: string): Promise<void> {
+    let screen: ScreenDocument | null = null;
+    if (Types.ObjectId.isValid(id)) {
+      screen = await this.model.findById(id).exec();
+    }
+    if (!screen) {
+      screen = await this.model.findOne({ $or: [{ name: id }, { inputReference: id }] }).exec();
+    }
+    if (screen) {
+      await this.model.deleteMany({
+        $or: [{ _id: screen._id }, { name: screen.name }, { inputReference: screen.inputReference }],
+      }).exec();
+    } else {
+      const deleteConditions: Record<string, unknown>[] = [{ name: id }, { inputReference: id }];
+      if (Types.ObjectId.isValid(id)) {
+        deleteConditions.push({ _id: id });
+      }
+      await this.model.deleteMany({ $or: deleteConditions }).exec();
+    }
+  }
+
   private map(doc: ScreenDocument): ScreenRecord {
     return {
       id: doc.id,

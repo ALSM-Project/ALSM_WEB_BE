@@ -43,6 +43,7 @@ export interface ScreenRepository {
   listByProject(projectId: string, organizationId: string): Promise<ScreenRecord[]>;
   updateStatus(id: string, organizationId: string, status: ScreenStatus): Promise<void>;
   updateDependencyDiagnostics(id: string, organizationId: string, diagnostics: ScreenDependencyDiagnostics): Promise<void>;
+  delete(id: string, organizationId?: string): Promise<void>;
 }
 
 export const SCREEN_REPOSITORY = Symbol('SCREEN_REPOSITORY');
