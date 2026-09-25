@@ -1,0 +1,20 @@
+{
+  "repository": "COBOL-Coder/COBOL-Coder",
+  "repositoryUrl": "https://github.com/COBOL-Coder/COBOL-Coder",
+  "commit": "2b14b7bf7e55556205654c6f7657fa60e36251fa",
+  "retrievedAt": "2026-09-25T15:13:35.476Z",
+  "license": {
+    "spdx": "Apache-2.0",
+    "sourcePath": "LICENSE",
+    "sha256": "313605fbac6945e9324d4825470796b5b7dbc012f523fdc181f6e6fd234eb88f"
+  },
+  "licenseStatus": "REVIEW_REQUIRED",
+  "datasetDerivation": "The upstream README states that COBOL-JavaTrans is derived from HumanEval. No separate dataset-specific license statement was found, so engineering/legal review is required before promotion.",
+  "importStatistics": {
+    "actualRecordCount": 143,
+    "importedCandidateCount": 143,
+    "rejectedCount": 0,
+    "testEvidenceCount": 143,
+    "securityFlagCount": 0
+  }
+}
