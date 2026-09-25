@@ -67,7 +67,7 @@ const datasetSchema = Joi.object({
   version: Joi.string()
     .pattern(/^\d+\.\d+\.\d+$/)
     .required(),
-  type: Joi.string().valid('synthetic-curated').required(),
+  type: Joi.string().valid('synthetic-curated', 'human-reviewed-external').required(),
   description: Joi.string().trim().min(1).required(),
   caseCount: Joi.number().integer().min(1).required(),
   creationMethodology: Joi.string().trim().min(1).required(),

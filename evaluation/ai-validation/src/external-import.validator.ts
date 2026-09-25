@@ -67,6 +67,15 @@ const targetJavaProvenanceSchema = Joi.object({
   verificationStatus: Joi.string().valid('VERIFIED').required(),
   verificationEvidence: Joi.array().items(Joi.string().trim().min(1)).min(1).required(),
   humanReviewers: Joi.array().items(Joi.string().trim().min(1)).min(2).unique().required(),
+  fileIntegrity: Joi.array()
+    .items(
+      Joi.object({
+        path: Joi.string().min(1).required(),
+        contentSha256: Joi.string().pattern(sha256Pattern).required(),
+      }).unknown(false),
+    )
+    .min(1)
+    .required(),
 }).unknown(false);
 const provenanceSchema = Joi.object({
   upstreamRepository: Joi.string()
@@ -229,11 +238,39 @@ export function validateImportedReviewManifest(
     if (candidates && !candidateIds.has(review.candidateId)) {
       throw new Error(`Invalid review manifest: unknown candidateId ${review.candidateId}`);
     }
+    if (review.reviewStatus === 'PENDING') assertPendingReview(review, reviews.sourceDataset);
   }
   if (candidates && reviews.sourceDataset !== candidates.sourceDataset) {
     throw new Error('Invalid review manifest: sourceDataset does not match candidates');
   }
   return reviews;
+}
+
+function assertPendingReview(
+  review: ImportedReviewManifest['reviews'][number],
+  sourceDataset: ImportedReviewManifest['sourceDataset'],
+): void {
+  if (
+    review.reviewers.length > 0 ||
+    review.title !== null ||
+    review.description !== null ||
+    review.difficulty !== null ||
+    review.isClean !== null ||
+    review.expectedFindings !== null ||
+    review.mutations !== null ||
+    review.notes !== null
+  ) {
+    throw new Error(`Invalid review manifest: pending review ${review.candidateId} has decisions`);
+  }
+  if (
+    (sourceDataset === 'COBOL_JAVATRANS' && review.targetJavaStatus !== 'UPSTREAM_PRESENT') ||
+    (sourceDataset === 'AWS_CARDDEMO' &&
+      (review.targetJavaStatus !== 'MISSING' ||
+        review.targetFiles !== null ||
+        review.targetJavaProvenance !== null))
+  ) {
+    throw new Error(`Invalid review manifest: pending target state in ${review.candidateId}`);
+  }
 }
 
 function assertDatasetRules(candidate: ImportedCandidateManifest['candidates'][number]): void {

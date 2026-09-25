@@ -83,6 +83,10 @@ export interface TargetJavaProvenance {
   verificationStatus: 'VERIFIED';
   verificationEvidence: string[];
   humanReviewers: string[];
+  fileIntegrity: Array<{
+    path: string;
+    contentSha256: string;
+  }>;
 }
 
 export interface ImportedEvaluationCandidate {
