@@ -37,6 +37,7 @@ describe('ConversionJobService', () => {
   );
   beforeEach(() => {
     jest.clearAllMocks();
+    queue.enqueue.mockResolvedValue(undefined);
     context.resolve.mockResolvedValue({ id: 'org-a', members: [] });
     projects.getForOrganization.mockResolvedValue({
       id: 'p1',
@@ -61,6 +62,24 @@ describe('ConversionJobService', () => {
     jobs.retry.mockResolvedValue(null);
     jobs.findById.mockResolvedValue({ id: 'job-1' });
     await expect(service.retry('u1', 'org-a', 'job-1')).rejects.toBeInstanceOf(NotFoundException);
+  });
+  // UC-101 regression test. Bug: jobs.retry() only flipped the Mongo status back to QUEUED
+  // — nothing ever pushed the job back into BullMQ, so a "retried" job just sat there
+  // forever with no worker ever seeing it, exactly like the original silent enqueue bug.
+  it('re-enqueues the job in BullMQ after flipping it back to QUEUED', async () => {
+    jobs.retry.mockResolvedValue({ id: 'job-1', priority: ConversionPriority.HIGH });
+
+    await service.retry('u1', 'org-a', 'job-1');
+
+    expect(queue.enqueue).toHaveBeenCalledWith('job-1', ConversionPriority.HIGH);
+  });
+  it('surfaces a real error instead of a silently stuck job when re-enqueuing a retry fails', async () => {
+    jobs.retry.mockResolvedValue({ id: 'job-1', priority: ConversionPriority.NORMAL });
+    queue.enqueue.mockRejectedValue(new Error('Redis unavailable'));
+
+    await expect(service.retry('u1', 'org-a', 'job-1')).rejects.toMatchObject({
+      response: expect.objectContaining({ code: 'CONVERSION_QUEUE_UNAVAILABLE' }),
+    });
   });
   it('creates one job per screen for a bulk conversion request', async () => {
     jobs.create
