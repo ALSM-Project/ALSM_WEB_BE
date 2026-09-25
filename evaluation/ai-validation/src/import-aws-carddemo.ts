@@ -216,6 +216,7 @@ function analyzeProgram(
   const featureTags = scanCobolFeatures(program.content);
   if (resolved.size >= 5) featureTags.push('COPYBOOK_HEAVY');
   featureTags.push(sizeClass);
+  const importedFiles = [program, ...resolved.values()];
   return {
     program,
     featureTags: [...new Set(featureTags)].sort(),
@@ -224,7 +225,7 @@ function analyzeProgram(
       left.path.localeCompare(right.path),
     ),
     unresolvedDependencies: [...unresolved].sort(),
-    securityFlags: scanImportedText(program.path, program.content),
+    securityFlags: importedFiles.flatMap((file) => scanImportedText(file.path, file.content)),
   };
 }
 

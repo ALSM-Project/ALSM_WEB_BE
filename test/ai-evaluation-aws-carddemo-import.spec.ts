@@ -143,6 +143,26 @@ describe('AWS CardDemo importer', () => {
     expect(JSON.stringify(result.securityFlags)).not.toContain('1234567890ABCDEF');
   });
 
+  it('excludes a program when an included copybook is credential-flagged', () => {
+    const result = buildAwsCardDemoImport({
+      files: [
+        file('app/cbl/SAFE.cbl', '       PERFORM WORK.'),
+        file('app/cbl/USESFLAG.cbl', '       COPY FLAGGED.'),
+        file(
+          'app/cpy/FLAGGED.cpy',
+          "       01 SECRET-VALUE PIC X(20) VALUE 'AKIA1234567890ABCDEF'.",
+        ),
+      ],
+      commit: 'b'.repeat(40),
+      retrievedAt: '2026-09-25T00:00:00.000Z',
+      subsetSize: 1,
+    });
+    expect(result.manifest.candidates[0].provenance.upstreamPath).toBe('app/cbl/SAFE.cbl');
+    expect(result.securityFlags).toEqual([
+      { path: 'app/cpy/FLAGGED.cpy', patternType: 'AWS_ACCESS_KEY' },
+    ]);
+  });
+
   it('records Phase 3 file-size incompatibility metadata', () => {
     const result = buildAwsCardDemoImport({
       files: [file('app/cbl/LARGE.cbl', 'X'.repeat(PHASE_3_CONTEXT_LIMITS.maxFileCharacters + 1))],
