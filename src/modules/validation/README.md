@@ -437,10 +437,16 @@ Phase 5A adds authenticated human finding decisions, a bounded generic review no
 transition policy, tenant-scoped compare-and-set persistence, server-owned reviewer metadata, and
 a safe audit trail. It does not alter AI prompts, provider behavior, or the Phase 4 queue/worker.
 
+Phase 6 adds standalone offline evaluation tooling under `evaluation/ai-validation/`: a versioned
+synthetic curated benchmark, strict dataset/prediction validation, deterministic one-to-one matching,
+detection and agreement metrics, JSON/Markdown reports, and a double-opt-in manual provider runner.
+It is not registered in the production module, does not persist validation records, and does not
+change the prompt/model automatically. See `evaluation/ai-validation/README.md` for methodology and
+commands.
+
 The following remain future work:
 
 - deterministic rule validation;
 - retrieval-augmented generation (RAG);
 - frontend integration;
-- evaluation;
 - fine-tuning.
