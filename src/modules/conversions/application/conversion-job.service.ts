@@ -176,6 +176,19 @@ export class ConversionJobService {
     const organization = await this.organizationContext.resolve(userId, organizationHeader);
     const job = await this.jobs.retry(id, organization.id);
     if (!job) throw this.notFound();
+    // jobs.retry() only flips the Mongo record back to QUEUED — it was never actually
+    // re-enqueued in BullMQ, so a "retried" job just sat there forever with nothing to ever
+    // pick it up (same class of bug as the original create-job enqueue swallow).
+    try {
+      await this.queue.enqueue(job.id, job.priority);
+    } catch (error) {
+      this.logger.error(`Failed to re-enqueue retried conversion job ${job.id}: ${String(error)}`);
+      throw new BadRequestException({
+        code: 'CONVERSION_QUEUE_UNAVAILABLE',
+        message: 'Conversion job could not be queued',
+        details: error instanceof Error ? [error.message] : [],
+      });
+    }
     return job;
   }
 
