@@ -2,7 +2,7 @@ import { Injectable } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model, Types } from 'mongoose';
 import { Screen, ScreenDocument } from './screen.schema';
-import { ScreenRecord, ScreenRepository, ScreenStatus } from '../domain/screen.types';
+import { ScreenDependencyDiagnostics, ScreenRecord, ScreenRepository, ScreenStatus } from '../domain/screen.types';
 
 @Injectable()
 export class MongoScreenRepository implements ScreenRepository {
@@ -32,6 +32,25 @@ export class MongoScreenRepository implements ScreenRepository {
 
   async updateStatus(id: string, organizationId: string, status: ScreenStatus): Promise<void> {
     await this.model.updateOne({ _id: id, organizationId }, { $set: { status } }).exec();
+  }
+
+  async updateDependencyDiagnostics(
+    id: string,
+    organizationId: string,
+    diagnostics: ScreenDependencyDiagnostics,
+  ): Promise<void> {
+    await this.model
+      .updateOne(
+        { _id: id, organizationId },
+        {
+          $set: {
+            dependencyStatus: diagnostics.status,
+            dependencies: diagnostics.dependencies,
+            dependencyAnalyzedAt: diagnostics.analyzedAt,
+          },
+        },
+      )
+      .exec();
   }
 
   async delete(id: string): Promise<void> {
@@ -68,6 +87,9 @@ export class MongoScreenRepository implements ScreenRepository {
       createdBy: doc.createdBy.toString(),
       createdAt: doc.createdAt,
       updatedAt: doc.updatedAt,
+      dependencyStatus: doc.dependencyStatus,
+      dependencies: doc.dependencies,
+      dependencyAnalyzedAt: doc.dependencyAnalyzedAt,
     };
   }
 }

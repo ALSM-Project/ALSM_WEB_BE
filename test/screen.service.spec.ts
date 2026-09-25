@@ -5,7 +5,13 @@ import { OrganizationContextService } from '../src/modules/organizations/applica
 import { ProjectService } from '../src/modules/projects/application/project.service';
 
 describe('ScreenService', () => {
-  const screens = { create: jest.fn(), findById: jest.fn(), listByProject: jest.fn(), updateStatus: jest.fn() };
+  const screens = {
+    create: jest.fn(),
+    findById: jest.fn(),
+    listByProject: jest.fn(),
+    updateStatus: jest.fn(),
+    updateDependencyDiagnostics: jest.fn(),
+  };
   const context = { resolve: jest.fn() };
   const projects = { getForOrganization: jest.fn() };
   const service = new ScreenService(
@@ -52,5 +58,30 @@ describe('ScreenService', () => {
   it('throws NotFoundException when the screen does not exist in the resolved organization', async () => {
     screens.findById.mockResolvedValue(null);
     await expect(service.getById('u1', 'org-1', 'scr-missing')).rejects.toBeInstanceOf(NotFoundException);
+  });
+
+  it('returns NOT_ANALYZED dependency status when the screen has never been analyzed', async () => {
+    screens.findById.mockResolvedValue({ id: 'scr-1', name: 'CBACT01C.cbl' });
+
+    const result = await service.getCopybookDependencies('u1', 'org-1', 'scr-1');
+
+    expect(result).toEqual({ program: 'CBACT01C.cbl', status: 'NOT_ANALYZED', dependencies: [] });
+  });
+
+  it('returns the persisted dependency analysis for a screen', async () => {
+    screens.findById.mockResolvedValue({
+      id: 'scr-1',
+      name: 'CBACT01C.cbl',
+      dependencyStatus: 'BLOCKED',
+      dependencies: [{ copyName: 'ACCTFILE-STATUS', status: 'MISSING' }],
+    });
+
+    const result = await service.getCopybookDependencies('u1', 'org-1', 'scr-1');
+
+    expect(result).toEqual({
+      program: 'CBACT01C.cbl',
+      status: 'BLOCKED',
+      dependencies: [{ copyName: 'ACCTFILE-STATUS', status: 'MISSING' }],
+    });
   });
 });

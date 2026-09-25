@@ -3,11 +3,13 @@ import { OrganizationContextService } from '../../organizations/application/orga
 import { ProjectService } from '../../projects/application/project.service';
 import {
   SCREEN_REPOSITORY,
+  ScreenDependencyDiagnostics,
   ScreenRecord,
   ScreenRepository,
   ScreenSourceType,
   ScreenStatus,
 } from '../domain/screen.types';
+import type { ProgramAnalysis } from '../../conversions/domain/copybook-dependency.types';
 
 @Injectable()
 export class ScreenService {
@@ -36,6 +38,16 @@ export class ScreenService {
     });
   }
 
+  /** Internal, called by UploadConversionSourceService right after it creates a COBOL screen
+   * — org/project auth has already been resolved for the upload itself, same as create(). */
+  async recordDependencyDiagnostics(
+    organizationId: string,
+    screenId: string,
+    diagnostics: ScreenDependencyDiagnostics,
+  ): Promise<void> {
+    await this.screens.updateDependencyDiagnostics(screenId, organizationId, diagnostics);
+  }
+
   async list(
     userId: string,
     organizationHeader: string | undefined,
@@ -57,6 +69,22 @@ export class ScreenService {
       throw new NotFoundException({ code: 'SCREEN_NOT_FOUND', message: 'Screen was not found' });
     }
     return screen;
+  }
+
+  /** Static COPY-statement dependency analysis result for one COBOL screen, computed once at
+   * upload time (see UploadConversionSourceService). 'NOT_ANALYZED' covers non-COBOL screens
+   * and any COBOL screen uploaded before this analysis existed. */
+  async getCopybookDependencies(
+    userId: string,
+    organizationHeader: string | undefined,
+    screenId: string,
+  ): Promise<ProgramAnalysis> {
+    const screen = await this.getById(userId, organizationHeader, screenId);
+    return {
+      program: screen.name,
+      status: screen.dependencyStatus ?? 'NOT_ANALYZED',
+      dependencies: screen.dependencies ?? [],
+    };
   }
 
   async delete(

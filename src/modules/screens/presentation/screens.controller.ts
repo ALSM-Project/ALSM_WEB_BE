@@ -37,6 +37,18 @@ export class ScreensController {
     return this.screens.getById(user.userId, organizationId, id);
   }
 
+  @Get('screens/:id/copybook-dependencies')
+  @ApiOperation({ summary: 'Get the COBOL copybook dependency analysis for a screen' })
+  @ApiParam({ name: 'id', description: 'Screen ID' })
+  @ApiResponse({ status: 200, description: 'Dependency analysis: program name, overall status, and each COPY dependency' })
+  async getCopybookDependencies(
+    @CurrentUser() user: AuthenticatedUser,
+    @Headers('x-organization-id') organizationId: string | undefined,
+    @Param('id') id: string,
+  ) {
+    return this.screens.getCopybookDependencies(user.userId, organizationId, id);
+  }
+
   @Delete('projects/:projectId/screens/:screenId')
   @ApiOperation({ summary: 'Delete a screen and its associated data' })
   async deleteScreen(

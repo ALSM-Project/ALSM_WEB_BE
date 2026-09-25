@@ -1,16 +1,12 @@
-import { Inject, Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, Inject, Injectable, NotFoundException } from '@nestjs/common';
 import { AUDIT_REPOSITORY, AuditRepository } from '../../audit/domain/audit.repository';
 import { OrganizationAuthorizationService } from '../../organizations/application/organization-authorization.service';
 import { OrganizationContextService } from '../../organizations/application/organization-context.service';
 import { OrganizationRole } from '../../organizations/domain/organization.types';
 import { ProjectService } from '../../projects/application/project.service';
-import { ScreenService } from './screen.service';
-import { generateBackendScreenBundle } from '../infrastructure/backend-screen-generator.util';
 import {
-  CONVERSION_ENGINE,
   CONVERSION_JOB_REPOSITORY,
   CONVERSION_QUEUE,
-  ConversionEnginePort,
   ConversionJobRecord,
   ConversionJobRepository,
   ConversionJobStatus,
@@ -19,18 +15,17 @@ import {
 } from '../domain/conversion-job.types';
 import { OrganizationRecord } from '../../organizations/domain/organization.repository';
 import { ProjectRecord } from '../../projects/domain/project.types';
-
+import { SCREEN_REPOSITORY, ScreenRepository } from '../../screens/domain/screen.types';
 @Injectable()
 export class ConversionJobService {
   constructor(
     @Inject(CONVERSION_JOB_REPOSITORY) private readonly jobs: ConversionJobRepository,
     @Inject(CONVERSION_QUEUE) private readonly queue: ConversionQueuePort,
-    @Inject(CONVERSION_ENGINE) private readonly engine: ConversionEnginePort,
     private readonly projects: ProjectService,
     private readonly organizationContext: OrganizationContextService,
     private readonly authorization: OrganizationAuthorizationService,
     @Inject(AUDIT_REPOSITORY) private readonly audit: AuditRepository,
-    private readonly screens: ScreenService,
+    @Inject(SCREEN_REPOSITORY) private readonly screens: ScreenRepository,
   ) {}
 
   async create(
@@ -81,7 +76,16 @@ export class ConversionJobService {
     userId: string,
     input: { screenId?: string; priority?: ConversionPriority; inputReference?: string },
   ): Promise<ConversionJobRecord> {
-    let job = await this.jobs.create({
+    // The screen (once one exists) is the source of truth for where its real uploaded
+    // file lives — resolve inputReference from it server-side rather than trusting
+    // whatever (if anything) the caller passed. This is what makes bulk conversion work:
+    // the bulk endpoint only ever received one shared inputReference for the whole
+    // batch (or none), which is wrong for every screen but the first.
+    const screen = input.screenId
+      ? await this.screens.findById(input.screenId, organization.id)
+      : null;
+    const inputReference = screen?.inputReference ?? input.inputReference;
+    const job = await this.jobs.create({
       organizationId: organization.id,
       projectId: project.id,
       screenId: input.screenId,
@@ -90,68 +94,28 @@ export class ConversionJobService {
       priority: input.priority ?? ConversionPriority.NORMAL,
       attemptCount: 0,
       maxAttempts: 3,
-      inputReference: input.inputReference,
+      inputReference,
       createdBy: userId,
     });
-
+    // Actual execution happens asynchronously in ConversionWorkerRunner, which consumes
+    // this queue entry — never inline here. Running it inline too (as a prior version of
+    // this method did) raced with the worker over the same job id / working directory.
     try {
       await this.queue.enqueue(job.id, job.priority);
-    } catch {
-      // Queue enqueuing fallback
-    }
-
-    try {
-      await this.jobs.markProcessing(job.id);
-      const output = await this.engine.execute({
-        conversionJobId: job.id,
-        organizationId: organization.id,
-        projectId: project.id,
-        screenId: job.screenId,
-        inputReference: input.inputReference,
-        conversionType: project.conversionType,
-      });
-      const updated = await this.jobs.markCompleted(
-        job.id,
-        output.resultReference,
-        output.toolVersion,
-      );
-      if (updated) job = updated;
-      if (input.screenId) {
-        await this.screens.updateScreenStatus(input.screenId, 'COMPLETED');
-      }
-      if (job.screenId) {
-        await this.screens.updateScreenStatus(job.screenId, 'COMPLETED');
-      }
-      if (input.inputReference) {
-        await this.screens.updateScreenStatus(input.inputReference, 'COMPLETED');
-      }
-      if (job.inputReference) {
-        await this.screens.updateScreenStatus(job.inputReference, 'COMPLETED');
-      }
     } catch (error) {
-      console.error('[createJobRecord] Processing failed:', error);
-      const message = error instanceof Error ? error.message : 'Conversion engine failed';
-      await this.jobs.markFailed(job.id, 'CONVERSION_FAILED', message);
-      if (input.screenId) {
-        await this.screens.updateScreenStatus(input.screenId, 'FAILED');
-      }
-      if (job.screenId) {
-        await this.screens.updateScreenStatus(job.screenId, 'FAILED');
-      }
-    }
-
-    try {
-      await this.audit.append({
-        actorUserId: userId,
-        organizationId: organization.id,
-        action: 'CONVERSION_JOB_CREATED',
-        resourceType: 'CONVERSION_JOB',
-        resourceId: job.id,
+      throw new BadRequestException({
+        code: 'CONVERSION_QUEUE_UNAVAILABLE',
+        message: 'Conversion job could not be queued',
+        details: error instanceof Error ? [error.message] : [],
       });
-    } catch (auditErr) {
-      console.error('[createJobRecord] Audit failed:', auditErr);
     }
-
+    await this.audit.append({
+      actorUserId: userId,
+      organizationId: organization.id,
+      action: 'CONVERSION_JOB_CREATED',
+      resourceType: 'CONVERSION_JOB',
+      resourceId: job.id,
+    });
     return job;
   }
 
@@ -196,36 +160,6 @@ export class ConversionJobService {
     const job = await this.jobs.findById(id, organization.id);
     if (!job) throw this.notFound();
     return job;
-  }
-
-  async getResult(
-    userId: string,
-    organizationHeader: string | undefined,
-    id: string,
-  ): Promise<{ jobId: string; status: string; files: { relativePath: string; language: string; content: string }[] }> {
-    await this.organizationContext.resolve(userId, organizationHeader);
-    const job = await this.jobs.findByIdAnyOrganization(id);
-    if (!job) throw this.notFound();
-
-    let screenName = job.inputReference || job.screenId || 'Screen';
-    if (job.screenId) {
-      try {
-        const screen = await this.screens.getScreenById(job.screenId);
-        if (screen?.name) {
-          screenName = screen.name;
-        }
-      } catch {
-        // ignore
-      }
-    }
-
-    const generated = generateBackendScreenBundle(screenName);
-
-    return {
-      jobId: job.id,
-      status: job.status,
-      files: generated.files,
-    };
   }
 
   async retry(
