@@ -153,3 +153,105 @@ Phase 6 baseline before Phase 7, then evaluate Phase 7 against the same frozen d
 Benchmark framework ready; no real-provider score produced.
 
 **NO REAL PROVIDER BENCHMARK WAS RUN.**
+
+## External data import
+
+Phase 6.1 adds a separate staging layer under `imports/`. External evidence never becomes ground
+truth merely because it was published, compiled, tested, or reviewed upstream:
+
+```text
+Pinned external source
+  -> ImportedEvaluationCandidate (scorable: false)
+  -> explicit review by at least two team members
+  -> guarded promotion
+  -> Phase 6 EvaluationCase
+```
+
+`ImportedEvaluationCandidate` intentionally has no `isClean` or `expectedFindings` fields. The
+normal Phase 6 dataset validator remains strict, and `eval:ai:score` accepts only validated Phase 6
+datasets. Passing a candidate manifest to the scorer therefore fails before scoring.
+
+### Explicit imports
+
+Imports are manual commands and are the only Phase 6.1 commands that contact the network. They clone
+only their approved public repository into a temporary directory, resolve and check out the exact
+`main` SHA, write the pinned provenance, and remove the temporary checkout. Normal install, test,
+lint, build, and e2e commands do not download external repositories.
+
+```powershell
+npm run eval:ai:import:cobol-javatrans
+npm run eval:ai:import:aws-carddemo
+npm run eval:ai:import:validate
+```
+
+Use the optional `--output` argument only when intentionally regenerating into another directory.
+This repository's npm version requires the extra separator used by the existing evaluation CLIs:
+
+```powershell
+npm run eval:ai:import:aws-carddemo -- -- --output path/to/staging
+```
+
+Every candidate records the repository owner/name and URL, pinned commit, upstream path and blob SHA,
+local content SHA-256, retrieval time, license identifier/snapshot path, and NOTICE path when one
+exists. Path normalization rejects absolute paths, `..`, NUL, and duplicates. Static credential
+scanning excludes suspicious candidates by default and reports only path plus pattern type.
+
+The COBOL-JavaTrans import preserves canonical COBOL/Java, prompts, and tests as evidence. Its
+upstream claim of manual review, compilation, and functional validation does not establish ALSM
+semantic ground truth. The upstream README describes the dataset as HumanEval-derived but provides
+no separate dataset-specific license statement, so the committed source is `REVIEW_REQUIRED` and
+promotion is blocked until the team resolves that status.
+
+The AWS CardDemo import is source-only. It selects a deterministic 12-program subset for structural
+diversity, includes only confidently resolved repository copybooks, and never reads sample business
+data directories. No Java is generated, no converter is run, and every review entry begins with
+`targetJavaStatus: "MISSING"`. Feature tags are objective structural keyword evidence, not business
+semantics or defect labels.
+
+### Human review and promotion
+
+Copy the applicable `review-template.json` to a separate decision file. Do not treat the committed
+template as an approval. Every entry starts with:
+
+```json
+{
+  "reviewStatus": "PENDING",
+  "reviewers": [],
+  "title": null,
+  "description": null,
+  "difficulty": null,
+  "isClean": null,
+  "expectedFindings": null,
+  "mutations": null,
+  "notes": null
+}
+```
+
+Promotion requires `APPROVED`, two distinct actual team-member identifiers, reviewed case metadata,
+an explicit boolean `isClean`, and explicit `expectedFindings`. A clean case must explicitly supply
+`[]`; a defective case must supply reviewed findings and matching mutation metadata. OpenAI,
+ChatGPT, Codex, another LLM, automated analyzers, upstream authorship, and provider metadata cannot
+count as human reviewers.
+
+AWS additionally requires target Java, a SHA-256 for each target file, a declared generation source
+(`ALSM_CONVERTER`, `HUMAN_IMPLEMENTATION`, or `OTHER_VERIFIED_SOURCE`), tool/version and source
+commit, verification evidence, `verificationStatus: "VERIFIED"`, and two human target reviewers.
+Phase 6.1 does not populate any of those future fields.
+
+Create a promotion metadata file containing `datasetId`, semantic `version`, `description`,
+`creationMethodology`, and non-empty `limitations`, then run:
+
+```powershell
+npm run eval:ai:import:promote -- -- `
+  --candidates evaluation/ai-validation/imports/cobol-javatrans/candidates.json `
+  --reviews path/to/human-reviewed-decisions.json `
+  --metadata path/to/promotion-metadata.json `
+  --output path/to/promoted-manifest.json
+
+npm run eval:ai:validate -- -- `
+  --dataset path/to/promoted-manifest.json
+```
+
+Promotion re-runs the existing Phase 6 validator. A source with `licenseStatus: "REVIEW_REQUIRED"`,
+a pending/rejected review, insufficient human reviewers, missing decisions, or incomplete AWS Java
+verification fails closed. Only the promoted manifest may be supplied to the scorer.
