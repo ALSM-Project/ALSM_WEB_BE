@@ -12,3 +12,6 @@ logs/
 # Local-disk StoragePort root: real uploaded source files and generated
 # conversion output at runtime — never source-controlled.
 storage/
+
+# Phase 6 benchmark outputs may contain provider-generated findings and are local-only.
+evaluation/ai-validation/results/
