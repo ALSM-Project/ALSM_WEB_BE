@@ -1,0 +1,297 @@
+{
+  "datasetId": "cobol-java-semantic-v1",
+  "datasetVersion": "1.0.0",
+  "evaluatorVersion": "1.0.0",
+  "generatedAt": "2026-09-25T00:00:00.000Z",
+  "provider": "sample-offline",
+  "model": "not-a-model",
+  "promptVersion": "sample-test-predictions",
+  "locationToleranceLines": 2,
+  "matchingPolicyVersion": "1.0.0",
+  "cases": [
+    {
+      "caseId": "clean-01",
+      "status": "SUCCESS",
+      "latencyMs": 0,
+      "findings": [
+        {
+          "category": "DATA_TYPE_MISMATCH",
+          "severity": "LOW",
+          "title": "Synthetic false positive",
+          "explanation": "Deliberate sample-only false positive used to exercise clean-case metrics."
+        }
+      ]
+    },
+    {
+      "caseId": "clean-02",
+      "status": "SUCCESS",
+      "latencyMs": 0,
+      "findings": []
+    },
+    {
+      "caseId": "clean-03",
+      "status": "SUCCESS",
+      "latencyMs": 0,
+      "findings": []
+    },
+    {
+      "caseId": "clean-04",
+      "status": "SUCCESS",
+      "latencyMs": 0,
+      "findings": []
+    },
+    {
+      "caseId": "clean-05",
+      "status": "SUCCESS",
+      "latencyMs": 0,
+      "findings": []
+    },
+    {
+      "caseId": "clean-06",
+      "status": "SUCCESS",
+      "latencyMs": 0,
+      "findings": []
+    },
+    {
+      "caseId": "clean-07",
+      "status": "SUCCESS",
+      "latencyMs": 0,
+      "findings": []
+    },
+    {
+      "caseId": "clean-08",
+      "status": "SUCCESS",
+      "latencyMs": 0,
+      "findings": []
+    },
+    {
+      "caseId": "clean-09",
+      "status": "SUCCESS",
+      "latencyMs": 0,
+      "findings": []
+    },
+    {
+      "caseId": "clean-10",
+      "status": "SUCCESS",
+      "latencyMs": 0,
+      "findings": []
+    },
+    {
+      "caseId": "mutation-01",
+      "status": "SUCCESS",
+      "latencyMs": 0,
+      "findings": [
+        {
+          "category": "DATA_TYPE_MISMATCH",
+          "severity": "HIGH",
+          "title": "Synthetic true positive",
+          "explanation": "Deliberate sample-only match.",
+          "sourceLocation": {
+            "file": "MUT01.cbl",
+            "startLine": 2,
+            "endLine": 2
+          },
+          "targetLocation": {
+            "file": "Mutation01.java",
+            "startLine": 2,
+            "endLine": 2
+          }
+        }
+      ]
+    },
+    {
+      "caseId": "mutation-02",
+      "status": "SUCCESS",
+      "latencyMs": 0,
+      "findings": [
+        {
+          "category": "DATA_TYPE_MISMATCH",
+          "severity": "LOW",
+          "title": "Synthetic severity mismatch",
+          "explanation": "Deliberate TP with the wrong severity.",
+          "sourceLocation": {
+            "file": "MUT02.cbl",
+            "startLine": 2,
+            "endLine": 2
+          },
+          "targetLocation": {
+            "file": "Mutation02.java",
+            "startLine": 2,
+            "endLine": 2
+          }
+        }
+      ]
+    },
+    {
+      "caseId": "mutation-03",
+      "status": "PROVIDER_FAILED",
+      "latencyMs": 0,
+      "failure": {
+        "code": "SAMPLE_PROVIDER_FAILURE",
+        "message": "Deliberate offline sample failure; no provider was contacted."
+      }
+    },
+    {
+      "caseId": "mutation-04",
+      "status": "SUCCESS",
+      "latencyMs": 0,
+      "findings": []
+    },
+    {
+      "caseId": "mutation-05",
+      "status": "SUCCESS",
+      "latencyMs": 0,
+      "findings": []
+    },
+    {
+      "caseId": "mutation-06",
+      "status": "SUCCESS",
+      "latencyMs": 0,
+      "findings": []
+    },
+    {
+      "caseId": "mutation-07",
+      "status": "SUCCESS",
+      "latencyMs": 0,
+      "findings": []
+    },
+    {
+      "caseId": "mutation-08",
+      "status": "SUCCESS",
+      "latencyMs": 0,
+      "findings": []
+    },
+    {
+      "caseId": "mutation-09",
+      "status": "SUCCESS",
+      "latencyMs": 0,
+      "findings": []
+    },
+    {
+      "caseId": "mutation-10",
+      "status": "SUCCESS",
+      "latencyMs": 0,
+      "findings": []
+    },
+    {
+      "caseId": "mutation-11",
+      "status": "SUCCESS",
+      "latencyMs": 0,
+      "findings": []
+    },
+    {
+      "caseId": "mutation-12",
+      "status": "SUCCESS",
+      "latencyMs": 0,
+      "findings": []
+    },
+    {
+      "caseId": "mutation-13",
+      "status": "SUCCESS",
+      "latencyMs": 0,
+      "findings": []
+    },
+    {
+      "caseId": "mutation-14",
+      "status": "SUCCESS",
+      "latencyMs": 0,
+      "findings": []
+    },
+    {
+      "caseId": "mutation-15",
+      "status": "SUCCESS",
+      "latencyMs": 0,
+      "findings": []
+    },
+    {
+      "caseId": "mutation-16",
+      "status": "SUCCESS",
+      "latencyMs": 0,
+      "findings": []
+    },
+    {
+      "caseId": "mutation-17",
+      "status": "SUCCESS",
+      "latencyMs": 0,
+      "findings": []
+    },
+    {
+      "caseId": "mutation-18",
+      "status": "SUCCESS",
+      "latencyMs": 0,
+      "findings": []
+    },
+    {
+      "caseId": "mutation-19",
+      "status": "SUCCESS",
+      "latencyMs": 0,
+      "findings": []
+    },
+    {
+      "caseId": "mutation-20",
+      "status": "SUCCESS",
+      "latencyMs": 0,
+      "findings": []
+    },
+    {
+      "caseId": "mutation-21",
+      "status": "SUCCESS",
+      "latencyMs": 0,
+      "findings": []
+    },
+    {
+      "caseId": "mutation-22",
+      "status": "SUCCESS",
+      "latencyMs": 0,
+      "findings": []
+    },
+    {
+      "caseId": "mutation-23",
+      "status": "SUCCESS",
+      "latencyMs": 0,
+      "findings": []
+    },
+    {
+      "caseId": "mutation-24",
+      "status": "SUCCESS",
+      "latencyMs": 0,
+      "findings": []
+    },
+    {
+      "caseId": "mutation-25",
+      "status": "SUCCESS",
+      "latencyMs": 0,
+      "findings": []
+    },
+    {
+      "caseId": "mutation-26",
+      "status": "SUCCESS",
+      "latencyMs": 0,
+      "findings": []
+    },
+    {
+      "caseId": "mutation-27",
+      "status": "SUCCESS",
+      "latencyMs": 0,
+      "findings": []
+    },
+    {
+      "caseId": "mutation-28",
+      "status": "SUCCESS",
+      "latencyMs": 0,
+      "findings": []
+    },
+    {
+      "caseId": "mutation-29",
+      "status": "SUCCESS",
+      "latencyMs": 0,
+      "findings": []
+    },
+    {
+      "caseId": "mutation-30",
+      "status": "SUCCESS",
+      "latencyMs": 0,
+      "findings": []
+    }
+  ]
+}

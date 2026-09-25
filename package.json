@@ -31,11 +31,13 @@
     "worker": "ts-node -r tsconfig-paths/register src/worker.ts",
     "worker:dev": "node --watch -r ts-node/register -r tsconfig-paths/register src/worker.ts",
     "worker:prod": "node dist/worker",
-    "lint": "eslint \"{src,test}/**/*.ts\" --max-warnings=0",
-    "format": "prettier --write \"{src,test}/**/*.ts\"",
+    "lint": "eslint \"{src,test,evaluation}/**/*.ts\" --max-warnings=0",
+    "format": "prettier --write \"{src,test,evaluation}/**/*.ts\"",
     "test": "jest --runInBand",
     "test:watch": "jest --watch",
-    "test:e2e": "jest --config ./test/jest-e2e.json --passWithNoTests"
+    "test:e2e": "jest --config ./test/jest-e2e.json --passWithNoTests",
+    "eval:ai:validate": "ts-node evaluation/ai-validation/src/validate-dataset.cli.ts",
+    "eval:ai:score": "ts-node evaluation/ai-validation/src/score.cli.ts"
   },
   "dependencies": {
     "@nestjs/common": "^11.1.6",
