@@ -16,7 +16,15 @@ export class BullMqConversionQueue implements ConversionQueuePort, OnModuleDestr
   private queue?: Queue<{ conversionJobId: string }>;
 
   constructor(private readonly config: ConfigService) {
-    if (this.config.get('CONVERSION_WORKER_ENABLED') === 'true') {
+    // CONVERSION_WORKER_ENABLED is declared as Joi.boolean() in environment.validation.ts,
+    // so ConfigService returns an actual boolean here, not the string 'true' from .env.
+    // A strict `=== 'true'` check (as this used to be) is always false against a boolean,
+    // which meant this.queue was NEVER initialized through the real app — every real
+    // conversion request silently had nowhere to enqueue to. Confirmed by reproduction:
+    // ConversionWorkerRunner's `!this.config.get<boolean>(...)` check (a truthy check, not
+    // a string comparison) has always worked correctly, which is why the worker itself
+    // looked fine while nothing ever reached it through this class.
+    if (this.config.get<boolean>('CONVERSION_WORKER_ENABLED')) {
       this.queue = new Queue(CONVERSION_QUEUE_NAME, {
         connection: {
           host: config.getOrThrow('REDIS_HOST'),
@@ -38,8 +46,8 @@ export class BullMqConversionQueue implements ConversionQueuePort, OnModuleDestr
   // that (confirmed by reproduction: jobs sitting in Mongo as QUEUED with zero trace in
   // Redis). Let it propagate so the caller can fail the request instead.
   async enqueue(conversionJobId: string, priority: ConversionPriority): Promise<void> {
-    if (!this.queue || this.config.get('CONVERSION_WORKER_ENABLED') !== 'true') {
-      throw new Error('Conversion queue is not configured (CONVERSION_WORKER_ENABLED is not "true")');
+    if (!this.queue || !this.config.get<boolean>('CONVERSION_WORKER_ENABLED')) {
+      throw new Error('Conversion queue is not configured (CONVERSION_WORKER_ENABLED is not enabled)');
     }
     await this.queue.add(
       'execute-conversion',

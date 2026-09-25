@@ -12,8 +12,13 @@ jest.mock('bullmq', () => ({
 }));
 
 describe('BullMqConversionQueue', () => {
+  // CONVERSION_WORKER_ENABLED is Joi.boolean() in environment.validation.ts, so
+  // ConfigService really returns a boolean here, not the 'true' string from .env. Mocking
+  // it as a string (as this test used to) hides exactly the bug this suite exists to catch:
+  // a strict `=== 'true'` check is always false against a real boolean, which meant
+  // this.queue was never initialized in production despite .env being configured correctly.
   const values: Record<string, unknown> = {
-    CONVERSION_WORKER_ENABLED: 'true',
+    CONVERSION_WORKER_ENABLED: true,
     REDIS_HOST: 'localhost',
     REDIS_PORT: 6379,
     REDIS_PASSWORD: '',
@@ -57,7 +62,7 @@ describe('BullMqConversionQueue', () => {
 
   it('throws instead of silently no-op-ing when the worker/queue is disabled', async () => {
     const disabledConfig = {
-      get: jest.fn((key: string) => (key === 'CONVERSION_WORKER_ENABLED' ? 'false' : values[key])),
+      get: jest.fn((key: string) => (key === 'CONVERSION_WORKER_ENABLED' ? false : values[key])),
       getOrThrow: jest.fn((key: string) => values[key]),
     } as unknown as ConfigService;
     const queue = new BullMqConversionQueue(disabledConfig);
