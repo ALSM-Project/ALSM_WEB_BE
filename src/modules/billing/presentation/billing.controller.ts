@@ -31,6 +31,8 @@ import {
   InvoiceDownloadResponseDto,
   InvoiceResponseDto,
   PlanResponseDto,
+  QuoteRequestResponseDto,
+  RequestEnterpriseQuoteDto,
   SubscriptionResponseDto,
   UpgradePreviewResponseDto,
   UpgradeSubscriptionDto,
@@ -181,6 +183,30 @@ export class BillingController {
     @Body() dto: UpgradeSubscriptionDto,
   ) {
     return this.billingService.getUpgradePreview(user.userId, dto.targetPlanTier);
+  }
+
+  @ApiBearerAuth()
+  @UseGuards(JwtAuthGuard)
+  @Post('enterprise/request-quote')
+  @ApiOperation({
+    summary: 'Request Enterprise quote for full migration (UC-32)',
+    description: 'Submit an enterprise quote request to upgrade to full migration.',
+  })
+  @ApiResponse({
+    status: HttpStatus.CREATED,
+    description: 'Enterprise quote request submitted successfully',
+    type: QuoteRequestResponseDto,
+  })
+  @ApiResponse({ status: HttpStatus.BAD_REQUEST, description: 'Invalid input data' })
+  @ApiResponse({ status: HttpStatus.UNAUTHORIZED, description: 'Missing or invalid authentication token' })
+  @ApiResponse({ status: HttpStatus.CONFLICT, description: 'User already has a pending Enterprise quote request' })
+  async requestEnterpriseQuote(
+    @CurrentUser() user: AuthenticatedUser,
+    @Body() dto: RequestEnterpriseQuoteDto,
+  ) {
+    const orgId = (user as AuthenticatedUser & { organizationId?: string }).organizationId || user.userId;
+    const request = await this.billingService.requestEnterpriseQuote(user.userId, orgId, dto);
+    return BillingPresenter.toQuoteRequestResponse(request);
   }
 
   @ApiBearerAuth()

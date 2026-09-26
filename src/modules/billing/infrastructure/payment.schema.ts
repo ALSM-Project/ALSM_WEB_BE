@@ -29,7 +29,7 @@ export class Payment {
   status!: PaymentStatus;
 
   /** Unique reference code for bank transfer matching: e.g. "ALSM0142" */
-  @Prop({ required: true, unique: true, index: true })
+  @Prop({ required: true, unique: true })
   referenceCode!: string;
 
   /** VietQR URL for QR code image */

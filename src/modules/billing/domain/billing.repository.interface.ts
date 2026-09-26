@@ -3,6 +3,7 @@ import {
   InvoiceStatus,
   PaymentStatus,
   PlanTier,
+  QuoteRequestStatus,
   SubscriptionStatus,
 } from './billing.types';
 
@@ -130,9 +131,32 @@ export interface IBillingUsageRepository {
   getMonthlyConversions(organizationId: string, sinceDate: Date): Promise<Array<{ month: string; count: number }>>;
 }
 
+export interface QuoteRequestProps {
+  id: string;
+  userId: string;
+  organizationId: string;
+  fullName: string;
+  companyName: string;
+  email: string;
+  phone?: string;
+  message?: string;
+  currentPlanTier: PlanTier;
+  status: QuoteRequestStatus;
+  createdAt?: Date;
+  updatedAt?: Date;
+}
+
+export interface IQuoteRequestRepository {
+  findById(id: string): Promise<QuoteRequestProps | null>;
+  findPendingByUser(userId: string): Promise<QuoteRequestProps | null>;
+  create(props: Omit<QuoteRequestProps, 'id'>): Promise<QuoteRequestProps>;
+  updateStatus(id: string, status: QuoteRequestStatus): Promise<QuoteRequestProps | null>;
+}
+
 export const SUBSCRIPTION_REPOSITORY = Symbol('SUBSCRIPTION_REPOSITORY');
 export const INVOICE_REPOSITORY = Symbol('INVOICE_REPOSITORY');
 export const PAYMENT_REPOSITORY = Symbol('PAYMENT_REPOSITORY');
 export const PLAN_REPOSITORY = Symbol('PLAN_REPOSITORY');
 export const BANK_CONFIG_REPOSITORY = Symbol('BANK_CONFIG_REPOSITORY');
 export const BILLING_USAGE_REPOSITORY = Symbol('BILLING_USAGE_REPOSITORY');
+export const QUOTE_REQUEST_REPOSITORY = Symbol('QUOTE_REQUEST_REPOSITORY');

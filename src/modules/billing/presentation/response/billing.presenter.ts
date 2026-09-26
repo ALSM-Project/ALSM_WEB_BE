@@ -1,4 +1,8 @@
-import { InvoiceProps, SubscriptionProps } from '../../domain/billing.repository.interface';
+import {
+  InvoiceProps,
+  QuoteRequestProps,
+  SubscriptionProps,
+} from '../../domain/billing.repository.interface';
 
 export class BillingPresenter {
   static toSubscriptionResponse(sub: SubscriptionProps | null) {
@@ -36,5 +40,19 @@ export class BillingPresenter {
 
   static toInvoiceListResponse(invoices: InvoiceProps[]) {
     return invoices.map((inv) => this.toInvoiceResponse(inv));
+  }
+
+  static toQuoteRequestResponse(req: QuoteRequestProps) {
+    return {
+      id: req.id,
+      status: req.status,
+      fullName: req.fullName,
+      companyName: req.companyName,
+      email: req.email,
+      phone: req.phone,
+      message: req.message,
+      currentPlanTier: req.currentPlanTier,
+      createdAt: req.createdAt,
+    };
   }
 }

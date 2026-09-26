@@ -131,8 +131,16 @@ export const DEFAULT_BANK_CONFIG = {
 };
 export const VIETQR_BANK_CONFIG = DEFAULT_BANK_CONFIG;
 
+// ─── Quote Request Status (UC-32) ───────────────────────────
+export enum QuoteRequestStatus {
+  PENDING = 'PENDING',
+  CONTACTED = 'CONTACTED',
+  CLOSED = 'CLOSED',
+}
+
 // ─── Repository injection tokens ────────────────────────────
 export const SUBSCRIPTION_REPOSITORY = Symbol('SUBSCRIPTION_REPOSITORY');
 export const INVOICE_REPOSITORY = Symbol('INVOICE_REPOSITORY');
 export const PAYMENT_REPOSITORY = Symbol('PAYMENT_REPOSITORY');
+export const QUOTE_REQUEST_REPOSITORY = Symbol('QUOTE_REQUEST_REPOSITORY');
 
