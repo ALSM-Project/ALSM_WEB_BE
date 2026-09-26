@@ -137,6 +137,7 @@ import {
   INVOICE_REPOSITORY,
   PAYMENT_REPOSITORY,
   PLAN_REPOSITORY,
+  QUOTE_REQUEST_REPOSITORY,
   SUBSCRIPTION_REPOSITORY,
 } from './modules/billing/domain/billing.repository.interface';
 import { MongoSubscriptionRepository } from './modules/billing/infrastructure/persistence/mongo-subscription.repository';
@@ -145,6 +146,8 @@ import { MongoPaymentRepository } from './modules/billing/infrastructure/persist
 import { MongoPlanRepository } from './modules/billing/infrastructure/persistence/mongo-plan.repository';
 import { MongoBankConfigRepository } from './modules/billing/infrastructure/persistence/mongo-bank-config.repository';
 import { MongoBillingUsageRepository } from './modules/billing/infrastructure/persistence/mongo-billing-usage.repository';
+import { MongoQuoteRequestRepository } from './modules/billing/infrastructure/persistence/mongo-quote-request.repository';
+import { QuoteRequest, QuoteRequestSchema } from './modules/billing/infrastructure/quote-request.schema';
 
 import { RbacModule } from './modules/rbac/rbac.module';
 import { MenuModule } from './modules/menus/menu.module';
@@ -173,6 +176,7 @@ import { MenuModule } from './modules/menus/menu.module';
       { name: Screen.name, schema: ScreenSchema },
       { name: ValidationRun.name, schema: ValidationRunSchema },
       { name: ValidationFinding.name, schema: ValidationFindingSchema },
+      { name: QuoteRequest.name, schema: QuoteRequestSchema },
     ]),
     RbacModule,
     MenuModule,
@@ -264,6 +268,8 @@ import { MenuModule } from './modules/menus/menu.module';
     { provide: BILLING_USAGE_REPOSITORY, useClass: MongoBillingUsageRepository },
     { provide: PASSWORD_RESET_REPOSITORY, useClass: MongoPasswordResetRepository },
     { provide: EMAIL_VERIFICATION_REPOSITORY, useClass: MongoEmailVerificationRepository },
+    MongoQuoteRequestRepository,
+    { provide: QUOTE_REQUEST_REPOSITORY, useClass: MongoQuoteRequestRepository },
   ],
   exports: [ConversionWorkerRunner],
 })

@@ -12,15 +12,19 @@ import {
   InvoiceStatus,
   PLAN_CATALOGUE,
   PlanTier,
+  QuoteRequestStatus,
   SubscriptionStatus,
 } from '../domain/billing.types';
 import {
   INVOICE_REPOSITORY,
   IInvoiceRepository,
   IPlanRepository,
+  IQuoteRequestRepository,
   ISubscriptionRepository,
   PLAN_REPOSITORY,
   PlanProps,
+  QUOTE_REQUEST_REPOSITORY,
+  QuoteRequestProps,
   SUBSCRIPTION_REPOSITORY,
   SubscriptionProps,
 } from '../domain/billing.repository.interface';
@@ -36,6 +40,8 @@ export class BillingService implements OnModuleInit {
     private readonly invoiceRepo: IInvoiceRepository,
     @Inject(PLAN_REPOSITORY)
     private readonly planRepo: IPlanRepository,
+    @Inject(QUOTE_REQUEST_REPOSITORY)
+    private readonly quoteRequestRepo: IQuoteRequestRepository,
   ) {}
 
   async onModuleInit() {
@@ -289,5 +295,45 @@ export class BillingService implements OnModuleInit {
     const invoice = await this.invoiceRepo.markPaid(invoiceId, paymentMethod);
     if (!invoice) throw new NotFoundException('Invoice not found');
     return invoice;
+  }
+
+  // ─── Enterprise Quote Request (UC-32) ───────────────────
+
+  async requestEnterpriseQuote(
+    userId: string,
+    organizationId: string,
+    dto: {
+      fullName: string;
+      companyName: string;
+      email: string;
+      phone?: string;
+      message?: string;
+    },
+  ): Promise<QuoteRequestProps> {
+    const existing = await this.quoteRequestRepo.findPendingByUser(userId);
+    if (existing) {
+      throw new ConflictException({
+        code: 'QUOTE_REQUEST_EXISTS',
+        message: 'You already have a pending Enterprise quote request.',
+      });
+    }
+
+    const currentSub = await this.subscriptionRepo.findActiveByUser(userId);
+    const currentPlanTier = currentSub ? currentSub.planTier : PlanTier.STARTER;
+
+    const request = await this.quoteRequestRepo.create({
+      userId,
+      organizationId,
+      fullName: dto.fullName,
+      companyName: dto.companyName,
+      email: dto.email,
+      phone: dto.phone,
+      message: dto.message,
+      currentPlanTier,
+      status: QuoteRequestStatus.PENDING,
+    });
+
+    this.logger.log(`Enterprise quote requested by user ${userId} for org ${organizationId}`);
+    return request;
   }
 }
