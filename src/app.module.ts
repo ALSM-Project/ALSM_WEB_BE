@@ -30,6 +30,11 @@ import {
   FieldMapping,
   FieldMappingSchema,
 } from './modules/conversions/infrastructure/field-mapping.schema';
+import {
+  MethodMapping,
+  MethodMappingSchema,
+} from './modules/conversions/infrastructure/method-mapping.schema';
+import { Partner, PartnerSchema } from './modules/partners/infrastructure/partner.schema';
 import { ErrorLog, ErrorLogSchema } from './modules/conversions/infrastructure/error-log.schema';
 import {
   ValidationRun,
@@ -39,6 +44,12 @@ import {
   ValidationFinding,
   ValidationFindingSchema,
 } from './modules/validation/infrastructure/validation-finding.schema';
+import {
+  ScreenDocument,
+  ScreenSchema as ConversionScreenSchema,
+} from './modules/conversions/infrastructure/screen.schema';
+import { ScreenService as ConversionScreenService } from './modules/conversions/application/screen.service';
+import { ScreensController as ConversionScreensController } from './modules/conversions/presentation/screens.controller';
 import { Screen, ScreenSchema } from './modules/screens/infrastructure/screen.schema';
 import { MongoScreenRepository } from './modules/screens/infrastructure/mongo-screen.repository';
 import { ScreenService } from './modules/screens/application/screen.service';
@@ -61,6 +72,13 @@ import { ValidationSecretRedactorService } from './modules/validation/applicatio
 import { FakeAiValidatorAdapter } from './modules/validation/infrastructure/fake-ai-validator.adapter';
 import { OpenAiValidatorAdapter } from './modules/validation/infrastructure/openai-ai-validator.adapter';
 import { aiValidatorProvider } from './modules/validation/infrastructure/ai-validator.provider';
+import { AiValidationRuntimeGuard } from './modules/validation/application/ai-validation-runtime.guard';
+import { TriggerAiValidationService } from './modules/validation/application/trigger-ai-validation.service';
+import { ReconcileValidationRunService } from './modules/validation/application/reconcile-validation-run.service';
+import { ReviewValidationFindingService } from './modules/validation/application/review-validation-finding.service';
+import { VALIDATION_QUEUE } from './modules/validation/domain/validation-queue.port';
+import { BullMqValidationQueue } from './modules/validation/infrastructure/bullmq-validation.queue';
+import { ValidationWorkerRunner } from './modules/validation/infrastructure/validation-worker.runner';
 import { USER_REPOSITORY } from './modules/users/domain/user.repository';
 import { MongoUserRepository } from './modules/users/infrastructure/mongo-user.repository';
 import { ORGANIZATION_REPOSITORY } from './modules/organizations/domain/organization.repository';
@@ -91,6 +109,16 @@ import { MongoFieldMappingRepository } from './modules/conversions/infrastructur
 import { GetFieldMappingService } from './modules/conversions/application/get-field-mapping.service';
 import { SaveFieldMappingService } from './modules/conversions/application/save-field-mapping.service';
 import { FieldMappingController } from './modules/conversions/presentation/field-mapping.controller';
+import { METHOD_MAPPING_REPOSITORY } from './modules/conversions/domain/method-mapping.types';
+import { MongoMethodMappingRepository } from './modules/conversions/infrastructure/mongo-method-mapping.repository';
+import { GetMethodMappingService } from './modules/conversions/application/get-method-mapping.service';
+import { SaveMethodMappingService } from './modules/conversions/application/save-method-mapping.service';
+import { MethodMappingController } from './modules/conversions/presentation/method-mapping.controller';
+import { PARTNER_REPOSITORY } from './modules/partners/domain/partner.types';
+import { MongoPartnerRepository } from './modules/partners/infrastructure/mongo-partner.repository';
+import { CreatePartnerService } from './modules/partners/application/create-partner.service';
+import { ListPartnersService } from './modules/partners/application/list-partners.service';
+import { PartnerController } from './modules/partners/presentation/partner.controller';
 import { AuthService } from './modules/auth/application/auth.service';
 import { ListActiveSessionsService } from './modules/auth/application/list-active-sessions.service';
 import { RevokeSessionService } from './modules/auth/application/revoke-session.service';
@@ -121,7 +149,10 @@ import { HealthController } from './modules/health/health.controller';
 import { ConversionWorkerRunner } from './modules/conversions/infrastructure/conversion-worker.runner';
 import { ExportCodeService } from './modules/conversions/application/export-code.service';
 import { ExportController } from './modules/conversions/presentation/export.controller';
-import { Subscription, SubscriptionSchema } from './modules/billing/infrastructure/subscription.schema';
+import {
+  Subscription,
+  SubscriptionSchema,
+} from './modules/billing/infrastructure/subscription.schema';
 import { Invoice, InvoiceSchema } from './modules/billing/infrastructure/invoice.schema';
 import { Payment, PaymentSchema } from './modules/billing/infrastructure/payment.schema';
 import { Plan, PlanSchema } from './modules/billing/infrastructure/plan.schema';
@@ -152,6 +183,11 @@ import { QuoteRequest, QuoteRequestSchema } from './modules/billing/infrastructu
 import { RbacModule } from './modules/rbac/rbac.module';
 import { MenuModule } from './modules/menus/menu.module';
 
+import { VALIDATION_REPOSITORY } from './modules/conversions/domain/validation.types';
+import { MongoValidationRepository } from './modules/conversions/infrastructure/mongo-validation.repository';
+import { RuleValidatorService } from './modules/conversions/application/rule-validator.service';
+import { ValidationController as RuleValidationController } from './modules/conversions/presentation/validation.controller';
+
 @Module({
   imports: [
     ConfigModule.forRoot({ isGlobal: true, validationSchema: environmentValidationSchema }),
@@ -172,7 +208,10 @@ import { MenuModule } from './modules/menus/menu.module';
       { name: PasswordReset.name, schema: PasswordResetSchema },
       { name: EmailVerification.name, schema: EmailVerificationSchema },
       { name: FieldMapping.name, schema: FieldMappingSchema },
+      { name: MethodMapping.name, schema: MethodMappingSchema },
+      { name: Partner.name, schema: PartnerSchema },
       { name: ErrorLog.name, schema: ErrorLogSchema },
+      { name: ScreenDocument.name, schema: ConversionScreenSchema },
       { name: Screen.name, schema: ScreenSchema },
       { name: ValidationRun.name, schema: ValidationRunSchema },
       { name: ValidationFinding.name, schema: ValidationFindingSchema },
@@ -187,15 +226,20 @@ import { MenuModule } from './modules/menus/menu.module';
     ConversionsController,
     ConversionSourceController,
     ScreensController,
+    ConversionScreensController,
     FieldMappingController,
+    MethodMappingController,
+    PartnerController,
     ExportController,
     ErrorLogController,
     ValidationController,
+    RuleValidationController,
     HealthController,
     BillingController,
     PaymentController,
   ],
   providers: [
+    ScreenService,
     JwtAuthGuard,
     PermissionsGuard,
     AuthService,
@@ -217,10 +261,15 @@ import { MenuModule } from './modules/menus/menu.module';
     ConversionJobService,
     UploadConversionSourceService,
     GetConversionResultService,
-    ScreenService,
+    ConversionScreenService,
     MongoScreenRepository,
     GetFieldMappingService,
     SaveFieldMappingService,
+    GetMethodMappingService,
+    SaveMethodMappingService,
+    CreatePartnerService,
+    ListPartnersService,
+    RuleValidatorService,
     ExportCodeService,
     ErrorLogService,
     BuildValidationContextService,
@@ -228,6 +277,11 @@ import { MenuModule } from './modules/menus/menu.module';
     ValidationSecretRedactorService,
     ExecuteAiValidationService,
     ValidationReadService,
+    AiValidationRuntimeGuard,
+    TriggerAiValidationService,
+    ReconcileValidationRunService,
+    ReviewValidationFindingService,
+    ValidationWorkerRunner,
     FakeAiValidatorAdapter,
     OpenAiValidatorAdapter,
     aiValidatorProvider,
@@ -251,15 +305,19 @@ import { MenuModule } from './modules/menus/menu.module';
     { provide: AUDIT_REPOSITORY, useClass: MongoAuditRepository },
     { provide: PROJECT_REPOSITORY, useClass: MongoProjectRepository },
     { provide: CONVERSION_JOB_REPOSITORY, useClass: MongoConversionJobRepository },
+    { provide: VALIDATION_REPOSITORY, useClass: MongoValidationRepository },
     { provide: SUBSCRIPTION_REPOSITORY, useClass: MongoSubscriptionRepository },
     { provide: INVOICE_REPOSITORY, useClass: MongoInvoiceRepository },
     { provide: PAYMENT_REPOSITORY, useClass: MongoPaymentRepository },
     { provide: PLAN_REPOSITORY, useClass: MongoPlanRepository },
     { provide: BANK_CONFIG_REPOSITORY, useClass: MongoBankConfigRepository },
     { provide: FIELD_MAPPING_REPOSITORY, useClass: MongoFieldMappingRepository },
+    { provide: METHOD_MAPPING_REPOSITORY, useClass: MongoMethodMappingRepository },
+    { provide: PARTNER_REPOSITORY, useClass: MongoPartnerRepository },
     { provide: ERROR_LOG_REPOSITORY, useExisting: MongoErrorLogRepository },
     { provide: VALIDATION_RUN_REPOSITORY, useClass: MongoValidationRunRepository },
     { provide: VALIDATION_FINDING_REPOSITORY, useClass: MongoValidationFindingRepository },
+    { provide: VALIDATION_QUEUE, useClass: BullMqValidationQueue },
     { provide: SCREEN_REPOSITORY, useExisting: MongoScreenRepository },
     { provide: CONVERSION_QUEUE, useClass: BullMqConversionQueue },
     { provide: CONVERSION_ENGINE, useClass: ConversionEngineRouter },
@@ -271,7 +329,7 @@ import { MenuModule } from './modules/menus/menu.module';
     MongoQuoteRequestRepository,
     { provide: QUOTE_REQUEST_REPOSITORY, useClass: MongoQuoteRequestRepository },
   ],
-  exports: [ConversionWorkerRunner],
+  exports: [ConversionWorkerRunner, ValidationWorkerRunner],
 })
 export class AppModule implements NestModule {
   configure(consumer: MiddlewareConsumer): void {

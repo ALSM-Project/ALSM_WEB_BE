@@ -8,6 +8,7 @@ import {
   Min,
   MaxLength,
   ValidateNested,
+  IsOptional,
 } from 'class-validator';
 import { ApiProperty } from '@nestjs/swagger';
 
@@ -62,6 +63,16 @@ export class FieldComponentMappingDto {
   @IsString()
   @MaxLength(500)
   regexPattern!: string;
+
+  @ApiProperty({ required: false })
+  @IsOptional()
+  @IsInt()
+  displayRow?: number;
+
+  @ApiProperty({ required: false })
+  @IsOptional()
+  @IsInt()
+  displayCol?: number;
 }
 
 export class FieldMappingEntryDto {

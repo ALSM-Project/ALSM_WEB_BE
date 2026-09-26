@@ -47,8 +47,16 @@ export interface ConversionJobRepository {
   ): Promise<ConversionJobRecord[]>;
   retry(id: string, organizationId: string): Promise<ConversionJobRecord | null>;
   markProcessing(id: string): Promise<ConversionJobRecord | null>;
+  markCompleted(
+    id: string,
+    resultReferenceOrOutput: string | { resultReference: string; toolVersion?: string },
+    toolVersion?: string,
+  ): Promise<ConversionJobRecord | null>;
   markFailed(id: string, code: string, message: string): Promise<void>;
-  markCompleted(id: string, output: { resultReference: string; toolVersion?: string }): Promise<void>;
+  /** Points an already-completed job at a new result location — used when the generated
+   * output is amended in place after completion (e.g. a manual method-mapping rename),
+   * rather than through a fresh conversion run. */
+  updateResultReference(id: string, resultReference: string): Promise<void>;
 }
 export const CONVERSION_JOB_REPOSITORY = Symbol('CONVERSION_JOB_REPOSITORY');
 export interface ConversionQueuePort {

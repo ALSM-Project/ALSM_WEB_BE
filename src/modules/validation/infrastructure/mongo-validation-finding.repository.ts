@@ -3,6 +3,9 @@ import { InjectModel } from '@nestjs/mongoose';
 import { Model, Types } from 'mongoose';
 import {
   CreateValidationFindingInput,
+  ReviewValidationFindingInput,
+  ReviewValidationFindingResult,
+  UpsertValidationFindingInput,
   ValidationFindingRepository,
 } from '../domain/validation-finding.repository';
 import { CodeLocation, ValidationFindingRecord } from '../domain/validation-finding.types';
@@ -35,6 +38,41 @@ export class MongoValidationFindingRepository implements ValidationFindingReposi
     return documents.map((document) => this.map(document));
   }
 
+  async upsertManyForRun(inputs: UpsertValidationFindingInput[]): Promise<void> {
+    if (inputs.length === 0) return;
+    const uniqueInputs = [
+      ...new Map(
+        inputs.map((input) => [
+          `${input.organizationId}\0${input.projectId}\0${input.validationRunId}\0${input.fingerprint}`,
+          input,
+        ]),
+      ).values(),
+    ];
+    await this.model.bulkWrite(
+      uniqueInputs.map((input) => ({
+        updateOne: {
+          filter: {
+            organizationId: new Types.ObjectId(input.organizationId),
+            projectId: new Types.ObjectId(input.projectId),
+            validationRunId: new Types.ObjectId(input.validationRunId),
+            fingerprint: input.fingerprint,
+          },
+          update: { $setOnInsert: this.toPersistence(input) },
+          upsert: true,
+        },
+      })),
+      { ordered: false },
+    );
+  }
+
+  async countByRun(
+    validationRunId: string,
+    projectId: string,
+    organizationId: string,
+  ): Promise<number> {
+    return this.model.countDocuments({ validationRunId, projectId, organizationId }).exec();
+  }
+
   async findById(
     id: string,
     validationRunId: string,
@@ -45,6 +83,33 @@ export class MongoValidationFindingRepository implements ValidationFindingReposi
       .findOne({ _id: id, validationRunId, projectId, organizationId })
       .exec();
     return document ? this.map(document) : null;
+  }
+
+  async reviewFinding(input: ReviewValidationFindingInput): Promise<ReviewValidationFindingResult> {
+    const scope = {
+      _id: input.findingId,
+      validationRunId: input.validationRunId,
+      projectId: input.projectId,
+      organizationId: input.organizationId,
+    };
+    const reviewUpdate = {
+      status: input.newStatus,
+      reviewedBy: new Types.ObjectId(input.reviewedBy),
+      reviewedAt: input.reviewedAt,
+      ...(input.reviewNote === undefined ? {} : { reviewNote: input.reviewNote }),
+    };
+    const update =
+      input.reviewNote === undefined
+        ? { $set: reviewUpdate, $unset: { reviewNote: 1 } }
+        : { $set: reviewUpdate };
+    const document = await this.model
+      .findOneAndUpdate({ ...scope, status: input.expectedStatus }, update, { new: true })
+      .exec();
+
+    if (document) return { outcome: 'UPDATED', finding: this.map(document) };
+
+    const existsWithinScope = await this.model.exists(scope).exec();
+    return existsWithinScope ? { outcome: 'CONFLICT' } : { outcome: 'NOT_FOUND' };
   }
 
   async listByRun(
@@ -94,6 +159,7 @@ export class MongoValidationFindingRepository implements ValidationFindingReposi
       modelName: document.modelName,
       reviewedBy: document.reviewedBy?.toString(),
       reviewedAt: document.reviewedAt,
+      reviewNote: document.reviewNote,
       createdAt: document.createdAt,
       updatedAt: document.updatedAt,
     };

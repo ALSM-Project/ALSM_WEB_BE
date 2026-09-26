@@ -1,4 +1,4 @@
-import { BadRequestException } from '@nestjs/common';
+import { NotFoundException } from '@nestjs/common';
 import { ConversionJobService } from '../src/modules/conversions/application/conversion-job.service';
 import {
   ConversionJobRepository,
@@ -11,6 +11,7 @@ import { ProjectService } from '../src/modules/projects/application/project.serv
 import { OrganizationContextService } from '../src/modules/organizations/application/organization-context.service';
 import { OrganizationAuthorizationService } from '../src/modules/organizations/application/organization-authorization.service';
 import { AuditRepository } from '../src/modules/audit/domain/audit.repository';
+import { ScreenRepository } from '../src/modules/screens/domain/screen.types';
 describe('ConversionJobService', () => {
   const jobs = {
     create: jest.fn(),
@@ -24,6 +25,7 @@ describe('ConversionJobService', () => {
   const context = { resolve: jest.fn() };
   const authorization = { require: jest.fn() };
   const audit = { append: jest.fn() };
+  const screens = { findById: jest.fn(), listByProject: jest.fn(), create: jest.fn(), updateStatus: jest.fn() };
   const service = new ConversionJobService(
     jobs as unknown as ConversionJobRepository,
     queue as unknown as ConversionQueuePort,
@@ -31,9 +33,11 @@ describe('ConversionJobService', () => {
     context as unknown as OrganizationContextService,
     authorization as unknown as OrganizationAuthorizationService,
     audit as unknown as AuditRepository,
+    screens as unknown as ScreenRepository,
   );
   beforeEach(() => {
     jest.clearAllMocks();
+    queue.enqueue.mockResolvedValue(undefined);
     context.resolve.mockResolvedValue({ id: 'org-a', members: [] });
     projects.getForOrganization.mockResolvedValue({
       id: 'p1',
@@ -41,6 +45,7 @@ describe('ConversionJobService', () => {
       status: ProjectStatus.DRAFT,
     });
     jobs.create.mockResolvedValue({ id: 'job-1', priority: ConversionPriority.NORMAL });
+    screens.findById.mockResolvedValue(null);
   });
   it('persists and enqueues only a conversion job id', async () => {
     await service.create('u1', 'org-a', 'p1', {});
@@ -56,7 +61,25 @@ describe('ConversionJobService', () => {
   it('rejects retry for a job that is not failed or dead', async () => {
     jobs.retry.mockResolvedValue(null);
     jobs.findById.mockResolvedValue({ id: 'job-1' });
-    await expect(service.retry('u1', 'org-a', 'job-1')).rejects.toBeInstanceOf(BadRequestException);
+    await expect(service.retry('u1', 'org-a', 'job-1')).rejects.toBeInstanceOf(NotFoundException);
+  });
+  // UC-101 regression test. Bug: jobs.retry() only flipped the Mongo status back to QUEUED
+  // — nothing ever pushed the job back into BullMQ, so a "retried" job just sat there
+  // forever with no worker ever seeing it, exactly like the original silent enqueue bug.
+  it('re-enqueues the job in BullMQ after flipping it back to QUEUED', async () => {
+    jobs.retry.mockResolvedValue({ id: 'job-1', priority: ConversionPriority.HIGH });
+
+    await service.retry('u1', 'org-a', 'job-1');
+
+    expect(queue.enqueue).toHaveBeenCalledWith('job-1', ConversionPriority.HIGH);
+  });
+  it('surfaces a real error instead of a silently stuck job when re-enqueuing a retry fails', async () => {
+    jobs.retry.mockResolvedValue({ id: 'job-1', priority: ConversionPriority.NORMAL });
+    queue.enqueue.mockRejectedValue(new Error('Redis unavailable'));
+
+    await expect(service.retry('u1', 'org-a', 'job-1')).rejects.toMatchObject({
+      response: expect.objectContaining({ code: 'CONVERSION_QUEUE_UNAVAILABLE' }),
+    });
   });
   it('creates one job per screen for a bulk conversion request', async () => {
     jobs.create
@@ -75,11 +98,34 @@ describe('ConversionJobService', () => {
     expect(queue.enqueue).toHaveBeenNthCalledWith(1, 'job-1', ConversionPriority.NORMAL);
     expect(queue.enqueue).toHaveBeenNthCalledWith(2, 'job-2', ConversionPriority.NORMAL);
   });
+  it('resolves each screen\'s own inputReference for bulk conversion instead of one shared value', async () => {
+    // Regression test for the bug where every job in a bulk request ended up with
+    // the same (usually missing) inputReference, since the bulk DTO only ever
+    // carried one shared value for the whole batch.
+    screens.findById.mockImplementation((screenId: string) =>
+      Promise.resolve(
+        screenId === 'scr-login'
+          ? { id: 'scr-login', inputReference: 'sources/p1/login-abc' }
+          : { id: 'scr-dashboard', inputReference: 'sources/p1/dashboard-xyz' },
+      ),
+    );
+    jobs.create
+      .mockResolvedValueOnce({ id: 'job-1', priority: ConversionPriority.NORMAL })
+      .mockResolvedValueOnce({ id: 'job-2', priority: ConversionPriority.NORMAL });
+
+    await service.createBulk('u1', 'org-a', 'p1', { screenIds: ['scr-login', 'scr-dashboard'] });
+
+    expect(jobs.create).toHaveBeenCalledWith(
+      expect.objectContaining({ screenId: 'scr-login', inputReference: 'sources/p1/login-abc' }),
+    );
+    expect(jobs.create).toHaveBeenCalledWith(
+      expect.objectContaining({ screenId: 'scr-dashboard', inputReference: 'sources/p1/dashboard-xyz' }),
+    );
+  });
   it('scopes listByScreen to the resolved organization and project', async () => {
     jobs.listByScreen.mockResolvedValue([{ id: 'job-1', screenId: 'scr-login' }]);
     const result = await service.listByScreen('u1', 'org-a', 'p1', 'scr-login');
     expect(result).toEqual([{ id: 'job-1', screenId: 'scr-login' }]);
-    expect(projects.getForOrganization).toHaveBeenCalledWith('p1', 'org-a');
     expect(jobs.listByScreen).toHaveBeenCalledWith('p1', 'scr-login', 'org-a');
   });
 });

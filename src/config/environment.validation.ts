@@ -32,6 +32,7 @@ export const environmentValidationSchema = Joi.object({
   JAVA_EXECUTABLE: Joi.string().default('java'),
   TOOL2JAVA_JAR_PATH: Joi.string().allow('').default(''),
   MAX_UPLOAD_FILE_SIZE_MB: Joi.number().integer().positive().default(50),
+  MAX_UPLOAD_FILES_PER_REQUEST: Joi.number().integer().positive().default(300),
   CASSO_API_KEY: Joi.string().allow('').default(''),
   SMTP_HOST: Joi.string().allow('').default(''),
   SMTP_PORT: Joi.number().port().default(587),
@@ -69,4 +70,8 @@ export const environmentValidationSchema = Joi.object({
   AI_MAX_TOTAL_CHARS: Joi.number().integer().min(1).max(5_000_000).default(500_000),
   AI_MAX_FINDINGS: Joi.number().integer().min(1).max(200).default(50),
   AI_PROMPT_VERSION: Joi.string().valid('semantic-cobol-java-v1').default('semantic-cobol-java-v1'),
+  VALIDATION_WORKER_ENABLED: Joi.boolean().default(false),
+  VALIDATION_WORKER_CONCURRENCY: Joi.number().integer().min(1).max(10).default(1),
+  VALIDATION_JOB_ATTEMPTS: Joi.number().integer().min(1).max(5).default(2),
+  VALIDATION_JOB_BACKOFF_MS: Joi.number().integer().min(0).max(300_000).default(5_000),
 });

@@ -8,6 +8,7 @@ import { ProjectService } from '../../projects/application/project.service';
 import { ConversionType } from '../../projects/domain/project.types';
 import { ScreenService } from '../../screens/application/screen.service';
 import { ScreenRecord, ScreenSourceType } from '../../screens/domain/screen.types';
+import { analyzeBundle } from '../domain/copybook-dependency-resolver';
 
 export interface UploadedSourceFile {
   originalname: string;
@@ -72,6 +73,23 @@ export class UploadConversionSourceService {
       }
     }
 
+    // Files are stored flat by basename (see storage.writeFiles below), so two different local
+    // files sharing a basename (e.g. picked from two different subfolders) would silently
+    // overwrite one another on disk — and any dependency analysis run against the original
+    // upload list would then disagree with what actually landed in storage. Reject up front
+    // instead of guessing which one should "win".
+    const namesSeen = new Map<string, string>();
+    for (const file of files) {
+      const key = file.originalname.toLowerCase();
+      if (namesSeen.has(key)) {
+        throw new BadRequestException({
+          code: 'DUPLICATE_FILE_NAME',
+          message: `Two different files named "${file.originalname}" were selected in this upload (likely from two different subfolders). Remove the duplicate and try again — files are stored by name only, so both would otherwise silently collide.`,
+        });
+      }
+      namesSeen.set(key, file.originalname);
+    }
+
     const inputReference = await this.storage.writeFiles(
       `sources/${project.id}`,
       files.map((file) => ({ relativePath: file.originalname, content: file.buffer })),
@@ -93,6 +111,26 @@ export class UploadConversionSourceService {
           sizeBytes: file.size,
         }),
       );
+    }
+
+    // Copybook Dependency Resolver: one static-analysis pass over the whole bundle (builds
+    // its file index once), run only for COBOL projects, right after screens exist so each
+    // program's analysis can be persisted onto its own screen immediately.
+    if (project.conversionType === ConversionType.COBOL_TO_JAVA) {
+      const analysis = analyzeBundle(files.map((file) => ({ name: file.originalname, content: file.buffer.toString('utf8') })));
+      const analyzedAt = new Date();
+      for (const screen of screens) {
+        const programAnalysis = analysis.get(screen.name);
+        if (!programAnalysis) continue;
+        await this.screenService.recordDependencyDiagnostics(organization.id, screen.id, {
+          status: programAnalysis.status,
+          dependencies: programAnalysis.dependencies,
+          analyzedAt,
+        });
+        screen.dependencyStatus = programAnalysis.status;
+        screen.dependencies = programAnalysis.dependencies;
+        screen.dependencyAnalyzedAt = analyzedAt;
+      }
     }
 
     return {

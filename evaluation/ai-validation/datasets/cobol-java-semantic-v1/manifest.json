@@ -1,0 +1,1794 @@
+{
+  "datasetId": "cobol-java-semantic-v1",
+  "version": "1.0.0",
+  "type": "synthetic-curated",
+  "description": "Synthetic curated ALSM engineering benchmark for COBOL-to-Java semantic validation. It contains clean controls and intentionally injected defects; it is not customer or production code.",
+  "caseCount": 40,
+  "creationMethodology": "Cases were created specifically for ALSM Phase 6 from small fictional business behaviors. Each mutated case begins with an understandable COBOL intent and injects one documented Java-side semantic mutation.",
+  "limitations": [
+    "This is a small synthetic curated evaluation set and does not represent all production COBOL systems.",
+    "Ground-truth labels require independent human review and may contain judgment calls.",
+    "No claim is made that a foundation model has never seen similar programming patterns.",
+    "Passing these cases does not prove semantic equivalence for arbitrary programs."
+  ],
+  "cases": [
+    {
+      "caseId": "clean-01",
+      "title": "Decimal invoice total preserved",
+      "description": "Synthetic clean control: Decimal invoice total preserved. COBOL and Java are intentionally behaviorally equivalent.",
+      "sourceFiles": [
+        {
+          "path": "CLEAN01.cbl",
+          "content": "01 TOTAL PIC S9(7)V99 COMP-3.\nADD ITEM-AMOUNT TO TOTAL\nDISPLAY TOTAL"
+        }
+      ],
+      "targetFiles": [
+        {
+          "path": "Clean01.java",
+          "content": "BigDecimal total = BigDecimal.ZERO;\ntotal = total.add(itemAmount);\nshow(total);"
+        }
+      ],
+      "expectedFindings": [],
+      "isClean": true,
+      "difficulty": "EASY",
+      "tags": [
+        "clean-control",
+        "decimal"
+      ]
+    },
+    {
+      "caseId": "clean-02",
+      "title": "Signed account balance preserved",
+      "description": "Synthetic clean control: Signed account balance preserved. COBOL and Java are intentionally behaviorally equivalent.",
+      "sourceFiles": [
+        {
+          "path": "CLEAN02.cbl",
+          "content": "01 BALANCE PIC S9(9)V99.\nCOMPUTE BALANCE = BALANCE - DEBIT\nDISPLAY BALANCE"
+        }
+      ],
+      "targetFiles": [
+        {
+          "path": "Clean02.java",
+          "content": "BigDecimal balance = openingBalance;\nbalance = balance.subtract(debit);\nshow(balance);"
+        }
+      ],
+      "expectedFindings": [],
+      "isClean": true,
+      "difficulty": "EASY",
+      "tags": [
+        "clean-control",
+        "signed-value"
+      ]
+    },
+    {
+      "caseId": "clean-03",
+      "title": "Customer fields mapped by name",
+      "description": "Synthetic clean control: Customer fields mapped by name. COBOL and Java are intentionally behaviorally equivalent.",
+      "sourceFiles": [
+        {
+          "path": "CLEAN03.cbl",
+          "content": "MOVE FIRST-NAME TO OUT-FIRST\nMOVE LAST-NAME TO OUT-LAST\nDISPLAY OUT-FIRST OUT-LAST"
+        }
+      ],
+      "targetFiles": [
+        {
+          "path": "Clean03.java",
+          "content": "out.first = input.first;\nout.last = input.last;\nshow(out.first, out.last);"
+        }
+      ],
+      "expectedFindings": [],
+      "isClean": true,
+      "difficulty": "MEDIUM",
+      "tags": [
+        "clean-control",
+        "mapping"
+      ]
+    },
+    {
+      "caseId": "clean-04",
+      "title": "Inclusive eligibility condition preserved",
+      "description": "Synthetic clean control: Inclusive eligibility condition preserved. COBOL and Java are intentionally behaviorally equivalent.",
+      "sourceFiles": [
+        {
+          "path": "CLEAN04.cbl",
+          "content": "IF AGE >= 65\n  MOVE 'Y' TO ELIGIBLE\nEND-IF"
+        }
+      ],
+      "targetFiles": [
+        {
+          "path": "Clean04.java",
+          "content": "if (age >= 65) {\n  eligible = true;\n}"
+        }
+      ],
+      "expectedFindings": [],
+      "isClean": true,
+      "difficulty": "EASY",
+      "tags": [
+        "clean-control",
+        "condition"
+      ]
+    },
+    {
+      "caseId": "clean-05",
+      "title": "Counted loop preserves iterations",
+      "description": "Synthetic clean control: Counted loop preserves iterations. COBOL and Java are intentionally behaviorally equivalent.",
+      "sourceFiles": [
+        {
+          "path": "CLEAN05.cbl",
+          "content": "PERFORM VARYING IDX FROM 1 BY 1 UNTIL IDX > 3\n  ADD IDX TO TOTAL\nEND-PERFORM"
+        }
+      ],
+      "targetFiles": [
+        {
+          "path": "Clean05.java",
+          "content": "for (int idx = 1; idx <= 3; idx++) {\n  total += idx;\n}"
+        }
+      ],
+      "expectedFindings": [],
+      "isClean": true,
+      "difficulty": "MEDIUM",
+      "tags": [
+        "clean-control",
+        "loop"
+      ]
+    },
+    {
+      "caseId": "clean-06",
+      "title": "Sequential file records are written",
+      "description": "Synthetic clean control: Sequential file records are written. COBOL and Java are intentionally behaviorally equivalent.",
+      "sourceFiles": [
+        {
+          "path": "CLEAN06.cbl",
+          "content": "READ INPUT-FILE INTO IN-REC\nMOVE IN-REC TO OUT-REC\nWRITE OUT-REC"
+        }
+      ],
+      "targetFiles": [
+        {
+          "path": "Clean06.java",
+          "content": "String record = reader.readLine();\nString output = record;\nwriter.write(output);"
+        }
+      ],
+      "expectedFindings": [],
+      "isClean": true,
+      "difficulty": "MEDIUM",
+      "tags": [
+        "clean-control",
+        "file-io"
+      ]
+    },
+    {
+      "caseId": "clean-07",
+      "title": "Customer lookup uses the same key",
+      "description": "Synthetic clean control: Customer lookup uses the same key. COBOL and Java are intentionally behaviorally equivalent.",
+      "sourceFiles": [
+        {
+          "path": "CLEAN07.cbl",
+          "content": "EXEC SQL\n SELECT NAME INTO :CUSTOMER-NAME FROM CUSTOMER WHERE ID = :CUSTOMER-ID\nEND-EXEC"
+        }
+      ],
+      "targetFiles": [
+        {
+          "path": "Clean07.java",
+          "content": "String sql = \"SELECT NAME FROM CUSTOMER WHERE ID = ?\";\nString name = queryOne(sql, customerId);\ncustomerName = name;"
+        }
+      ],
+      "expectedFindings": [],
+      "isClean": true,
+      "difficulty": "MEDIUM",
+      "tags": [
+        "clean-control",
+        "database"
+      ]
+    },
+    {
+      "caseId": "clean-08",
+      "title": "EBCDIC input uses an explicit code page",
+      "description": "Synthetic clean control: EBCDIC input uses an explicit code page. COBOL and Java are intentionally behaviorally equivalent.",
+      "sourceFiles": [
+        {
+          "path": "CLEAN08.cbl",
+          "content": "READ HOST-FILE INTO HOST-REC\nMOVE HOST-NAME TO DISPLAY-NAME\nDISPLAY DISPLAY-NAME"
+        }
+      ],
+      "targetFiles": [
+        {
+          "path": "Clean08.java",
+          "content": "byte[] record = readHostRecord();\nString displayName = new String(record, Charset.forName(\"IBM037\"));\nshow(displayName);"
+        }
+      ],
+      "expectedFindings": [],
+      "isClean": true,
+      "difficulty": "HARD",
+      "tags": [
+        "clean-control",
+        "encoding"
+      ]
+    },
+    {
+      "caseId": "clean-09",
+      "title": "Required tax operation is retained",
+      "description": "Synthetic clean control: Required tax operation is retained. COBOL and Java are intentionally behaviorally equivalent.",
+      "sourceFiles": [
+        {
+          "path": "CLEAN09.cbl",
+          "content": "COMPUTE TAX = AMOUNT * TAX-RATE\nCOMPUTE TOTAL = AMOUNT + TAX\nDISPLAY TOTAL"
+        }
+      ],
+      "targetFiles": [
+        {
+          "path": "Clean09.java",
+          "content": "BigDecimal tax = amount.multiply(taxRate);\nBigDecimal total = amount.add(tax);\nshow(total);"
+        }
+      ],
+      "expectedFindings": [],
+      "isClean": true,
+      "difficulty": "MEDIUM",
+      "tags": [
+        "clean-control",
+        "operation"
+      ]
+    },
+    {
+      "caseId": "clean-10",
+      "title": "Blank status remains blank",
+      "description": "Synthetic clean control: Blank status remains blank. COBOL and Java are intentionally behaviorally equivalent.",
+      "sourceFiles": [
+        {
+          "path": "CLEAN10.cbl",
+          "content": "IF STATUS-CODE = SPACES\n  MOVE 'PENDING' TO DISPLAY-STATUS\nEND-IF"
+        }
+      ],
+      "targetFiles": [
+        {
+          "path": "Clean10.java",
+          "content": "if (statusCode.isBlank()) {\n  displayStatus = \"PENDING\";\n}"
+        }
+      ],
+      "expectedFindings": [],
+      "isClean": true,
+      "difficulty": "HARD",
+      "tags": [
+        "clean-control",
+        "representation"
+      ]
+    },
+    {
+      "caseId": "mutation-01",
+      "title": "Packed decimal converted to integer",
+      "description": "Synthetic mutation case: Packed decimal converted to integer.",
+      "sourceFiles": [
+        {
+          "path": "MUT01.cbl",
+          "content": "01 AMOUNT PIC S9(7)V99 COMP-3.\nMOVE AMOUNT TO DISPLAY-AMOUNT\nDISPLAY DISPLAY-AMOUNT"
+        }
+      ],
+      "targetFiles": [
+        {
+          "path": "Mutation01.java",
+          "content": "BigDecimal amount = readAmount();\nint displayAmount = amount.intValue();\nshow(displayAmount);"
+        }
+      ],
+      "expectedFindings": [
+        {
+          "findingId": "finding-01",
+          "category": "DATA_TYPE_MISMATCH",
+          "severity": "HIGH",
+          "sourceLocation": {
+            "file": "MUT01.cbl",
+            "startLine": 2,
+            "endLine": 2
+          },
+          "targetLocation": {
+            "file": "Mutation01.java",
+            "startLine": 2,
+            "endLine": 2
+          },
+          "description": "Fractional cents are truncated before display.",
+          "mutationId": "mutation-01"
+        }
+      ],
+      "isClean": false,
+      "difficulty": "EASY",
+      "mutations": [
+        {
+          "mutationId": "mutation-01",
+          "operator": "DECIMAL_TO_INTEGER",
+          "description": "Packed decimal converted to integer",
+          "observableImpact": "Fractional cents are truncated before display."
+        }
+      ],
+      "tags": [
+        "mutated",
+        "data-type-mismatch",
+        "decimal"
+      ]
+    },
+    {
+      "caseId": "mutation-02",
+      "title": "Signed value forced positive",
+      "description": "Synthetic mutation case: Signed value forced positive.",
+      "sourceFiles": [
+        {
+          "path": "MUT02.cbl",
+          "content": "01 BALANCE PIC S9(9)V99.\nMOVE BALANCE TO OUT-BALANCE\nDISPLAY OUT-BALANCE"
+        }
+      ],
+      "targetFiles": [
+        {
+          "path": "Mutation02.java",
+          "content": "BigDecimal balance = readBalance();\nBigDecimal outBalance = balance.abs();\nshow(outBalance);"
+        }
+      ],
+      "expectedFindings": [
+        {
+          "findingId": "finding-02",
+          "category": "DATA_TYPE_MISMATCH",
+          "severity": "HIGH",
+          "sourceLocation": {
+            "file": "MUT02.cbl",
+            "startLine": 2,
+            "endLine": 2
+          },
+          "targetLocation": {
+            "file": "Mutation02.java",
+            "startLine": 2,
+            "endLine": 2
+          },
+          "description": "Negative balances become positive and change observable output.",
+          "mutationId": "mutation-02"
+        }
+      ],
+      "isClean": false,
+      "difficulty": "MEDIUM",
+      "mutations": [
+        {
+          "mutationId": "mutation-02",
+          "operator": "SIGNED_TO_ABSOLUTE",
+          "description": "Signed value forced positive",
+          "observableImpact": "Negative balances become positive and change observable output."
+        }
+      ],
+      "tags": [
+        "mutated",
+        "data-type-mismatch",
+        "signed-value"
+      ]
+    },
+    {
+      "caseId": "mutation-03",
+      "title": "Large account identifier narrowed",
+      "description": "Synthetic mutation case: Large account identifier narrowed.",
+      "sourceFiles": [
+        {
+          "path": "MUT03.cbl",
+          "content": "01 ACCOUNT-ID PIC 9(18).\nMOVE ACCOUNT-ID TO OUT-ID\nDISPLAY OUT-ID"
+        }
+      ],
+      "targetFiles": [
+        {
+          "path": "Mutation03.java",
+          "content": "long accountId = readAccountId();\nint outId = (int) accountId;\nshow(outId);"
+        }
+      ],
+      "expectedFindings": [
+        {
+          "findingId": "finding-03",
+          "category": "DATA_TYPE_MISMATCH",
+          "severity": "CRITICAL",
+          "sourceLocation": {
+            "file": "MUT03.cbl",
+            "startLine": 2,
+            "endLine": 2
+          },
+          "targetLocation": {
+            "file": "Mutation03.java",
+            "startLine": 2,
+            "endLine": 2
+          },
+          "description": "Eighteen-digit identifiers can overflow the Java integer.",
+          "mutationId": "mutation-03"
+        }
+      ],
+      "isClean": false,
+      "difficulty": "MEDIUM",
+      "mutations": [
+        {
+          "mutationId": "mutation-03",
+          "operator": "NARROW_64_BIT_IDENTIFIER",
+          "description": "Large account identifier narrowed",
+          "observableImpact": "Eighteen-digit identifiers can overflow the Java integer."
+        }
+      ],
+      "tags": [
+        "mutated",
+        "data-type-mismatch",
+        "overflow"
+      ]
+    },
+    {
+      "caseId": "mutation-04",
+      "title": "First and last names swapped",
+      "description": "Synthetic mutation case: First and last names swapped.",
+      "sourceFiles": [
+        {
+          "path": "MUT04.cbl",
+          "content": "MOVE FIRST-NAME TO OUT-FIRST\nMOVE LAST-NAME TO OUT-LAST\nDISPLAY OUT-FIRST OUT-LAST"
+        }
+      ],
+      "targetFiles": [
+        {
+          "path": "Mutation04.java",
+          "content": "out.first = input.last;\nout.last = input.first;\nshow(out.first, out.last);"
+        }
+      ],
+      "expectedFindings": [
+        {
+          "findingId": "finding-04",
+          "category": "VARIABLE_MAPPING_MISMATCH",
+          "severity": "MEDIUM",
+          "sourceLocation": {
+            "file": "MUT04.cbl",
+            "startLine": 2,
+            "endLine": 2
+          },
+          "targetLocation": {
+            "file": "Mutation04.java",
+            "startLine": 2,
+            "endLine": 2
+          },
+          "description": "The generated record exposes first and last names in reversed fields.",
+          "mutationId": "mutation-04"
+        }
+      ],
+      "isClean": false,
+      "difficulty": "EASY",
+      "mutations": [
+        {
+          "mutationId": "mutation-04",
+          "operator": "SWAP_NAME_FIELDS",
+          "description": "First and last names swapped",
+          "observableImpact": "The generated record exposes first and last names in reversed fields."
+        }
+      ],
+      "tags": [
+        "mutated",
+        "variable-mapping-mismatch",
+        "field-mapping"
+      ]
+    },
+    {
+      "caseId": "mutation-05",
+      "title": "Debit mapped into credit field",
+      "description": "Synthetic mutation case: Debit mapped into credit field.",
+      "sourceFiles": [
+        {
+          "path": "MUT05.cbl",
+          "content": "MOVE DEBIT-AMOUNT TO OUT-DEBIT\nMOVE CREDIT-AMOUNT TO OUT-CREDIT\nWRITE OUT-REC"
+        }
+      ],
+      "targetFiles": [
+        {
+          "path": "Mutation05.java",
+          "content": "out.debit = input.credit;\nout.credit = input.debit;\nwrite(out);"
+        }
+      ],
+      "expectedFindings": [
+        {
+          "findingId": "finding-05",
+          "category": "VARIABLE_MAPPING_MISMATCH",
+          "severity": "HIGH",
+          "sourceLocation": {
+            "file": "MUT05.cbl",
+            "startLine": 2,
+            "endLine": 2
+          },
+          "targetLocation": {
+            "file": "Mutation05.java",
+            "startLine": 2,
+            "endLine": 2
+          },
+          "description": "Debit and credit amounts are assigned to the opposite target fields.",
+          "mutationId": "mutation-05"
+        }
+      ],
+      "isClean": false,
+      "difficulty": "MEDIUM",
+      "mutations": [
+        {
+          "mutationId": "mutation-05",
+          "operator": "SWAP_LEDGER_FIELDS",
+          "description": "Debit mapped into credit field",
+          "observableImpact": "Debit and credit amounts are assigned to the opposite target fields."
+        }
+      ],
+      "tags": [
+        "mutated",
+        "variable-mapping-mismatch",
+        "ledger"
+      ]
+    },
+    {
+      "caseId": "mutation-06",
+      "title": "Postal code mapped as city",
+      "description": "Synthetic mutation case: Postal code mapped as city.",
+      "sourceFiles": [
+        {
+          "path": "MUT06.cbl",
+          "content": "MOVE CITY TO OUT-CITY\nMOVE POSTAL-CODE TO OUT-POSTAL\nWRITE OUT-ADDRESS"
+        }
+      ],
+      "targetFiles": [
+        {
+          "path": "Mutation06.java",
+          "content": "out.city = input.postalCode;\nout.postalCode = input.city;\nwrite(out);"
+        }
+      ],
+      "expectedFindings": [
+        {
+          "findingId": "finding-06",
+          "category": "VARIABLE_MAPPING_MISMATCH",
+          "severity": "MEDIUM",
+          "sourceLocation": {
+            "file": "MUT06.cbl",
+            "startLine": 2,
+            "endLine": 2
+          },
+          "targetLocation": {
+            "file": "Mutation06.java",
+            "startLine": 2,
+            "endLine": 2
+          },
+          "description": "City and postal code values are written under the wrong field names.",
+          "mutationId": "mutation-06"
+        }
+      ],
+      "isClean": false,
+      "difficulty": "MEDIUM",
+      "mutations": [
+        {
+          "mutationId": "mutation-06",
+          "operator": "MISMAP_ADDRESS_FIELDS",
+          "description": "Postal code mapped as city",
+          "observableImpact": "City and postal code values are written under the wrong field names."
+        }
+      ],
+      "tags": [
+        "mutated",
+        "variable-mapping-mismatch",
+        "address"
+      ]
+    },
+    {
+      "caseId": "mutation-07",
+      "title": "Eligibility condition reversed",
+      "description": "Synthetic mutation case: Eligibility condition reversed.",
+      "sourceFiles": [
+        {
+          "path": "MUT07.cbl",
+          "content": "IF SCORE >= 700\n  MOVE 'Y' TO APPROVED\nEND-IF"
+        }
+      ],
+      "targetFiles": [
+        {
+          "path": "Mutation07.java",
+          "content": "int score = input.score;\nif (score < 700) approved = true;\nreturn approved;"
+        }
+      ],
+      "expectedFindings": [
+        {
+          "findingId": "finding-07",
+          "category": "LOGIC_MISMATCH",
+          "severity": "HIGH",
+          "sourceLocation": {
+            "file": "MUT07.cbl",
+            "startLine": 2,
+            "endLine": 2
+          },
+          "targetLocation": {
+            "file": "Mutation07.java",
+            "startLine": 2,
+            "endLine": 2
+          },
+          "description": "Applicants below the threshold are approved instead of those at or above it.",
+          "mutationId": "mutation-07"
+        }
+      ],
+      "isClean": false,
+      "difficulty": "EASY",
+      "mutations": [
+        {
+          "mutationId": "mutation-07",
+          "operator": "REVERSE_BOOLEAN_CONDITION",
+          "description": "Eligibility condition reversed",
+          "observableImpact": "Applicants below the threshold are approved instead of those at or above it."
+        }
+      ],
+      "tags": [
+        "mutated",
+        "logic-mismatch",
+        "condition"
+      ]
+    },
+    {
+      "caseId": "mutation-08",
+      "title": "Inclusive threshold made exclusive",
+      "description": "Synthetic mutation case: Inclusive threshold made exclusive.",
+      "sourceFiles": [
+        {
+          "path": "MUT08.cbl",
+          "content": "IF QUANTITY >= 100\n  COMPUTE DISCOUNT = PRICE * 0.10\nEND-IF"
+        }
+      ],
+      "targetFiles": [
+        {
+          "path": "Mutation08.java",
+          "content": "int quantity = order.quantity;\nif (quantity > 100) discount = price.multiply(TEN_PERCENT);\nreturn discount;"
+        }
+      ],
+      "expectedFindings": [
+        {
+          "findingId": "finding-08",
+          "category": "LOGIC_MISMATCH",
+          "severity": "MEDIUM",
+          "sourceLocation": {
+            "file": "MUT08.cbl",
+            "startLine": 2,
+            "endLine": 2
+          },
+          "targetLocation": {
+            "file": "Mutation08.java",
+            "startLine": 2,
+            "endLine": 2
+          },
+          "description": "An order with exactly 100 units no longer receives the discount.",
+          "mutationId": "mutation-08"
+        }
+      ],
+      "isClean": false,
+      "difficulty": "MEDIUM",
+      "mutations": [
+        {
+          "mutationId": "mutation-08",
+          "operator": "INCLUSIVE_TO_EXCLUSIVE",
+          "description": "Inclusive threshold made exclusive",
+          "observableImpact": "An order with exactly 100 units no longer receives the discount."
+        }
+      ],
+      "tags": [
+        "mutated",
+        "logic-mismatch",
+        "boundary"
+      ]
+    },
+    {
+      "caseId": "mutation-09",
+      "title": "Subtraction changed to addition",
+      "description": "Synthetic mutation case: Subtraction changed to addition.",
+      "sourceFiles": [
+        {
+          "path": "MUT09.cbl",
+          "content": "COMPUTE NET = GROSS - FEE\nMOVE NET TO OUT-NET\nDISPLAY OUT-NET"
+        }
+      ],
+      "targetFiles": [
+        {
+          "path": "Mutation09.java",
+          "content": "BigDecimal gross = input.gross;\nBigDecimal net = gross.add(input.fee);\nshow(net);"
+        }
+      ],
+      "expectedFindings": [
+        {
+          "findingId": "finding-09",
+          "category": "LOGIC_MISMATCH",
+          "severity": "HIGH",
+          "sourceLocation": {
+            "file": "MUT09.cbl",
+            "startLine": 2,
+            "endLine": 2
+          },
+          "targetLocation": {
+            "file": "Mutation09.java",
+            "startLine": 2,
+            "endLine": 2
+          },
+          "description": "The fee increases rather than decreases the net amount.",
+          "mutationId": "mutation-09"
+        }
+      ],
+      "isClean": false,
+      "difficulty": "EASY",
+      "mutations": [
+        {
+          "mutationId": "mutation-09",
+          "operator": "ARITHMETIC_OPERATOR_REPLACEMENT",
+          "description": "Subtraction changed to addition",
+          "observableImpact": "The fee increases rather than decreases the net amount."
+        }
+      ],
+      "tags": [
+        "mutated",
+        "logic-mismatch",
+        "arithmetic"
+      ]
+    },
+    {
+      "caseId": "mutation-10",
+      "title": "Else branch omitted",
+      "description": "Synthetic mutation case: Else branch omitted.",
+      "sourceFiles": [
+        {
+          "path": "MUT10.cbl",
+          "content": "IF ACTIVE-FLAG = 'Y'\n  MOVE 'OPEN' TO STATUS\nELSE MOVE 'CLOSED' TO STATUS"
+        }
+      ],
+      "targetFiles": [
+        {
+          "path": "Mutation10.java",
+          "content": "boolean active = input.active;\nif (active) status = \"OPEN\";\nreturn status;"
+        }
+      ],
+      "expectedFindings": [
+        {
+          "findingId": "finding-10",
+          "category": "CONTROL_FLOW_MISMATCH",
+          "severity": "HIGH",
+          "sourceLocation": {
+            "file": "MUT10.cbl",
+            "startLine": 2,
+            "endLine": 2
+          },
+          "targetLocation": {
+            "file": "Mutation10.java",
+            "startLine": 2,
+            "endLine": 2
+          },
+          "description": "Inactive records retain an old or null status instead of becoming CLOSED.",
+          "mutationId": "mutation-10"
+        }
+      ],
+      "isClean": false,
+      "difficulty": "EASY",
+      "mutations": [
+        {
+          "mutationId": "mutation-10",
+          "operator": "OMIT_ELSE_BRANCH",
+          "description": "Else branch omitted",
+          "observableImpact": "Inactive records retain an old or null status instead of becoming CLOSED."
+        }
+      ],
+      "tags": [
+        "mutated",
+        "control-flow-mismatch",
+        "branch"
+      ]
+    },
+    {
+      "caseId": "mutation-11",
+      "title": "Loop stops one iteration early",
+      "description": "Synthetic mutation case: Loop stops one iteration early.",
+      "sourceFiles": [
+        {
+          "path": "MUT11.cbl",
+          "content": "PERFORM VARYING IDX FROM 1 BY 1 UNTIL IDX > ITEM-COUNT\n  ADD ITEM(IDX) TO TOTAL\nEND-PERFORM"
+        }
+      ],
+      "targetFiles": [
+        {
+          "path": "Mutation11.java",
+          "content": "int itemCount = items.size();\nfor (int idx = 1; idx < itemCount; idx++) total += items.get(idx - 1);\nreturn total;"
+        }
+      ],
+      "expectedFindings": [
+        {
+          "findingId": "finding-11",
+          "category": "CONTROL_FLOW_MISMATCH",
+          "severity": "HIGH",
+          "sourceLocation": {
+            "file": "MUT11.cbl",
+            "startLine": 2,
+            "endLine": 2
+          },
+          "targetLocation": {
+            "file": "Mutation11.java",
+            "startLine": 2,
+            "endLine": 2
+          },
+          "description": "The final item is never included in the total.",
+          "mutationId": "mutation-11"
+        }
+      ],
+      "isClean": false,
+      "difficulty": "MEDIUM",
+      "mutations": [
+        {
+          "mutationId": "mutation-11",
+          "operator": "CHANGE_LOOP_TERMINATION",
+          "description": "Loop stops one iteration early",
+          "observableImpact": "The final item is never included in the total."
+        }
+      ],
+      "tags": [
+        "mutated",
+        "control-flow-mismatch",
+        "loop"
+      ]
+    },
+    {
+      "caseId": "mutation-12",
+      "title": "Early return bypasses finalization",
+      "description": "Synthetic mutation case: Early return bypasses finalization.",
+      "sourceFiles": [
+        {
+          "path": "MUT12.cbl",
+          "content": "PERFORM CALCULATE-TOTAL\nPERFORM APPLY-DISCOUNT\nPERFORM FINALIZE-ORDER"
+        }
+      ],
+      "targetFiles": [
+        {
+          "path": "Mutation12.java",
+          "content": "calculateTotal();\nif (total.signum() == 0) return order;\napplyDiscount(); finalizeOrder();"
+        }
+      ],
+      "expectedFindings": [
+        {
+          "findingId": "finding-12",
+          "category": "CONTROL_FLOW_MISMATCH",
+          "severity": "MEDIUM",
+          "sourceLocation": {
+            "file": "MUT12.cbl",
+            "startLine": 2,
+            "endLine": 2
+          },
+          "targetLocation": {
+            "file": "Mutation12.java",
+            "startLine": 2,
+            "endLine": 2
+          },
+          "description": "Zero-total orders skip required discount and finalization flow.",
+          "mutationId": "mutation-12"
+        }
+      ],
+      "isClean": false,
+      "difficulty": "HARD",
+      "mutations": [
+        {
+          "mutationId": "mutation-12",
+          "operator": "INSERT_EARLY_RETURN",
+          "description": "Early return bypasses finalization",
+          "observableImpact": "Zero-total orders skip required discount and finalization flow."
+        }
+      ],
+      "tags": [
+        "mutated",
+        "control-flow-mismatch",
+        "early-return"
+      ]
+    },
+    {
+      "caseId": "mutation-13",
+      "title": "Output record write omitted",
+      "description": "Synthetic mutation case: Output record write omitted.",
+      "sourceFiles": [
+        {
+          "path": "MUT13.cbl",
+          "content": "READ INPUT-FILE INTO IN-REC\nMOVE IN-REC TO OUT-REC\nWRITE OUT-REC"
+        }
+      ],
+      "targetFiles": [
+        {
+          "path": "Mutation13.java",
+          "content": "String record = reader.readLine();\nString output = transform(record);\nreturn output;"
+        }
+      ],
+      "expectedFindings": [
+        {
+          "findingId": "finding-13",
+          "category": "FILE_IO_MISMATCH",
+          "severity": "HIGH",
+          "sourceLocation": {
+            "file": "MUT13.cbl",
+            "startLine": 2,
+            "endLine": 2
+          },
+          "targetLocation": {
+            "file": "Mutation13.java",
+            "startLine": 2,
+            "endLine": 2
+          },
+          "description": "The transformed record is never written to the output file.",
+          "mutationId": "mutation-13"
+        }
+      ],
+      "isClean": false,
+      "difficulty": "EASY",
+      "mutations": [
+        {
+          "mutationId": "mutation-13",
+          "operator": "OMIT_FILE_WRITE",
+          "description": "Output record write omitted",
+          "observableImpact": "The transformed record is never written to the output file."
+        }
+      ],
+      "tags": [
+        "mutated",
+        "file-io-mismatch",
+        "write"
+      ]
+    },
+    {
+      "caseId": "mutation-14",
+      "title": "Append mode changed to truncate",
+      "description": "Synthetic mutation case: Append mode changed to truncate.",
+      "sourceFiles": [
+        {
+          "path": "MUT14.cbl",
+          "content": "OPEN EXTEND AUDIT-FILE\nWRITE AUDIT-REC\nCLOSE AUDIT-FILE"
+        }
+      ],
+      "targetFiles": [
+        {
+          "path": "Mutation14.java",
+          "content": "Path auditFile = path();\nFiles.writeString(auditFile, auditRecord);\ncloseAudit();"
+        }
+      ],
+      "expectedFindings": [
+        {
+          "findingId": "finding-14",
+          "category": "FILE_IO_MISMATCH",
+          "severity": "HIGH",
+          "sourceLocation": {
+            "file": "MUT14.cbl",
+            "startLine": 2,
+            "endLine": 2
+          },
+          "targetLocation": {
+            "file": "Mutation14.java",
+            "startLine": 2,
+            "endLine": 2
+          },
+          "description": "Each run overwrites earlier audit records instead of appending.",
+          "mutationId": "mutation-14"
+        }
+      ],
+      "isClean": false,
+      "difficulty": "MEDIUM",
+      "mutations": [
+        {
+          "mutationId": "mutation-14",
+          "operator": "APPEND_TO_OVERWRITE",
+          "description": "Append mode changed to truncate",
+          "observableImpact": "Each run overwrites earlier audit records instead of appending."
+        }
+      ],
+      "tags": [
+        "mutated",
+        "file-io-mismatch",
+        "append"
+      ]
+    },
+    {
+      "caseId": "mutation-15",
+      "title": "Final record dropped at EOF",
+      "description": "Synthetic mutation case: Final record dropped at EOF.",
+      "sourceFiles": [
+        {
+          "path": "MUT15.cbl",
+          "content": "READ INPUT-FILE AT END MOVE 'Y' TO EOF\nIF EOF NOT = 'Y' PERFORM PROCESS-REC\nPERFORM UNTIL EOF = 'Y'"
+        }
+      ],
+      "targetFiles": [
+        {
+          "path": "Mutation15.java",
+          "content": "String record = reader.readLine();\nwhile ((record = reader.readLine()) != null) process(record);\ncloseInput();"
+        }
+      ],
+      "expectedFindings": [
+        {
+          "findingId": "finding-15",
+          "category": "FILE_IO_MISMATCH",
+          "severity": "HIGH",
+          "sourceLocation": {
+            "file": "MUT15.cbl",
+            "startLine": 2,
+            "endLine": 2
+          },
+          "targetLocation": {
+            "file": "Mutation15.java",
+            "startLine": 2,
+            "endLine": 2
+          },
+          "description": "The first/final buffered record is skipped by reading again before processing.",
+          "mutationId": "mutation-15"
+        }
+      ],
+      "isClean": false,
+      "difficulty": "HARD",
+      "mutations": [
+        {
+          "mutationId": "mutation-15",
+          "operator": "DROP_FINAL_RECORD",
+          "description": "Final record dropped at EOF",
+          "observableImpact": "The first/final buffered record is skipped by reading again before processing."
+        }
+      ],
+      "tags": [
+        "mutated",
+        "file-io-mismatch",
+        "eof"
+      ]
+    },
+    {
+      "caseId": "mutation-16",
+      "title": "Customer update omitted",
+      "description": "Synthetic mutation case: Customer update omitted.",
+      "sourceFiles": [
+        {
+          "path": "MUT16.cbl",
+          "content": "EXEC SQL\n UPDATE CUSTOMER SET STATUS = :NEW-STATUS WHERE ID = :CUSTOMER-ID\nEND-EXEC"
+        }
+      ],
+      "targetFiles": [
+        {
+          "path": "Mutation16.java",
+          "content": "String sql = \"UPDATE CUSTOMER SET STATUS = ? WHERE ID = ?\";\nvalidate(newStatus, customerId);\nreturn;"
+        }
+      ],
+      "expectedFindings": [
+        {
+          "findingId": "finding-16",
+          "category": "DATABASE_MISMATCH",
+          "severity": "CRITICAL",
+          "sourceLocation": {
+            "file": "MUT16.cbl",
+            "startLine": 2,
+            "endLine": 2
+          },
+          "targetLocation": {
+            "file": "Mutation16.java",
+            "startLine": 2,
+            "endLine": 2
+          },
+          "description": "The customer status is never persisted.",
+          "mutationId": "mutation-16"
+        }
+      ],
+      "isClean": false,
+      "difficulty": "EASY",
+      "mutations": [
+        {
+          "mutationId": "mutation-16",
+          "operator": "OMIT_DATABASE_UPDATE",
+          "description": "Customer update omitted",
+          "observableImpact": "The customer status is never persisted."
+        }
+      ],
+      "tags": [
+        "mutated",
+        "database-mismatch",
+        "update"
+      ]
+    },
+    {
+      "caseId": "mutation-17",
+      "title": "Update uses account number as customer ID",
+      "description": "Synthetic mutation case: Update uses account number as customer ID.",
+      "sourceFiles": [
+        {
+          "path": "MUT17.cbl",
+          "content": "EXEC SQL\n DELETE FROM CUSTOMER_NOTE WHERE CUSTOMER_ID = :CUSTOMER-ID\nEND-EXEC"
+        }
+      ],
+      "targetFiles": [
+        {
+          "path": "Mutation17.java",
+          "content": "String sql = \"DELETE FROM CUSTOMER_NOTE WHERE CUSTOMER_ID = ?\";\nexecute(sql, accountNumber);\nreturn;"
+        }
+      ],
+      "expectedFindings": [
+        {
+          "findingId": "finding-17",
+          "category": "DATABASE_MISMATCH",
+          "severity": "CRITICAL",
+          "sourceLocation": {
+            "file": "MUT17.cbl",
+            "startLine": 2,
+            "endLine": 2
+          },
+          "targetLocation": {
+            "file": "Mutation17.java",
+            "startLine": 2,
+            "endLine": 2
+          },
+          "description": "Notes for the wrong customer can be deleted.",
+          "mutationId": "mutation-17"
+        }
+      ],
+      "isClean": false,
+      "difficulty": "MEDIUM",
+      "mutations": [
+        {
+          "mutationId": "mutation-17",
+          "operator": "REPLACE_DATABASE_KEY",
+          "description": "Update uses account number as customer ID",
+          "observableImpact": "Notes for the wrong customer can be deleted."
+        }
+      ],
+      "tags": [
+        "mutated",
+        "database-mismatch",
+        "where-clause"
+      ]
+    },
+    {
+      "caseId": "mutation-18",
+      "title": "Transaction commit omitted",
+      "description": "Synthetic mutation case: Transaction commit omitted.",
+      "sourceFiles": [
+        {
+          "path": "MUT18.cbl",
+          "content": "EXEC SQL UPDATE ACCOUNT SET BALANCE = :BALANCE WHERE ID = :ACCOUNT-ID END-EXEC\nEXEC SQL COMMIT END-EXEC\nDISPLAY 'SAVED'"
+        }
+      ],
+      "targetFiles": [
+        {
+          "path": "Mutation18.java",
+          "content": "connection.setAutoCommit(false);\nupdateBalance(connection, accountId, balance);\nshow(\"SAVED\");"
+        }
+      ],
+      "expectedFindings": [
+        {
+          "findingId": "finding-18",
+          "category": "DATABASE_MISMATCH",
+          "severity": "CRITICAL",
+          "sourceLocation": {
+            "file": "MUT18.cbl",
+            "startLine": 2,
+            "endLine": 2
+          },
+          "targetLocation": {
+            "file": "Mutation18.java",
+            "startLine": 2,
+            "endLine": 2
+          },
+          "description": "The update can be rolled back when the connection closes.",
+          "mutationId": "mutation-18"
+        }
+      ],
+      "isClean": false,
+      "difficulty": "HARD",
+      "mutations": [
+        {
+          "mutationId": "mutation-18",
+          "operator": "OMIT_TRANSACTION_COMMIT",
+          "description": "Transaction commit omitted",
+          "observableImpact": "The update can be rolled back when the connection closes."
+        }
+      ],
+      "tags": [
+        "mutated",
+        "database-mismatch",
+        "transaction"
+      ]
+    },
+    {
+      "caseId": "mutation-19",
+      "title": "EBCDIC decoded as UTF-8",
+      "description": "Synthetic mutation case: EBCDIC decoded as UTF-8.",
+      "sourceFiles": [
+        {
+          "path": "MUT19.cbl",
+          "content": "READ HOST-FILE INTO HOST-REC\nMOVE HOST-NAME TO DISPLAY-NAME\nDISPLAY DISPLAY-NAME"
+        }
+      ],
+      "targetFiles": [
+        {
+          "path": "Mutation19.java",
+          "content": "byte[] hostRecord = readHostRecord();\nString displayName = new String(hostRecord, StandardCharsets.UTF_8);\nshow(displayName);"
+        }
+      ],
+      "expectedFindings": [
+        {
+          "findingId": "finding-19",
+          "category": "ENCODING_MISMATCH",
+          "severity": "HIGH",
+          "sourceLocation": {
+            "file": "MUT19.cbl",
+            "startLine": 2,
+            "endLine": 2
+          },
+          "targetLocation": {
+            "file": "Mutation19.java",
+            "startLine": 2,
+            "endLine": 2
+          },
+          "description": "EBCDIC bytes produce corrupted text under UTF-8 decoding.",
+          "mutationId": "mutation-19"
+        }
+      ],
+      "isClean": false,
+      "difficulty": "EASY",
+      "mutations": [
+        {
+          "mutationId": "mutation-19",
+          "operator": "REPLACE_CHARACTER_SET",
+          "description": "EBCDIC decoded as UTF-8",
+          "observableImpact": "EBCDIC bytes produce corrupted text under UTF-8 decoding."
+        }
+      ],
+      "tags": [
+        "mutated",
+        "encoding-mismatch",
+        "ebcdic"
+      ]
+    },
+    {
+      "caseId": "mutation-20",
+      "title": "Packed decimal treated as text bytes",
+      "description": "Synthetic mutation case: Packed decimal treated as text bytes.",
+      "sourceFiles": [
+        {
+          "path": "MUT20.cbl",
+          "content": "01 PACKED-AMOUNT PIC S9(5)V99 COMP-3.\nMOVE PACKED-AMOUNT TO DISPLAY-AMOUNT\nDISPLAY DISPLAY-AMOUNT"
+        }
+      ],
+      "targetFiles": [
+        {
+          "path": "Mutation20.java",
+          "content": "byte[] packedAmount = record.slice(10, 14);\nString displayAmount = new String(packedAmount, StandardCharsets.US_ASCII);\nshow(displayAmount);"
+        }
+      ],
+      "expectedFindings": [
+        {
+          "findingId": "finding-20",
+          "category": "ENCODING_MISMATCH",
+          "severity": "HIGH",
+          "sourceLocation": {
+            "file": "MUT20.cbl",
+            "startLine": 2,
+            "endLine": 2
+          },
+          "targetLocation": {
+            "file": "Mutation20.java",
+            "startLine": 2,
+            "endLine": 2
+          },
+          "description": "COMP-3 nibbles are not ASCII digits and yield an invalid amount.",
+          "mutationId": "mutation-20"
+        }
+      ],
+      "isClean": false,
+      "difficulty": "HARD",
+      "mutations": [
+        {
+          "mutationId": "mutation-20",
+          "operator": "DECODE_PACKED_DECIMAL_AS_TEXT",
+          "description": "Packed decimal treated as text bytes",
+          "observableImpact": "COMP-3 nibbles are not ASCII digits and yield an invalid amount."
+        }
+      ],
+      "tags": [
+        "mutated",
+        "encoding-mismatch",
+        "comp-3"
+      ]
+    },
+    {
+      "caseId": "mutation-21",
+      "title": "Fixed-width trailing spaces trimmed",
+      "description": "Synthetic mutation case: Fixed-width trailing spaces trimmed.",
+      "sourceFiles": [
+        {
+          "path": "MUT21.cbl",
+          "content": "01 CUSTOMER-CODE PIC X(10).\nMOVE CUSTOMER-CODE TO OUT-CODE\nWRITE OUT-CODE"
+        }
+      ],
+      "targetFiles": [
+        {
+          "path": "Mutation21.java",
+          "content": "String customerCode = readFixed(10);\nString outCode = customerCode.trim();\nwriter.write(outCode);"
+        }
+      ],
+      "expectedFindings": [
+        {
+          "findingId": "finding-21",
+          "category": "ENCODING_MISMATCH",
+          "severity": "MEDIUM",
+          "sourceLocation": {
+            "file": "MUT21.cbl",
+            "startLine": 2,
+            "endLine": 2
+          },
+          "targetLocation": {
+            "file": "Mutation21.java",
+            "startLine": 2,
+            "endLine": 2
+          },
+          "description": "The output loses the COBOL field's fixed-width padding.",
+          "mutationId": "mutation-21",
+          "acceptedCategories": [
+            "POTENTIAL_BEHAVIOR_CHANGE"
+          ],
+          "acceptedCategoryJustification": "Reviewers may reasonably classify fixed-width padding loss as a broader observable behavior change."
+        }
+      ],
+      "isClean": false,
+      "difficulty": "MEDIUM",
+      "mutations": [
+        {
+          "mutationId": "mutation-21",
+          "operator": "TRIM_FIXED_WIDTH_FIELD",
+          "description": "Fixed-width trailing spaces trimmed",
+          "observableImpact": "The output loses the COBOL field's fixed-width padding."
+        }
+      ],
+      "tags": [
+        "mutated",
+        "encoding-mismatch",
+        "fixed-width"
+      ]
+    },
+    {
+      "caseId": "mutation-22",
+      "title": "Tax calculation call removed",
+      "description": "Synthetic mutation case: Tax calculation call removed.",
+      "sourceFiles": [
+        {
+          "path": "MUT22.cbl",
+          "content": "PERFORM CALCULATE-TAX\nCOMPUTE TOTAL = AMOUNT + TAX\nDISPLAY TOTAL"
+        }
+      ],
+      "targetFiles": [
+        {
+          "path": "Mutation22.java",
+          "content": "BigDecimal total = amount;\nshow(total);\nreturn total;"
+        }
+      ],
+      "expectedFindings": [
+        {
+          "findingId": "finding-22",
+          "category": "MISSING_OPERATION",
+          "severity": "HIGH",
+          "sourceLocation": {
+            "file": "MUT22.cbl",
+            "startLine": 2,
+            "endLine": 2
+          },
+          "targetLocation": {
+            "file": "Mutation22.java",
+            "startLine": 2,
+            "endLine": 2
+          },
+          "description": "The total excludes required tax.",
+          "mutationId": "mutation-22"
+        }
+      ],
+      "isClean": false,
+      "difficulty": "EASY",
+      "mutations": [
+        {
+          "mutationId": "mutation-22",
+          "operator": "OMIT_TAX_CALCULATION",
+          "description": "Tax calculation call removed",
+          "observableImpact": "The total excludes required tax."
+        }
+      ],
+      "tags": [
+        "mutated",
+        "missing-operation",
+        "tax"
+      ]
+    },
+    {
+      "caseId": "mutation-23",
+      "title": "Audit event omitted",
+      "description": "Synthetic mutation case: Audit event omitted.",
+      "sourceFiles": [
+        {
+          "path": "MUT23.cbl",
+          "content": "PERFORM UPDATE-ACCOUNT\nPERFORM WRITE-AUDIT\nDISPLAY 'UPDATED'"
+        }
+      ],
+      "targetFiles": [
+        {
+          "path": "Mutation23.java",
+          "content": "updateAccount();\nshow(\"UPDATED\");\nreturn;"
+        }
+      ],
+      "expectedFindings": [
+        {
+          "findingId": "finding-23",
+          "category": "MISSING_OPERATION",
+          "severity": "HIGH",
+          "sourceLocation": {
+            "file": "MUT23.cbl",
+            "startLine": 2,
+            "endLine": 2
+          },
+          "targetLocation": {
+            "file": "Mutation23.java",
+            "startLine": 2,
+            "endLine": 2
+          },
+          "description": "The account changes without its required audit record.",
+          "mutationId": "mutation-23"
+        }
+      ],
+      "isClean": false,
+      "difficulty": "MEDIUM",
+      "mutations": [
+        {
+          "mutationId": "mutation-23",
+          "operator": "OMIT_AUDIT_OPERATION",
+          "description": "Audit event omitted",
+          "observableImpact": "The account changes without its required audit record."
+        }
+      ],
+      "tags": [
+        "mutated",
+        "missing-operation",
+        "audit"
+      ]
+    },
+    {
+      "caseId": "mutation-24",
+      "title": "Accumulator initialization omitted",
+      "description": "Synthetic mutation case: Accumulator initialization omitted.",
+      "sourceFiles": [
+        {
+          "path": "MUT24.cbl",
+          "content": "MOVE ZERO TO DAILY-TOTAL\nPERFORM SUM-TRANSACTIONS\nDISPLAY DAILY-TOTAL"
+        }
+      ],
+      "targetFiles": [
+        {
+          "path": "Mutation24.java",
+          "content": "BigDecimal dailyTotal = priorTotal;\nsumTransactions(dailyTotal);\nshow(dailyTotal);"
+        }
+      ],
+      "expectedFindings": [
+        {
+          "findingId": "finding-24",
+          "category": "MISSING_OPERATION",
+          "severity": "HIGH",
+          "sourceLocation": {
+            "file": "MUT24.cbl",
+            "startLine": 2,
+            "endLine": 2
+          },
+          "targetLocation": {
+            "file": "Mutation24.java",
+            "startLine": 2,
+            "endLine": 2
+          },
+          "description": "A prior value contaminates the new daily total.",
+          "mutationId": "mutation-24"
+        }
+      ],
+      "isClean": false,
+      "difficulty": "MEDIUM",
+      "mutations": [
+        {
+          "mutationId": "mutation-24",
+          "operator": "OMIT_INITIALIZATION",
+          "description": "Accumulator initialization omitted",
+          "observableImpact": "A prior value contaminates the new daily total."
+        }
+      ],
+      "tags": [
+        "mutated",
+        "missing-operation",
+        "initialization"
+      ]
+    },
+    {
+      "caseId": "mutation-25",
+      "title": "GO TO target silently ignored",
+      "description": "Synthetic mutation case: GO TO target silently ignored.",
+      "sourceFiles": [
+        {
+          "path": "MUT25.cbl",
+          "content": "IF INVALID-FLAG = 'Y' GO TO ERROR-HANDLER\nPERFORM NORMAL-PROCESS\nSTOP RUN"
+        }
+      ],
+      "targetFiles": [
+        {
+          "path": "Mutation25.java",
+          "content": "boolean invalid = input.invalid;\nnormalProcess();\nreturn;"
+        }
+      ],
+      "expectedFindings": [
+        {
+          "findingId": "finding-25",
+          "category": "UNSUPPORTED_CONSTRUCT",
+          "severity": "CRITICAL",
+          "sourceLocation": {
+            "file": "MUT25.cbl",
+            "startLine": 2,
+            "endLine": 2
+          },
+          "targetLocation": {
+            "file": "Mutation25.java",
+            "startLine": 2,
+            "endLine": 2
+          },
+          "description": "Invalid input follows normal processing instead of the error handler.",
+          "mutationId": "mutation-25"
+        }
+      ],
+      "isClean": false,
+      "difficulty": "HARD",
+      "mutations": [
+        {
+          "mutationId": "mutation-25",
+          "operator": "IGNORE_GO_TO",
+          "description": "GO TO target silently ignored",
+          "observableImpact": "Invalid input follows normal processing instead of the error handler."
+        }
+      ],
+      "tags": [
+        "mutated",
+        "unsupported-construct",
+        "go-to"
+      ]
+    },
+    {
+      "caseId": "mutation-26",
+      "title": "REDEFINES overlay ignored",
+      "description": "Synthetic mutation case: REDEFINES overlay ignored.",
+      "sourceFiles": [
+        {
+          "path": "MUT26.cbl",
+          "content": "01 RAW-DATE PIC 9(8).\n01 DATE-PARTS REDEFINES RAW-DATE.\n  05 DATE-YEAR PIC 9(4)."
+        }
+      ],
+      "targetFiles": [
+        {
+          "path": "Mutation26.java",
+          "content": "String rawDate = input.rawDate;\nString dateYear = null;\nshow(dateYear);"
+        }
+      ],
+      "expectedFindings": [
+        {
+          "findingId": "finding-26",
+          "category": "UNSUPPORTED_CONSTRUCT",
+          "severity": "HIGH",
+          "sourceLocation": {
+            "file": "MUT26.cbl",
+            "startLine": 2,
+            "endLine": 2
+          },
+          "targetLocation": {
+            "file": "Mutation26.java",
+            "startLine": 2,
+            "endLine": 2
+          },
+          "description": "The overlaid year view is lost rather than derived from the shared bytes.",
+          "mutationId": "mutation-26"
+        }
+      ],
+      "isClean": false,
+      "difficulty": "HARD",
+      "mutations": [
+        {
+          "mutationId": "mutation-26",
+          "operator": "IGNORE_REDEFINES",
+          "description": "REDEFINES overlay ignored",
+          "observableImpact": "The overlaid year view is lost rather than derived from the shared bytes."
+        }
+      ],
+      "tags": [
+        "mutated",
+        "unsupported-construct",
+        "redefines"
+      ]
+    },
+    {
+      "caseId": "mutation-27",
+      "title": "Dynamic OCCURS reduced to fixed one",
+      "description": "Synthetic mutation case: Dynamic OCCURS reduced to fixed one.",
+      "sourceFiles": [
+        {
+          "path": "MUT27.cbl",
+          "content": "01 ITEM-COUNT PIC 9(2).\n01 ITEM OCCURS 1 TO 20 DEPENDING ON ITEM-COUNT.\n  05 ITEM-AMOUNT PIC 9(5)."
+        }
+      ],
+      "targetFiles": [
+        {
+          "path": "Mutation27.java",
+          "content": "int itemCount = input.itemCount;\nint[] items = new int[1];\nreturn sum(items);"
+        }
+      ],
+      "expectedFindings": [
+        {
+          "findingId": "finding-27",
+          "category": "UNSUPPORTED_CONSTRUCT",
+          "severity": "HIGH",
+          "sourceLocation": {
+            "file": "MUT27.cbl",
+            "startLine": 2,
+            "endLine": 2
+          },
+          "targetLocation": {
+            "file": "Mutation27.java",
+            "startLine": 2,
+            "endLine": 2
+          },
+          "description": "Only one item is retained when the runtime count is greater than one.",
+          "mutationId": "mutation-27"
+        }
+      ],
+      "isClean": false,
+      "difficulty": "HARD",
+      "mutations": [
+        {
+          "mutationId": "mutation-27",
+          "operator": "FIX_OCCURS_DEPENDING_ON",
+          "description": "Dynamic OCCURS reduced to fixed one",
+          "observableImpact": "Only one item is retained when the runtime count is greater than one."
+        }
+      ],
+      "tags": [
+        "mutated",
+        "unsupported-construct",
+        "occurs"
+      ]
+    },
+    {
+      "caseId": "mutation-28",
+      "title": "Rounding mode changed",
+      "description": "Synthetic mutation case: Rounding mode changed.",
+      "sourceFiles": [
+        {
+          "path": "MUT28.cbl",
+          "content": "COMPUTE UNIT-PRICE ROUNDED = TOTAL / COUNT\nMOVE UNIT-PRICE TO OUT-PRICE\nDISPLAY OUT-PRICE"
+        }
+      ],
+      "targetFiles": [
+        {
+          "path": "Mutation28.java",
+          "content": "BigDecimal value = total.divide(count, 2, RoundingMode.DOWN);\nBigDecimal outPrice = value;\nshow(outPrice);"
+        }
+      ],
+      "expectedFindings": [
+        {
+          "findingId": "finding-28",
+          "category": "POTENTIAL_BEHAVIOR_CHANGE",
+          "severity": "MEDIUM",
+          "sourceLocation": {
+            "file": "MUT28.cbl",
+            "startLine": 2,
+            "endLine": 2
+          },
+          "targetLocation": {
+            "file": "Mutation28.java",
+            "startLine": 2,
+            "endLine": 2
+          },
+          "description": "Values at a half-cent boundary round down instead of using COBOL rounding.",
+          "mutationId": "mutation-28"
+        }
+      ],
+      "isClean": false,
+      "difficulty": "MEDIUM",
+      "mutations": [
+        {
+          "mutationId": "mutation-28",
+          "operator": "CHANGE_ROUNDING_MODE",
+          "description": "Rounding mode changed",
+          "observableImpact": "Values at a half-cent boundary round down instead of using COBOL rounding."
+        }
+      ],
+      "tags": [
+        "mutated",
+        "potential-behavior-change",
+        "rounding"
+      ]
+    },
+    {
+      "caseId": "mutation-29",
+      "title": "Spaces converted to null",
+      "description": "Synthetic mutation case: Spaces converted to null.",
+      "sourceFiles": [
+        {
+          "path": "MUT29.cbl",
+          "content": "IF CUSTOMER-CODE = SPACES\n  MOVE 'UNKNOWN' TO DISPLAY-CODE\nEND-IF"
+        }
+      ],
+      "targetFiles": [
+        {
+          "path": "Mutation29.java",
+          "content": "String customerCode = input.customerCode;\nif (customerCode == null) displayCode = \"UNKNOWN\";\nreturn displayCode;"
+        }
+      ],
+      "expectedFindings": [
+        {
+          "findingId": "finding-29",
+          "category": "POTENTIAL_BEHAVIOR_CHANGE",
+          "severity": "MEDIUM",
+          "sourceLocation": {
+            "file": "MUT29.cbl",
+            "startLine": 2,
+            "endLine": 2
+          },
+          "targetLocation": {
+            "file": "Mutation29.java",
+            "startLine": 2,
+            "endLine": 2
+          },
+          "description": "A fixed-width blank field is no longer recognized as the unknown sentinel.",
+          "mutationId": "mutation-29",
+          "acceptedCategories": [
+            "LOGIC_MISMATCH"
+          ],
+          "acceptedCategoryJustification": "The null-versus-spaces condition can also be described as a logic mismatch."
+        }
+      ],
+      "isClean": false,
+      "difficulty": "MEDIUM",
+      "mutations": [
+        {
+          "mutationId": "mutation-29",
+          "operator": "BLANK_TO_NULL",
+          "description": "Spaces converted to null",
+          "observableImpact": "A fixed-width blank field is no longer recognized as the unknown sentinel."
+        }
+      ],
+      "tags": [
+        "mutated",
+        "potential-behavior-change",
+        "blank-semantics"
+      ]
+    },
+    {
+      "caseId": "mutation-30",
+      "title": "Business date shifted through local timezone",
+      "description": "Synthetic mutation case: Business date shifted through local timezone.",
+      "sourceFiles": [
+        {
+          "path": "MUT30.cbl",
+          "content": "MOVE TRANSACTION-DATE TO OUT-DATE\nMOVE TRANSACTION-TIME TO OUT-TIME\nWRITE OUT-REC"
+        }
+      ],
+      "targetFiles": [
+        {
+          "path": "Mutation30.java",
+          "content": "Instant transactionTime = input.instant;\nLocalDate outDate = transactionTime.atZone(ZoneId.systemDefault()).toLocalDate();\nwrite(outDate);"
+        }
+      ],
+      "expectedFindings": [
+        {
+          "findingId": "finding-30",
+          "category": "POTENTIAL_BEHAVIOR_CHANGE",
+          "severity": "HIGH",
+          "sourceLocation": {
+            "file": "MUT30.cbl",
+            "startLine": 2,
+            "endLine": 2
+          },
+          "targetLocation": {
+            "file": "Mutation30.java",
+            "startLine": 2,
+            "endLine": 2
+          },
+          "description": "Hosts in different time zones can emit a different business date.",
+          "mutationId": "mutation-30"
+        }
+      ],
+      "isClean": false,
+      "difficulty": "HARD",
+      "mutations": [
+        {
+          "mutationId": "mutation-30",
+          "operator": "CHANGE_TIMEZONE_SEMANTICS",
+          "description": "Business date shifted through local timezone",
+          "observableImpact": "Hosts in different time zones can emit a different business date."
+        }
+      ],
+      "tags": [
+        "mutated",
+        "potential-behavior-change",
+        "date-time"
+      ]
+    }
+  ]
+}

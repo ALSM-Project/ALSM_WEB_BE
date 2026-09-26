@@ -1,11 +1,102 @@
-import { Inject, Injectable, Logger, OnModuleDestroy } from '@nestjs/common'; import { ConfigService } from '@nestjs/config'; import { Worker } from 'bullmq'; import { CONVERSION_ENGINE, CONVERSION_JOB_REPOSITORY, ConversionEnginePort, ConversionJobRepository } from '../domain/conversion-job.types'; import { CONVERSION_QUEUE_NAME } from './bullmq-conversion.queue'; import { SCREEN_REPOSITORY, ScreenRepository, ScreenStatus } from '../../screens/domain/screen.types';
-@Injectable() export class ConversionWorkerRunner implements OnModuleDestroy { private readonly logger = new Logger(ConversionWorkerRunner.name); private worker?: Worker<{ conversionJobId: string }>;
-  constructor(private readonly config: ConfigService, @Inject(CONVERSION_JOB_REPOSITORY) private readonly jobs: ConversionJobRepository, @Inject(CONVERSION_ENGINE) private readonly engine: ConversionEnginePort, @Inject(SCREEN_REPOSITORY) private readonly screens: ScreenRepository) {}
+import { Inject, Injectable, Logger, OnModuleDestroy } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
+import { Worker } from 'bullmq';
+import {
+  CONVERSION_ENGINE,
+  CONVERSION_JOB_REPOSITORY,
+  ConversionEnginePort,
+  ConversionJobRepository,
+} from '../domain/conversion-job.types';
+import { CONVERSION_QUEUE_NAME } from './bullmq-conversion.queue';
+import { SCREEN_REPOSITORY, ScreenRepository, ScreenStatus } from '../../screens/domain/screen.types';
+import { CopybookDependencyBlockedError } from '../domain/copybook-dependency-blocked.error';
+
+@Injectable()
+export class ConversionWorkerRunner implements OnModuleDestroy {
+  private readonly logger = new Logger(ConversionWorkerRunner.name);
+  private worker?: Worker<{ conversionJobId: string }>;
+
+  constructor(
+    private readonly config: ConfigService,
+    @Inject(CONVERSION_JOB_REPOSITORY) private readonly jobs: ConversionJobRepository,
+    @Inject(CONVERSION_ENGINE) private readonly engine: ConversionEnginePort,
+    @Inject(SCREEN_REPOSITORY) private readonly screens: ScreenRepository,
+  ) {}
+
   /** Best-effort: a screen's status is a UI convenience derived from its latest job, never the source of truth (the job record is) — a failure here must never fail the job itself. */
-  private async syncScreenStatus(job: { screenId?: string; organizationId: string }, status: ScreenStatus): Promise<void> {
+  private async syncScreenStatus(
+    job: { screenId?: string; organizationId: string },
+    status: ScreenStatus,
+  ): Promise<void> {
     if (!job.screenId) return;
-    try { await this.screens.updateStatus(job.screenId, job.organizationId, status); } catch (error) { this.logger.warn(`Failed to sync screen ${job.screenId} status to ${status}: ${String(error)}`); }
+    try {
+      await this.screens.updateStatus(job.screenId, job.organizationId, status);
+    } catch (error) {
+      this.logger.warn(`Failed to sync screen ${job.screenId} status to ${status}: ${String(error)}`);
+    }
   }
-  start(): void { if (!this.config.get<boolean>('CONVERSION_WORKER_ENABLED')) { this.logger.warn('Conversion worker is disabled. Set CONVERSION_WORKER_ENABLED=true only after configuring an external engine adapter.'); return; } this.worker = new Worker(CONVERSION_QUEUE_NAME, async (queueJob) => { const job = await this.jobs.markProcessing(queueJob.data.conversionJobId); if (!job) return; await this.syncScreenStatus(job, ScreenStatus.PROCESSING); try { const output = await this.engine.execute({ conversionJobId: job.id, organizationId: job.organizationId, projectId: job.projectId, screenId: job.screenId, inputReference: job.inputReference, conversionType: job.conversionType }); await this.jobs.markCompleted(job.id, output); await this.syncScreenStatus(job, ScreenStatus.COMPLETED); } catch (error) { const message = error instanceof Error ? error.message : 'External conversion engine failed'; await this.jobs.markFailed(job.id, 'CONVERSION_ENGINE_UNAVAILABLE', message); await this.syncScreenStatus(job, ScreenStatus.FAILED); throw error; } }, { connection: { host: this.config.getOrThrow('REDIS_HOST'), port: this.config.getOrThrow<number>('REDIS_PORT'), password: this.config.get<string>('REDIS_PASSWORD') || undefined } }); this.logger.log('Conversion worker started.'); }
-  async onModuleDestroy(): Promise<void> { await this.worker?.close(); }
+
+  start(): void {
+    if (!this.config.get<boolean>('CONVERSION_WORKER_ENABLED')) {
+      this.logger.warn(
+        'Conversion worker is disabled. Set CONVERSION_WORKER_ENABLED=true only after configuring an external engine adapter.',
+      );
+      return;
+    }
+    this.worker = new Worker(
+      CONVERSION_QUEUE_NAME,
+      async (queueJob) => {
+        const job = await this.jobs.markProcessing(queueJob.data.conversionJobId);
+        if (!job) return;
+        await this.syncScreenStatus(job, ScreenStatus.PROCESSING);
+        try {
+          const output = await this.engine.execute({
+            conversionJobId: job.id,
+            organizationId: job.organizationId,
+            projectId: job.projectId,
+            screenId: job.screenId,
+            inputReference: job.inputReference,
+            conversionType: job.conversionType,
+          });
+          await this.jobs.markCompleted(job.id, output);
+          await this.syncScreenStatus(job, ScreenStatus.COMPLETED);
+        } catch (error) {
+          const message = error instanceof Error ? error.message : 'External conversion engine failed';
+          const code =
+            error instanceof CopybookDependencyBlockedError
+              ? 'COPYBOOK_DEPENDENCY_BLOCKED'
+              : 'CONVERSION_ENGINE_UNAVAILABLE';
+          // BullMQ's own exponential-backoff attempts (configured at enqueue time in
+          // BullMqConversionQueue) redeliver this SAME job to this SAME callback — it never
+          // calls markProcessing() again on our behalf. If we mark the job FAILED here on a
+          // non-final attempt, the redelivered attempt's markProcessing() (which only
+          // matches QUEUED/PROCESSING) finds nothing, returns null, and the callback exits
+          // without throwing — BullMQ then considers that attempt a *success* and stops
+          // retrying, even though no real work happened. Confirmed by reproduction: a job's
+          // configured 3 attempts silently collapsed into 1. Only mark FAILED once BullMQ
+          // itself has no attempts left; otherwise leave the job in PROCESSING so the next
+          // redelivery's markProcessing() still matches.
+          const attemptsAllowed = queueJob.opts.attempts ?? 1;
+          const isFinalAttempt = queueJob.attemptsMade + 1 >= attemptsAllowed;
+          if (isFinalAttempt) {
+            await this.jobs.markFailed(job.id, code, message);
+            await this.syncScreenStatus(job, ScreenStatus.FAILED);
+          }
+          throw error;
+        }
+      },
+      {
+        connection: {
+          host: this.config.getOrThrow('REDIS_HOST'),
+          port: this.config.getOrThrow<number>('REDIS_PORT'),
+          password: this.config.get<string>('REDIS_PASSWORD') || undefined,
+        },
+      },
+    );
+    this.logger.log('Conversion worker started.');
+  }
+
+  async onModuleDestroy(): Promise<void> {
+    await this.worker?.close();
+  }
 }

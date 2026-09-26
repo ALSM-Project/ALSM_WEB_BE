@@ -13,7 +13,12 @@ describe('UploadConversionSourceService', () => {
   const organizationContext = { resolve: jest.fn() };
   const authorization = { require: jest.fn() };
   const projects = { getForOrganization: jest.fn() };
-  const screenService = { create: jest.fn(), list: jest.fn(), getById: jest.fn() };
+  const screenService = {
+    create: jest.fn(),
+    list: jest.fn(),
+    getById: jest.fn(),
+    recordDependencyDiagnostics: jest.fn(),
+  };
   const service = new UploadConversionSourceService(
     storage as unknown as StoragePort,
     organizationContext as unknown as OrganizationContextService,
@@ -85,5 +90,45 @@ describe('UploadConversionSourceService', () => {
       expect.objectContaining({ name: 'PROGRAM.cob', sourceType: ScreenSourceType.COBOL }),
     );
     expect(result.screens).toHaveLength(1);
+  });
+
+  it('analyzes copybook dependencies once for a COBOL_TO_JAVA upload and persists per screen', async () => {
+    projects.getForOrganization.mockResolvedValue({ id: 'p1', conversionType: ConversionType.COBOL_TO_JAVA });
+
+    const result = await service.execute('u1', 'org-1', 'p1', [
+      { originalname: 'PROGRAM.cob', buffer: Buffer.from('       COPY SHARED.\n'), size: 20 },
+      { originalname: 'SHARED.cpy', buffer: Buffer.from(''), size: 0 },
+    ]);
+
+    expect(screenService.recordDependencyDiagnostics).toHaveBeenCalledTimes(1);
+    expect(screenService.recordDependencyDiagnostics).toHaveBeenCalledWith(
+      'org-1',
+      'scr-PROGRAM.cob',
+      expect.objectContaining({
+        status: 'READY_FOR_CONVERSION',
+        dependencies: [expect.objectContaining({ copyName: 'SHARED', status: 'RESOLVED', resolvedFile: 'SHARED.cpy' })],
+      }),
+    );
+    expect(result.screens[0].dependencyStatus).toBe('READY_FOR_CONVERSION');
+  });
+
+  it('does not run copybook dependency analysis for a BMS_DSPF_TO_FRONTEND upload', async () => {
+    projects.getForOrganization.mockResolvedValue({ id: 'p1', conversionType: ConversionType.BMS_DSPF_TO_FRONTEND });
+
+    await service.execute('u1', 'org-1', 'p1', [{ originalname: 'LOGIN.bms', buffer: Buffer.from('bms'), size: 3 }]);
+
+    expect(screenService.recordDependencyDiagnostics).not.toHaveBeenCalled();
+  });
+
+  it('rejects an upload containing two different files with the same name (case-insensitive)', async () => {
+    projects.getForOrganization.mockResolvedValue({ id: 'p1', conversionType: ConversionType.COBOL_TO_JAVA });
+
+    await expect(
+      service.execute('u1', 'org-1', 'p1', [
+        { originalname: 'CVACT01Y.cpy', buffer: Buffer.from('a'), size: 1 },
+        { originalname: 'cvact01y.CPY', buffer: Buffer.from('b'), size: 1 },
+      ]),
+    ).rejects.toBeInstanceOf(BadRequestException);
+    expect(storage.writeFiles).not.toHaveBeenCalled();
   });
 });

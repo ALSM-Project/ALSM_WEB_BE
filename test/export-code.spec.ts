@@ -138,6 +138,119 @@ describe('ExportCodeService & ExportController', () => {
     expect(filename).toContain('.zip');
   });
 
+  it('should include real .java files from a COBOL conversion job, not silently drop them', async () => {
+    jobs.listByScreen.mockResolvedValue([
+      {
+        id: 'job-cobol-1',
+        status: ConversionJobStatus.COMPLETED,
+        resultReference: 'results/proj-acme/job-cobol-1/abc',
+        completedAt: new Date('2024-01-02'),
+        toolVersion: 'tool2java',
+      },
+    ]);
+    storage.readFiles.mockResolvedValue([
+      {
+        relativePath: 'cobolprogramclasses/cbact01c/Cbact01cTasklet.java',
+        content: Buffer.from('public class Cbact01cTasklet { public void execute() {} }'),
+      },
+    ]);
+
+    const config: ExportConfiguration = {
+      projectId: 'proj-acme',
+      projectName: 'Acme Corp',
+      outputOption: 'scaffold',
+      frameworkTarget: 'react-19',
+      stylingOption: 'tailwind',
+      includeTypeScriptStrict: true,
+      includeUnitTests: true,
+      includeStorybook: false,
+      includeDocumentation: true,
+      selectedScreenIds: ['scr-cobol'],
+    };
+
+    const result = await service.generateExportPreview('user-1', undefined, 'proj-acme', config);
+    expect(result.metrics.selectedScreensCount).toBe(1);
+    const asJson = JSON.stringify(result.fileTree);
+    expect(asJson).toContain('public class Cbact01cTasklet');
+    expect(asJson).toContain('Cbact01cTasklet.java');
+    // A Java-only export gets no misleading empty React app scaffold.
+    expect(asJson).not.toContain('"components"');
+    expect(asJson).not.toContain('package.json');
+  });
+
+  it('should package real Java files (not just .tsx) into the downloadable zip', async () => {
+    jobs.listByScreen.mockResolvedValue([
+      {
+        id: 'job-cobol-1',
+        status: ConversionJobStatus.COMPLETED,
+        resultReference: 'results/proj-acme/job-cobol-1/abc',
+        completedAt: new Date('2024-01-02'),
+        toolVersion: 'tool2java',
+      },
+    ]);
+    storage.readFiles.mockResolvedValue([
+      {
+        relativePath: 'cobolprogramclasses/cbact01c/Cbact01cTasklet.java',
+        content: Buffer.from('public class Cbact01cTasklet {}'),
+      },
+    ]);
+
+    const config: ExportConfiguration = {
+      projectId: 'proj-acme',
+      projectName: 'Acme Corp',
+      outputOption: 'standalone',
+      frameworkTarget: 'react-19',
+      stylingOption: 'tailwind',
+      includeTypeScriptStrict: true,
+      includeUnitTests: false,
+      includeStorybook: false,
+      includeDocumentation: false,
+      selectedScreenIds: ['scr-cobol'],
+    };
+
+    const { buffer } = await service.generateZipBuffer('user-1', undefined, 'proj-acme', config);
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const JSZip = require('jszip');
+    const zip = await JSZip.loadAsync(buffer);
+    const javaEntry = zip.file('java/cobolprogramclasses/cbact01c/Cbact01cTasklet.java');
+    expect(javaEntry).not.toBeNull();
+    const content = await javaEntry!.async('string');
+    expect(content).toBe('public class Cbact01cTasklet {}');
+  });
+
+  it('still exports .tsx files unaffected for a BMS job (toolVersion convert2fe)', async () => {
+    jobs.listByScreen.mockResolvedValue([
+      {
+        id: 'job-bms-1',
+        status: ConversionJobStatus.COMPLETED,
+        resultReference: 'results/proj-acme/job-bms-1/abc',
+        completedAt: new Date('2024-01-02'),
+        toolVersion: 'convert2fe',
+      },
+    ]);
+    storage.readFiles.mockResolvedValue([
+      { relativePath: 'ScrLogin.tsx', content: Buffer.from('export const ScrLogin = () => null;') },
+    ]);
+
+    const config: ExportConfiguration = {
+      projectId: 'proj-acme',
+      projectName: 'Acme Corp',
+      outputOption: 'scaffold',
+      frameworkTarget: 'react-19',
+      stylingOption: 'tailwind',
+      includeTypeScriptStrict: true,
+      includeUnitTests: false,
+      includeStorybook: false,
+      includeDocumentation: true,
+      selectedScreenIds: ['scr-login'],
+    };
+
+    const result = await service.generateExportPreview('user-1', undefined, 'proj-acme', config);
+    const asJson = JSON.stringify(result.fileTree);
+    expect(asJson).toContain('export const ScrLogin');
+    expect(asJson).toContain('package.json');
+  });
+
   it('controller preview endpoint should scope by the current user/organization', async () => {
     jobs.listByScreen.mockResolvedValue([]);
     const dto = {

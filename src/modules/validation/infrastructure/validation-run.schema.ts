@@ -29,10 +29,15 @@ export class ValidationRun {
   @Prop({ min: 0 }) redactionCount?: number;
   @Prop({ min: 0 }) selectedFileCount?: number;
   @Prop({ min: 0 }) inputCharacterCount?: number;
+  @Prop({ min: 0 }) expectedFindingCount?: number;
+  @Prop() resultsPersistedAt?: Date;
   @Prop() failureCode?: string;
   @Prop() failureMessage?: string;
   @Prop() startedAt?: Date;
   @Prop() completedAt?: Date;
+
+  /** Internal uniqueness claim; never mapped to the application/API record. */
+  @Prop() activeExecutionKey?: string;
 
   createdAt!: Date;
   updatedAt!: Date;
@@ -45,3 +50,7 @@ ValidationRunSchema.index({
   conversionJobId: 1,
   createdAt: -1,
 });
+ValidationRunSchema.index(
+  { activeExecutionKey: 1 },
+  { unique: true, sparse: true, name: 'unique_active_ai_validation_execution' },
+);

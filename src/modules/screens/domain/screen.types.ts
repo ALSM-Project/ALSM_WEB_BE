@@ -1,3 +1,5 @@
+import type { DependencyEntry, ProgramDependencyStatus } from '../../conversions/domain/copybook-dependency.types';
+
 export enum ScreenSourceType {
   BMS = 'BMS',
   DSPF = 'DSPF',
@@ -12,6 +14,12 @@ export enum ScreenStatus {
   FAILED = 'FAILED',
 }
 
+export interface ScreenDependencyDiagnostics {
+  status: ProgramDependencyStatus;
+  dependencies: DependencyEntry[];
+  analyzedAt: Date;
+}
+
 export interface ScreenRecord {
   id: string;
   organizationId: string;
@@ -24,6 +32,9 @@ export interface ScreenRecord {
   createdBy: string;
   createdAt: Date;
   updatedAt: Date;
+  dependencyStatus?: ProgramDependencyStatus;
+  dependencies?: DependencyEntry[];
+  dependencyAnalyzedAt?: Date;
 }
 
 export interface ScreenRepository {
@@ -31,6 +42,8 @@ export interface ScreenRepository {
   findById(id: string, organizationId: string): Promise<ScreenRecord | null>;
   listByProject(projectId: string, organizationId: string): Promise<ScreenRecord[]>;
   updateStatus(id: string, organizationId: string, status: ScreenStatus): Promise<void>;
+  updateDependencyDiagnostics(id: string, organizationId: string, diagnostics: ScreenDependencyDiagnostics): Promise<void>;
+  delete(id: string, organizationId?: string): Promise<void>;
 }
 
 export const SCREEN_REPOSITORY = Symbol('SCREEN_REPOSITORY');

@@ -39,6 +39,12 @@ export class FieldComponentMapping {
 
   @Prop({ default: '' })
   regexPattern!: string;
+
+  @Prop({ required: false })
+  displayRow?: number;
+
+  @Prop({ required: false })
+  displayCol?: number;
 }
 
 const FieldComponentMappingSchema = SchemaFactory.createForClass(FieldComponentMapping);

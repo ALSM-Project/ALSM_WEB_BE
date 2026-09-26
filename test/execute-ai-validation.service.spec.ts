@@ -1,9 +1,12 @@
-import { BadRequestException } from '@nestjs/common';
+import { ServiceUnavailableException } from '@nestjs/common';
 import { ExecuteAiValidationService } from '../src/modules/validation/application/execute-ai-validation.service';
+import { AiValidationRuntimeGuard } from '../src/modules/validation/application/ai-validation-runtime.guard';
 import { BuildValidationContextService } from '../src/modules/validation/application/build-validation-context.service';
 import { PrepareAiValidationContextService } from '../src/modules/validation/application/prepare-ai-validation-context.service';
+import { ReconcileValidationRunService } from '../src/modules/validation/application/reconcile-validation-run.service';
 import { AiValidatorError } from '../src/modules/validation/domain/ai-validator.error';
 import { AiValidatorPort } from '../src/modules/validation/domain/ai-validator.port';
+import { ValidationExecutionError } from '../src/modules/validation/domain/validation-execution.error';
 import { ValidationFindingRepository } from '../src/modules/validation/domain/validation-finding.repository';
 import {
   ValidationFindingCategory,
@@ -18,23 +21,52 @@ import { ConversionType } from '../src/modules/projects/domain/project.types';
 describe('ExecuteAiValidationService', () => {
   const buildContext = { execute: jest.fn() };
   const prepareContext = { execute: jest.fn() };
+  const runtimeGuard = { assertAvailable: jest.fn() };
+  const reconcileRun = { execute: jest.fn() };
   const validator = { getMetadata: jest.fn(), validate: jest.fn() };
-  const validationRuns = { create: jest.fn(), markCompleted: jest.fn(), markFailed: jest.fn() };
-  const validationFindings = { createMany: jest.fn() };
+  const validationRuns = {
+    findById: jest.fn(),
+    markResultsPersisted: jest.fn(),
+  };
+  const validationFindings = {
+    countByRun: jest.fn(),
+    upsertManyForRun: jest.fn(),
+  };
   const service = new ExecuteAiValidationService(
     buildContext as unknown as BuildValidationContextService,
     prepareContext as unknown as PrepareAiValidationContextService,
+    runtimeGuard as unknown as AiValidationRuntimeGuard,
+    reconcileRun as unknown as ReconcileValidationRunService,
     validator as unknown as AiValidatorPort,
     validationRuns as unknown as ValidationRunRepository,
     validationFindings as unknown as ValidationFindingRepository,
   );
   const input = {
+    validationRunId: 'run-1',
     organizationId: 'org-1',
     projectId: 'project-1',
     conversionJobId: 'job-1',
   };
+  const run = {
+    id: 'run-1',
+    organizationId: 'org-1',
+    projectId: 'project-1',
+    conversionJobId: 'job-1',
+    screenId: 'screen-1',
+    status: ValidationRunStatus.PROCESSING,
+    ruleValidationEnabled: false,
+    aiValidationEnabled: true,
+    findingCount: 0,
+    provider: 'openai',
+    model: 'test-model',
+    promptVersion: 'semantic-cobol-java-v1',
+    createdAt: new Date(),
+    updatedAt: new Date(),
+  };
   const context = {
-    ...input,
+    organizationId: 'org-1',
+    projectId: 'project-1',
+    conversionJobId: 'job-1',
     screenId: 'screen-1',
     conversionType: ConversionType.COBOL_TO_JAVA,
     sourceFiles: [{ path: 'PROGRAM.cob', content: 'IDENTIFICATION DIVISION.' }],
@@ -43,183 +75,161 @@ describe('ExecuteAiValidationService', () => {
   const prepared = {
     input: {
       conversionJobId: 'job-1',
-      sourceFiles: [
-        { path: 'PROGRAM.cob', content: '1 | IDENTIFICATION DIVISION.', lineCount: 1 },
-      ],
-      targetFiles: [
-        { path: 'Program.java', content: '1 | class Program {}', lineCount: 1 },
-      ],
+      sourceFiles: [{ path: 'PROGRAM.cob', content: '1 | IDENTIFICATION DIVISION.', lineCount: 1 }],
+      targetFiles: [{ path: 'Program.java', content: '1 | class Program {}', lineCount: 1 }],
     },
     redactionCount: 1,
     selectedFileCount: 2,
     inputCharacterCount: 60,
-  };
-  const run = {
-    id: 'run-1',
-    ...input,
-    status: ValidationRunStatus.PROCESSING,
-    ruleValidationEnabled: false,
-    aiValidationEnabled: true,
-    findingCount: 0,
-    createdAt: new Date(),
-    updatedAt: new Date(),
   };
   const finding = {
     category: ValidationFindingCategory.LOGIC_MISMATCH,
     severity: ValidationFindingSeverity.HIGH,
     title: 'Branch differs',
     explanation: 'The generated branch differs from the source behavior.',
+    sourceLocation: { file: 'PROGRAM.cob', startLine: 1, endLine: 1 },
     confidence: 0.8,
   };
 
   beforeEach(() => {
     jest.clearAllMocks();
+    validationRuns.findById.mockResolvedValue(run);
+    validationFindings.countByRun.mockResolvedValue(0);
     buildContext.execute.mockResolvedValue(context);
     prepareContext.execute.mockReturnValue(prepared);
-    validator.getMetadata.mockReturnValue({
+    runtimeGuard.assertAvailable.mockReturnValue({
       provider: 'openai',
       model: 'test-model',
       promptVersion: 'semantic-cobol-java-v1',
     });
     validator.validate.mockResolvedValue({ findings: [finding] });
-    validationRuns.create.mockResolvedValue(run);
-    validationRuns.markCompleted.mockResolvedValue(undefined);
-    validationRuns.markFailed.mockResolvedValue(undefined);
-    validationFindings.createMany.mockResolvedValue([]);
+    validationFindings.upsertManyForRun.mockResolvedValue(undefined);
+    validationRuns.markResultsPersisted.mockResolvedValue(true);
+    reconcileRun.execute.mockResolvedValue(1);
   });
 
-  it('prepares provider input before validation and persists application-owned finding fields', async () => {
+  it('uses the existing run and persists deterministic application-owned fingerprints', async () => {
     await expect(service.execute(input)).resolves.toEqual({
       validationRunId: 'run-1',
       findingCount: 1,
     });
 
-    expect(validationRuns.create).toHaveBeenCalledWith(
+    expect(validationRuns.findById).toHaveBeenCalledWith('run-1', 'project-1', 'org-1');
+    expect(validationFindings.upsertManyForRun).toHaveBeenCalledWith([
       expect.objectContaining({
-        status: ValidationRunStatus.PROCESSING,
-        ruleValidationEnabled: false,
-        aiValidationEnabled: true,
-        provider: 'openai',
-        model: 'test-model',
-        promptVersion: 'semantic-cobol-java-v1',
-      }),
-    );
-    expect(prepareContext.execute).toHaveBeenCalledWith(context);
-    expect(validator.validate).toHaveBeenCalledWith(prepared.input);
-    expect(prepareContext.execute.mock.invocationCallOrder[0]).toBeLessThan(
-      validator.validate.mock.invocationCallOrder[0],
-    );
-    expect(validationFindings.createMany).toHaveBeenCalledWith([
-      expect.objectContaining({
-        organizationId: 'org-1',
-        projectId: 'project-1',
-        conversionJobId: 'job-1',
         validationRunId: 'run-1',
         source: ValidationFindingSource.AI,
         status: ValidationFindingStatus.PENDING,
-        modelProvider: 'openai',
-        modelName: 'test-model',
+        fingerprint: expect.stringMatching(/^[a-f0-9]{64}$/),
       }),
     ]);
-    expect(validationRuns.markCompleted).toHaveBeenCalledWith('run-1', 'project-1', 'org-1', {
-      findingCount: 1,
-      redactionCount: 1,
-      selectedFileCount: 2,
-      inputCharacterCount: 60,
-    });
+    expect(validationRuns.markResultsPersisted).toHaveBeenCalledWith(
+      'run-1',
+      'project-1',
+      'org-1',
+      expect.objectContaining({ findingCount: 1, resultsPersistedAt: expect.any(Date) }),
+    );
+    expect(reconcileRun.execute).toHaveBeenCalledWith(
+      expect.objectContaining({ expectedFindingCount: 1, resultsPersistedAt: expect.any(Date) }),
+    );
   });
 
-  it('completes successfully when the provider reports zero findings', async () => {
+  it('deduplicates normalized findings before idempotent persistence', async () => {
+    validator.validate.mockResolvedValue({
+      findings: [finding, { ...finding, title: '  BRANCH   DIFFERS ' }],
+    });
+
+    await service.execute(input);
+
+    expect(validationFindings.upsertManyForRun.mock.calls[0][0]).toHaveLength(1);
+  });
+
+  it('marks zero-finding provider output as persisted before completion', async () => {
     validator.validate.mockResolvedValue({ findings: [] });
+    reconcileRun.execute.mockResolvedValue(0);
 
     await expect(service.execute(input)).resolves.toEqual({
       validationRunId: 'run-1',
       findingCount: 0,
     });
-    expect(validationFindings.createMany).toHaveBeenCalledWith([]);
-    expect(validationRuns.markCompleted).toHaveBeenCalledWith(
+    expect(validationFindings.upsertManyForRun).toHaveBeenCalledWith([]);
+    expect(validationRuns.markResultsPersisted).toHaveBeenCalledWith(
       'run-1',
       'project-1',
       'org-1',
-      expect.objectContaining({ findingCount: 0 }),
+      expect.objectContaining({ findingCount: 0, resultsPersistedAt: expect.any(Date) }),
     );
   });
 
-  it('rejects unsupported conversion types before creating a run or invoking the provider', async () => {
-    buildContext.execute.mockResolvedValue({
-      ...context,
-      conversionType: ConversionType.BMS_DSPF_TO_FRONTEND,
+  it('reconciles an already-persisted result without another provider call', async () => {
+    validationRuns.findById.mockResolvedValue({
+      ...run,
+      findingCount: 1,
+      expectedFindingCount: 1,
+      resultsPersistedAt: new Date(),
     });
 
+    await service.execute(input);
+
+    expect(buildContext.execute).not.toHaveBeenCalled();
+    expect(validator.validate).not.toHaveBeenCalled();
+    expect(reconcileRun.execute).toHaveBeenCalledTimes(1);
+  });
+
+  it('fails closed when findings exist without a result-persistence marker', async () => {
+    validationFindings.countByRun.mockResolvedValue(1);
+
     await expect(service.execute(input)).rejects.toMatchObject({
-      response: expect.objectContaining({ code: 'VALIDATION_UNSUPPORTED_CONVERSION_TYPE' }),
+      code: 'VALIDATION_RESULT_PERSISTENCE_AMBIGUOUS',
+      retryable: false,
     });
-    expect(validationRuns.create).not.toHaveBeenCalled();
-    expect(prepareContext.execute).not.toHaveBeenCalled();
     expect(validator.validate).not.toHaveBeenCalled();
   });
 
-  it('marks the run failed when security preparation rejects the context', async () => {
-    prepareContext.execute.mockImplementation(() => {
-      throw new BadRequestException({
-        code: 'VALIDATION_CONTEXT_TOO_LARGE',
-        message: 'Prepared context exceeds the configured AI validation size limit',
-      });
-    });
+  it('fails closed when the result marker loses its PROCESSING compare-and-set', async () => {
+    validationRuns.markResultsPersisted.mockResolvedValue(false);
 
-    await expect(service.execute(input)).rejects.toBeInstanceOf(BadRequestException);
-    expect(validator.validate).not.toHaveBeenCalled();
-    expect(validationFindings.createMany).not.toHaveBeenCalled();
-    expect(validationRuns.markFailed).toHaveBeenCalledWith('run-1', 'project-1', 'org-1', {
-      failureCode: 'VALIDATION_CONTEXT_TOO_LARGE',
-      failureMessage: 'Prepared context exceeds the configured AI validation size limit',
+    await expect(service.execute(input)).rejects.toMatchObject({
+      code: 'VALIDATION_RUN_STATE_CONFLICT',
+      retryable: false,
     });
+    expect(reconcileRun.execute).not.toHaveBeenCalled();
   });
 
   it.each([
-    ['provider failure', new AiValidatorError('AI_PROVIDER_TIMEOUT', 'AI provider request timed out')],
-    [
-      'malformed provider output',
-      new AiValidatorError(
-        'AI_PROVIDER_RESPONSE_INVALID',
-        'AI provider returned an invalid validation response',
-      ),
-    ],
-  ])('persists zero findings and fails the run on %s', async (_name, error) => {
-    validator.validate.mockRejectedValue(error);
+    ['AI_PROVIDER_TIMEOUT', true],
+    ['AI_PROVIDER_RESPONSE_INVALID', false],
+    ['AI_PROVIDER_AUTHENTICATION_FAILED', false],
+  ])('classifies provider error %s with retryable=%s', async (code, retryable) => {
+    validator.validate.mockRejectedValue(new AiValidatorError(code, 'safe provider failure'));
 
-    await expect(service.execute(input)).rejects.toMatchObject({
-      response: expect.objectContaining({ code: error.code, message: error.message }),
-    });
-    expect(validationFindings.createMany).not.toHaveBeenCalled();
-    expect(validationRuns.markFailed).toHaveBeenCalledWith(
-      'run-1',
-      'project-1',
-      'org-1',
-      expect.objectContaining({
-        failureCode: error.code,
-        failureMessage: error.message,
-        redactionCount: 1,
-      }),
-    );
+    await expect(service.execute(input)).rejects.toMatchObject({ code, retryable });
   });
 
-  it('sanitizes persistence failures without exposing source or provider bodies', async () => {
-    validationFindings.createMany.mockRejectedValue(
-      new Error('database rejected raw source and provider body'),
-    );
+  it('rejects execution when AI becomes disabled after queueing', async () => {
+    runtimeGuard.assertAvailable.mockImplementation(() => {
+      throw new ServiceUnavailableException({
+        code: 'VALIDATION_AI_DISABLED',
+        message: 'AI validation is disabled',
+      });
+    });
 
     await expect(service.execute(input)).rejects.toMatchObject({
-      response: {
-        code: 'VALIDATION_EXECUTION_FAILED',
-        message: 'AI validation could not be completed',
-      },
+      code: 'VALIDATION_AI_DISABLED',
+      retryable: false,
     });
-    expect(validationRuns.markFailed).toHaveBeenCalledWith(
-      'run-1',
-      'project-1',
-      'org-1',
-      expect.objectContaining({ failureCode: 'VALIDATION_EXECUTION_FAILED' }),
+    expect(validator.validate).not.toHaveBeenCalled();
+  });
+
+  it('sanitizes an unknown persistence failure as retryable', async () => {
+    validationFindings.upsertManyForRun.mockRejectedValue(new Error('mongodb://secret-host'));
+
+    await expect(service.execute(input)).rejects.toEqual(
+      new ValidationExecutionError(
+        'VALIDATION_EXECUTION_TRANSIENT_FAILURE',
+        'AI validation could not be completed',
+        true,
+      ),
     );
   });
 });
