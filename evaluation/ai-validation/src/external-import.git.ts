@@ -39,6 +39,32 @@ export function checkoutPinnedMain(repositoryUrl: string): TemporaryUpstreamChec
   };
 }
 
+export function checkoutPinnedCommit(
+  repositoryUrl: string,
+  commit: string,
+): TemporaryUpstreamCheckout {
+  if (!APPROVED_REPOSITORIES.has(repositoryUrl)) {
+    throw new Error(`Upstream repository is not approved: ${repositoryUrl}`);
+  }
+  if (!/^[a-f0-9]{40}$/.test(commit)) {
+    throw new Error(`Invalid pinned commit for ${repositoryUrl}`);
+  }
+  const temporaryRoot = mkdtempSync(join(tmpdir(), 'alsm-phase6-import-'));
+  const checkoutPath = join(temporaryRoot, 'upstream');
+  try {
+    git(['clone', '--filter=blob:none', '--no-checkout', repositoryUrl, checkoutPath]);
+    git(['-C', checkoutPath, 'checkout', '--detach', commit]);
+  } catch (error) {
+    rmSync(temporaryRoot, { recursive: true, force: true });
+    throw error;
+  }
+  return {
+    path: checkoutPath,
+    commit,
+    cleanup: () => rmSync(temporaryRoot, { recursive: true, force: true }),
+  };
+}
+
 export function upstreamBlobSha(
   checkoutPath: string,
   commit: string,
@@ -49,6 +75,16 @@ export function upstreamBlobSha(
     throw new Error(`Unable to resolve upstream blob SHA for ${upstreamPath}`);
   }
   return sha;
+}
+
+export function readUpstreamFile(
+  checkoutPath: string,
+  commit: string,
+  upstreamPath: string,
+): Buffer {
+  return execFileSync('git', ['-C', checkoutPath, 'show', `${commit}:${upstreamPath}`], {
+    stdio: ['ignore', 'pipe', 'inherit'],
+  });
 }
 
 function git(args: string[]): string {

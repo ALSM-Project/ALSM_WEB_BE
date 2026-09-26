@@ -1,4 +1,4 @@
-import { copyFileSync, readFileSync, writeFileSync } from 'fs';
+import { readFileSync, writeFileSync } from 'fs';
 import { join } from 'path';
 import {
   EXTERNAL_IMPORT_SCHEMA_VERSION,
@@ -12,7 +12,7 @@ import {
   validateImportedCandidateManifest,
   validateImportedReviewManifest,
 } from './external-import.validator';
-import { checkoutPinnedMain, upstreamBlobSha } from './external-import.git';
+import { checkoutPinnedCommit, readUpstreamFile, upstreamBlobSha } from './external-import.git';
 import { ensureImportDirectory, writeImportJson } from './external-import.io';
 import { ImportSecurityFlag, scanImportedText } from './external-import.security';
 import { parseNamedArguments } from './evaluation.io';
@@ -21,6 +21,8 @@ const REPOSITORY = 'COBOL-Coder/COBOL-Coder';
 const REPOSITORY_URL = 'https://github.com/COBOL-Coder/COBOL-Coder.git';
 const DATASET_PATH = 'evaluation/data/COBOL-JavaTrans.jsonl';
 const LICENSE_PATH = 'LICENSE';
+const AUDITED_COMMIT = '2b14b7bf7e55556205654c6f7657fa60e36251fa';
+const AUDITED_DATASET_BLOB_SHA = 'b29ce552a209e6a12cb5b31e130188404ccf8958';
 const UPSTREAM_VALIDATION_CLAIM =
   'The upstream README states that the programs were manually reviewed and validated for compilability and functional correctness.';
 
@@ -133,7 +135,10 @@ export function buildCobolJavaTransImport(
   const manifest = validateImportedCandidateManifest({
     schemaVersion: EXTERNAL_IMPORT_SCHEMA_VERSION,
     sourceDataset: 'COBOL_JAVATRANS',
-    licenseStatus: 'REVIEW_REQUIRED',
+    licenseStatus:
+      input.commit === AUDITED_COMMIT && input.datasetBlobSha === AUDITED_DATASET_BLOB_SHA
+        ? 'RECORDED'
+        : 'REVIEW_REQUIRED',
     candidateCount: candidates.length,
     candidates,
   });
@@ -196,10 +201,9 @@ function main(): void {
   const outputDirectory = ensureImportDirectory(
     args.get('output') ?? 'evaluation/ai-validation/imports/cobol-javatrans',
   );
-  const checkout = checkoutPinnedMain(REPOSITORY_URL);
+  const checkout = checkoutPinnedCommit(REPOSITORY_URL, AUDITED_COMMIT);
   try {
-    const licensePath = join(checkout.path, LICENSE_PATH);
-    const license = readFileSync(licensePath);
+    const license = readUpstreamFile(checkout.path, checkout.commit, LICENSE_PATH);
     if (!license.toString('utf8').includes('Apache License')) {
       throw new Error('Expected Apache-2.0 license text was not found at the pinned commit');
     }
@@ -221,12 +225,12 @@ function main(): void {
         sourcePath: LICENSE_PATH,
         sha256: sha256(license),
       },
-      licenseStatus: 'REVIEW_REQUIRED',
+      licenseStatus: result.manifest.licenseStatus,
       datasetDerivation:
-        'The upstream README states that COBOL-JavaTrans is derived from HumanEval. No separate dataset-specific license statement was found, so engineering/legal review is required before promotion.',
+        'The pinned README and paper state that COBOL-JavaTrans is derived from HumanEval; the paper identifies HumanEval-X as the source of Java solutions. The Phase 6.1A audit records exact upstream licenses, revisions, attribution, and byte-for-byte Java provenance for this audited dataset blob.',
       importStatistics: result.statistics,
     };
-    copyFileSync(licensePath, join(outputDirectory, 'LICENSE.upstream.txt'));
+    writeFileSync(join(outputDirectory, 'LICENSE.upstream.txt'), license);
     writeImportJson(join(outputDirectory, 'upstream.json'), upstream);
     writeImportJson(join(outputDirectory, 'candidates.json'), result.manifest);
     writeImportJson(join(outputDirectory, 'review-template.json'), result.reviews);
@@ -251,7 +255,9 @@ function renderSummary(commit: string, result: CobolJavaTransImportResult): stri
 
 - Pinned upstream commit: \`${commit}\`
 - Repository license: Apache-2.0
-- License status: REVIEW_REQUIRED (HumanEval-derived dataset attribution/license requires review)
+- License status: ${result.manifest.licenseStatus} (evidence is recorded only for the audited commit and dataset blob)
+- HumanEval source: \`openai/human-eval@6d43fb980f9fee3c892a914eda09951f772ad10d\` (MIT)
+- HumanEval-X Java source: \`zai-org/CodeGeeX@2838420b7b4492cf3d16bce5320e26e65960c9e2\` (Apache-2.0)
 - Documented pair count: 143
 - Actual JSONL record count: ${result.statistics.actualRecordCount}
 - Imported candidate count: ${result.statistics.importedCandidateCount}
@@ -260,7 +266,8 @@ function renderSummary(commit: string, result: CobolJavaTransImportResult): stri
 - Security flags: ${result.statistics.securityFlagCount}
 - Phase 3 compatibility: ${JSON.stringify(compatibility)}
 
-These candidates are not ALSM ground truth until human review and promotion.
+RECORDED means license/provenance evidence is recorded for engineering use. It is not legal approval.
+These candidates remain unscorable and are not ALSM ground truth until human review and promotion.
 `;
 }
 

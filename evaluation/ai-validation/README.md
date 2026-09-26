@@ -196,11 +196,18 @@ local content SHA-256, retrieval time, license identifier/snapshot path, and NOT
 exists. Path normalization rejects absolute paths, `..`, NUL, and duplicates. Static credential
 scanning excludes suspicious candidates by default and reports only path plus pattern type.
 
-The COBOL-JavaTrans import preserves canonical COBOL/Java, prompts, and tests as evidence. Its
-upstream claim of manual review, compilation, and functional validation does not establish ALSM
-semantic ground truth. The upstream README describes the dataset as HumanEval-derived but provides
-no separate dataset-specific license statement, so the committed source is `REVIEW_REQUIRED` and
-promotion is blocked until the team resolves that status.
+The COBOL-JavaTrans import preserves canonical COBOL/Java, prompts, and tests as evidence. Phase
+6.1A records the exact COBOL-Coder, HumanEval, and HumanEval-X licenses, revisions, hashes, and
+attribution for the audited dataset blob. Its license status is therefore `RECORDED` under the
+engineering evidence policy. `RECORDED` is not legal approval and applies only to the pinned commit
+and blob.
+
+License evidence asks whether upstream terms and attribution have been recorded for retention and
+redistribution. Dataset quality asks whether a pair is technically useful. Ground truth asks
+whether ALSM human review has established a semantic label. None of these answers implies either
+of the others. In particular, upstream manual review, compilation, and functional validation are
+quality evidence only; every imported COBOL-JavaTrans candidate remains unscorable and pending ALSM
+human review.
 
 The AWS CardDemo import is source-only. It selects a deterministic 12-program subset for structural
 diversity, includes only confidently resolved repository copybooks, and never reads sample business

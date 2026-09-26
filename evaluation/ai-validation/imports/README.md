@@ -13,13 +13,15 @@ Pinned external source
   -> Phase 6 EvaluationCase
 ```
 
-Each source directory contains pinned upstream metadata, an exact license snapshot, a candidate
+Each source directory contains pinned upstream metadata, exact license snapshots, a candidate
 manifest, and a pending review template. AWS also preserves its upstream NOTICE. Candidate source
 and target strings are stored exactly as read from the pinned Git checkout and hashed as UTF-8.
 
-`COBOL_JAVATRANS` candidates include upstream COBOL/Java pairs and test evidence, but the upstream
-validation claim is evidence only. Their license status remains `REVIEW_REQUIRED` because the
-dataset is described as HumanEval-derived without a separate dataset-specific license statement.
+`COBOL_JAVATRANS` candidates include upstream COBOL/Java pairs and test evidence. The Phase 6.1A
+audit records the COBOL-Coder, HumanEval, and HumanEval-X license/provenance chain for the exact
+audited dataset blob, so its license status is `RECORDED`. This status is revision-specific and
+means only that engineering evidence is recorded; the upstream validation claim remains quality
+evidence, and every candidate remains unscorable pending ALSM human review.
 
 `AWS_CARDDEMO` candidates contain only COBOL programs and repository-resolved copybooks. They have
 no Java target and cannot be promoted until Java provenance and behavioral verification are

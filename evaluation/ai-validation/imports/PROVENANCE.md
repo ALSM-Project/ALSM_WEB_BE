@@ -13,13 +13,27 @@ license-compatibility conclusion.
 - Dataset blob SHA: `b29ce552a209e6a12cb5b31e130188404ccf8958`
 - Repository license: Apache-2.0, preserved as `cobol-javatrans/LICENSE.upstream.txt`
 - Upstream NOTICE: none present at the pinned repository root
-- License status: `REVIEW_REQUIRED`
+- License status: `RECORDED`
 
 The upstream README states that COBOL-JavaTrans is derived from HumanEval, contains 143 pairs, and
-was manually reviewed and validated for compilability and functional correctness. The pinned JSONL
-also contains 143 records. No separate dataset-specific license statement was found. The derivation
-and upstream validation statement are recorded as provenance/evidence; neither creates ALSM ground
-truth or resolves the dataset-specific license question.
+was manually reviewed and validated for compilability and functional correctness. The official
+paper further states that the Java solutions come from HumanEval-X. The pinned JSONL contains 143
+records; all 143 Java prompts, complete solutions, and Java tests exactly match the recorded
+HumanEval-X Java blob.
+
+- HumanEval: `openai/human-eval@6d43fb980f9fee3c892a914eda09951f772ad10d`, MIT license and OpenAI
+  copyright notice preserved in `cobol-javatrans/HUMANEVAL_LICENSE.upstream.txt` and
+  `cobol-javatrans/humaneval-upstream.json`.
+- HumanEval-X: `zai-org/CodeGeeX@2838420b7b4492cf3d16bce5320e26e65960c9e2`, Apache-2.0 license
+  preserved in `cobol-javatrans/HUMANEVAL_X_LICENSE.upstream.txt` and
+  `cobol-javatrans/humaneval-x-upstream.json`.
+- Audit and attribution: `cobol-javatrans/LICENSE_AUDIT.md` and
+  `cobol-javatrans/ATTRIBUTION.md`.
+
+No separate dataset-specific license statement, extra usage term, or conflicting redistribution
+restriction was found in the audited sources. `RECORDED` means the evidence chain is recorded for
+engineering use; it is not legal approval. The derivation and upstream validation statements are
+quality evidence only and do not create ALSM ground truth.
 
 The importer extracts the actual `task_id`, canonical COBOL and Java solutions, language prompts,
 structured tests, and Java test source when present. It hashes each exact extracted UTF-8 string
@@ -44,6 +58,7 @@ and copybook blob SHAs plus SHA-256 hashes of committed strings are recorded for
 ## Integrity and normalization
 
 - Git commits and blob IDs refer to exact pinned upstream objects.
+- License SHA-256 values in the Phase 6.1A metadata hash the exact bytes of the upstream Git blobs.
 - Source text is read as UTF-8 and embedded without intentional line-ending normalization.
 - Local `contentSha256` values hash the exact strings represented in `candidates.json`.
 - Candidate paths use normalized `/` separators; absolute paths, `..`, NUL, and normalized

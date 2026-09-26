@@ -6,10 +6,10 @@
   "license": {
     "spdx": "Apache-2.0",
     "sourcePath": "LICENSE",
-    "sha256": "313605fbac6945e9324d4825470796b5b7dbc012f523fdc181f6e6fd234eb88f"
+    "sha256": "50e6751797c50dedd75ef1b8a0d9e42f5f8472e9fbce91f34718e9f97b0c780a"
   },
-  "licenseStatus": "REVIEW_REQUIRED",
-  "datasetDerivation": "The upstream README states that COBOL-JavaTrans is derived from HumanEval. No separate dataset-specific license statement was found, so engineering/legal review is required before promotion.",
+  "licenseStatus": "RECORDED",
+  "datasetDerivation": "The pinned README and paper state that COBOL-JavaTrans is derived from HumanEval; the paper identifies HumanEval-X as the source of Java solutions. The Phase 6.1A audit records exact upstream licenses, revisions, attribution, and byte-for-byte Java provenance for this audited dataset blob.",
   "importStatistics": {
     "actualRecordCount": 143,
     "importedCandidateCount": 143,

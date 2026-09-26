@@ -39,6 +39,7 @@ describe('COBOL-JavaTrans importer', () => {
     );
     expect(candidate.groundTruthStatus).toBe('PENDING_ALSM_REVIEW');
     expect(candidate.scorable).toBe(false);
+    expect(result.manifest.licenseStatus).toBe('REVIEW_REQUIRED');
     expect(candidate).not.toHaveProperty('isClean');
     expect(candidate).not.toHaveProperty('expectedFindings');
     expect(result.reviews.reviews[0]).toMatchObject({
@@ -47,6 +48,22 @@ describe('COBOL-JavaTrans importer', () => {
       isClean: null,
       expectedFindings: null,
       targetJavaStatus: 'UPSTREAM_PRESENT',
+    });
+  });
+
+  it('records license evidence only for the audited revision without making candidates scorable', () => {
+    const result = buildCobolJavaTransImport({
+      jsonl: fixture,
+      commit: '2b14b7bf7e55556205654c6f7657fa60e36251fa',
+      datasetBlobSha: 'b29ce552a209e6a12cb5b31e130188404ccf8958',
+      retrievedAt: '2026-09-25T00:00:00.000Z',
+    });
+
+    expect(result.manifest.licenseStatus).toBe('RECORDED');
+    expect(result.manifest.candidates[0]).toMatchObject({
+      groundTruthStatus: 'PENDING_ALSM_REVIEW',
+      scorable: false,
+      humanReviewRequired: true,
     });
   });
 
