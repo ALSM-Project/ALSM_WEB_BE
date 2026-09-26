@@ -102,6 +102,39 @@ export class RequestEnterpriseQuoteDto {
   message?: string;
 }
 
+export class ListQuoteRequestsQueryDto {
+  @ApiPropertyOptional({
+    enum: QuoteRequestStatus,
+    description: 'Filter quote requests by status (PENDING, CONTACTED, CLOSED)',
+  })
+  @IsOptional()
+  @IsEnum(QuoteRequestStatus)
+  status?: QuoteRequestStatus;
+
+  @ApiPropertyOptional({ example: 1, description: 'Page number for pagination (1-based)' })
+  @IsOptional()
+  @Type(() => Number)
+  @IsNumber()
+  page?: number;
+
+  @ApiPropertyOptional({ example: 10, description: 'Number of records per page' })
+  @IsOptional()
+  @Type(() => Number)
+  @IsNumber()
+  limit?: number;
+}
+
+export class UpdateQuoteRequestStatusDto {
+  @ApiProperty({
+    enum: QuoteRequestStatus,
+    example: QuoteRequestStatus.CONTACTED,
+    description: 'New status for the quote request (CONTACTED or CLOSED)',
+  })
+  @IsEnum(QuoteRequestStatus)
+  @IsNotEmpty()
+  status!: QuoteRequestStatus;
+}
+
 export class CancelSubscriptionDto {
   @ApiProperty({
     example: 'Price is too high for our current project scope',
