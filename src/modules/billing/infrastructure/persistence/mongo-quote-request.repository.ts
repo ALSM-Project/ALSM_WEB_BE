@@ -33,6 +33,15 @@ export class MongoQuoteRequestRepository implements IQuoteRequestRepository {
     return doc ? QuoteRequestMapper.toDomain(doc) : null;
   }
 
+  async findLatestByUser(userId: string): Promise<QuoteRequestProps | null> {
+    const doc = await this.model
+      .findOne({ userId: new Types.ObjectId(userId) })
+      .sort({ createdAt: -1 })
+      .exec();
+
+    return doc ? QuoteRequestMapper.toDomain(doc) : null;
+  }
+
   async create(props: Omit<QuoteRequestProps, 'id'>): Promise<QuoteRequestProps> {
     const doc = await this.model.create({
       ...props,

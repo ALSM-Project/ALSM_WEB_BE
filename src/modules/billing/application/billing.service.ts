@@ -336,4 +336,8 @@ export class BillingService implements OnModuleInit {
     this.logger.log(`Enterprise quote requested by user ${userId} for org ${organizationId}`);
     return request;
   }
+
+  async getMyQuoteRequest(userId: string): Promise<QuoteRequestProps | null> {
+    return this.quoteRequestRepo.findLatestByUser(userId);
+  }
 }

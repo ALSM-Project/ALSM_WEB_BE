@@ -21,6 +21,7 @@ describe('UC-32: Enterprise Quote Request', () => {
   let controller: BillingController;
   let quoteRequestRepo: {
     findPendingByUser: jest.Mock;
+    findLatestByUser: jest.Mock;
     create: jest.Mock;
     findById: jest.Mock;
     updateStatus: jest.Mock;
@@ -50,6 +51,7 @@ describe('UC-32: Enterprise Quote Request', () => {
   beforeEach(async () => {
     quoteRequestRepo = {
       findPendingByUser: jest.fn(),
+      findLatestByUser: jest.fn(),
       create: jest.fn(),
       findById: jest.fn(),
       updateStatus: jest.fn(),
@@ -246,6 +248,70 @@ describe('UC-32: Enterprise Quote Request', () => {
           fullName: 'John Smith',
           companyName: 'Legacy Bank',
           email: 'john@legacybank.com',
+          status: QuoteRequestStatus.PENDING,
+        }),
+      );
+    });
+  });
+
+  describe('BillingService.getMyQuoteRequest', () => {
+    it('should return null when user has no quote request', async () => {
+      quoteRequestRepo.findLatestByUser = jest.fn().mockResolvedValue(null);
+
+      const result = await service.getMyQuoteRequest('user-123');
+
+      expect(quoteRequestRepo.findLatestByUser).toHaveBeenCalledWith('user-123');
+      expect(result).toBeNull();
+    });
+
+    it('should return the latest quote request for the user', async () => {
+      const mockRequest = {
+        id: 'quote-req-latest',
+        userId: 'user-123',
+        organizationId: 'org-123',
+        fullName: 'Jane Doe',
+        companyName: 'ACME Enterprise',
+        email: 'jane@acme.com',
+        currentPlanTier: PlanTier.PROFESSIONAL,
+        status: QuoteRequestStatus.CONTACTED,
+        createdAt: new Date('2026-09-25T10:00:00Z'),
+      };
+      quoteRequestRepo.findLatestByUser = jest.fn().mockResolvedValue(mockRequest);
+
+      const result = await service.getMyQuoteRequest('user-123');
+
+      expect(result?.id).toBe('quote-req-latest');
+      expect(result?.status).toBe(QuoteRequestStatus.CONTACTED);
+    });
+  });
+
+  describe('BillingController.getMyQuoteRequest', () => {
+    it('should return null when user has no quote request', async () => {
+      quoteRequestRepo.findLatestByUser = jest.fn().mockResolvedValue(null);
+
+      const result = await controller.getMyQuoteRequest(mockUser);
+      expect(result).toBeNull();
+    });
+
+    it('should return formatted quote request for authenticated user', async () => {
+      quoteRequestRepo.findLatestByUser = jest.fn().mockResolvedValue({
+        id: 'quote-req-3',
+        userId: 'user-123',
+        organizationId: 'org-123',
+        fullName: 'Jane Doe',
+        companyName: 'ACME Enterprise',
+        email: 'jane@acme.com',
+        currentPlanTier: PlanTier.PROFESSIONAL,
+        status: QuoteRequestStatus.PENDING,
+        createdAt: new Date('2026-09-25T10:00:00Z'),
+      });
+
+      const result = await controller.getMyQuoteRequest(mockUser);
+
+      expect(result).toEqual(
+        expect.objectContaining({
+          id: 'quote-req-3',
+          email: 'jane@acme.com',
           status: QuoteRequestStatus.PENDING,
         }),
       );

@@ -149,6 +149,7 @@ export interface QuoteRequestProps {
 export interface IQuoteRequestRepository {
   findById(id: string): Promise<QuoteRequestProps | null>;
   findPendingByUser(userId: string): Promise<QuoteRequestProps | null>;
+  findLatestByUser(userId: string): Promise<QuoteRequestProps | null>;
   create(props: Omit<QuoteRequestProps, 'id'>): Promise<QuoteRequestProps>;
   updateStatus(id: string, status: QuoteRequestStatus): Promise<QuoteRequestProps | null>;
 }

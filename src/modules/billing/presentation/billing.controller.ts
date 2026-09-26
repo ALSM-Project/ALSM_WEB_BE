@@ -211,6 +211,25 @@ export class BillingController {
 
   @ApiBearerAuth()
   @UseGuards(JwtAuthGuard)
+  @Get('enterprise/my-quote-request')
+  @ApiOperation({
+    summary: 'Get my latest enterprise quote request (UC-32)',
+    description: 'Retrieve the most recent enterprise quote request submitted by the authenticated user, regardless of status.',
+  })
+  @ApiResponse({
+    status: HttpStatus.OK,
+    description: 'Latest quote request or null if none exists',
+    type: QuoteRequestResponseDto,
+  })
+  @ApiResponse({ status: HttpStatus.UNAUTHORIZED, description: 'Missing or invalid authentication token' })
+  async getMyQuoteRequest(@CurrentUser() user: AuthenticatedUser) {
+    const request = await this.billingService.getMyQuoteRequest(user.userId);
+    if (!request) return null;
+    return BillingPresenter.toQuoteRequestResponse(request);
+  }
+
+  @ApiBearerAuth()
+  @UseGuards(JwtAuthGuard)
   @HttpCode(HttpStatus.OK)
   @Post('subscription/cancel')
   @ApiOperation({
