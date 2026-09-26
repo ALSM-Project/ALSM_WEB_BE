@@ -2,9 +2,14 @@ import { BadRequestException, ConflictException, ForbiddenException, NotFoundExc
 import { AuditRepository } from '../src/modules/audit/domain/audit.repository';
 import { OrganizationAuthorizationService } from '../src/modules/organizations/application/organization-authorization.service';
 import { OrganizationContextService } from '../src/modules/organizations/application/organization-context.service';
-import { OrganizationRole } from '../src/modules/organizations/domain/organization.types';
 import { ProjectService } from '../src/modules/projects/application/project.service';
-import { ConversionJobRecord, ConversionJobRepository, ConversionJobStatus } from '../src/modules/conversions/domain/conversion-job.types';
+import { ConversionType } from '../src/modules/projects/domain/project.types';
+import {
+  ConversionJobRecord,
+  ConversionJobRepository,
+  ConversionJobStatus,
+  ConversionPriority,
+} from '../src/modules/conversions/domain/conversion-job.types';
 import {
   ConversionQualityReviewRecord,
   ConversionQualityReviewRepository,
@@ -21,9 +26,9 @@ describe('Conversion Quality Review Services', () => {
     organizationId: 'org-1',
     projectId: 'project-1',
     screenId: 'screen-1',
-    conversionType: 'BMS_TO_DSPF' as any,
+    conversionType: ConversionType.BMS_TO_DSPF,
     status: ConversionJobStatus.COMPLETED,
-    priority: 'NORMAL' as any,
+    priority: ConversionPriority.NORMAL,
     attemptCount: 1,
     maxAttempts: 3,
     resultReference: 'conversions/job-1',

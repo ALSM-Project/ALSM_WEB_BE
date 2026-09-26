@@ -24,7 +24,7 @@ export class SubmitQualityReviewDto {
     ConversionQualityReviewStatus.NEEDS_REWORK,
     ConversionQualityReviewStatus.FLAGGED,
   ])
-  status: HumanQualityReviewTargetStatus;
+  status!: HumanQualityReviewTargetStatus;
 
   @ApiPropertyOptional({
     description: 'Optional or mandatory review comment explaining the decision (max 2000 characters). Required when status is NEEDS_REWORK or FLAGGED.',

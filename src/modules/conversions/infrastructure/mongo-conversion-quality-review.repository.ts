@@ -4,7 +4,6 @@ import { Model } from 'mongoose';
 import {
   ConversionQualityReviewRecord,
   ConversionQualityReviewRepository,
-  ConversionQualityReviewStatus,
   UpsertQualityReviewInput,
   UpsertQualityReviewOutcome,
 } from '../domain/conversion-quality-review.types';
