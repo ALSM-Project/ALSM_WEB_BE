@@ -34,6 +34,7 @@ import {
   MethodMapping,
   MethodMappingSchema,
 } from './modules/conversions/infrastructure/method-mapping.schema';
+import { Partner, PartnerSchema } from './modules/partners/infrastructure/partner.schema';
 import { ErrorLog, ErrorLogSchema } from './modules/conversions/infrastructure/error-log.schema';
 import {
   ValidationRun,
@@ -113,6 +114,11 @@ import { MongoMethodMappingRepository } from './modules/conversions/infrastructu
 import { GetMethodMappingService } from './modules/conversions/application/get-method-mapping.service';
 import { SaveMethodMappingService } from './modules/conversions/application/save-method-mapping.service';
 import { MethodMappingController } from './modules/conversions/presentation/method-mapping.controller';
+import { PARTNER_REPOSITORY } from './modules/partners/domain/partner.types';
+import { MongoPartnerRepository } from './modules/partners/infrastructure/mongo-partner.repository';
+import { CreatePartnerService } from './modules/partners/application/create-partner.service';
+import { ListPartnersService } from './modules/partners/application/list-partners.service';
+import { PartnerController } from './modules/partners/presentation/partner.controller';
 import { AuthService } from './modules/auth/application/auth.service';
 import { ListActiveSessionsService } from './modules/auth/application/list-active-sessions.service';
 import { RevokeSessionService } from './modules/auth/application/revoke-session.service';
@@ -200,6 +206,7 @@ import { ValidationController as RuleValidationController } from './modules/conv
       { name: EmailVerification.name, schema: EmailVerificationSchema },
       { name: FieldMapping.name, schema: FieldMappingSchema },
       { name: MethodMapping.name, schema: MethodMappingSchema },
+      { name: Partner.name, schema: PartnerSchema },
       { name: ErrorLog.name, schema: ErrorLogSchema },
       { name: ScreenDocument.name, schema: ConversionScreenSchema },
       { name: Screen.name, schema: ScreenSchema },
@@ -218,6 +225,7 @@ import { ValidationController as RuleValidationController } from './modules/conv
     ConversionScreensController,
     FieldMappingController,
     MethodMappingController,
+    PartnerController,
     ExportController,
     ErrorLogController,
     ValidationController,
@@ -255,6 +263,8 @@ import { ValidationController as RuleValidationController } from './modules/conv
     SaveFieldMappingService,
     GetMethodMappingService,
     SaveMethodMappingService,
+    CreatePartnerService,
+    ListPartnersService,
     RuleValidatorService,
     ExportCodeService,
     ErrorLogService,
@@ -299,6 +309,7 @@ import { ValidationController as RuleValidationController } from './modules/conv
     { provide: BANK_CONFIG_REPOSITORY, useClass: MongoBankConfigRepository },
     { provide: FIELD_MAPPING_REPOSITORY, useClass: MongoFieldMappingRepository },
     { provide: METHOD_MAPPING_REPOSITORY, useClass: MongoMethodMappingRepository },
+    { provide: PARTNER_REPOSITORY, useClass: MongoPartnerRepository },
     { provide: ERROR_LOG_REPOSITORY, useExisting: MongoErrorLogRepository },
     { provide: VALIDATION_RUN_REPOSITORY, useClass: MongoValidationRunRepository },
     { provide: VALIDATION_FINDING_REPOSITORY, useClass: MongoValidationFindingRepository },
