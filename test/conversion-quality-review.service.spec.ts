@@ -26,7 +26,7 @@ describe('Conversion Quality Review Services', () => {
     organizationId: 'org-1',
     projectId: 'project-1',
     screenId: 'screen-1',
-    conversionType: ConversionType.BMS_TO_DSPF,
+    conversionType: ConversionType.BMS_DSPF_TO_FRONTEND,
     status: ConversionJobStatus.COMPLETED,
     priority: ConversionPriority.NORMAL,
     attemptCount: 1,
