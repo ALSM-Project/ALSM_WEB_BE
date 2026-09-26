@@ -1,4 +1,4 @@
-import { ConflictException } from '@nestjs/common';
+import { BadRequestException, ConflictException, ForbiddenException, NotFoundException } from '@nestjs/common';
 import { Test, TestingModule } from '@nestjs/testing';
 import { validate } from 'class-validator';
 import { plainToInstance } from 'class-transformer';
@@ -22,6 +22,7 @@ describe('UC-32: Enterprise Quote Request', () => {
   let quoteRequestRepo: {
     findPendingByUser: jest.Mock;
     findLatestByUser: jest.Mock;
+    findAll: jest.Mock;
     create: jest.Mock;
     findById: jest.Mock;
     updateStatus: jest.Mock;
@@ -52,6 +53,7 @@ describe('UC-32: Enterprise Quote Request', () => {
     quoteRequestRepo = {
       findPendingByUser: jest.fn(),
       findLatestByUser: jest.fn(),
+      findAll: jest.fn(),
       create: jest.fn(),
       findById: jest.fn(),
       updateStatus: jest.fn(),
@@ -315,6 +317,100 @@ describe('UC-32: Enterprise Quote Request', () => {
           status: QuoteRequestStatus.PENDING,
         }),
       );
+    });
+  });
+
+  describe('Admin: listQuoteRequests', () => {
+    const adminUser: AuthenticatedUser = {
+      userId: 'admin-1',
+      email: 'admin@alsm.io',
+      isPlatformAdmin: true,
+    };
+
+    it('should throw ForbiddenException if user is not platform admin', async () => {
+      await expect(service.listQuoteRequests(mockUser)).rejects.toThrow(ForbiddenException);
+    });
+
+    it('should return list of quote requests and total for platform admin', async () => {
+      const mockItems = [
+        {
+          id: 'quote-1',
+          userId: 'user-1',
+          organizationId: 'org-1',
+          fullName: 'User One',
+          companyName: 'Company 1',
+          email: 'user1@test.com',
+          currentPlanTier: PlanTier.STARTER,
+          status: QuoteRequestStatus.PENDING,
+        },
+      ];
+      quoteRequestRepo.findAll.mockResolvedValue({ items: mockItems, total: 1 });
+
+      const result = await service.listQuoteRequests(adminUser, { status: QuoteRequestStatus.PENDING, page: 1, limit: 10 });
+
+      expect(quoteRequestRepo.findAll).toHaveBeenCalledWith({ status: QuoteRequestStatus.PENDING, page: 1, limit: 10 }, 1, 10);
+      expect(result.items.length).toBe(1);
+      expect(result.total).toBe(1);
+    });
+  });
+
+  describe('Admin: updateQuoteRequestStatus', () => {
+    const adminUser: AuthenticatedUser = {
+      userId: 'admin-1',
+      email: 'admin@alsm.io',
+      isPlatformAdmin: true,
+    };
+
+    it('should throw ForbiddenException if user is not platform admin', async () => {
+      await expect(
+        service.updateQuoteRequestStatus(mockUser, 'quote-1', QuoteRequestStatus.CONTACTED),
+      ).rejects.toThrow(ForbiddenException);
+    });
+
+    it('should throw NotFoundException if quote request does not exist', async () => {
+      quoteRequestRepo.findById.mockResolvedValue(null);
+
+      await expect(
+        service.updateQuoteRequestStatus(adminUser, 'non-existent', QuoteRequestStatus.CONTACTED),
+      ).rejects.toThrow(NotFoundException);
+    });
+
+    it('should update status from PENDING to CONTACTED for admin', async () => {
+      quoteRequestRepo.findById.mockResolvedValue({
+        id: 'quote-1',
+        status: QuoteRequestStatus.PENDING,
+      });
+      quoteRequestRepo.updateStatus.mockResolvedValue({
+        id: 'quote-1',
+        status: QuoteRequestStatus.CONTACTED,
+      });
+
+      const result = await service.updateQuoteRequestStatus(adminUser, 'quote-1', QuoteRequestStatus.CONTACTED);
+
+      expect(quoteRequestRepo.updateStatus).toHaveBeenCalledWith('quote-1', QuoteRequestStatus.CONTACTED);
+      expect(result.status).toBe(QuoteRequestStatus.CONTACTED);
+    });
+
+    it('should throw BadRequestException on invalid transition from CONTACTED to PENDING', async () => {
+      quoteRequestRepo.findById.mockResolvedValue({
+        id: 'quote-1',
+        status: QuoteRequestStatus.CONTACTED,
+      });
+
+      await expect(
+        service.updateQuoteRequestStatus(adminUser, 'quote-1', QuoteRequestStatus.PENDING),
+      ).rejects.toThrow(BadRequestException);
+    });
+
+    it('should throw BadRequestException on modifying a CLOSED quote request', async () => {
+      quoteRequestRepo.findById.mockResolvedValue({
+        id: 'quote-1',
+        status: QuoteRequestStatus.CLOSED,
+      });
+
+      await expect(
+        service.updateQuoteRequestStatus(adminUser, 'quote-1', QuoteRequestStatus.CONTACTED),
+      ).rejects.toThrow(BadRequestException);
     });
   });
 });

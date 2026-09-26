@@ -1,12 +1,14 @@
 import {
   BadRequestException,
   ConflictException,
+  ForbiddenException,
   Inject,
   Injectable,
   Logger,
   NotFoundException,
   OnModuleInit,
 } from '@nestjs/common';
+import { AuthenticatedUser } from '../../../shared/logging/request-id.middleware';
 import {
   BillingCycle,
   InvoiceStatus,
@@ -339,5 +341,53 @@ export class BillingService implements OnModuleInit {
 
   async getMyQuoteRequest(userId: string): Promise<QuoteRequestProps | null> {
     return this.quoteRequestRepo.findLatestByUser(userId);
+  }
+
+  async listQuoteRequests(
+    user: AuthenticatedUser,
+    filters?: { status?: QuoteRequestStatus; page?: number; limit?: number },
+  ): Promise<{ items: QuoteRequestProps[]; total: number }> {
+    if (!user.isPlatformAdmin) {
+      throw new ForbiddenException('Only platform admins can view quote requests.');
+    }
+    return this.quoteRequestRepo.findAll(filters, filters?.page, filters?.limit);
+  }
+
+  async updateQuoteRequestStatus(
+    user: AuthenticatedUser,
+    quoteId: string,
+    newStatus: QuoteRequestStatus,
+  ): Promise<QuoteRequestProps> {
+    if (!user.isPlatformAdmin) {
+      throw new ForbiddenException('Only platform admins can update quote requests.');
+    }
+
+    const request = await this.quoteRequestRepo.findById(quoteId);
+    if (!request) {
+      throw new NotFoundException('Quote request not found');
+    }
+
+    if (request.status === newStatus) {
+      return request;
+    }
+
+    if (request.status === QuoteRequestStatus.CLOSED) {
+      throw new BadRequestException('Cannot change status of a closed quote request');
+    }
+
+    if (
+      request.status === QuoteRequestStatus.CONTACTED &&
+      newStatus === QuoteRequestStatus.PENDING
+    ) {
+      throw new BadRequestException('Cannot transition from CONTACTED to PENDING');
+    }
+
+    const updated = await this.quoteRequestRepo.updateStatus(quoteId, newStatus);
+    if (!updated) {
+      throw new NotFoundException('Quote request not found');
+    }
+
+    this.logger.log(`Quote request ${quoteId} status updated to ${newStatus} by admin ${user.userId}`);
+    return updated;
   }
 }

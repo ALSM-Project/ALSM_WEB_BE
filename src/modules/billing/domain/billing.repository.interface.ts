@@ -150,6 +150,11 @@ export interface IQuoteRequestRepository {
   findById(id: string): Promise<QuoteRequestProps | null>;
   findPendingByUser(userId: string): Promise<QuoteRequestProps | null>;
   findLatestByUser(userId: string): Promise<QuoteRequestProps | null>;
+  findAll(
+    filters?: { status?: QuoteRequestStatus },
+    page?: number,
+    limit?: number,
+  ): Promise<{ items: QuoteRequestProps[]; total: number }>;
   create(props: Omit<QuoteRequestProps, 'id'>): Promise<QuoteRequestProps>;
   updateStatus(id: string, status: QuoteRequestStatus): Promise<QuoteRequestProps | null>;
 }

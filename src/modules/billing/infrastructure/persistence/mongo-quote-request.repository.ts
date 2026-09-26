@@ -42,6 +42,27 @@ export class MongoQuoteRequestRepository implements IQuoteRequestRepository {
     return doc ? QuoteRequestMapper.toDomain(doc) : null;
   }
 
+  async findAll(
+    filters?: { status?: QuoteRequestStatus },
+    page = 1,
+    limit = 10,
+  ): Promise<{ items: QuoteRequestProps[]; total: number }> {
+    const query: Record<string, any> = {};
+    if (filters?.status) {
+      query.status = filters.status;
+    }
+    const skip = (page - 1) * limit;
+    const [docs, total] = await Promise.all([
+      this.model.find(query).sort({ createdAt: -1 }).skip(skip).limit(limit).exec(),
+      this.model.countDocuments(query).exec(),
+    ]);
+
+    return {
+      items: docs.map((doc) => QuoteRequestMapper.toDomain(doc)),
+      total,
+    };
+  }
+
   async create(props: Omit<QuoteRequestProps, 'id'>): Promise<QuoteRequestProps> {
     const doc = await this.model.create({
       ...props,

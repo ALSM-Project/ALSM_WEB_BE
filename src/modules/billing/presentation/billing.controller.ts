@@ -5,6 +5,7 @@ import {
   HttpCode,
   HttpStatus,
   Param,
+  Patch,
   Post,
   Put,
   Query,
@@ -30,10 +31,12 @@ import {
   CreateSubscriptionDto,
   InvoiceDownloadResponseDto,
   InvoiceResponseDto,
+  ListQuoteRequestsQueryDto,
   PlanResponseDto,
   QuoteRequestResponseDto,
   RequestEnterpriseQuoteDto,
   SubscriptionResponseDto,
+  UpdateQuoteRequestStatusDto,
   UpgradePreviewResponseDto,
   UpgradeSubscriptionDto,
   UsageStatsResponseDto,
@@ -225,6 +228,60 @@ export class BillingController {
   async getMyQuoteRequest(@CurrentUser() user: AuthenticatedUser) {
     const request = await this.billingService.getMyQuoteRequest(user.userId);
     if (!request) return null;
+    return BillingPresenter.toQuoteRequestResponse(request);
+  }
+
+  @ApiBearerAuth()
+  @UseGuards(JwtAuthGuard)
+  @Get('enterprise/quote-requests')
+  @ApiOperation({
+    summary: 'List enterprise quote requests (Admin only) (UC-32)',
+    description: 'Retrieve all enterprise quote requests with optional status filter and pagination. Requires Platform Admin access.',
+  })
+  @ApiResponse({
+    status: HttpStatus.OK,
+    description: 'List of quote requests and total count',
+  })
+  @ApiResponse({ status: HttpStatus.UNAUTHORIZED, description: 'Missing or invalid authentication token' })
+  @ApiResponse({ status: HttpStatus.FORBIDDEN, description: 'Requires Platform Admin role' })
+  async listQuoteRequests(
+    @CurrentUser() user: AuthenticatedUser,
+    @Query() query: ListQuoteRequestsQueryDto,
+  ) {
+    const result = await this.billingService.listQuoteRequests(user, query);
+    return {
+      items: result.items.map((item) => BillingPresenter.toQuoteRequestResponse(item)),
+      total: result.total,
+    };
+  }
+
+  @ApiBearerAuth()
+  @UseGuards(JwtAuthGuard)
+  @Patch('enterprise/quote-requests/:id/status')
+  @ApiOperation({
+    summary: 'Update enterprise quote request status (Admin only) (UC-32)',
+    description: 'Update the status of an enterprise quote request (PENDING -> CONTACTED -> CLOSED). Requires Platform Admin access.',
+  })
+  @ApiParam({
+    name: 'id',
+    description: 'Quote request ID',
+    example: '66d9c84e1234567890abcdef',
+  })
+  @ApiResponse({
+    status: HttpStatus.OK,
+    description: 'Quote request status updated successfully',
+    type: QuoteRequestResponseDto,
+  })
+  @ApiResponse({ status: HttpStatus.BAD_REQUEST, description: 'Invalid status transition' })
+  @ApiResponse({ status: HttpStatus.UNAUTHORIZED, description: 'Missing or invalid authentication token' })
+  @ApiResponse({ status: HttpStatus.FORBIDDEN, description: 'Requires Platform Admin role' })
+  @ApiResponse({ status: HttpStatus.NOT_FOUND, description: 'Quote request not found' })
+  async updateQuoteRequestStatus(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('id') id: string,
+    @Body() dto: UpdateQuoteRequestStatusDto,
+  ) {
+    const request = await this.billingService.updateQuoteRequestStatus(user, id, dto.status);
     return BillingPresenter.toQuoteRequestResponse(request);
   }
 
