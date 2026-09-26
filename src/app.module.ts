@@ -187,6 +187,15 @@ import { VALIDATION_REPOSITORY } from './modules/conversions/domain/validation.t
 import { MongoValidationRepository } from './modules/conversions/infrastructure/mongo-validation.repository';
 import { RuleValidatorService } from './modules/conversions/application/rule-validator.service';
 import { ValidationController as RuleValidationController } from './modules/conversions/presentation/validation.controller';
+import {
+  ConversionQualityReview,
+  ConversionQualityReviewSchema,
+} from './modules/conversions/infrastructure/conversion-quality-review.schema';
+import { CONVERSION_QUALITY_REVIEW_REPOSITORY } from './modules/conversions/domain/conversion-quality-review.types';
+import { MongoConversionQualityReviewRepository } from './modules/conversions/infrastructure/mongo-conversion-quality-review.repository';
+import { GetConversionQualityReviewService } from './modules/conversions/application/get-conversion-quality-review.service';
+import { SubmitConversionQualityReviewService } from './modules/conversions/application/submit-conversion-quality-review.service';
+import { QualityReviewController } from './modules/conversions/presentation/quality-review.controller';
 
 @Module({
   imports: [
@@ -216,6 +225,7 @@ import { ValidationController as RuleValidationController } from './modules/conv
       { name: ValidationRun.name, schema: ValidationRunSchema },
       { name: ValidationFinding.name, schema: ValidationFindingSchema },
       { name: QuoteRequest.name, schema: QuoteRequestSchema },
+      { name: ConversionQualityReview.name, schema: ConversionQualityReviewSchema },
     ]),
     RbacModule,
     MenuModule,
@@ -224,6 +234,7 @@ import { ValidationController as RuleValidationController } from './modules/conv
     AuthController,
     ProjectsController,
     ConversionsController,
+    QualityReviewController,
     ConversionSourceController,
     ScreensController,
     ConversionScreensController,
@@ -261,6 +272,8 @@ import { ValidationController as RuleValidationController } from './modules/conv
     ConversionJobService,
     UploadConversionSourceService,
     GetConversionResultService,
+    GetConversionQualityReviewService,
+    SubmitConversionQualityReviewService,
     ConversionScreenService,
     MongoScreenRepository,
     GetFieldMappingService,
@@ -305,6 +318,7 @@ import { ValidationController as RuleValidationController } from './modules/conv
     { provide: AUDIT_REPOSITORY, useClass: MongoAuditRepository },
     { provide: PROJECT_REPOSITORY, useClass: MongoProjectRepository },
     { provide: CONVERSION_JOB_REPOSITORY, useClass: MongoConversionJobRepository },
+    { provide: CONVERSION_QUALITY_REVIEW_REPOSITORY, useClass: MongoConversionQualityReviewRepository },
     { provide: VALIDATION_REPOSITORY, useClass: MongoValidationRepository },
     { provide: SUBSCRIPTION_REPOSITORY, useClass: MongoSubscriptionRepository },
     { provide: INVOICE_REPOSITORY, useClass: MongoInvoiceRepository },
