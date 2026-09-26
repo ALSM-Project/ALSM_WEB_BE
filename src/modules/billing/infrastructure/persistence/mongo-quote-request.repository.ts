@@ -1,6 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
-import { Model, Types } from 'mongoose';
+import { FilterQuery, Model, Types } from 'mongoose';
 import {
   IQuoteRequestRepository,
   QuoteRequestProps,
@@ -47,7 +47,7 @@ export class MongoQuoteRequestRepository implements IQuoteRequestRepository {
     page = 1,
     limit = 10,
   ): Promise<{ items: QuoteRequestProps[]; total: number }> {
-    const query: Record<string, any> = {};
+    const query: FilterQuery<QuoteRequestDocument> = {};
     if (filters?.status) {
       query.status = filters.status;
     }
