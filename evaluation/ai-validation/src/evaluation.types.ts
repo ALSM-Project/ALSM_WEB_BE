@@ -23,10 +23,7 @@ export const EVALUATION_CATEGORIES = [
 export type EvaluationCategory = (typeof EVALUATION_CATEGORIES)[number];
 export type EvaluationDifficulty = 'EASY' | 'MEDIUM' | 'HARD';
 export type EvaluationCaseStatus =
-  | 'SUCCESS'
-  | 'VALIDATION_FAILED'
-  | 'PROVIDER_FAILED'
-  | 'INVALID_OUTPUT';
+  'SUCCESS' | 'VALIDATION_FAILED' | 'PROVIDER_FAILED' | 'INVALID_OUTPUT';
 
 export interface EvaluationCodeFile {
   path: string;
@@ -75,7 +72,7 @@ export interface AiEvaluationCase {
 export interface AiEvaluationDataset {
   datasetId: string;
   version: string;
-  type: 'synthetic-curated';
+  type: 'synthetic-curated' | 'human-reviewed-external';
   description: string;
   caseCount: number;
   creationMethodology: string;
