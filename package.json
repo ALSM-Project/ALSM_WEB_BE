@@ -46,7 +46,8 @@
     "eval:ai:import:cobol-javatrans": "ts-node evaluation/ai-validation/src/import-cobol-javatrans.ts",
     "eval:ai:import:aws-carddemo": "ts-node evaluation/ai-validation/src/import-aws-carddemo.ts",
     "eval:ai:import:validate": "ts-node evaluation/ai-validation/src/validate-imports.cli.ts",
-    "eval:ai:import:promote": "ts-node evaluation/ai-validation/src/promote-imported-cases.ts"
+    "eval:ai:import:promote": "ts-node evaluation/ai-validation/src/promote-imported-cases.ts",
+    "eval:ai:review:prepare": "ts-node evaluation/ai-validation/src/human-review-prepare.cli.ts"
   },
   "dependencies": {
     "@nestjs/common": "^11.1.6",
