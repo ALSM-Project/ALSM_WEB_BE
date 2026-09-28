@@ -1,0 +1,36 @@
+{
+  "repository": "zai-org/CodeGeeX",
+  "repositoryUrl": "https://github.com/zai-org/CodeGeeX",
+  "historicalRepositoryUrl": "https://github.com/THUDM/CodeGeeX",
+  "commit": "2838420b7b4492cf3d16bce5320e26e65960c9e2",
+  "retrievedAt": "2026-09-26T10:51:31.914Z",
+  "dataset": {
+    "sourcePath": "codegeex/benchmark/humaneval-x/java/data/humaneval_java.jsonl.gz",
+    "gitBlobSha": "f9b1d0a477feac75ccce1a9d6f765a600aceb8ba",
+    "sha256": "276f36db2eb7aeb864f36a19a2f4e1bb2460fb6e22ff100f0b5bedabe3799967",
+    "recordCount": 164,
+    "introducedByCommit": "d5d97ed02457dbc08aa8afc5e26f45829942c96a"
+  },
+  "license": {
+    "spdx": "Apache-2.0",
+    "sourcePath": "LICENSE",
+    "gitBlobSha": "261eeb9e9f8b2b4b0d119366dda99c6fd7d35c64",
+    "sha256": "c71d239df91726fc519c6eb72d318ec65820627232b2f796219e87dcf35d0ab4",
+    "snapshotPath": "HUMANEVAL_X_LICENSE.upstream.txt"
+  },
+  "licenseScopeEvidence": "README.md states that the repository code is Apache-2.0 licensed and documents HumanEval-X under codegeex/benchmark; no benchmark-specific override was found.",
+  "noticeStatus": "NOT_PRESENT",
+  "separateDatasetTerms": "NOT_FOUND",
+  "cobolJavaTransComparison": {
+    "matchedTaskIds": 143,
+    "exactJavaPrompts": 143,
+    "exactJavaSolutions": 143,
+    "exactJavaTests": 143
+  },
+  "citation": {
+    "title": "CodeGeeX: A Pre-Trained Model for Code Generation with Multilingual Benchmarking on HumanEval-X",
+    "authors": "Qinkai Zheng et al.",
+    "year": 2023,
+    "venue": "Proceedings of the 29th ACM SIGKDD Conference on Knowledge Discovery and Data Mining"
+  }
+}
