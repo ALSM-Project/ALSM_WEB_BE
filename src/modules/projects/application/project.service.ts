@@ -126,15 +126,23 @@ export class ProjectService {
   ): Promise<ProjectRecord> {
     let project = await this.projects.findById(id, organizationId);
     if (!project) {
-      project = await this.projects.create({
-        id,
-        organizationId,
-        createdBy: userId,
-        name: id && id !== 'proj-acme' ? id : 'ACME Enterprise Modernization',
-        description: 'Auto-provisioned Modernization Workspace',
-        conversionType: ConversionType.BMS_DSPF_TO_FRONTEND,
-        status: ProjectStatus.ACTIVE,
-      });
+      try {
+        project = await this.projects.create({
+          id,
+          organizationId,
+          createdBy: userId,
+          name: id && id !== 'proj-acme' ? id : 'ACME Enterprise Modernization',
+          description: 'Auto-provisioned Modernization Workspace',
+          conversionType: ConversionType.BMS_DSPF_TO_FRONTEND,
+          status: ProjectStatus.ACTIVE,
+        });
+      } catch (error: any) {
+        if (error?.code === 11000 || error?.message?.includes('E11000')) {
+          project = await this.projects.findById(id, '');
+          if (project) return project;
+        }
+        throw error;
+      }
     }
     return project;
   }
