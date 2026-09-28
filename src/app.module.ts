@@ -30,6 +30,11 @@ import {
   FieldMapping,
   FieldMappingSchema,
 } from './modules/conversions/infrastructure/field-mapping.schema';
+import {
+  MethodMapping,
+  MethodMappingSchema,
+} from './modules/conversions/infrastructure/method-mapping.schema';
+import { Partner, PartnerSchema } from './modules/partners/infrastructure/partner.schema';
 import { ErrorLog, ErrorLogSchema } from './modules/conversions/infrastructure/error-log.schema';
 import {
   ValidationRun,
@@ -104,6 +109,16 @@ import { MongoFieldMappingRepository } from './modules/conversions/infrastructur
 import { GetFieldMappingService } from './modules/conversions/application/get-field-mapping.service';
 import { SaveFieldMappingService } from './modules/conversions/application/save-field-mapping.service';
 import { FieldMappingController } from './modules/conversions/presentation/field-mapping.controller';
+import { METHOD_MAPPING_REPOSITORY } from './modules/conversions/domain/method-mapping.types';
+import { MongoMethodMappingRepository } from './modules/conversions/infrastructure/mongo-method-mapping.repository';
+import { GetMethodMappingService } from './modules/conversions/application/get-method-mapping.service';
+import { SaveMethodMappingService } from './modules/conversions/application/save-method-mapping.service';
+import { MethodMappingController } from './modules/conversions/presentation/method-mapping.controller';
+import { PARTNER_REPOSITORY } from './modules/partners/domain/partner.types';
+import { MongoPartnerRepository } from './modules/partners/infrastructure/mongo-partner.repository';
+import { CreatePartnerService } from './modules/partners/application/create-partner.service';
+import { ListPartnersService } from './modules/partners/application/list-partners.service';
+import { PartnerController } from './modules/partners/presentation/partner.controller';
 import { AuthService } from './modules/auth/application/auth.service';
 import { ListActiveSessionsService } from './modules/auth/application/list-active-sessions.service';
 import { RevokeSessionService } from './modules/auth/application/revoke-session.service';
@@ -153,6 +168,7 @@ import {
   INVOICE_REPOSITORY,
   PAYMENT_REPOSITORY,
   PLAN_REPOSITORY,
+  QUOTE_REQUEST_REPOSITORY,
   SUBSCRIPTION_REPOSITORY,
 } from './modules/billing/domain/billing.repository.interface';
 import { MongoSubscriptionRepository } from './modules/billing/infrastructure/persistence/mongo-subscription.repository';
@@ -161,6 +177,8 @@ import { MongoPaymentRepository } from './modules/billing/infrastructure/persist
 import { MongoPlanRepository } from './modules/billing/infrastructure/persistence/mongo-plan.repository';
 import { MongoBankConfigRepository } from './modules/billing/infrastructure/persistence/mongo-bank-config.repository';
 import { MongoBillingUsageRepository } from './modules/billing/infrastructure/persistence/mongo-billing-usage.repository';
+import { MongoQuoteRequestRepository } from './modules/billing/infrastructure/persistence/mongo-quote-request.repository';
+import { QuoteRequest, QuoteRequestSchema } from './modules/billing/infrastructure/quote-request.schema';
 
 import { RbacModule } from './modules/rbac/rbac.module';
 import { MenuModule } from './modules/menus/menu.module';
@@ -169,6 +187,15 @@ import { VALIDATION_REPOSITORY } from './modules/conversions/domain/validation.t
 import { MongoValidationRepository } from './modules/conversions/infrastructure/mongo-validation.repository';
 import { RuleValidatorService } from './modules/conversions/application/rule-validator.service';
 import { ValidationController as RuleValidationController } from './modules/conversions/presentation/validation.controller';
+import {
+  ConversionQualityReview,
+  ConversionQualityReviewSchema,
+} from './modules/conversions/infrastructure/conversion-quality-review.schema';
+import { CONVERSION_QUALITY_REVIEW_REPOSITORY } from './modules/conversions/domain/conversion-quality-review.types';
+import { MongoConversionQualityReviewRepository } from './modules/conversions/infrastructure/mongo-conversion-quality-review.repository';
+import { GetConversionQualityReviewService } from './modules/conversions/application/get-conversion-quality-review.service';
+import { SubmitConversionQualityReviewService } from './modules/conversions/application/submit-conversion-quality-review.service';
+import { QualityReviewController } from './modules/conversions/presentation/quality-review.controller';
 
 @Module({
   imports: [
@@ -190,11 +217,15 @@ import { ValidationController as RuleValidationController } from './modules/conv
       { name: PasswordReset.name, schema: PasswordResetSchema },
       { name: EmailVerification.name, schema: EmailVerificationSchema },
       { name: FieldMapping.name, schema: FieldMappingSchema },
+      { name: MethodMapping.name, schema: MethodMappingSchema },
+      { name: Partner.name, schema: PartnerSchema },
       { name: ErrorLog.name, schema: ErrorLogSchema },
       { name: ScreenDocument.name, schema: ConversionScreenSchema },
       { name: Screen.name, schema: ScreenSchema },
       { name: ValidationRun.name, schema: ValidationRunSchema },
       { name: ValidationFinding.name, schema: ValidationFindingSchema },
+      { name: QuoteRequest.name, schema: QuoteRequestSchema },
+      { name: ConversionQualityReview.name, schema: ConversionQualityReviewSchema },
     ]),
     RbacModule,
     MenuModule,
@@ -203,10 +234,13 @@ import { ValidationController as RuleValidationController } from './modules/conv
     AuthController,
     ProjectsController,
     ConversionsController,
+    QualityReviewController,
     ConversionSourceController,
     ScreensController,
     ConversionScreensController,
     FieldMappingController,
+    MethodMappingController,
+    PartnerController,
     ExportController,
     ErrorLogController,
     ValidationController,
@@ -238,10 +272,16 @@ import { ValidationController as RuleValidationController } from './modules/conv
     ConversionJobService,
     UploadConversionSourceService,
     GetConversionResultService,
+    GetConversionQualityReviewService,
+    SubmitConversionQualityReviewService,
     ConversionScreenService,
     MongoScreenRepository,
     GetFieldMappingService,
     SaveFieldMappingService,
+    GetMethodMappingService,
+    SaveMethodMappingService,
+    CreatePartnerService,
+    ListPartnersService,
     RuleValidatorService,
     ExportCodeService,
     ErrorLogService,
@@ -278,6 +318,7 @@ import { ValidationController as RuleValidationController } from './modules/conv
     { provide: AUDIT_REPOSITORY, useClass: MongoAuditRepository },
     { provide: PROJECT_REPOSITORY, useClass: MongoProjectRepository },
     { provide: CONVERSION_JOB_REPOSITORY, useClass: MongoConversionJobRepository },
+    { provide: CONVERSION_QUALITY_REVIEW_REPOSITORY, useClass: MongoConversionQualityReviewRepository },
     { provide: VALIDATION_REPOSITORY, useClass: MongoValidationRepository },
     { provide: SUBSCRIPTION_REPOSITORY, useClass: MongoSubscriptionRepository },
     { provide: INVOICE_REPOSITORY, useClass: MongoInvoiceRepository },
@@ -285,6 +326,8 @@ import { ValidationController as RuleValidationController } from './modules/conv
     { provide: PLAN_REPOSITORY, useClass: MongoPlanRepository },
     { provide: BANK_CONFIG_REPOSITORY, useClass: MongoBankConfigRepository },
     { provide: FIELD_MAPPING_REPOSITORY, useClass: MongoFieldMappingRepository },
+    { provide: METHOD_MAPPING_REPOSITORY, useClass: MongoMethodMappingRepository },
+    { provide: PARTNER_REPOSITORY, useClass: MongoPartnerRepository },
     { provide: ERROR_LOG_REPOSITORY, useExisting: MongoErrorLogRepository },
     { provide: VALIDATION_RUN_REPOSITORY, useClass: MongoValidationRunRepository },
     { provide: VALIDATION_FINDING_REPOSITORY, useClass: MongoValidationFindingRepository },
@@ -297,6 +340,8 @@ import { ValidationController as RuleValidationController } from './modules/conv
     { provide: BILLING_USAGE_REPOSITORY, useClass: MongoBillingUsageRepository },
     { provide: PASSWORD_RESET_REPOSITORY, useClass: MongoPasswordResetRepository },
     { provide: EMAIL_VERIFICATION_REPOSITORY, useClass: MongoEmailVerificationRepository },
+    MongoQuoteRequestRepository,
+    { provide: QUOTE_REQUEST_REPOSITORY, useClass: MongoQuoteRequestRepository },
   ],
   exports: [ConversionWorkerRunner, ValidationWorkerRunner],
 })

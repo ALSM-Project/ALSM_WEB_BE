@@ -1,11 +1,13 @@
 import {
   InvoiceProps,
   PaymentProps,
+  QuoteRequestProps,
   SubscriptionProps,
 } from '../../domain/billing.repository.interface';
 import { SubscriptionDocument } from '../subscription.schema';
 import { InvoiceDocument } from '../invoice.schema';
 import { PaymentDocument } from '../payment.schema';
+import { QuoteRequestDocument } from '../quote-request.schema';
 
 export class SubscriptionMapper {
   static toDomain(doc: SubscriptionDocument): SubscriptionProps {
@@ -74,6 +76,26 @@ export class PaymentMapper {
       paidAt: doc.paidAt,
       cassoTransactionId: doc.cassoTransactionId,
       createdAt: raw.createdAt,
+    };
+  }
+}
+
+export class QuoteRequestMapper {
+  static toDomain(doc: QuoteRequestDocument): QuoteRequestProps {
+    const raw = doc as unknown as { createdAt?: Date; updatedAt?: Date };
+    return {
+      id: doc._id.toString(),
+      userId: doc.userId.toString(),
+      organizationId: doc.organizationId.toString(),
+      fullName: doc.fullName,
+      companyName: doc.companyName,
+      email: doc.email,
+      phone: doc.phone,
+      message: doc.message,
+      currentPlanTier: doc.currentPlanTier,
+      status: doc.status,
+      createdAt: raw.createdAt,
+      updatedAt: raw.updatedAt,
     };
   }
 }

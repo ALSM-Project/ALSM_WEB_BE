@@ -163,6 +163,12 @@ export class MongoConversionJobRepository implements ConversionJobRepository {
       )
       .exec();
   }
+
+  async updateResultReference(id: string, resultReference: string): Promise<void> {
+    const jobObjId = toValidObjectId(id);
+    await this.model.updateOne({ _id: jobObjId }, { $set: { resultReference } }).exec();
+  }
+
   private map(doc: ConversionJobDocument): ConversionJobRecord {
     return {
       id: doc.id,

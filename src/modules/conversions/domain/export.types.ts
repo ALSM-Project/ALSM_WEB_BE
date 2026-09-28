@@ -7,7 +7,7 @@ export interface ExportFileItem {
   name: string;
   size: string;
   type: 'file' | 'dir';
-  language?: 'typescript' | 'javascript' | 'json' | 'markdown' | 'html' | 'css';
+  language?: 'typescript' | 'javascript' | 'json' | 'markdown' | 'html' | 'css' | 'java';
   content?: string;
   children?: ExportFileItem[];
 }

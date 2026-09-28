@@ -1,26 +1,32 @@
 import {
   BadRequestException,
   ConflictException,
+  ForbiddenException,
   Inject,
   Injectable,
   Logger,
   NotFoundException,
   OnModuleInit,
 } from '@nestjs/common';
+import { AuthenticatedUser } from '../../../shared/logging/request-id.middleware';
 import {
   BillingCycle,
   InvoiceStatus,
   PLAN_CATALOGUE,
   PlanTier,
+  QuoteRequestStatus,
   SubscriptionStatus,
 } from '../domain/billing.types';
 import {
   INVOICE_REPOSITORY,
   IInvoiceRepository,
   IPlanRepository,
+  IQuoteRequestRepository,
   ISubscriptionRepository,
   PLAN_REPOSITORY,
   PlanProps,
+  QUOTE_REQUEST_REPOSITORY,
+  QuoteRequestProps,
   SUBSCRIPTION_REPOSITORY,
   SubscriptionProps,
 } from '../domain/billing.repository.interface';
@@ -36,6 +42,8 @@ export class BillingService implements OnModuleInit {
     private readonly invoiceRepo: IInvoiceRepository,
     @Inject(PLAN_REPOSITORY)
     private readonly planRepo: IPlanRepository,
+    @Inject(QUOTE_REQUEST_REPOSITORY)
+    private readonly quoteRequestRepo: IQuoteRequestRepository,
   ) {}
 
   async onModuleInit() {
@@ -289,5 +297,97 @@ export class BillingService implements OnModuleInit {
     const invoice = await this.invoiceRepo.markPaid(invoiceId, paymentMethod);
     if (!invoice) throw new NotFoundException('Invoice not found');
     return invoice;
+  }
+
+  // ─── Enterprise Quote Request (UC-32) ───────────────────
+
+  async requestEnterpriseQuote(
+    userId: string,
+    organizationId: string,
+    dto: {
+      fullName: string;
+      companyName: string;
+      email: string;
+      phone?: string;
+      message?: string;
+    },
+  ): Promise<QuoteRequestProps> {
+    const existing = await this.quoteRequestRepo.findPendingByUser(userId);
+    if (existing) {
+      throw new ConflictException({
+        code: 'QUOTE_REQUEST_EXISTS',
+        message: 'You already have a pending Enterprise quote request.',
+      });
+    }
+
+    const currentSub = await this.subscriptionRepo.findActiveByUser(userId);
+    const currentPlanTier = currentSub ? currentSub.planTier : PlanTier.STARTER;
+
+    const request = await this.quoteRequestRepo.create({
+      userId,
+      organizationId,
+      fullName: dto.fullName,
+      companyName: dto.companyName,
+      email: dto.email,
+      phone: dto.phone,
+      message: dto.message,
+      currentPlanTier,
+      status: QuoteRequestStatus.PENDING,
+    });
+
+    this.logger.log(`Enterprise quote requested by user ${userId} for org ${organizationId}`);
+    return request;
+  }
+
+  async getMyQuoteRequest(userId: string): Promise<QuoteRequestProps | null> {
+    return this.quoteRequestRepo.findLatestByUser(userId);
+  }
+
+  async listQuoteRequests(
+    user: AuthenticatedUser,
+    filters?: { status?: QuoteRequestStatus; page?: number; limit?: number },
+  ): Promise<{ items: QuoteRequestProps[]; total: number }> {
+    if (!user.isPlatformAdmin) {
+      throw new ForbiddenException('Only platform admins can view quote requests.');
+    }
+    return this.quoteRequestRepo.findAll(filters, filters?.page, filters?.limit);
+  }
+
+  async updateQuoteRequestStatus(
+    user: AuthenticatedUser,
+    quoteId: string,
+    newStatus: QuoteRequestStatus,
+  ): Promise<QuoteRequestProps> {
+    if (!user.isPlatformAdmin) {
+      throw new ForbiddenException('Only platform admins can update quote requests.');
+    }
+
+    const request = await this.quoteRequestRepo.findById(quoteId);
+    if (!request) {
+      throw new NotFoundException('Quote request not found');
+    }
+
+    if (request.status === newStatus) {
+      return request;
+    }
+
+    if (request.status === QuoteRequestStatus.CLOSED) {
+      throw new BadRequestException('Cannot change status of a closed quote request');
+    }
+
+    if (
+      request.status === QuoteRequestStatus.CONTACTED &&
+      newStatus === QuoteRequestStatus.PENDING
+    ) {
+      throw new BadRequestException('Cannot transition from CONTACTED to PENDING');
+    }
+
+    const updated = await this.quoteRequestRepo.updateStatus(quoteId, newStatus);
+    if (!updated) {
+      throw new NotFoundException('Quote request not found');
+    }
+
+    this.logger.log(`Quote request ${quoteId} status updated to ${newStatus} by admin ${user.userId}`);
+    return updated;
   }
 }

@@ -66,8 +66,22 @@ export class ConversionWorkerRunner implements OnModuleDestroy {
             error instanceof CopybookDependencyBlockedError
               ? 'COPYBOOK_DEPENDENCY_BLOCKED'
               : 'CONVERSION_ENGINE_UNAVAILABLE';
-          await this.jobs.markFailed(job.id, code, message);
-          await this.syncScreenStatus(job, ScreenStatus.FAILED);
+          // BullMQ's own exponential-backoff attempts (configured at enqueue time in
+          // BullMqConversionQueue) redeliver this SAME job to this SAME callback — it never
+          // calls markProcessing() again on our behalf. If we mark the job FAILED here on a
+          // non-final attempt, the redelivered attempt's markProcessing() (which only
+          // matches QUEUED/PROCESSING) finds nothing, returns null, and the callback exits
+          // without throwing — BullMQ then considers that attempt a *success* and stops
+          // retrying, even though no real work happened. Confirmed by reproduction: a job's
+          // configured 3 attempts silently collapsed into 1. Only mark FAILED once BullMQ
+          // itself has no attempts left; otherwise leave the job in PROCESSING so the next
+          // redelivery's markProcessing() still matches.
+          const attemptsAllowed = queueJob.opts.attempts ?? 1;
+          const isFinalAttempt = queueJob.attemptsMade + 1 >= attemptsAllowed;
+          if (isFinalAttempt) {
+            await this.jobs.markFailed(job.id, code, message);
+            await this.syncScreenStatus(job, ScreenStatus.FAILED);
+          }
           throw error;
         }
       },

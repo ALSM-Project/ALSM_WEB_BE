@@ -1,11 +1,13 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import {
   IsArray,
+  IsEmail,
   IsEnum,
   IsNotEmpty,
   IsNumber,
   IsOptional,
   IsString,
+  Matches,
   MaxLength,
   ValidateNested,
 } from 'class-validator';
@@ -15,6 +17,7 @@ import {
   InvoiceStatus,
   PaymentStatus,
   PlanTier,
+  QuoteRequestStatus,
   SubscriptionStatus,
 } from '../domain/billing.types';
 
@@ -48,6 +51,88 @@ export class UpgradeSubscriptionDto {
   })
   @IsEnum(PlanTier)
   targetPlanTier!: PlanTier;
+}
+
+export class RequestEnterpriseQuoteDto {
+  @ApiProperty({
+    example: 'John Doe',
+    description: 'Full name of contact person',
+  })
+  @IsString()
+  @IsNotEmpty()
+  @MaxLength(100)
+  fullName!: string;
+
+  @ApiProperty({
+    example: 'ACME Corp',
+    description: 'Organization or enterprise company name',
+  })
+  @IsString()
+  @IsNotEmpty()
+  @MaxLength(100)
+  companyName!: string;
+
+  @ApiProperty({
+    example: 'johndoe@acme.com',
+    description: 'Work email address for quote delivery',
+  })
+  @IsEmail()
+  @IsNotEmpty()
+  email!: string;
+
+  @ApiPropertyOptional({
+    example: '+84901234567',
+    description: 'Phone number for enterprise consultation',
+  })
+  @IsOptional()
+  @IsString()
+  @MaxLength(30)
+  @Matches(/^[+]?[(]?[0-9]{1,4}[)]?[-\s./0-9]{6,20}$/, {
+    message: 'Phone number must be a valid international or local phone format (8-20 digits)',
+  })
+  phone?: string;
+
+  @ApiPropertyOptional({
+    example: 'We require custom on-premise deployment and full legacy modernization for 500+ screens.',
+    description: 'Custom modernization requirements and scope description',
+  })
+  @IsOptional()
+  @IsString()
+  @MaxLength(1000)
+  message?: string;
+}
+
+export class ListQuoteRequestsQueryDto {
+  @ApiPropertyOptional({
+    enum: QuoteRequestStatus,
+    description: 'Filter quote requests by status (PENDING, CONTACTED, CLOSED)',
+  })
+  @IsOptional()
+  @IsEnum(QuoteRequestStatus)
+  status?: QuoteRequestStatus;
+
+  @ApiPropertyOptional({ example: 1, description: 'Page number for pagination (1-based)' })
+  @IsOptional()
+  @Type(() => Number)
+  @IsNumber()
+  page?: number;
+
+  @ApiPropertyOptional({ example: 10, description: 'Number of records per page' })
+  @IsOptional()
+  @Type(() => Number)
+  @IsNumber()
+  limit?: number;
+}
+
+export class UpdateQuoteRequestStatusDto {
+  @ApiProperty({
+    enum: QuoteRequestStatus,
+    example: QuoteRequestStatus.CONTACTED,
+    description: 'New status for the quote request (CONTACTED or CLOSED)',
+  })
+  @IsEnum(QuoteRequestStatus)
+  @IsNotEmpty()
+  status!: QuoteRequestStatus;
 }
 
 export class CancelSubscriptionDto {
@@ -450,4 +535,33 @@ export class CassoWebhookResponseDto {
 
   @ApiPropertyOptional({ example: 'Casso reported an error' })
   error?: string;
+}
+
+export class QuoteRequestResponseDto {
+  @ApiProperty({ example: '66d9c84e1234567890abcdef' })
+  id!: string;
+
+  @ApiProperty({ enum: QuoteRequestStatus, example: QuoteRequestStatus.PENDING })
+  status!: QuoteRequestStatus;
+
+  @ApiProperty({ example: 'John Doe' })
+  fullName!: string;
+
+  @ApiProperty({ example: 'ACME Corp' })
+  companyName!: string;
+
+  @ApiProperty({ example: 'johndoe@acme.com' })
+  email!: string;
+
+  @ApiPropertyOptional({ example: '+84901234567' })
+  phone?: string;
+
+  @ApiPropertyOptional({ example: 'We require custom on-premise deployment.' })
+  message?: string;
+
+  @ApiProperty({ enum: PlanTier, example: PlanTier.STARTER })
+  currentPlanTier!: PlanTier;
+
+  @ApiProperty({ example: '2026-09-25T09:00:00.000Z' })
+  createdAt!: Date | string;
 }

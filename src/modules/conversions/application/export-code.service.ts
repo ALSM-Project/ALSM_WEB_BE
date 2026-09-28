@@ -16,6 +16,7 @@ interface ScreenExport {
   screenId: string;
   componentName: string;
   files: { relativePath: string; content: string }[];
+  language: 'typescript' | 'java';
 }
 
 @Injectable()
@@ -40,7 +41,7 @@ export class ExportCodeService {
     const { screens } = await this.loadScreenExports(userId, organizationHeader, projectId, config);
     const projectName = config.projectName || 'Modernized System';
     const fileTree = this.buildFileTree(config, projectName, screens);
-    const metrics = this.calculateMetrics(screens);
+    const metrics = this.calculateMetrics(screens, fileTree);
     return { fileTree, metrics };
   }
 
@@ -108,23 +109,38 @@ export class ExportCodeService {
         .sort((a, b) => (b.completedAt?.getTime() ?? 0) - (a.completedAt?.getTime() ?? 0))[0];
 
       if (!latestCompleted?.resultReference) {
-        screens.push({ screenId, componentName: this.getComponentName(screenId), files: [] });
+        screens.push({
+          screenId,
+          componentName: this.getComponentName(screenId),
+          files: [],
+          language: 'typescript',
+        });
         continue;
       }
 
+      // toolVersion tells us which conversion engine produced this job's output:
+      // 'tool2java' (COBOL->Java) writes .java files, everything else (convert2fe,
+      // BMS/DSPF->React) writes .tsx files. Without this branch, COBOL jobs' real
+      // output was always filtered out by the .tsx-only check below.
+      const isJavaJob = latestCompleted.toolVersion === 'tool2java';
       const stored = await this.storage.readFiles(latestCompleted.resultReference);
-      const componentFiles = stored
-        .filter(
-          (f) =>
-            f.relativePath.toLowerCase().endsWith('.tsx') &&
-            !f.relativePath.toLowerCase().endsWith('routes.tsx'),
-        )
-        .map((f) => ({ relativePath: f.relativePath, content: f.content.toString('utf8') }));
+      const files = isJavaJob
+        ? stored
+            .filter((f) => f.relativePath.toLowerCase().endsWith('.java'))
+            .map((f) => ({ relativePath: f.relativePath, content: f.content.toString('utf8') }))
+        : stored
+            .filter(
+              (f) =>
+                f.relativePath.toLowerCase().endsWith('.tsx') &&
+                !f.relativePath.toLowerCase().endsWith('routes.tsx'),
+            )
+            .map((f) => ({ relativePath: f.relativePath, content: f.content.toString('utf8') }));
 
       screens.push({
         screenId,
-        componentName: this.getComponentName(componentFiles[0]?.relativePath ?? screenId),
-        files: componentFiles,
+        componentName: this.getComponentName(files[0]?.relativePath ?? screenId),
+        files,
+        language: isJavaJob ? 'java' : 'typescript',
       });
     }
     return { screens };
@@ -138,9 +154,11 @@ export class ExportCodeService {
     const safeProjectName = projectName.toLowerCase().replace(/\s+/g, '-');
     const convertedScreens = screens.filter((s) => s.files.length > 0);
     const missingScreens = screens.filter((s) => s.files.length === 0);
+    const reactScreens = convertedScreens.filter((s) => s.language !== 'java');
+    const javaScreens = convertedScreens.filter((s) => s.language === 'java');
 
     const componentFiles: ExportFileItem[] = [];
-    for (const screen of convertedScreens) {
+    for (const screen of reactScreens) {
       for (const file of screen.files) {
         componentFiles.push({
           path: `components/${file.relativePath}`,
@@ -168,18 +186,50 @@ export class ExportCodeService {
       size: '0.4 KB',
       type: 'file',
       language: 'typescript',
-      content: convertedScreens.map((s) => `export * from './${s.componentName}';`).join('\n'),
+      content: reactScreens.map((s) => `export * from './${s.componentName}';`).join('\n'),
     });
 
-    const rootChildren: ExportFileItem[] = [
-      {
+    // Real generated Java source, preserving the package folder structure tool2java
+    // already produced (e.g. cobolprogramclasses/cbact01c/Cbact01cTasklet.java). No
+    // fabricated build scaffold (pom.xml, JUnit tests) is added - only real output.
+    const javaFiles: ExportFileItem[] = [];
+    for (const screen of javaScreens) {
+      for (const file of screen.files) {
+        javaFiles.push({
+          path: `java/${file.relativePath}`,
+          name: file.relativePath,
+          size: `${(Buffer.byteLength(file.content, 'utf8') / 1024).toFixed(1)} KB`,
+          type: 'file',
+          language: 'java',
+          content: file.content,
+        });
+      }
+    }
+
+    // The React scaffold (components/, package.json, the Vite src/ layout below) only
+    // makes sense when there is real React output. A project made up entirely of
+    // COBOL->Java screens gets a plain source tree instead of an empty React app shell.
+    const includeReactScaffold = reactScreens.length > 0 || javaScreens.length === 0;
+
+    const rootChildren: ExportFileItem[] = [];
+    if (includeReactScaffold) {
+      rootChildren.push({
         path: 'components',
         name: 'components',
         size: `${componentFiles.length} files`,
         type: 'dir',
         children: componentFiles,
-      },
-    ];
+      });
+    }
+    if (javaScreens.length > 0) {
+      rootChildren.push({
+        path: 'java',
+        name: 'java',
+        size: `${javaFiles.length} files`,
+        type: 'dir',
+        children: javaFiles,
+      });
+    }
 
     if (config.includeDocumentation) {
       rootChildren.push({
@@ -192,7 +242,9 @@ export class ExportCodeService {
       });
     }
 
-    if (config.outputOption === 'standalone') {
+    // The Vite/React project scaffold below is meaningless without any React output -
+    // fall back to the flat source tree used by 'standalone' in that case too.
+    if (config.outputOption === 'standalone' || !includeReactScaffold) {
       return [
         {
           path: 'export-bundle',
@@ -255,10 +307,13 @@ export class ExportCodeService {
     ];
   }
 
-  private calculateMetrics(screens: ScreenExport[]): BundleMetrics {
+  private calculateMetrics(screens: ScreenExport[], fileTree: ExportFileItem[]): BundleMetrics {
     const convertedScreens = screens.filter((s) => s.files.length > 0);
     const allFiles = convertedScreens.flatMap((s) => s.files);
-    const totalFiles = allFiles.length + 2; // + index.ts + README.md
+    // Counted from the actual generated tree rather than a fixed "+2" (index.ts and
+    // README.md aren't always both present - e.g. a Java-only export has no index.ts,
+    // and README.md is itself conditional on config.includeDocumentation).
+    const totalFiles = this.countFiles(fileTree);
     const totalLoc = allFiles.reduce((sum, f) => sum + f.content.split('\n').length, 0);
     const estimatedSizeKb = Math.round(
       allFiles.reduce((sum, f) => sum + Buffer.byteLength(f.content, 'utf8'), 0) / 1024,
@@ -270,6 +325,18 @@ export class ExportCodeService {
       estimatedSizeKb,
       selectedScreensCount: convertedScreens.length,
     };
+  }
+
+  private countFiles(items: ExportFileItem[]): number {
+    let count = 0;
+    for (const item of items) {
+      if (item.type === 'file') {
+        count += 1;
+      } else if (item.children) {
+        count += this.countFiles(item.children);
+      }
+    }
+    return count;
   }
 
   private getComponentName(rawName: string): string {
