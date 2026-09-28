@@ -47,7 +47,10 @@
     "eval:ai:import:aws-carddemo": "ts-node evaluation/ai-validation/src/import-aws-carddemo.ts",
     "eval:ai:import:validate": "ts-node evaluation/ai-validation/src/validate-imports.cli.ts",
     "eval:ai:import:promote": "ts-node evaluation/ai-validation/src/promote-imported-cases.ts",
-    "eval:ai:review:prepare": "ts-node evaluation/ai-validation/src/human-review-prepare.cli.ts"
+    "eval:ai:review:prepare": "ts-node evaluation/ai-validation/src/human-review-prepare.cli.ts",
+    "eval:ai:review:validate": "ts-node evaluation/ai-validation/src/human-review-validate.cli.ts",
+    "eval:ai:review:compare": "ts-node evaluation/ai-validation/src/human-review-compare.cli.ts",
+    "eval:ai:review:finalize": "ts-node evaluation/ai-validation/src/human-review-finalize.cli.ts"
   },
   "dependencies": {
     "@nestjs/common": "^11.1.6",
