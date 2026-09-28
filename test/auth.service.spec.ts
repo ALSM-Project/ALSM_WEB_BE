@@ -1,4 +1,4 @@
-import { UnauthorizedException } from '@nestjs/common';
+import { ConflictException, UnauthorizedException } from '@nestjs/common';
 import * as bcrypt from 'bcrypt';
 import { AuthService } from '../src/modules/auth/application/auth.service';
 import { OrganizationType } from '../src/modules/organizations/domain/organization.types';
@@ -81,6 +81,20 @@ describe('AuthService', () => {
     await expect(service.login('a@example.com', 'wrong')).rejects.toBeInstanceOf(
       UnauthorizedException,
     );
+  });
+
+  it('maps a duplicate-key (E11000) create failure to EMAIL_ALREADY_REGISTERED conflict', async () => {
+    users.findByEmail.mockResolvedValue(null);
+    users.create.mockRejectedValue({ code: 11000 });
+
+    const promise = service.register('a@example.com', 'a-strong-password', 'Ada');
+    await expect(promise).rejects.toBeInstanceOf(ConflictException);
+    await expect(promise).rejects.toMatchObject({
+      response: { code: 'EMAIL_ALREADY_REGISTERED' },
+    });
+
+    expect(users.create).toHaveBeenCalledTimes(1);
+    expect(organizations.create).not.toHaveBeenCalled();
   });
 
   it('persists normalized session metadata instead of the raw User-Agent when creating a login session', async () => {
