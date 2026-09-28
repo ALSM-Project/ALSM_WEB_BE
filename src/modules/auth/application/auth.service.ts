@@ -49,7 +49,7 @@ export class AuthService {
         message: 'Email is already registered',
       });
     }
-    const user = await this.users.create({
+    const user = await this.createUserCatchingDuplicate({
       email: normalizedEmail,
       passwordHash: await bcrypt.hash(password, 12),
       fullName: fullName.trim(),
@@ -124,7 +124,7 @@ export class AuthService {
 
     let user = await this.users.findByEmail(email);
     if (!user) {
-      user = await this.users.create({
+      user = await this.createUserCatchingDuplicate({
         email,
         fullName: payload.name?.trim() || email.split('@')[0],
         isEmailVerified: true,
@@ -321,4 +321,29 @@ export class AuthService {
     const units: Record<string, number> = { s: 1000, m: 60000, h: 3600000, d: 86400000 };
     return Number(match[1]) * units[match[2]];
   }
+
+  // The email field has a unique index, so a race between two concurrent
+  // registrations can pass the findByEmail check above and still fail here
+  // with a MongoDB E11000 duplicate-key error. Normalize that to a 409 so the
+  // client sees EMAIL_ALREADY_REGISTERED instead of a generic 500.
+  private async createUserCatchingDuplicate(
+    input: Parameters<UserRepository['create']>[0],
+  ): Promise<UserRecord> {
+    try {
+      return await this.users.create(input);
+    } catch (err) {
+      if (isDuplicateKeyError(err)) {
+        throw new ConflictException({
+          code: 'EMAIL_ALREADY_REGISTERED',
+          message: 'Email is already registered',
+        });
+      }
+      throw err;
+    }
+  }
+}
+
+function isDuplicateKeyError(err: unknown): boolean {
+  const code = (err as { code?: number | string })?.code;
+  return code === 11000 || code === '11000' || code === 'E11000';
 }
