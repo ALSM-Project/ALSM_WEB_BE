@@ -347,7 +347,12 @@ export class BillingService implements OnModuleInit {
     user: AuthenticatedUser,
     filters?: { status?: QuoteRequestStatus; page?: number; limit?: number },
   ): Promise<{ items: QuoteRequestProps[]; total: number }> {
-    if (!user.isPlatformAdmin) {
+    const isAdmin = Boolean(
+      user.isPlatformAdmin ||
+      (user as AuthenticatedUser & { roles?: string[]; role?: string }).roles?.includes('ADMIN') ||
+      (user as AuthenticatedUser & { roles?: string[]; role?: string }).role === 'ADMIN',
+    );
+    if (!isAdmin) {
       throw new ForbiddenException('Only platform admins can view quote requests.');
     }
     return this.quoteRequestRepo.findAll(filters, filters?.page, filters?.limit);
@@ -358,7 +363,12 @@ export class BillingService implements OnModuleInit {
     quoteId: string,
     newStatus: QuoteRequestStatus,
   ): Promise<QuoteRequestProps> {
-    if (!user.isPlatformAdmin) {
+    const isAdmin = Boolean(
+      user.isPlatformAdmin ||
+      (user as AuthenticatedUser & { roles?: string[]; role?: string }).roles?.includes('ADMIN') ||
+      (user as AuthenticatedUser & { roles?: string[]; role?: string }).role === 'ADMIN',
+    );
+    if (!isAdmin) {
       throw new ForbiddenException('Only platform admins can update quote requests.');
     }
 
