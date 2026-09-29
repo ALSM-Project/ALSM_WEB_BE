@@ -136,8 +136,9 @@ export class ProjectService {
           conversionType: ConversionType.BMS_DSPF_TO_FRONTEND,
           status: ProjectStatus.ACTIVE,
         });
-      } catch (error: any) {
-        if (error?.code === 11000 || error?.message?.includes('E11000')) {
+      } catch (error: unknown) {
+        const err = error as { code?: number; message?: string };
+        if (err?.code === 11000 || err?.message?.includes('E11000')) {
           project = await this.projects.findById(id, '');
           if (project) return project;
         }
