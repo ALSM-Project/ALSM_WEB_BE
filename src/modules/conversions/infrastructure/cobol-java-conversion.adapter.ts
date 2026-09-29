@@ -86,6 +86,18 @@ export class CobolJavaConversionAdapter {
           // "No Java files were generated" with no other indication why).
           '-pp',
           'cobolprogramclasses',
+          // -dp <name> sets the DATA package (RESConfig.dataPackage) - distinct from -dp0,
+          // which is actually an unrelated boolean flag (setLongDataPackageName(false)).
+          // Without a real -dp value, RESConfig.getDataPackage() stays null and every DATA
+          // division class (Cbact01cModel, etc.) crashes with a NullPointerException in
+          // NameUtil.getPackageName the moment translation reaches it - the whole program's
+          // translation then aborts, and the ONLY output ever written is the COBOL header
+          // comment copied before that point, with the job still marked COMPLETED (the CLI
+          // exits 0). Reproduced directly against real CardDemo COBOL source: every prior
+          // "successful" conversion in this platform's history was silently just a header
+          // stub with zero translated Java logic, until -dp was added here.
+          '-dp',
+          'cobolprogramclasses',
           '-dp0',
           '-fixed',
           '-c2',
