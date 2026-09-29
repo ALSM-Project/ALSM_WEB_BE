@@ -25,13 +25,23 @@ export class MongoProjectRepository implements ProjectRepository {
     const projObjId = toValidObjectId(id);
     const orgObjId = toValidObjectId(organizationId);
 
-    const doc = await this.model
+    let doc = await this.model
       .findOne({
         $or: [{ _id: projObjId }, { name: id }],
-        organizationId: { $in: [orgObjId, organizationId] },
+        ...(organizationId ? { organizationId: { $in: [orgObjId, organizationId] } } : {}),
         deletedAt: { $exists: false },
       })
       .exec();
+
+    // Fallback: if not found with org filter, find by project _id or name directly
+    if (!doc && id) {
+      doc = await this.model
+        .findOne({
+          $or: [{ _id: projObjId }, { name: id }],
+          deletedAt: { $exists: false },
+        })
+        .exec();
+    }
 
     return doc ? this.map(doc) : null;
   }
