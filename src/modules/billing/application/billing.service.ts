@@ -397,6 +397,25 @@ export class BillingService implements OnModuleInit {
       throw new NotFoundException('Quote request not found');
     }
 
+    if (newStatus === QuoteRequestStatus.CLOSED) {
+      const now = new Date();
+      const nextYear = new Date(now);
+      nextYear.setFullYear(nextYear.getFullYear() + 1);
+
+      await this.subscriptionRepo.create({
+        userId: request.userId,
+        organizationId: request.organizationId,
+        planTier: PlanTier.ENTERPRISE,
+        planName: 'Enterprise',
+        billingCycle: BillingCycle.ANNUAL,
+        status: SubscriptionStatus.ACTIVE,
+        amountVnd: 0,
+        currentPeriodStart: now,
+        currentPeriodEnd: nextYear,
+      });
+      this.logger.log(`Enterprise plan activated for user ${request.userId} / org ${request.organizationId}`);
+    }
+
     this.logger.log(`Quote request ${quoteId} status updated to ${newStatus} by admin ${user.userId}`);
     return updated;
   }
