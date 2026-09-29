@@ -262,3 +262,50 @@ npm run eval:ai:validate -- -- `
 Promotion re-runs the existing Phase 6 validator. A source with `licenseStatus: "REVIEW_REQUIRED"`,
 a pending/rejected review, insufficient human reviewers, missing decisions, or incomplete AWS Java
 verification fails closed. Only the promoted manifest may be supplied to the scorer.
+
+## Human Review Pilot
+
+Phase 6.2A establishes a clean-control pilot for exactly 15 COBOL-JavaTrans candidates. AWS
+CardDemo remains out of scope. Preparation validates the pinned import and content hashes, orders
+eligible candidates by combined COBOL-plus-Java character count, divides that order into approximate
+size thirds, and chooses five SMALL, five MEDIUM, and five LARGE candidates using an evidence-first
+stable SHA-256 rank. Size strata are not semantic difficulty labels.
+
+```powershell
+npm run eval:ai:review:prepare
+npm run eval:ai:review:validate
+npm run eval:ai:review:compare
+npm run eval:ai:review:finalize
+```
+
+The committed Reviewer A and Reviewer B templates contain null identities, timestamps, and
+decisions. Actual reviewers copy them to the git-ignored `evaluation/ai-validation/reviews/work/`
+directory. The default validator accepts incomplete templates so preparation can be verified; use
+`--mode complete` with the actual review paths before reconciliation and promotion.
+
+Each reviewer independently chooses `CLEAN` or `NOT_CLEAN_OR_UNCERTAIN`. `CLEAN` means the reviewer
+finds no known task-relevant semantic behavior difference after inspecting both implementations,
+the task, and available evidence. It is not formal proof, exhaustive testing, a bug-free guarantee,
+production certification, or an automated conclusion. Codex/LLM output cannot count as reviewer
+approval.
+
+Comparison yields `READY_CLEAN` only for matching CLEAN decisions by two distinct human reviewers.
+Different decisions yield `DISAGREEMENT`; matching non-clean/uncertain decisions yield
+`NOT_CLEAN_OR_UNCERTAIN`; missing or incomplete input yields `NEEDS_REVIEW`. The tool never resolves
+a disagreement. Phase 6.2A promotes only `READY_CLEAN` controls; non-clean and disputed cases await a
+separate human adjudication process, so no natural-defect findings or mutations are fabricated.
+
+Human finalization supplies title, description, and semantic review difficulty without deriving it
+from size. Clean finalization then produces an ordinary `ImportedReviewManifest` with `APPROVED`, the
+two human IDs, `isClean: true`, `expectedFindings: []`, `mutations: null`, and
+`targetJavaStatus: "UPSTREAM_PRESENT"`. The existing import promotion command still performs its
+normal strict checks and emits a `human-reviewed-external` Phase 6 dataset.
+
+The pilot selection hash binds reviewer files to the exact selected candidate IDs, source/target
+hashes, pinned candidate-manifest hash, and selection algorithm. Any source, target, selection, or
+upstream manifest change invalidates the review and requires humans to review the changed material
+again. Automated compiler/test evidence is recorded separately and never changes a human decision.
+
+See
+`evaluation/ai-validation/reviews/cobol-javatrans-pilot-v1/REVIEW_GUIDE.md` for the exact independent
+review, comparison, finalization, promotion, and dataset-validation workflow.

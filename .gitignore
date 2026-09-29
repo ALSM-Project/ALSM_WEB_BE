@@ -16,3 +16,6 @@ storage/
 
 # Phase 6 benchmark outputs may contain provider-generated findings and are local-only.
 evaluation/ai-validation/results/
+
+# Completed personal review files may contain team-member identities and remain local by default.
+evaluation/ai-validation/reviews/work/
