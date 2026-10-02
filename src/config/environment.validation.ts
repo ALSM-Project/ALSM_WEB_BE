@@ -44,7 +44,7 @@ export const environmentValidationSchema = Joi.object({
     .uri({ scheme: ['http', 'https'] })
     .default('http://localhost:5173'),
   AI_VALIDATION_ENABLED: Joi.boolean().default(false),
-  AI_PROVIDER: Joi.string().valid('fake', 'openai').default('fake'),
+  AI_PROVIDER: Joi.string().valid('fake', 'openai', 'gemini').default('fake'),
   OPENAI_API_KEY: Joi.when('AI_VALIDATION_ENABLED', {
     is: true,
     then: Joi.when('AI_PROVIDER', {
@@ -58,6 +58,24 @@ export const environmentValidationSchema = Joi.object({
     is: true,
     then: Joi.when('AI_PROVIDER', {
       is: 'openai',
+      then: Joi.string().min(1).required(),
+      otherwise: Joi.string().allow('').default(''),
+    }),
+    otherwise: Joi.string().allow('').default(''),
+  }),
+  GEMINI_API_KEY: Joi.when('AI_VALIDATION_ENABLED', {
+    is: true,
+    then: Joi.when('AI_PROVIDER', {
+      is: 'gemini',
+      then: Joi.string().min(1).required(),
+      otherwise: Joi.string().allow('').default(''),
+    }),
+    otherwise: Joi.string().allow('').default(''),
+  }),
+  GEMINI_MODEL: Joi.when('AI_VALIDATION_ENABLED', {
+    is: true,
+    then: Joi.when('AI_PROVIDER', {
+      is: 'gemini',
       then: Joi.string().min(1).required(),
       otherwise: Joi.string().allow('').default(''),
     }),

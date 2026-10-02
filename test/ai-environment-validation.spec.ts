@@ -44,6 +44,43 @@ describe('AI environment validation', () => {
     });
 
     expect(result.error).toBeUndefined();
+    expect(result.value.GEMINI_API_KEY).toBe('');
+    expect(result.value.GEMINI_MODEL).toBe('');
+  });
+
+  it.each([
+    [{ GEMINI_API_KEY: 'synthetic-key', GEMINI_MODEL: 'test-model' }, false],
+    [{ GEMINI_API_KEY: '', GEMINI_MODEL: 'test-model' }, true],
+    [{ GEMINI_API_KEY: 'synthetic-key', GEMINI_MODEL: '' }, true],
+  ])('conditionally validates enabled Gemini configuration', (gemini, invalid) => {
+    const result = environmentValidationSchema.validate({
+      ...requiredEnvironment, AI_VALIDATION_ENABLED: true, AI_PROVIDER: 'gemini', ...gemini,
+    });
+    expect(Boolean(result.error)).toBe(invalid);
+    if (!invalid) {
+      expect(result.value.OPENAI_API_KEY).toBe('');
+      expect(result.value.OPENAI_MODEL).toBe('');
+    }
+  });
+
+  it('requires both selected OpenAI credentials independently', () => {
+    for (const values of [
+      { OPENAI_API_KEY: '', OPENAI_MODEL: 'test-model' },
+      { OPENAI_API_KEY: 'synthetic-key', OPENAI_MODEL: '' },
+    ]) {
+      expect(environmentValidationSchema.validate({
+        ...requiredEnvironment, AI_VALIDATION_ENABLED: true, AI_PROVIDER: 'openai', ...values,
+      }).error).toBeDefined();
+    }
+  });
+
+  it('rejects unsupported providers and accepts disabled real-provider config without credentials', () => {
+    expect(environmentValidationSchema.validate({
+      ...requiredEnvironment, AI_VALIDATION_ENABLED: true, AI_PROVIDER: 'other',
+    }).error).toBeDefined();
+    expect(environmentValidationSchema.validate({
+      ...requiredEnvironment, AI_VALIDATION_ENABLED: false, AI_PROVIDER: 'gemini',
+    }).error).toBeUndefined();
   });
 
   it('applies bounded validation queue defaults without requiring the worker', () => {

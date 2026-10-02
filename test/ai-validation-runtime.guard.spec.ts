@@ -27,20 +27,31 @@ describe('AiValidationRuntimeGuard', () => {
     expect(validator.getMetadata).not.toHaveBeenCalled();
   });
 
-  it('requires the resolved adapter metadata to represent OpenAI', () => {
+  it.each([
+    ['openai', 'gemini'],
+    ['gemini', 'openai'],
+    ['gemini', 'fake'],
+  ])('rejects configured %s when resolved metadata reports %s', (configured, resolved) => {
     validator.getMetadata.mockReturnValue({
-      provider: 'fake',
-      model: 'none',
-      promptVersion: 'none',
+      provider: resolved,
+      model: 'test-model',
+      promptVersion: 'semantic-cobol-java-v1',
     });
     const guard = new AiValidationRuntimeGuard(
-      configuration(true, 'openai'),
+      configuration(true, configured),
       validator as unknown as AiValidatorPort,
     );
 
     expect(() => guard.assertAvailable()).toThrow(
       'A supported AI validation provider is not configured',
     );
+  });
+
+  it.each(['openai', 'gemini'])('allows matching real provider metadata for %s', (provider) => {
+    const metadata = { provider, model: 'test-model', promptVersion: 'semantic-cobol-java-v1' };
+    validator.getMetadata.mockReturnValue(metadata);
+    const guard = new AiValidationRuntimeGuard(configuration(true, provider), validator as unknown as AiValidatorPort);
+    expect(guard.assertAvailable()).toEqual(metadata);
   });
 });
 

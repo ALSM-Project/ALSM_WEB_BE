@@ -15,7 +15,7 @@ reviews it.
 - tenant-safe validation metadata and finding read queries;
 - AI validator provider abstraction;
 - secure AI context preparation;
-- OpenAI semantic validation behind the provider abstraction;
+- OpenAI and Gemini semantic validation behind the provider abstraction;
 - internal AI validation execution and persistence lifecycle;
 - authenticated asynchronous AI validation trigger and dedicated BullMQ worker;
 - active-run, queue-job, and finding retry idempotency;
@@ -166,9 +166,9 @@ Conversion artifacts
        -> deterministic secret redaction
        -> stable one-based line numbering
     -> AiValidatorPort
-    -> OpenAiValidatorAdapter
+    -> FakeAiValidatorAdapter | OpenAiValidatorAdapter | GeminiAiValidatorAdapter
        -> versioned semantic-validation prompt
-       -> OpenAI Responses API with store=false and no tools
+       -> provider-specific HTTP transport with no tools or external grounding
        -> strict JSON Schema output
        -> Joi runtime validation and file/line-range validation
     -> ExecuteAiValidationService
@@ -234,6 +234,12 @@ output text or refusals rather than assuming a fixed output-array position. Time
 network failures, HTTP 429, and HTTP 5xx use a small bounded retry policy. Authentication and other
 permanent client failures are not retried.
 
+`GeminiAiValidatorAdapter` uses the Gemini Developer API `generateContent` endpoint, authenticates
+with the `x-goog-api-key` header, and sends the shared ALSM prompt and structured JSON schema. It
+accepts only candidate text, maps explicit safety blocks to a refusal error, and runs the same ALSM
+runtime validation before returning findings. Both adapters share timeout, retry, file, character,
+finding, and prompt-version limits; provider-specific credentials and models are selected separately.
+
 Raw prompts, provider responses, source, and generated Java are not logged or persisted in
 `validation_runs` or `validation_findings`. Sanitized run metadata may include provider, model,
 prompt version, redaction count, selected-file count, input character count, and sanitized failure
@@ -242,11 +248,20 @@ code/message.
 Source code is sent to an external provider only when all three conditions are true:
 
 1. `AI_VALIDATION_ENABLED=true`;
-2. `AI_PROVIDER=openai`;
+2. `AI_PROVIDER=openai` or `AI_PROVIDER=gemini`;
 3. the internal execution service is intentionally invoked.
 
-Provider selection does not contact OpenAI during application startup. With AI disabled, the
-inert fake adapter is selected and no OpenAI key is required.
+`OpenAiValidatorAdapter` and `GeminiAiValidatorAdapter` implement the provider-neutral
+`AiValidatorPort`; their HTTP behavior stays in infrastructure. Provider selection uses
+`AI_PROVIDER=fake|openai|gemini`. It does not contact a provider during application startup. With AI
+disabled, the inert fake adapter is selected and no provider key is required. AI findings remain
+advisory and require product Human Review regardless of provider.
+
+Gemini Developer API free-tier requests may be subject to Google's free-tier data-use terms. Synthetic
+Phase 6 benchmark data is appropriate for initial engineering evaluation; customer source code must
+not be sent to Gemini free tier merely because the adapter exists. Production/customer use requires
+the team's explicit provider/privacy decision and appropriate provider account/data terms. This is an
+engineering data-handling warning, not legal approval.
 
 ## Phase 4 Asynchronous Orchestration
 
@@ -258,7 +273,7 @@ POST validation-runs
     -> organization membership and write-role authorization
     -> project and conversion tenant checks
     -> completed COBOL_TO_JAVA eligibility check
-    -> enabled OpenAI runtime guard
+    -> enabled real-provider runtime guard
     -> atomic active-run claim
     -> ValidationRun QUEUED
     -> dedicated ai-validation BullMQ queue
@@ -285,11 +300,12 @@ with the queued run. If the conversion already has an active AI run, the same ru
 instead of creating or enqueueing a second application job. Clients poll the existing Phase 2 run
 and finding endpoints using the returned run ID.
 
-User-triggered execution requires `AI_VALIDATION_ENABLED=true`, `AI_PROVIDER=openai`, and an
-OpenAI-backed resolved adapter at both the trigger and execution boundaries. The fake adapter is
-still available for isolated tests and disabled wiring, but it can never represent a successful
-user-triggered run. A configuration change after queueing is detected before provider execution;
-disabled, fake, unsupported, or changed runtime configuration fails the run safely.
+User-triggered execution requires `AI_VALIDATION_ENABLED=true`, `AI_PROVIDER=openai|gemini`, and a
+resolved adapter whose metadata matches the configured real provider at both trigger and execution
+boundaries. The fake adapter is still available for isolated tests and disabled wiring, but it can
+never represent a successful user-triggered run. A provider, model, or prompt configuration change
+after queueing is detected before provider execution; disabled, fake, unsupported, or changed runtime
+configuration fails the run safely.
 
 ### Active-run and queue idempotency
 
@@ -316,12 +332,12 @@ sanitized `VALIDATION_QUEUE_ENQUEUE_FAILED` code and its active claim is release
 ### Worker state and retry policy
 
 The validation worker starts only when `VALIDATION_WORKER_ENABLED=true`. Disabled startup does not
-contact OpenAI. It reloads every run with run, project, and organization scope and verifies the
+contact an AI provider. It reloads every run with run, project, and organization scope and verifies the
 conversion relationship instead of trusting Redis data. Terminal duplicate jobs are no-ops.
 `QUEUED` is claimed atomically as `PROCESSING`; BullMQ retries continue that same `PROCESSING` run
 and never create another run.
 
-The OpenAI adapter retains its bounded request-level retry policy. Timeouts, network/unavailable
+The provider adapters use bounded request-level retry policies. Timeouts, network/unavailable
 failures, HTTP 429, and HTTP 5xx are retryable at that layer. Phase 4 adds bounded job-level retries
 for the sanitized `AI_PROVIDER_TIMEOUT`, `AI_PROVIDER_UNAVAILABLE`, and transient infrastructure
 classifications. Invalid context, unsupported conversion/provider, disabled AI, authentication,
@@ -354,7 +370,7 @@ After upserts, the run records non-sensitive `resultsPersistedAt` and `expectedF
 metadata before the terminal completion update. This marker explicitly represents successful
 provider output even when the expected finding count is zero. If completion persistence fails,
 the next worker attempt counts the tenant-scoped findings and retries only the `COMPLETED`
-transition without calling OpenAI again. A marker/count mismatch fails closed as
+transition without calling the provider again. A marker/count mismatch fails closed as
 `VALIDATION_RESULT_PERSISTENCE_AMBIGUOUS`. Findings without a marker are also treated as ambiguous
 instead of silently reporting success. If zero findings were written but the marker write itself
 failed, there is no durable evidence that the provider completed; a bounded retry may invoke the
@@ -379,6 +395,8 @@ AI_VALIDATION_ENABLED=false
 AI_PROVIDER=fake
 OPENAI_API_KEY=
 OPENAI_MODEL=
+GEMINI_API_KEY=
+GEMINI_MODEL=gemini-3.5-flash
 AI_TIMEOUT_MS=60000
 AI_MAX_RETRIES=2
 AI_MAX_FILES=50
@@ -388,9 +406,10 @@ AI_MAX_FINDINGS=50
 AI_PROMPT_VERSION=semantic-cobol-java-v1
 ```
 
-`OPENAI_API_KEY` and `OPENAI_MODEL` are required only when AI validation is enabled with the
-OpenAI provider. Character limits are literal character counts, not exact token counts or token
-estimates.
+`OPENAI_API_KEY` and `OPENAI_MODEL` are required only when AI validation is enabled with the OpenAI
+provider. `GEMINI_API_KEY` and `GEMINI_MODEL` are required only when it is enabled with Gemini. The
+unselected provider's credentials may remain empty. Character limits are literal character counts,
+not exact token counts or token estimates.
 
 ## Conceptual Flow
 
