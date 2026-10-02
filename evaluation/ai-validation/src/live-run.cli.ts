@@ -1,11 +1,10 @@
 import { mkdirSync, writeFileSync } from 'fs';
 import { resolve } from 'path';
-import { ConfigService } from '@nestjs/config';
 import { PrepareAiValidationContextService } from '../../../src/modules/validation/application/prepare-ai-validation-context.service';
 import { ValidationSecretRedactorService } from '../../../src/modules/validation/application/validation-secret-redactor.service';
-import { OpenAiValidatorAdapter } from '../../../src/modules/validation/infrastructure/openai-ai-validator.adapter';
 import { readJson } from './evaluation.io';
 import { assertLiveProviderOptIn, runLiveBenchmark, selectLiveCases } from './live-runner';
+import { createLiveValidator } from './live-validator.factory';
 import { validateDataset } from './evaluation.validator';
 
 interface LiveCliArguments {
@@ -28,18 +27,7 @@ async function main(): Promise<void> {
     limit: args.limit,
     all: args.all,
   });
-  const config = new ConfigService({
-    OPENAI_API_KEY: requiredEnvironment('OPENAI_API_KEY'),
-    OPENAI_MODEL: requiredEnvironment('OPENAI_MODEL'),
-    AI_PROMPT_VERSION: process.env.AI_PROMPT_VERSION ?? 'semantic-cobol-java-v1',
-    AI_TIMEOUT_MS: environmentInteger('AI_TIMEOUT_MS', 60_000),
-    AI_MAX_RETRIES: environmentInteger('AI_MAX_RETRIES', 2),
-    AI_MAX_FINDINGS: environmentInteger('AI_MAX_FINDINGS', 50),
-    AI_MAX_FILES: environmentInteger('AI_MAX_FILES', 50),
-    AI_MAX_FILE_CHARS: environmentInteger('AI_MAX_FILE_CHARS', 200_000),
-    AI_MAX_TOTAL_CHARS: environmentInteger('AI_MAX_TOTAL_CHARS', 500_000),
-  });
-  const validator = new OpenAiValidatorAdapter(config);
+  const { config, validator } = createLiveValidator(process.env);
   const prepareContext = new PrepareAiValidationContextService(
     new ValidationSecretRedactorService(),
     config,
@@ -86,21 +74,6 @@ function parseLiveArguments(values: string[]): LiveCliArguments {
 function nextValue(values: string[], index: number, flag: string): string {
   const value = values[index];
   if (!value || value.startsWith('--')) throw new Error(`Missing value for ${flag}`);
-  return value;
-}
-
-function requiredEnvironment(name: string): string {
-  const value = process.env[name];
-  if (!value) throw new Error(`${name} is required for live evaluation`);
-  return value;
-}
-
-function environmentInteger(name: string, fallback: number): number {
-  const raw = process.env[name];
-  if (raw === undefined) return fallback;
-  const value = Number(raw);
-  if (!Number.isInteger(value) || value < 0)
-    throw new Error(`${name} must be a non-negative integer`);
   return value;
 }
 
