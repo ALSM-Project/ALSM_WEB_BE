@@ -109,8 +109,9 @@ provider-generated findings are local run artifacts.
 ## Manual live-provider runner
 
 Live execution is optional, manual, synthetic-only, and can incur provider cost. It reuses
-`PrepareAiValidationContextService`, secret redaction/limits, `AiValidatorPort`, and
-`OpenAiValidatorAdapter`; it never creates validation runs/findings and never uses MongoDB or BullMQ.
+`PrepareAiValidationContextService`, secret redaction/limits, and `AiValidatorPort`, selecting either
+`OpenAiValidatorAdapter` or `GeminiAiValidatorAdapter`; it never creates validation runs/findings and
+never uses MongoDB or BullMQ.
 It records only prediction metadata and findings, not fixture source.
 
 Both opt-ins are mandatory:
@@ -124,7 +125,17 @@ npm run eval:ai:run -- -- `
   --allow-live-provider
 ```
 
-`OPENAI_API_KEY` and `OPENAI_MODEL` must also be present. Use exactly one scope option:
+Set `AI_PROVIDER=openai` with `OPENAI_API_KEY` and `OPENAI_MODEL`, or
+`AI_PROVIDER=gemini` with `GEMINI_API_KEY` and `GEMINI_MODEL`. For example, Gemini configuration is:
+
+```powershell
+$env:AI_PROVIDER = 'gemini'
+$env:GEMINI_API_KEY = '<set-locally>'
+$env:GEMINI_MODEL = 'gemini-3.5-flash'
+$env:AI_EVAL_ALLOW_LIVE_PROVIDER = 'true'
+```
+
+Do not execute a live run without both opt-ins. Use exactly one scope option:
 `--case <caseId>`, `--limit <N>`, or explicit `--all`. There is no implicit full-dataset run.
 Provider/context/structured-output failures receive distinct failure statuses and execution continues;
 add `--fail-fast` to stop after the first failure. LLM output may vary because the provider exposes
@@ -132,13 +143,20 @@ no deterministic guarantee for this workflow.
 
 Automated install, lint, test, build, and e2e commands never execute this runner. Unit tests inject a
 mock validator and perform no network call. `AI_VALIDATION_ENABLED=true` is not live-evaluation
-consent and cannot replace either Phase 6 opt-in.
+consent and cannot replace either Phase 6 opt-in. Live mode does not default to OpenAI: an explicit
+`AI_PROVIDER=openai` or `AI_PROVIDER=gemini` and that provider's credentials are required.
 
 ## Privacy, limitations, and comparisons
 
 Reports exclude full COBOL and Java source. Keep result directories local and review findings before
 sharing because model text can still repeat fragments of submitted synthetic fixtures. Never replace
 this dataset with customer source without a separately approved privacy and data-handling process.
+
+Gemini Developer API free-tier requests may be subject to Google's free-tier data-use terms. Synthetic
+Phase 6 benchmark data is appropriate for initial engineering evaluation. Do not send customer source
+code to Gemini free tier merely because this adapter exists. Production/customer use requires the
+team's explicit provider and privacy decision and appropriate provider account/data terms. This is an
+engineering data-handling warning, not legal approval.
 
 This benchmark is small and synthetic, labels have subjective elements, location tolerance trades
 strictness for robustness, and model results can be nondeterministic. Similar programming patterns
