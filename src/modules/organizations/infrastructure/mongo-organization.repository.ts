@@ -3,6 +3,7 @@ import { InjectModel } from '@nestjs/mongoose';
 import { Model } from 'mongoose';
 import { Organization, OrganizationDocument } from './organization.schema';
 import { OrganizationRecord, OrganizationRepository } from '../domain/organization.repository';
+import { OrganizationRole } from '../domain/organization.types';
 import { toValidObjectId } from '../../../shared/utils/object-id.util';
 
 @Injectable()
@@ -66,6 +67,17 @@ export class MongoOrganizationRepository implements OrganizationRepository {
       });
     }
     return this.map(doc);
+  }
+
+  async addMember(organizationId: string, member: { userId: string; role: OrganizationRole }): Promise<void> {
+    const orgObjId = toValidObjectId(organizationId);
+    const userObjId = toValidObjectId(member.userId);
+    await this.model
+      .updateOne(
+        { _id: orgObjId, 'members.userId': { $ne: userObjId } },
+        { $push: { members: { userId: userObjId, role: member.role } } },
+      )
+      .exec();
   }
 
   private map(doc: OrganizationDocument): OrganizationRecord {
