@@ -120,6 +120,9 @@ import { MongoPartnerRepository } from './modules/partners/infrastructure/mongo-
 import { CreatePartnerService } from './modules/partners/application/create-partner.service';
 import { ListPartnersService } from './modules/partners/application/list-partners.service';
 import { PartnerController } from './modules/partners/presentation/partner.controller';
+import { OnboardUserService } from './modules/users/application/onboard-user.service';
+import { UpdateUserStatusService } from './modules/users/application/update-user-status.service';
+import { UsersController } from './modules/users/presentation/users.controller';
 import { AuthService } from './modules/auth/application/auth.service';
 import { ListActiveSessionsService } from './modules/auth/application/list-active-sessions.service';
 import { RevokeSessionService } from './modules/auth/application/revoke-session.service';
@@ -242,6 +245,7 @@ import { QualityReviewController } from './modules/conversions/presentation/qual
     FieldMappingController,
     MethodMappingController,
     PartnerController,
+    UsersController,
     ExportController,
     ErrorLogController,
     ValidationController,
@@ -283,6 +287,8 @@ import { QualityReviewController } from './modules/conversions/presentation/qual
     SaveMethodMappingService,
     CreatePartnerService,
     ListPartnersService,
+    OnboardUserService,
+    UpdateUserStatusService,
     RuleValidatorService,
     ExportCodeService,
     ErrorLogService,
