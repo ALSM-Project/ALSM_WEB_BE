@@ -5,16 +5,22 @@ import { OrganizationRepository } from '../src/modules/organizations/domain/orga
 import { AuditRepository } from '../src/modules/audit/domain/audit.repository';
 import { OrganizationContextService } from '../src/modules/organizations/application/organization-context.service';
 import { RbacService } from '../src/modules/rbac/application/rbac.service';
+import { EmailPort } from '../src/modules/auth/domain/email.port';
+import { PasswordResetRepository } from '../src/modules/auth/domain/password-reset.repository';
 
 describe('OnboardUserService (UC-82)', () => {
+  let config: { get: jest.Mock };
   let users: jest.Mocked<UserRepository>;
   let organizations: jest.Mocked<OrganizationRepository>;
   let audit: jest.Mocked<AuditRepository>;
+  let email: jest.Mocked<EmailPort>;
+  let passwordResets: jest.Mocked<PasswordResetRepository>;
   let organizationContext: jest.Mocked<OrganizationContextService>;
   let rbacService: jest.Mocked<Pick<RbacService, 'getRoleById' | 'updateUserRoles'>>;
   let service: OnboardUserService;
 
   beforeEach(() => {
+    config = { get: jest.fn().mockReturnValue('http://localhost:3002') };
     users = {
       findByEmail: jest.fn(),
       findById: jest.fn(),
@@ -26,6 +32,8 @@ describe('OnboardUserService (UC-82)', () => {
     } as unknown as jest.Mocked<OrganizationRepository>;
 
     audit = { append: jest.fn() } as unknown as jest.Mocked<AuditRepository>;
+    email = { send: jest.fn() } as unknown as jest.Mocked<EmailPort>;
+    passwordResets = { create: jest.fn() } as unknown as jest.Mocked<PasswordResetRepository>;
 
     organizationContext = {
       resolve: jest.fn(),
@@ -37,9 +45,12 @@ describe('OnboardUserService (UC-82)', () => {
     };
 
     service = new OnboardUserService(
+      config as never,
       users,
       organizations,
       audit,
+      email,
+      passwordResets,
       organizationContext,
       rbacService as never,
     );
@@ -49,7 +60,6 @@ describe('OnboardUserService (UC-82)', () => {
     email: 'staff@acmecorp.com',
     fullName: 'New Staff',
     role: 'TEAM_LEAD',
-    temporaryPassword: 'TmpPass123!',
     actorUserId: 'admin-1',
   };
 
@@ -68,18 +78,18 @@ describe('OnboardUserService (UC-82)', () => {
     expect(users.create).not.toHaveBeenCalled();
   });
 
-  it('creates a staff account, assigns role and org membership, and audits', async () => {
+  it('creates a staff account, assigns role/org, sends invite email, and audits', async () => {
     users.findByEmail.mockResolvedValue(null);
     users.create.mockResolvedValue({
       id: 'user-1',
       email: 'staff@acmecorp.com',
       fullName: 'New Staff',
-      mustChangePassword: true,
     } as never);
     rbacService.getRoleById.mockResolvedValue({ id: 'TEAM_LEAD' } as never);
     rbacService.updateUserRoles.mockResolvedValue([]);
     organizationContext.resolve.mockResolvedValue({ id: 'org-1' } as never);
     organizations.addMember.mockResolvedValue(undefined);
+    passwordResets.create.mockResolvedValue({ id: 'reset-1' } as never);
 
     const result = await service.execute(baseInput);
 
@@ -87,8 +97,7 @@ describe('OnboardUserService (UC-82)', () => {
       expect.objectContaining({
         email: 'staff@acmecorp.com',
         isActive: true,
-        isEmailVerified: true,
-        mustChangePassword: true,
+        isEmailVerified: false,
       }),
     );
     expect(rbacService.updateUserRoles).toHaveBeenCalledWith('user-1', ['TEAM_LEAD']);
@@ -96,6 +105,10 @@ describe('OnboardUserService (UC-82)', () => {
       userId: 'user-1',
       role: 'MEMBER',
     });
+    expect(passwordResets.create).toHaveBeenCalled();
+    expect(email.send).toHaveBeenCalledWith(
+      expect.objectContaining({ to: 'staff@acmecorp.com' }),
+    );
     expect(audit.append).toHaveBeenCalledWith(
       expect.objectContaining({ action: 'USER_ONBOARDED', resourceId: 'user-1' }),
     );
@@ -109,6 +122,6 @@ describe('OnboardUserService (UC-82)', () => {
 
     await expect(service.execute(baseInput)).rejects.toThrow('storage unavailable');
     expect(audit.append).not.toHaveBeenCalled();
-    expect(organizations.addMember).not.toHaveBeenCalled();
+    expect(email.send).not.toHaveBeenCalled();
   });
 });
