@@ -9,6 +9,7 @@ import { MenuItem, MenuItemSchema } from '../menus/infrastructure/schemas/menu-i
 import { MenuItemPermission, MenuItemPermissionSchema } from '../menus/infrastructure/schemas/menu-item-permission.schema';
 import { RbacService } from './application/rbac.service';
 import { EffectivePermissionsService } from './application/effective-permissions.service';
+import { RbacSeedService } from './application/rbac-seed.service';
 import { RbacController } from './presentation/rbac.controller';
 import { RBAC_REPOSITORY } from './domain/rbac.repository.interface';
 import { MongoRbacRepository } from './infrastructure/persistence/mongo-rbac.repository';
@@ -34,6 +35,7 @@ import { MongoRbacRepository } from './infrastructure/persistence/mongo-rbac.rep
     },
     RbacService,
     EffectivePermissionsService,
+    RbacSeedService,
   ],
   exports: [RBAC_REPOSITORY, RbacService, EffectivePermissionsService],
 })
