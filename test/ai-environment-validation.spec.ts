@@ -54,7 +54,10 @@ describe('AI environment validation', () => {
     [{ GEMINI_API_KEY: 'synthetic-key', GEMINI_MODEL: '' }, true],
   ])('conditionally validates enabled Gemini configuration', (gemini, invalid) => {
     const result = environmentValidationSchema.validate({
-      ...requiredEnvironment, AI_VALIDATION_ENABLED: true, AI_PROVIDER: 'gemini', ...gemini,
+      ...requiredEnvironment,
+      AI_VALIDATION_ENABLED: true,
+      AI_PROVIDER: 'gemini',
+      ...gemini,
     });
     expect(Boolean(result.error)).toBe(invalid);
     if (!invalid) {
@@ -68,19 +71,32 @@ describe('AI environment validation', () => {
       { OPENAI_API_KEY: '', OPENAI_MODEL: 'test-model' },
       { OPENAI_API_KEY: 'synthetic-key', OPENAI_MODEL: '' },
     ]) {
-      expect(environmentValidationSchema.validate({
-        ...requiredEnvironment, AI_VALIDATION_ENABLED: true, AI_PROVIDER: 'openai', ...values,
-      }).error).toBeDefined();
+      expect(
+        environmentValidationSchema.validate({
+          ...requiredEnvironment,
+          AI_VALIDATION_ENABLED: true,
+          AI_PROVIDER: 'openai',
+          ...values,
+        }).error,
+      ).toBeDefined();
     }
   });
 
   it('rejects unsupported providers and accepts disabled real-provider config without credentials', () => {
-    expect(environmentValidationSchema.validate({
-      ...requiredEnvironment, AI_VALIDATION_ENABLED: true, AI_PROVIDER: 'other',
-    }).error).toBeDefined();
-    expect(environmentValidationSchema.validate({
-      ...requiredEnvironment, AI_VALIDATION_ENABLED: false, AI_PROVIDER: 'gemini',
-    }).error).toBeUndefined();
+    expect(
+      environmentValidationSchema.validate({
+        ...requiredEnvironment,
+        AI_VALIDATION_ENABLED: true,
+        AI_PROVIDER: 'other',
+      }).error,
+    ).toBeDefined();
+    expect(
+      environmentValidationSchema.validate({
+        ...requiredEnvironment,
+        AI_VALIDATION_ENABLED: false,
+        AI_PROVIDER: 'gemini',
+      }).error,
+    ).toBeUndefined();
   });
 
   it('applies bounded validation queue defaults without requiring the worker', () => {

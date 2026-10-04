@@ -3,10 +3,16 @@ import { MongooseModule } from '@nestjs/mongoose';
 import { Role, RoleSchema } from './infrastructure/schemas/role.schema';
 import { Permission, PermissionSchema } from './infrastructure/schemas/permission.schema';
 import { UserRole, UserRoleSchema } from './infrastructure/schemas/user-role.schema';
-import { RolePermission, RolePermissionSchema } from './infrastructure/schemas/role-permission.schema';
+import {
+  RolePermission,
+  RolePermissionSchema,
+} from './infrastructure/schemas/role-permission.schema';
 import { User, UserSchema } from '../users/infrastructure/user.schema';
 import { MenuItem, MenuItemSchema } from '../menus/infrastructure/schemas/menu-item.schema';
-import { MenuItemPermission, MenuItemPermissionSchema } from '../menus/infrastructure/schemas/menu-item-permission.schema';
+import {
+  MenuItemPermission,
+  MenuItemPermissionSchema,
+} from '../menus/infrastructure/schemas/menu-item-permission.schema';
 import { RbacService } from './application/rbac.service';
 import { EffectivePermissionsService } from './application/effective-permissions.service';
 import { RbacSeedService } from './application/rbac-seed.service';

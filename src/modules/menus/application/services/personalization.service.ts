@@ -20,7 +20,10 @@ export class MenuPersonalizationService {
   /**
    * Lấy menu đã được cá nhân hóa cho user
    */
-  async getPersonalizedMenu(role: string, userId: string): Promise<{
+  async getPersonalizedMenu(
+    role: string,
+    userId: string,
+  ): Promise<{
     pinnedItems: IMenuItem[];
     recentItems: IMenuItem[];
     suggestedItems: IMenuItem[];
@@ -70,7 +73,7 @@ export class MenuPersonalizationService {
    */
   async unpinMenuItem(userId: string, itemId: string): Promise<void> {
     const preferences = await this.getUserPreferences(userId);
-    preferences.pinnedMenuItemIds = preferences.pinnedMenuItemIds.filter(id => id !== itemId);
+    preferences.pinnedMenuItemIds = preferences.pinnedMenuItemIds.filter((id) => id !== itemId);
     await this.saveUserPreferences(userId, preferences);
   }
 
@@ -83,7 +86,7 @@ export class MenuPersonalizationService {
     // Cập nhật recent items
     preferences.recentMenuItemIds = [
       itemId,
-      ...preferences.recentMenuItemIds.filter(id => id !== itemId),
+      ...preferences.recentMenuItemIds.filter((id) => id !== itemId),
     ].slice(0, 10);
 
     // Tăng usage count
@@ -100,7 +103,7 @@ export class MenuPersonalizationService {
     const pinned: IMenuItem[] = [];
     const itemsMap = this.buildItemsMap(allItems);
 
-    pinnedIds.forEach(id => {
+    pinnedIds.forEach((id) => {
       if (itemsMap.has(id)) {
         pinned.push({ ...itemsMap.get(id)!, isPinned: true });
       }
@@ -115,7 +118,7 @@ export class MenuPersonalizationService {
   private getRecentItems(allItems: IMenuItem[], recentIds: string[]): IMenuItem[] {
     const itemsMap = this.buildItemsMap(allItems);
     return recentIds
-      .map(id => itemsMap.get(id))
+      .map((id) => itemsMap.get(id))
       .filter((item): item is IMenuItem => item !== undefined);
   }
 
@@ -124,13 +127,13 @@ export class MenuPersonalizationService {
    */
   private getSuggestedItems(allItems: IMenuItem[], preferences: UserPreferencesProps): IMenuItem[] {
     const itemsWithUsage = allItems
-      .filter(item => {
+      .filter((item) => {
         return (
           !preferences.recentMenuItemIds.includes(item.id) &&
           !preferences.pinnedMenuItemIds.includes(item.id)
         );
       })
-      .map(item => ({
+      .map((item) => ({
         ...item,
         usageScore: preferences.menuItemUsageCount[item.id] || 0,
       }))
@@ -145,8 +148,8 @@ export class MenuPersonalizationService {
    */
   private applyPersonalization(items: IMenuItem[], preferences: UserPreferencesProps): IMenuItem[] {
     return items
-      .filter(item => !preferences.hiddenMenuItemIds.includes(item.id))
-      .map(item => {
+      .filter((item) => !preferences.hiddenMenuItemIds.includes(item.id))
+      .map((item) => {
         const isPinned = preferences.pinnedMenuItemIds.includes(item.id);
         const usageCount = preferences.menuItemUsageCount[item.id] || 0;
         const lastUsedAt = preferences.menuItemLastUsed[item.id];
@@ -168,7 +171,7 @@ export class MenuPersonalizationService {
   private buildItemsMap(items: IMenuItem[]): Map<string, IMenuItem> {
     const map = new Map<string, IMenuItem>();
     const traverse = (itemList: IMenuItem[]) => {
-      itemList.forEach(item => {
+      itemList.forEach((item) => {
         map.set(item.id, item);
         if (item.children) {
           traverse(item.children);
@@ -196,7 +199,10 @@ export class MenuPersonalizationService {
     };
   }
 
-  public async saveUserPreferences(userId: string, preferences: UserPreferencesProps): Promise<void> {
+  public async saveUserPreferences(
+    userId: string,
+    preferences: UserPreferencesProps,
+  ): Promise<void> {
     await this.userPreferencesRepository.save(userId, preferences);
   }
 

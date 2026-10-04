@@ -17,4 +17,3 @@ export class UserSession {
 }
 export const UserSessionSchema = SchemaFactory.createForClass(UserSession);
 UserSessionSchema.index({ userId: 1, revokedAt: 1, expiresAt: 1, createdAt: -1 });
-

@@ -37,9 +37,7 @@ describe('MfaSecurityService', () => {
       accountLabel: 'customer@example.com',
     });
     expect(secondMaterial.encryptedSecret).not.toBe(material.encryptedSecret);
-    await expect(
-      service.verifyEncryptedSecret(material.encryptedSecret, code),
-    ).resolves.toBe(true);
+    await expect(service.verifyEncryptedSecret(material.encryptedSecret, code)).resolves.toBe(true);
     jest.restoreAllMocks();
   });
 
@@ -54,9 +52,7 @@ describe('MfaSecurityService', () => {
 
     expect(backupCodes.plaintextCodes).toHaveLength(8);
     expect(backupCodes.hashes).toHaveLength(8);
-    expect(
-      backupCodes.plaintextCodes.every((code) => /^[A-Za-z0-9]{10}$/.test(code)),
-    ).toBe(true);
+    expect(backupCodes.plaintextCodes.every((code) => /^[A-Za-z0-9]{10}$/.test(code))).toBe(true);
     expect(backupCodes.hashes).not.toEqual(backupCodes.plaintextCodes);
     await expect(
       bcrypt.compare(backupCodes.plaintextCodes[0], backupCodes.hashes[0]),

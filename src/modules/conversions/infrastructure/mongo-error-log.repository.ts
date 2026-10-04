@@ -25,12 +25,20 @@ export class MongoErrorLogRepository implements ErrorLogRepository {
     return this.map(doc);
   }
 
-  async findById(id: string, projectId: string, organizationId: string): Promise<ErrorLogRecord | null> {
+  async findById(
+    id: string,
+    projectId: string,
+    organizationId: string,
+  ): Promise<ErrorLogRecord | null> {
     const doc = await this.model.findOne({ _id: id, projectId, organizationId }).exec();
     return doc ? this.map(doc) : null;
   }
 
-  async list(projectId: string, organizationId: string, query: ErrorLogListQuery): Promise<PaginatedErrorLogs> {
+  async list(
+    projectId: string,
+    organizationId: string,
+    query: ErrorLogListQuery,
+  ): Promise<PaginatedErrorLogs> {
     const page = Math.max(1, query.page ?? 1);
     const limit = Math.min(100, Math.max(1, query.limit ?? 20));
     const skip = (page - 1) * limit;
@@ -59,7 +67,12 @@ export class MongoErrorLogRepository implements ErrorLogRepository {
     };
   }
 
-  async resolve(id: string, projectId: string, organizationId: string, userId: string): Promise<ErrorLogRecord | null> {
+  async resolve(
+    id: string,
+    projectId: string,
+    organizationId: string,
+    userId: string,
+  ): Promise<ErrorLogRecord | null> {
     const doc = await this.model
       .findOneAndUpdate(
         { _id: id, projectId, organizationId, status: { $ne: ErrorLogStatus.RESOLVED } },
@@ -76,7 +89,11 @@ export class MongoErrorLogRepository implements ErrorLogRepository {
     return doc ? this.map(doc) : null;
   }
 
-  async ignore(id: string, projectId: string, organizationId: string): Promise<ErrorLogRecord | null> {
+  async ignore(
+    id: string,
+    projectId: string,
+    organizationId: string,
+  ): Promise<ErrorLogRecord | null> {
     const doc = await this.model
       .findOneAndUpdate(
         { _id: id, projectId, organizationId, status: ErrorLogStatus.UNRESOLVED },
@@ -96,7 +113,15 @@ export class MongoErrorLogRepository implements ErrorLogRepository {
       ])
       .exec();
 
-    const summary: ErrorLogSummary = { total: 0, fatal: 0, error: 0, warning: 0, resolved: 0, unresolved: 0, ignored: 0 };
+    const summary: ErrorLogSummary = {
+      total: 0,
+      fatal: 0,
+      error: 0,
+      warning: 0,
+      resolved: 0,
+      unresolved: 0,
+      ignored: 0,
+    };
 
     for (const r of results) {
       summary.total += r.count;

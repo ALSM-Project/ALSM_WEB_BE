@@ -15,10 +15,7 @@ const candidatesPath = resolve(
   root,
   'evaluation/ai-validation/imports/cobol-javatrans/candidates.json',
 );
-const pilotDirectory = resolve(
-  root,
-  'evaluation/ai-validation/reviews/cobol-javatrans-pilot-v1',
-);
+const pilotDirectory = resolve(root, 'evaluation/ai-validation/reviews/cobol-javatrans-pilot-v1');
 const selectionPath = resolve(pilotDirectory, 'selection.json');
 
 function main(): void {
@@ -33,10 +30,22 @@ function main(): void {
   );
   mkdirSync(pilotDirectory, { recursive: true });
   writeJson(selectionPath, selection);
-  writeJson(resolve(pilotDirectory, 'reviewer-a.template.json'), createReviewTemplate(selection, 'A'));
-  writeJson(resolve(pilotDirectory, 'reviewer-b.template.json'), createReviewTemplate(selection, 'B'));
-  writeJson(resolve(pilotDirectory, 'finalization.template.json'), createFinalizationTemplate(selection));
-  writeFileSync(resolve(pilotDirectory, 'pilot-summary.md'), renderPilotSummary(selection, candidates));
+  writeJson(
+    resolve(pilotDirectory, 'reviewer-a.template.json'),
+    createReviewTemplate(selection, 'A'),
+  );
+  writeJson(
+    resolve(pilotDirectory, 'reviewer-b.template.json'),
+    createReviewTemplate(selection, 'B'),
+  );
+  writeJson(
+    resolve(pilotDirectory, 'finalization.template.json'),
+    createFinalizationTemplate(selection),
+  );
+  writeFileSync(
+    resolve(pilotDirectory, 'pilot-summary.md'),
+    renderPilotSummary(selection, candidates),
+  );
   process.stdout.write(
     `Prepared ${selection.selectedCandidates.length} pilot cases from ${selection.eligibleCandidateCount} eligible candidates (SMALL=5, MEDIUM=5, LARGE=5).\n`,
   );
@@ -45,7 +54,9 @@ function main(): void {
 function readExistingSelectionTime(): string | undefined {
   if (!existsSync(selectionPath)) return undefined;
   try {
-    const existing = JSON.parse(readFileSync(selectionPath, 'utf8')) as Partial<PilotSelectionManifest>;
+    const existing = JSON.parse(
+      readFileSync(selectionPath, 'utf8'),
+    ) as Partial<PilotSelectionManifest>;
     return typeof existing.selectedAt === 'string' ? existing.selectedAt : undefined;
   } catch {
     return undefined;

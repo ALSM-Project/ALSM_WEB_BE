@@ -1,15 +1,8 @@
-import {
-  BadRequestException,
-  ConflictException,
-  UnauthorizedException,
-} from '@nestjs/common';
+import { BadRequestException, ConflictException, UnauthorizedException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { ConfirmMfaSetupService } from '../src/modules/auth/application/confirm-mfa-setup.service';
 import { StartMfaSetupService } from '../src/modules/auth/application/start-mfa-setup.service';
-import {
-  MfaState,
-  UserRecord,
-} from '../src/modules/users/domain/user.repository';
+import { MfaState, UserRecord } from '../src/modules/users/domain/user.repository';
 
 const pendingMfa: MfaState = {
   enabled: false,
@@ -106,17 +99,15 @@ describe('MFA enrollment application services', () => {
     const hashes = plaintextCodes.map((_, index) => `hash-${index}`);
     security.verifyEncryptedSecret.mockResolvedValue(true);
     security.createBackupCodes.mockResolvedValue({ plaintextCodes, hashes });
-    users.completeMfaSetup.mockResolvedValue(user({ ...pendingMfa, enabled: true, backupCodeHashes: hashes }));
+    users.completeMfaSetup.mockResolvedValue(
+      user({ ...pendingMfa, enabled: true, backupCodeHashes: hashes }),
+    );
 
     await expect(confirm.execute('user-1', '123456')).resolves.toEqual({
       enabled: true,
       backupCodes: plaintextCodes,
     });
-    expect(users.completeMfaSetup).toHaveBeenCalledWith(
-      'user-1',
-      pendingMfa.secret,
-      hashes,
-    );
+    expect(users.completeMfaSetup).toHaveBeenCalledWith('user-1', pendingMfa.secret, hashes);
     expect(JSON.stringify(users.completeMfaSetup.mock.calls[0][2])).not.toContain(
       plaintextCodes[0],
     );
@@ -128,14 +119,8 @@ describe('MFA enrollment application services', () => {
     security.verifyEncryptedSecret.mockResolvedValue(false);
     users.recordMfaSetupFailure.mockResolvedValue({ reset: false });
 
-    await expect(confirm.execute('user-1', '000000')).rejects.toBeInstanceOf(
-      BadRequestException,
-    );
-    expect(users.recordMfaSetupFailure).toHaveBeenCalledWith(
-      'user-1',
-      pendingMfa.secret,
-      5,
-    );
+    await expect(confirm.execute('user-1', '000000')).rejects.toBeInstanceOf(BadRequestException);
+    expect(users.recordMfaSetupFailure).toHaveBeenCalledWith('user-1', pendingMfa.secret, 5);
     expect(users.completeMfaSetup).not.toHaveBeenCalled();
   });
 
@@ -163,8 +148,6 @@ describe('MFA enrollment application services', () => {
     });
     users.completeMfaSetup.mockResolvedValue(null);
 
-    await expect(confirm.execute('user-1', '123456')).rejects.toBeInstanceOf(
-      ConflictException,
-    );
+    await expect(confirm.execute('user-1', '123456')).rejects.toBeInstanceOf(ConflictException);
   });
 });

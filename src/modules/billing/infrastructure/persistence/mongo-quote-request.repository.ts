@@ -74,9 +74,7 @@ export class MongoQuoteRequestRepository implements IQuoteRequestRepository {
   }
 
   async updateStatus(id: string, status: QuoteRequestStatus): Promise<QuoteRequestProps | null> {
-    const doc = await this.model
-      .findByIdAndUpdate(id, { status }, { new: true })
-      .exec();
+    const doc = await this.model.findByIdAndUpdate(id, { status }, { new: true }).exec();
 
     return doc ? QuoteRequestMapper.toDomain(doc) : null;
   }

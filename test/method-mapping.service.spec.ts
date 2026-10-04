@@ -2,7 +2,10 @@ import { BadRequestException, NotFoundException } from '@nestjs/common';
 import { GetMethodMappingService } from '../src/modules/conversions/application/get-method-mapping.service';
 import { SaveMethodMappingService } from '../src/modules/conversions/application/save-method-mapping.service';
 import { MethodMappingRepository } from '../src/modules/conversions/domain/method-mapping.types';
-import { ConversionJobRepository, ConversionJobStatus } from '../src/modules/conversions/domain/conversion-job.types';
+import {
+  ConversionJobRepository,
+  ConversionJobStatus,
+} from '../src/modules/conversions/domain/conversion-job.types';
 import { StoragePort } from '../src/shared/storage/storage.port';
 import { OrganizationContextService } from '../src/modules/organizations/application/organization-context.service';
 import { OrganizationAuthorizationService } from '../src/modules/organizations/application/organization-authorization.service';
@@ -92,10 +95,13 @@ describe('Method mapping (UC-28)', () => {
       expect(storage.readFiles).not.toHaveBeenCalled();
     });
 
-    it('detects real class/method names from the latest completed job\'s generated code', async () => {
+    it("detects real class/method names from the latest completed job's generated code", async () => {
       jobs.listByScreen.mockResolvedValue([completedJob]);
       storage.readFiles.mockResolvedValue([
-        { relativePath: 'cobolprogramclasses/cbact01c/Cbact01cTasklet.java', content: Buffer.from(generatedJavaContent) },
+        {
+          relativePath: 'cobolprogramclasses/cbact01c/Cbact01cTasklet.java',
+          content: Buffer.from(generatedJavaContent),
+        },
       ]);
       methodMappings.findByScreen.mockResolvedValue(null);
 
@@ -126,7 +132,10 @@ describe('Method mapping (UC-28)', () => {
     it('merges in a previously saved override instead of showing the original name', async () => {
       jobs.listByScreen.mockResolvedValue([completedJob]);
       storage.readFiles.mockResolvedValue([
-        { relativePath: 'cobolprogramclasses/cbact01c/Cbact01cTasklet.java', content: Buffer.from(generatedJavaContent) },
+        {
+          relativePath: 'cobolprogramclasses/cbact01c/Cbact01cTasklet.java',
+          content: Buffer.from(generatedJavaContent),
+        },
       ]);
       methodMappings.findByScreen.mockResolvedValue({
         id: 'mm-1',
@@ -158,10 +167,17 @@ describe('Method mapping (UC-28)', () => {
     });
 
     it('does not resolve a project from another organization', async () => {
-      projects.getForOrganization.mockRejectedValue(new NotFoundException({ code: 'PROJECT_NOT_FOUND' }));
+      projects.getForOrganization.mockRejectedValue(
+        new NotFoundException({ code: 'PROJECT_NOT_FOUND' }),
+      );
 
       await expect(
-        getService.execute({ userId: 'user-a', organizationHeader: 'org-a', projectId: 'project-b', screenId: 'scr-1' }),
+        getService.execute({
+          userId: 'user-a',
+          organizationHeader: 'org-a',
+          projectId: 'project-b',
+          screenId: 'scr-1',
+        }),
       ).rejects.toBeInstanceOf(NotFoundException);
       expect(jobs.listByScreen).not.toHaveBeenCalled();
     });
@@ -247,7 +263,11 @@ describe('Method mapping (UC-28)', () => {
       });
 
       expect(methodMappings.upsert).toHaveBeenCalledWith(
-        expect.objectContaining({ organizationId: 'org-a', projectId: 'project-a', screenId: 'scr-cbact01c' }),
+        expect.objectContaining({
+          organizationId: 'org-a',
+          projectId: 'project-a',
+          screenId: 'scr-cbact01c',
+        }),
       );
       expect(audit.append).toHaveBeenCalledWith(
         expect.objectContaining({ action: 'METHOD_MAPPING_UPDATED', organizationId: 'org-a' }),
@@ -270,7 +290,10 @@ describe('Method mapping (UC-28)', () => {
       });
       jobs.listByScreen.mockResolvedValue([completedJob]);
       storage.readFiles.mockResolvedValue([
-        { relativePath: 'cobolprogramclasses/cbact01c/Cbact01cTasklet.java', content: Buffer.from(generatedJavaContent) },
+        {
+          relativePath: 'cobolprogramclasses/cbact01c/Cbact01cTasklet.java',
+          content: Buffer.from(generatedJavaContent),
+        },
       ]);
       storage.writeFiles.mockResolvedValue('results/project-a/job-1/v2');
 
@@ -291,10 +314,15 @@ describe('Method mapping (UC-28)', () => {
           }),
         ]),
       );
-      const writtenContent = (storage.writeFiles.mock.calls[0][1][0].content as Buffer).toString('utf8');
+      const writtenContent = (storage.writeFiles.mock.calls[0][1][0].content as Buffer).toString(
+        'utf8',
+      );
       expect(writtenContent).toContain('AccountLoaderTasklet');
       expect(writtenContent).not.toContain('Cbact01cTasklet');
-      expect(jobs.updateResultReference).toHaveBeenCalledWith('job-1', 'results/project-a/job-1/v2');
+      expect(jobs.updateResultReference).toHaveBeenCalledWith(
+        'job-1',
+        'results/project-a/job-1/v2',
+      );
     });
 
     it('does not touch generated code when no name actually changed', async () => {

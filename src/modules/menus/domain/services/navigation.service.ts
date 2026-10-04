@@ -10,14 +10,12 @@ export class NavigationService {
     secondaryNav: Record<string, IMenuItem[]>; // Key là module/context
   } {
     // Lọc theo level
-    const topNav = items.filter(
-      item => item.level === NavigationLevel.GLOBAL && item.isVisible,
-    );
+    const topNav = items.filter((item) => item.level === NavigationLevel.GLOBAL && item.isVisible);
     const sidebarNav = items.filter(
-      item => item.level === NavigationLevel.PRIMARY && item.isVisible,
+      (item) => item.level === NavigationLevel.PRIMARY && item.isVisible,
     );
     const secondaryNav = items.filter(
-      item => item.level === NavigationLevel.SECONDARY && item.isVisible,
+      (item) => item.level === NavigationLevel.SECONDARY && item.isVisible,
     );
 
     // Xây dựng cây cha-con
@@ -36,12 +34,12 @@ export class NavigationService {
     const roots: IMenuItem[] = [];
 
     // Tạo map
-    items.forEach(item => {
+    items.forEach((item) => {
       itemMap.set(item.id, { ...item, children: [] });
     });
 
     // Xây dựng cây
-    items.forEach(item => {
+    items.forEach((item) => {
       const node = itemMap.get(item.id)!;
       if (item.parentId && itemMap.has(item.parentId)) {
         const parent = itemMap.get(item.parentId)!;
@@ -62,7 +60,7 @@ export class NavigationService {
   static buildSecondaryNav(items: IMenuItem[]): Record<string, IMenuItem[]> {
     const result: Record<string, IMenuItem[]> = {};
 
-    items.forEach(item => {
+    items.forEach((item) => {
       const key = item.parentId || 'default';
       if (!result[key]) {
         result[key] = [];
@@ -71,7 +69,7 @@ export class NavigationService {
     });
 
     // Sắp xếp từng nhóm
-    Object.keys(result).forEach(key => {
+    Object.keys(result).forEach((key) => {
       result[key] = this.sortItems(result[key]);
     });
 
@@ -84,7 +82,7 @@ export class NavigationService {
   static sortItems(items: IMenuItem[]): IMenuItem[] {
     return items
       .sort((a, b) => (a.order || 0) - (b.order || 0))
-      .map(item => {
+      .map((item) => {
         if (item.children && item.children.length > 0) {
           return { ...item, children: this.sortItems(item.children) };
         }

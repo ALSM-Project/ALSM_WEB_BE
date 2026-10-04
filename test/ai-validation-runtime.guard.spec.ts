@@ -50,7 +50,10 @@ describe('AiValidationRuntimeGuard', () => {
   it.each(['openai', 'gemini'])('allows matching real provider metadata for %s', (provider) => {
     const metadata = { provider, model: 'test-model', promptVersion: 'semantic-cobol-java-v1' };
     validator.getMetadata.mockReturnValue(metadata);
-    const guard = new AiValidationRuntimeGuard(configuration(true, provider), validator as unknown as AiValidatorPort);
+    const guard = new AiValidationRuntimeGuard(
+      configuration(true, provider),
+      validator as unknown as AiValidatorPort,
+    );
     expect(guard.assertAvailable()).toEqual(metadata);
   });
 });

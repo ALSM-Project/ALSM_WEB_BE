@@ -16,17 +16,23 @@ describe('AI validator provider selection', () => {
   });
 
   it.each(['openai', 'gemini'])('selects fake with %s configured when disabled', (provider) => {
-    expect(selectAiValidator(configuration(false, provider), fakeAdapter, openAiAdapter, geminiAdapter)).toBe(fakeAdapter);
+    expect(
+      selectAiValidator(configuration(false, provider), fakeAdapter, openAiAdapter, geminiAdapter),
+    ).toBe(fakeAdapter);
   });
 
   it('selects OpenAI only when AI validation is enabled and OpenAI is configured', () => {
     const config = configuration(true, 'openai');
 
-    expect(selectAiValidator(config, fakeAdapter, openAiAdapter, geminiAdapter)).toBe(openAiAdapter);
+    expect(selectAiValidator(config, fakeAdapter, openAiAdapter, geminiAdapter)).toBe(
+      openAiAdapter,
+    );
   });
 
   it('selects Gemini only when enabled and Gemini is configured', () => {
-    expect(selectAiValidator(configuration(true, 'gemini'), fakeAdapter, openAiAdapter, geminiAdapter)).toBe(geminiAdapter);
+    expect(
+      selectAiValidator(configuration(true, 'gemini'), fakeAdapter, openAiAdapter, geminiAdapter),
+    ).toBe(geminiAdapter);
   });
 
   it('keeps the fake adapter when explicitly selected', () => {

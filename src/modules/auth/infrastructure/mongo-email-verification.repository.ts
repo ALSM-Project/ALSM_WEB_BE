@@ -1,7 +1,10 @@
 import { Injectable } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model, Types } from 'mongoose';
-import { EmailVerificationRecord, EmailVerificationRepository } from '../domain/email-verification.repository';
+import {
+  EmailVerificationRecord,
+  EmailVerificationRepository,
+} from '../domain/email-verification.repository';
 import { EmailVerification, EmailVerificationDocument } from './email-verification.schema';
 
 @Injectable()

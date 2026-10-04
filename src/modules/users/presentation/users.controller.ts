@@ -31,7 +31,10 @@ export class UsersController {
 
   @Post()
   @RequirePermissions('users.onboard')
-  @ApiOperation({ summary: 'Onboard an internal staff account', description: 'Requires users.onboard permission.' })
+  @ApiOperation({
+    summary: 'Onboard an internal staff account',
+    description: 'Requires users.onboard permission.',
+  })
   @ApiResponse({ status: 201, description: 'Staff account created' })
   @ApiResponse({ status: 409, description: 'Email already registered' })
   @ApiResponse({ status: 404, description: 'Role not found' })
@@ -48,7 +51,10 @@ export class UsersController {
 
   @Patch(':id/status')
   @RequirePermissions('users.manage')
-  @ApiOperation({ summary: 'Activate or deactivate a user', description: 'Requires users.manage permission.' })
+  @ApiOperation({
+    summary: 'Activate or deactivate a user',
+    description: 'Requires users.manage permission.',
+  })
   @ApiResponse({ status: 200, description: 'User status updated' })
   @ApiResponse({ status: 404, description: 'User not found' })
   async updateStatus(@Param('id') id: string, @Body() dto: UpdateUserStatusDto) {

@@ -182,7 +182,10 @@ import { MongoPlanRepository } from './modules/billing/infrastructure/persistenc
 import { MongoBankConfigRepository } from './modules/billing/infrastructure/persistence/mongo-bank-config.repository';
 import { MongoBillingUsageRepository } from './modules/billing/infrastructure/persistence/mongo-billing-usage.repository';
 import { MongoQuoteRequestRepository } from './modules/billing/infrastructure/persistence/mongo-quote-request.repository';
-import { QuoteRequest, QuoteRequestSchema } from './modules/billing/infrastructure/quote-request.schema';
+import {
+  QuoteRequest,
+  QuoteRequestSchema,
+} from './modules/billing/infrastructure/quote-request.schema';
 
 import { RbacModule } from './modules/rbac/rbac.module';
 import { MenuModule } from './modules/menus/menu.module';
@@ -326,7 +329,10 @@ import { QualityReviewController } from './modules/conversions/presentation/qual
     { provide: AUDIT_REPOSITORY, useClass: MongoAuditRepository },
     { provide: PROJECT_REPOSITORY, useClass: MongoProjectRepository },
     { provide: CONVERSION_JOB_REPOSITORY, useClass: MongoConversionJobRepository },
-    { provide: CONVERSION_QUALITY_REVIEW_REPOSITORY, useClass: MongoConversionQualityReviewRepository },
+    {
+      provide: CONVERSION_QUALITY_REVIEW_REPOSITORY,
+      useClass: MongoConversionQualityReviewRepository,
+    },
     { provide: VALIDATION_REPOSITORY, useClass: MongoValidationRepository },
     { provide: SUBSCRIPTION_REPOSITORY, useClass: MongoSubscriptionRepository },
     { provide: INVOICE_REPOSITORY, useClass: MongoInvoiceRepository },

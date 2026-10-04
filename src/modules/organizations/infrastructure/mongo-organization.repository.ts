@@ -10,7 +10,9 @@ import { toValidObjectId } from '../../../shared/utils/object-id.util';
 export class MongoOrganizationRepository implements OrganizationRepository {
   constructor(@InjectModel(Organization.name) private readonly model: Model<Organization>) {}
 
-  async create(input: Pick<OrganizationRecord, 'name' | 'type' | 'members'>): Promise<OrganizationRecord> {
+  async create(
+    input: Pick<OrganizationRecord, 'name' | 'type' | 'members'>,
+  ): Promise<OrganizationRecord> {
     return this.map(
       await this.model.create({
         ...input,
@@ -69,7 +71,10 @@ export class MongoOrganizationRepository implements OrganizationRepository {
     return this.map(doc);
   }
 
-  async addMember(organizationId: string, member: { userId: string; role: OrganizationRole }): Promise<void> {
+  async addMember(
+    organizationId: string,
+    member: { userId: string; role: OrganizationRole },
+  ): Promise<void> {
     const orgObjId = toValidObjectId(organizationId);
     const userObjId = toValidObjectId(member.userId);
     await this.model
@@ -94,4 +99,3 @@ export class MongoOrganizationRepository implements OrganizationRepository {
     };
   }
 }
-

@@ -11,9 +11,23 @@ export class RbacSeedService implements OnApplicationBootstrap {
   constructor(private readonly rbacService: RbacService) {}
 
   async onApplicationBootstrap(): Promise<void> {
-    await this.ensureRole('TEAM_LEAD', 'Team Lead', 'Can onboard and manage internal staff accounts');
-    await this.ensurePermission('users.onboard', 'Onboard users', 'users', 'Create internal staff accounts');
-    await this.ensurePermission('users.manage', 'Manage users', 'users', 'Activate, deactivate and list users');
+    await this.ensureRole(
+      'TEAM_LEAD',
+      'Team Lead',
+      'Can onboard and manage internal staff accounts',
+    );
+    await this.ensurePermission(
+      'users.onboard',
+      'Onboard users',
+      'users',
+      'Create internal staff accounts',
+    );
+    await this.ensurePermission(
+      'users.manage',
+      'Manage users',
+      'users',
+      'Activate, deactivate and list users',
+    );
     await this.grantRolePermissions('TEAM_LEAD', ['users.onboard', 'users.manage']);
   }
 
@@ -25,7 +39,12 @@ export class RbacSeedService implements OnApplicationBootstrap {
     }
   }
 
-  private async ensurePermission(key: string, label: string, group: string, description: string): Promise<void> {
+  private async ensurePermission(
+    key: string,
+    label: string,
+    group: string,
+    description: string,
+  ): Promise<void> {
     const perms = await this.rbacService.getPermissions();
     if (!perms.some((p) => p.key === key)) {
       await this.rbacService.createPermission(key, label, group, description);

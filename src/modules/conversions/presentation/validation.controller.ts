@@ -4,7 +4,11 @@ import { JwtAuthGuard } from '../../../shared/security/jwt-auth.guard';
 import { CurrentUser } from '../../../shared/security/current-user.decorator';
 import { AuthenticatedUser } from '../../../shared/logging/request-id.middleware';
 import { Inject } from '@nestjs/common';
-import { VALIDATION_REPOSITORY, ValidationRepository, FindingStatus } from '../domain/validation.types';
+import {
+  VALIDATION_REPOSITORY,
+  ValidationRepository,
+  FindingStatus,
+} from '../domain/validation.types';
 import { RuleValidatorService } from '../application/rule-validator.service';
 import { ConversionJobService } from '../application/conversion-job.service';
 import { SaveFieldMappingService } from '../application/save-field-mapping.service';
@@ -13,7 +17,11 @@ import { FieldMappingEntry } from '../domain/field-mapping.types';
 
 @ApiTags('Validation & Human Review')
 @ApiBearerAuth()
-@ApiHeader({ name: 'x-organization-id', required: false, description: 'Optional organization ID context' })
+@ApiHeader({
+  name: 'x-organization-id',
+  required: false,
+  description: 'Optional organization ID context',
+})
 @UseGuards(JwtAuthGuard)
 @Controller()
 export class ValidationController {
@@ -99,7 +107,9 @@ export class ValidationController {
   }
 
   @Post('projects/:projectId/screens/:screenId/reconvert')
-  @ApiOperation({ summary: 'Save mapping correction and re-convert screen (creates new conversion version)' })
+  @ApiOperation({
+    summary: 'Save mapping correction and re-convert screen (creates new conversion version)',
+  })
   @ApiParam({ name: 'projectId', description: 'Project ID' })
   @ApiParam({ name: 'screenId', description: 'Screen ID' })
   async saveAndReconvert(

@@ -24,7 +24,13 @@ export interface MfaSetupFailureResult {
 }
 
 export interface UserRepository {
-  create(input: Pick<UserRecord, 'email' | 'passwordHash' | 'fullName'> & { isEmailVerified?: boolean; isActive?: boolean; mustChangePassword?: boolean }): Promise<UserRecord>;
+  create(
+    input: Pick<UserRecord, 'email' | 'passwordHash' | 'fullName'> & {
+      isEmailVerified?: boolean;
+      isActive?: boolean;
+      mustChangePassword?: boolean;
+    },
+  ): Promise<UserRecord>;
   findByEmail(email: string): Promise<UserRecord | null>;
   findById(id: string): Promise<UserRecord | null>;
   updatePassword(id: string, passwordHash: string): Promise<void>;

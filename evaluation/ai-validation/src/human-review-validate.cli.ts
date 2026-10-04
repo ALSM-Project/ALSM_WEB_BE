@@ -14,7 +14,8 @@ function main(): void {
     process.argv.slice(2),
     new Set(['candidates', 'selection', 'review-a', 'review-b', 'mode']),
   );
-  const candidatesPath = args.get('candidates') ??
+  const candidatesPath =
+    args.get('candidates') ??
     resolve(root, 'evaluation/ai-validation/imports/cobol-javatrans/candidates.json');
   const rawCandidates = readFileSync(resolve(candidatesPath), 'utf8');
   const candidates = validateImportedCandidateManifest(JSON.parse(rawCandidates) as unknown);
@@ -58,6 +59,8 @@ function main(): void {
 try {
   main();
 } catch (error) {
-  process.stderr.write(`${error instanceof Error ? error.message : 'Pilot review validation failed'}\n`);
+  process.stderr.write(
+    `${error instanceof Error ? error.message : 'Pilot review validation failed'}\n`,
+  );
   process.exitCode = 1;
 }

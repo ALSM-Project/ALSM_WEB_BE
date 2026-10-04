@@ -1,5 +1,14 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { IsEnum, IsInt, IsNotEmpty, IsOptional, IsString, Max, MaxLength, Min } from 'class-validator';
+import {
+  IsEnum,
+  IsInt,
+  IsNotEmpty,
+  IsOptional,
+  IsString,
+  Max,
+  MaxLength,
+  Min,
+} from 'class-validator';
 import {
   ConversionQualityReviewStatus,
   HumanQualityReviewTargetStatus,
@@ -27,7 +36,8 @@ export class SubmitQualityReviewDto {
   status!: HumanQualityReviewTargetStatus;
 
   @ApiPropertyOptional({
-    description: 'Optional or mandatory review comment explaining the decision (max 2000 characters). Required when status is NEEDS_REWORK or FLAGGED.',
+    description:
+      'Optional or mandatory review comment explaining the decision (max 2000 characters). Required when status is NEEDS_REWORK or FLAGGED.',
     maxLength: MAX_QUALITY_REVIEW_NOTE_LENGTH,
     example: 'Initial conversion quality looks good, structure is intact.',
   })

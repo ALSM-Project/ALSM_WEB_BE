@@ -69,10 +69,17 @@ export class GetMethodMappingService {
 
     const files = await this.storage.readFiles(latestCompleted.resultReference);
     const detected = detectJavaMembers(
-      files.map((file) => ({ relativePath: file.relativePath, content: file.content.toString('utf8') })),
+      files.map((file) => ({
+        relativePath: file.relativePath,
+        content: file.content.toString('utf8'),
+      })),
     );
 
-    const record = await this.methodMappings.findByScreen(project.id, input.screenId, organization.id);
+    const record = await this.methodMappings.findByScreen(
+      project.id,
+      input.screenId,
+      organization.id,
+    );
     const savedTargetByKey = new Map(
       (record?.entries ?? []).map((entry) => [
         `${entry.relativePath}::${entry.kind}::${entry.originalName}`,
@@ -85,7 +92,8 @@ export class GetMethodMappingService {
       kind: member.kind,
       originalName: member.name,
       targetName:
-        savedTargetByKey.get(`${member.relativePath}::${member.kind}::${member.name}`) ?? member.name,
+        savedTargetByKey.get(`${member.relativePath}::${member.kind}::${member.name}`) ??
+        member.name,
     }));
 
     return {

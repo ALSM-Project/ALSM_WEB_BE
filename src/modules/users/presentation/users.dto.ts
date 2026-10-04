@@ -11,7 +11,10 @@ export class OnboardUserDto {
   @IsNotEmpty()
   fullName!: string;
 
-  @ApiProperty({ example: 'MEMBER', description: 'RBAC role id to assign (e.g. TEAM_LEAD, MEMBER)' })
+  @ApiProperty({
+    example: 'MEMBER',
+    description: 'RBAC role id to assign (e.g. TEAM_LEAD, MEMBER)',
+  })
   @IsString()
   @IsNotEmpty()
   role!: string;

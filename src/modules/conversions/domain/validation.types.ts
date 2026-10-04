@@ -65,12 +65,21 @@ export interface ValidationRunRecord {
 }
 
 export interface ValidationRepository {
-  createRun(input: Omit<ValidationRunRecord, 'id' | 'createdAt' | 'updatedAt'>): Promise<ValidationRunRecord>;
+  createRun(
+    input: Omit<ValidationRunRecord, 'id' | 'createdAt' | 'updatedAt'>,
+  ): Promise<ValidationRunRecord>;
   findRunByJob(conversionJobId: string): Promise<ValidationRunRecord | null>;
-  createFindings(findings: Omit<ValidationFindingRecord, 'id' | 'createdAt' | 'updatedAt'>[]): Promise<ValidationFindingRecord[]>;
+  createFindings(
+    findings: Omit<ValidationFindingRecord, 'id' | 'createdAt' | 'updatedAt'>[],
+  ): Promise<ValidationFindingRecord[]>;
   listFindingsByRun(validationRunId: string): Promise<ValidationFindingRecord[]>;
   listFindingsByJob(conversionJobId: string): Promise<ValidationFindingRecord[]>;
-  updateFindingStatus(id: string, status: FindingStatus, reviewedBy?: string, decision?: string): Promise<ValidationFindingRecord | null>;
+  updateFindingStatus(
+    id: string,
+    status: FindingStatus,
+    reviewedBy?: string,
+    decision?: string,
+  ): Promise<ValidationFindingRecord | null>;
 }
 
 export const VALIDATION_REPOSITORY = Symbol('VALIDATION_REPOSITORY');

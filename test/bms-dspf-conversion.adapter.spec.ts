@@ -61,12 +61,25 @@ describe('BmsDspfConversionAdapter', () => {
 
   it('runs bms2react.py and stores the generated .tsx files', async () => {
     await fs.promises.writeFile(path.join(sourceDir, 'LOGIN.bms'), 'BMS SOURCE');
-    (toolRunner.runConversionTool as jest.Mock).mockImplementation(async (_exe: string, args: string[]) => {
-      const outDir = args[4];
-      await fs.promises.writeFile(path.join(outDir, 'LOGIN.tsx'), 'export const Login = () => null;');
-      await fs.promises.writeFile(path.join(outDir, 'bmsRoutes.tsx'), 'export const routes = [];');
-      return { code: 0, stdout: 'Exported router name: bmsRoutes.tsx', stderr: '', timedOut: false };
-    });
+    (toolRunner.runConversionTool as jest.Mock).mockImplementation(
+      async (_exe: string, args: string[]) => {
+        const outDir = args[4];
+        await fs.promises.writeFile(
+          path.join(outDir, 'LOGIN.tsx'),
+          'export const Login = () => null;',
+        );
+        await fs.promises.writeFile(
+          path.join(outDir, 'bmsRoutes.tsx'),
+          'export const routes = [];',
+        );
+        return {
+          code: 0,
+          stdout: 'Exported router name: bmsRoutes.tsx',
+          stderr: '',
+          timedOut: false,
+        };
+      },
+    );
 
     const output = await buildAdapter().execute(baseInput);
 
@@ -81,11 +94,13 @@ describe('BmsDspfConversionAdapter', () => {
   it('records an ErrorLogRecord for a file that failed to parse while still succeeding overall', async () => {
     await fs.promises.writeFile(path.join(sourceDir, 'OK.bms'), 'BMS');
     await fs.promises.writeFile(path.join(sourceDir, 'BROKEN.bms'), 'BMS');
-    (toolRunner.runConversionTool as jest.Mock).mockImplementation(async (_exe: string, args: string[]) => {
-      const outDir = args[4];
-      await fs.promises.writeFile(path.join(outDir, 'OK.tsx'), 'export const Ok = () => null;');
-      return { code: 0, stdout: 'BROKEN failed to parse', stderr: '', timedOut: false };
-    });
+    (toolRunner.runConversionTool as jest.Mock).mockImplementation(
+      async (_exe: string, args: string[]) => {
+        const outDir = args[4];
+        await fs.promises.writeFile(path.join(outDir, 'OK.tsx'), 'export const Ok = () => null;');
+        return { code: 0, stdout: 'BROKEN failed to parse', stderr: '', timedOut: false };
+      },
+    );
 
     await buildAdapter().execute(baseInput);
 
@@ -109,7 +124,7 @@ describe('BmsDspfConversionAdapter', () => {
     });
 
     const result = await buildAdapter().execute(baseInput);
-    
+
     expect(result.resultReference).toEqual('results/p1/job-1/uuid');
     expect(storage.writeFiles).toHaveBeenCalled();
   });

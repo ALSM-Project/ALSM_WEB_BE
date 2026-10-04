@@ -46,17 +46,24 @@ export class CobolJavaConversionAdapter {
     if (input.screenId) {
       const screen = await this.screens.findById(input.screenId, input.organizationId);
       if (screen?.dependencyStatus === 'BLOCKED') {
-        throw new CopybookDependencyBlockedError(this.buildBlockedMessage(screen.dependencies ?? []));
+        throw new CopybookDependencyBlockedError(
+          this.buildBlockedMessage(screen.dependencies ?? []),
+        );
       }
     }
 
     let jarPath = this.config.get<string>('TOOL2JAVA_JAR_PATH');
     if (!jarPath) {
-      const autoPath = path.resolve(process.cwd(), '../ALSM_TOOL/tool2java/target/akaBatch-1.0.jar');
+      const autoPath = path.resolve(
+        process.cwd(),
+        '../ALSM_TOOL/tool2java/target/akaBatch-1.0.jar',
+      );
       if (fs.existsSync(autoPath)) {
         jarPath = autoPath;
       } else {
-        throw new Error('TOOL2JAVA_JAR_PATH is not configured and ../ALSM_TOOL/tool2java/target/akaBatch-1.0.jar was not found');
+        throw new Error(
+          'TOOL2JAVA_JAR_PATH is not configured and ../ALSM_TOOL/tool2java/target/akaBatch-1.0.jar was not found',
+        );
       }
     }
 
@@ -105,7 +112,9 @@ export class CobolJavaConversionAdapter {
       // it). Search the whole job working directory rather than trusting -odir alone.
       const generatedFiles = await this.listJavaFiles(jobWorkDir);
       if (generatedFiles.length === 0) {
-        throw new Error(`No Java files were generated. Tool output: ${result.stdout.slice(0, 2000)}`);
+        throw new Error(
+          `No Java files were generated. Tool output: ${result.stdout.slice(0, 2000)}`,
+        );
       }
 
       await this.recordParseErrors(input, result.stdout);
@@ -188,7 +197,9 @@ export class CobolJavaConversionAdapter {
             // (Mongoose's required validator rejects an empty string too).
             offendingLine: 'N/A',
             suggestedLine: 'N/A',
-            reason: error.message.slice(0, 500) || 'tool2java could not translate this file — manual review required.',
+            reason:
+              error.message.slice(0, 500) ||
+              'tool2java could not translate this file — manual review required.',
           },
         });
       } catch (logError) {

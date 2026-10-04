@@ -12,13 +12,7 @@ export interface BackupCodeMaterial {
 }
 
 export interface MfaSecurityPort {
-  createEnrollment(input: {
-    issuer: string;
-    accountLabel: string;
-  }): Promise<MfaEnrollmentMaterial>;
-  verifyEncryptedSecret(
-    encryptedSecret: string,
-    code: string,
-  ): Promise<boolean>;
+  createEnrollment(input: { issuer: string; accountLabel: string }): Promise<MfaEnrollmentMaterial>;
+  verifyEncryptedSecret(encryptedSecret: string, code: string): Promise<boolean>;
   createBackupCodes(): Promise<BackupCodeMaterial>;
 }

@@ -1,4 +1,7 @@
-import { applyJavaRenames, isValidJavaIdentifier } from '../src/modules/conversions/infrastructure/java-rename.util';
+import {
+  applyJavaRenames,
+  isValidJavaIdentifier,
+} from '../src/modules/conversions/infrastructure/java-rename.util';
 
 describe('isValidJavaIdentifier', () => {
   it('accepts a normal identifier', () => {
@@ -24,10 +27,18 @@ describe('applyJavaRenames', () => {
     const content = `public class Cbact01cTasklet {\n    public Cbact01cTasklet() {}\n}\n`;
     const [result] = applyJavaRenames(
       [{ relativePath: 'Cbact01cTasklet.java', content }],
-      [{ relativePath: 'Cbact01cTasklet.java', originalName: 'Cbact01cTasklet', targetName: 'AccountLoaderTasklet' }],
+      [
+        {
+          relativePath: 'Cbact01cTasklet.java',
+          originalName: 'Cbact01cTasklet',
+          targetName: 'AccountLoaderTasklet',
+        },
+      ],
     );
 
-    expect(result.content).toBe('public class AccountLoaderTasklet {\n    public AccountLoaderTasklet() {}\n}\n');
+    expect(result.content).toBe(
+      'public class AccountLoaderTasklet {\n    public AccountLoaderTasklet() {}\n}\n',
+    );
   });
 
   it('renames a method declaration and its same-file call site', () => {
@@ -57,6 +68,8 @@ describe('applyJavaRenames', () => {
       [{ relativePath: 'Account.java', content }],
       [{ relativePath: 'Account.java', originalName: 'Account', targetName: 'Customer' }],
     );
-    expect(result.content).toBe('public class Customer {\n    private AccountDetails details;\n}\n');
+    expect(result.content).toBe(
+      'public class Customer {\n    private AccountDetails details;\n}\n',
+    );
   });
 });

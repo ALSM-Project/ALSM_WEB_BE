@@ -96,15 +96,17 @@ export class ScreenService {
     }
 
     const docCleanName = screen.name ? screen.name.replace(/\.(bms|dspf|cob|cbl|cpy)$/i, '') : '';
-    const completedJob = await this.conversionJobModel.findOne({
-      status: 'COMPLETED',
-      $or: [
-        { screenId: screen._id.toString() },
-        { screenId: screen.name },
-        { screenId: docCleanName },
-        { inputReference: screen.inputReference },
-      ],
-    }).exec();
+    const completedJob = await this.conversionJobModel
+      .findOne({
+        status: 'COMPLETED',
+        $or: [
+          { screenId: screen._id.toString() },
+          { screenId: screen.name },
+          { screenId: docCleanName },
+          { inputReference: screen.inputReference },
+        ],
+      })
+      .exec();
 
     if (completedJob && screen.status !== 'COMPLETED') {
       await this.screenModel.updateOne({ _id: screen._id }, { status: 'COMPLETED' }).exec();
@@ -163,11 +165,18 @@ export class ScreenService {
       // Purge all records with matching ID, matching file name, or matching inputReference
       await this.screenModel
         .deleteMany({
-          $or: [{ _id: screen._id }, { name: screen.name }, { inputReference: screen.inputReference }],
+          $or: [
+            { _id: screen._id },
+            { name: screen.name },
+            { inputReference: screen.inputReference },
+          ],
         })
         .exec();
     } else {
-      const deleteConditions: Record<string, unknown>[] = [{ name: screenId }, { inputReference: screenId }];
+      const deleteConditions: Record<string, unknown>[] = [
+        { name: screenId },
+        { inputReference: screenId },
+      ];
       if (Types.ObjectId.isValid(screenId)) {
         deleteConditions.push({ _id: screenId });
       }
@@ -186,8 +195,12 @@ export class ScreenService {
       status: doc.status,
       inputReference: doc.inputReference,
       sizeBytes: doc.sizeBytes,
-      createdAt: rawDoc.createdAt ? new Date(rawDoc.createdAt).toISOString() : new Date().toISOString(),
-      updatedAt: rawDoc.updatedAt ? new Date(rawDoc.updatedAt).toISOString() : new Date().toISOString(),
+      createdAt: rawDoc.createdAt
+        ? new Date(rawDoc.createdAt).toISOString()
+        : new Date().toISOString(),
+      updatedAt: rawDoc.updatedAt
+        ? new Date(rawDoc.updatedAt).toISOString()
+        : new Date().toISOString(),
     };
   }
 }
