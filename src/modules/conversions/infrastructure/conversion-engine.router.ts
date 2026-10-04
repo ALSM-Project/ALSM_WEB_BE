@@ -23,7 +23,9 @@ export class ConversionEngineRouter implements ConversionEnginePort {
       case ConversionType.COBOL_TO_JAVA:
         return this.cobolJavaAdapter.execute(input);
       default:
-        throw new Error(`No conversion adapter configured for conversionType: ${String(input.conversionType)}`);
+        throw new Error(
+          `No conversion adapter configured for conversionType: ${String(input.conversionType)}`,
+        );
     }
   }
 }

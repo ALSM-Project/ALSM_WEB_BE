@@ -18,11 +18,21 @@ public class Cbact01cTasklet {
     }
 }
 `;
-    const members = detectJavaMembers([{ relativePath: 'cobolprogramclasses/cbact01c/Cbact01cTasklet.java', content }]);
+    const members = detectJavaMembers([
+      { relativePath: 'cobolprogramclasses/cbact01c/Cbact01cTasklet.java', content },
+    ]);
 
     expect(members).toEqual([
-      { relativePath: 'cobolprogramclasses/cbact01c/Cbact01cTasklet.java', kind: 'CLASS', name: 'Cbact01cTasklet' },
-      { relativePath: 'cobolprogramclasses/cbact01c/Cbact01cTasklet.java', kind: 'METHOD', name: 'execute' },
+      {
+        relativePath: 'cobolprogramclasses/cbact01c/Cbact01cTasklet.java',
+        kind: 'CLASS',
+        name: 'Cbact01cTasklet',
+      },
+      {
+        relativePath: 'cobolprogramclasses/cbact01c/Cbact01cTasklet.java',
+        kind: 'METHOD',
+        name: 'execute',
+      },
     ]);
   });
 

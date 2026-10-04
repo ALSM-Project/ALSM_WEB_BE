@@ -1,15 +1,7 @@
-import {
-  ConflictException,
-  Inject,
-  Injectable,
-  UnauthorizedException,
-} from '@nestjs/common';
+import { ConflictException, Inject, Injectable, UnauthorizedException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { USER_REPOSITORY, UserRepository } from '../../users/domain/user.repository';
-import {
-  MFA_SECURITY,
-  MfaSecurityPort,
-} from './mfa-security.port';
+import { MFA_SECURITY, MfaSecurityPort } from './mfa-security.port';
 
 export interface StartMfaSetupResult {
   enabled: false;
@@ -44,10 +36,7 @@ export class StartMfaSetupService {
       issuer: this.config.get<string>('MFA_ISSUER') ?? 'ALSM',
       accountLabel: user.email,
     });
-    const updatedUser = await this.users.beginMfaSetup(
-      user.id,
-      material.encryptedSecret,
-    );
+    const updatedUser = await this.users.beginMfaSetup(user.id, material.encryptedSecret);
     if (!updatedUser) {
       throw new ConflictException({
         code: 'MFA_SETUP_STATE_CHANGED',

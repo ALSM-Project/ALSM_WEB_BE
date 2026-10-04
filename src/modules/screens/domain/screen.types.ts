@@ -1,4 +1,7 @@
-import type { DependencyEntry, ProgramDependencyStatus } from '../../conversions/domain/copybook-dependency.types';
+import type {
+  DependencyEntry,
+  ProgramDependencyStatus,
+} from '../../conversions/domain/copybook-dependency.types';
 
 export enum ScreenSourceType {
   BMS = 'BMS',
@@ -42,7 +45,11 @@ export interface ScreenRepository {
   findById(id: string, organizationId: string): Promise<ScreenRecord | null>;
   listByProject(projectId: string, organizationId: string): Promise<ScreenRecord[]>;
   updateStatus(id: string, organizationId: string, status: ScreenStatus): Promise<void>;
-  updateDependencyDiagnostics(id: string, organizationId: string, diagnostics: ScreenDependencyDiagnostics): Promise<void>;
+  updateDependencyDiagnostics(
+    id: string,
+    organizationId: string,
+    diagnostics: ScreenDependencyDiagnostics,
+  ): Promise<void>;
   delete(id: string, organizationId?: string): Promise<void>;
 }
 

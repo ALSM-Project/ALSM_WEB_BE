@@ -6,10 +6,7 @@ import {
   UserPreferencesProps,
 } from '../../domain/interfaces/menu.repository.interface';
 import { MenuMapper } from '../mapper/menu.mapper';
-import {
-  UserPreferences,
-  UserPreferencesDocument,
-} from '../schemas/user-preferences.schema';
+import { UserPreferences, UserPreferencesDocument } from '../schemas/user-preferences.schema';
 
 @Injectable()
 export class MongoUserPreferencesRepository implements IUserPreferencesRepository {

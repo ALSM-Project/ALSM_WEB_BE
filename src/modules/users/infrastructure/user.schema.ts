@@ -9,6 +9,7 @@ export class User {
   @Prop({ default: false }) isPlatformAdmin!: boolean;
   @Prop({ default: true }) isActive!: boolean;
   @Prop({ default: true }) isEmailVerified!: boolean;
+  @Prop({ default: false }) mustChangePassword!: boolean;
   @Prop({
     type: {
       enabled: { type: Boolean, default: false },

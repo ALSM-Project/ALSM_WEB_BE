@@ -9,9 +9,7 @@ import {
   validatePilotSelection,
 } from '../evaluation/ai-validation/src/human-review-selection';
 
-const candidatePath = resolve(
-  'evaluation/ai-validation/imports/cobol-javatrans/candidates.json',
-);
+const candidatePath = resolve('evaluation/ai-validation/imports/cobol-javatrans/candidates.json');
 const rawCandidates = readFileSync(candidatePath, 'utf8');
 const candidates = JSON.parse(rawCandidates) as ImportedCandidateManifest;
 

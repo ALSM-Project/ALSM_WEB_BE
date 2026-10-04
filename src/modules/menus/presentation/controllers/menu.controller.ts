@@ -1,12 +1,4 @@
-import {
-  Body,
-  Controller,
-  Get,
-  Param,
-  Post,
-  Query,
-  UseGuards,
-} from '@nestjs/common';
+import { Body, Controller, Get, Param, Post, Query, UseGuards } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagger';
 import { JwtAuthGuard } from '../../../../shared/security/jwt-auth.guard';
 import { CurrentUser } from '../../../../shared/security/current-user.decorator';
@@ -45,20 +37,14 @@ export class MenuController {
 
   @Post('pin/:itemId')
   @ApiOperation({ summary: 'Pin a menu item' })
-  async pinItem(
-    @CurrentUser() user: AuthenticatedUser,
-    @Param('itemId') itemId: string,
-  ) {
+  async pinItem(@CurrentUser() user: AuthenticatedUser, @Param('itemId') itemId: string) {
     await this.personalizationService.pinMenuItem(user.userId, itemId);
     return { success: true, message: `Menu item ${itemId} pinned` };
   }
 
   @Post('unpin/:itemId')
   @ApiOperation({ summary: 'Unpin a menu item' })
-  async unpinItem(
-    @CurrentUser() user: AuthenticatedUser,
-    @Param('itemId') itemId: string,
-  ) {
+  async unpinItem(@CurrentUser() user: AuthenticatedUser, @Param('itemId') itemId: string) {
     await this.personalizationService.unpinMenuItem(user.userId, itemId);
     return { success: true, message: `Menu item ${itemId} unpinned` };
   }

@@ -5,7 +5,12 @@ import {
   IBillingUsageRepository,
   SubscriptionProps,
 } from '../src/modules/billing/domain/billing.repository.interface';
-import { PlanTier, SubscriptionStatus, BillingCycle, PLAN_CATALOGUE } from '../src/modules/billing/domain/billing.types';
+import {
+  PlanTier,
+  SubscriptionStatus,
+  BillingCycle,
+  PLAN_CATALOGUE,
+} from '../src/modules/billing/domain/billing.types';
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
@@ -43,10 +48,7 @@ describe('UC-35: View Service Usage — UsageService', () => {
     };
 
     const module: TestingModule = await Test.createTestingModule({
-      providers: [
-        UsageService,
-        { provide: BILLING_USAGE_REPOSITORY, useValue: usageRepo },
-      ],
+      providers: [UsageService, { provide: BILLING_USAGE_REPOSITORY, useValue: usageRepo }],
     }).compile();
 
     service = module.get<UsageService>(UsageService);
@@ -87,8 +89,8 @@ describe('UC-35: View Service Usage — UsageService', () => {
     const proPlan = PLAN_CATALOGUE.find((p) => p.tier === PlanTier.PROFESSIONAL)!;
     expect(result.plan.tier).toBe(PlanTier.PROFESSIONAL);
     expect(result.screens.max).toBe(proPlan.maxScreensPerMonth); // 100
-    expect(result.projects.max).toBe(proPlan.maxProjects);       // -1 (unlimited)
-    expect(result.storage.maxGb).toBe(proPlan.storageGb);        // 50
+    expect(result.projects.max).toBe(proPlan.maxProjects); // -1 (unlimited)
+    expect(result.storage.maxGb).toBe(proPlan.storageGb); // 50
   });
 
   // ─────────────────────────────────────────────────────────────────────────────
@@ -206,10 +208,7 @@ describe('UC-35: View Service Usage — UsageService', () => {
 
     await service.getUsageStats(USER_ID, ORG_ID);
 
-    expect(usageRepo.countConversionsByOrganizationSince).toHaveBeenCalledWith(
-      ORG_ID,
-      periodStart,
-    );
+    expect(usageRepo.countConversionsByOrganizationSince).toHaveBeenCalledWith(ORG_ID, periodStart);
   });
 
   // ─────────────────────────────────────────────────────────────────────────────

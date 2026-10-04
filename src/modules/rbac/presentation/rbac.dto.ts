@@ -71,4 +71,3 @@ export class UpdatePermissionDto {
   @IsString()
   description?: string;
 }
-

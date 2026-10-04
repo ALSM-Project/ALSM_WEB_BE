@@ -56,7 +56,8 @@ export class BillingController {
   @Get('plans')
   @ApiOperation({
     summary: 'List all subscription plans',
-    description: 'Retrieve the static catalog of available subscription plans, features, and pricing.',
+    description:
+      'Retrieve the static catalog of available subscription plans, features, and pricing.',
   })
   @ApiResponse({
     status: HttpStatus.OK,
@@ -81,7 +82,10 @@ export class BillingController {
     description: 'Current active subscription or null if none exists',
     type: SubscriptionResponseDto,
   })
-  @ApiResponse({ status: HttpStatus.UNAUTHORIZED, description: 'Missing or invalid authentication token' })
+  @ApiResponse({
+    status: HttpStatus.UNAUTHORIZED,
+    description: 'Missing or invalid authentication token',
+  })
   async getCurrentSubscription(@CurrentUser() user: AuthenticatedUser) {
     const sub = await this.billingService.getCurrentSubscription(user.userId);
     return BillingPresenter.toSubscriptionResponse(sub);
@@ -99,10 +103,17 @@ export class BillingController {
     description: 'Trial activated successfully',
     type: SubscriptionResponseDto,
   })
-  @ApiResponse({ status: HttpStatus.UNAUTHORIZED, description: 'Missing or invalid authentication token' })
-  @ApiResponse({ status: HttpStatus.CONFLICT, description: 'User already has an active subscription or trial' })
+  @ApiResponse({
+    status: HttpStatus.UNAUTHORIZED,
+    description: 'Missing or invalid authentication token',
+  })
+  @ApiResponse({
+    status: HttpStatus.CONFLICT,
+    description: 'User already has an active subscription or trial',
+  })
   async activateTrial(@CurrentUser() user: AuthenticatedUser) {
-    const orgId = (user as AuthenticatedUser & { organizationId?: string }).organizationId || user.userId;
+    const orgId =
+      (user as AuthenticatedUser & { organizationId?: string }).organizationId || user.userId;
     const sub = await this.billingService.activateTrial(user.userId, orgId);
     return BillingPresenter.toSubscriptionResponse(sub);
   }
@@ -112,20 +123,28 @@ export class BillingController {
   @Post('subscription')
   @ApiOperation({
     summary: 'Create a paid subscription',
-    description: 'Create a subscription in PENDING_PAYMENT status awaiting bank transfer / QR payment confirmation.',
+    description:
+      'Create a subscription in PENDING_PAYMENT status awaiting bank transfer / QR payment confirmation.',
   })
   @ApiResponse({
     status: HttpStatus.CREATED,
     description: 'Subscription created (pending payment)',
     type: SubscriptionResponseDto,
   })
-  @ApiResponse({ status: HttpStatus.BAD_REQUEST, description: 'Invalid plan or Enterprise plan requested' })
-  @ApiResponse({ status: HttpStatus.UNAUTHORIZED, description: 'Missing or invalid authentication token' })
+  @ApiResponse({
+    status: HttpStatus.BAD_REQUEST,
+    description: 'Invalid plan or Enterprise plan requested',
+  })
+  @ApiResponse({
+    status: HttpStatus.UNAUTHORIZED,
+    description: 'Missing or invalid authentication token',
+  })
   async createSubscription(
     @CurrentUser() user: AuthenticatedUser,
     @Body() dto: CreateSubscriptionDto,
   ) {
-    const orgId = (user as AuthenticatedUser & { organizationId?: string }).organizationId || user.userId;
+    const orgId =
+      (user as AuthenticatedUser & { organizationId?: string }).organizationId || user.userId;
     const sub = await this.billingService.createPaidSubscription(
       user.userId,
       orgId,
@@ -140,7 +159,8 @@ export class BillingController {
   @Get('subscription/upgrade-preview')
   @ApiOperation({
     summary: 'Preview upgrade proration',
-    description: 'Calculate remaining credit, prorated target cost, and net amount due today for upgrading.',
+    description:
+      'Calculate remaining credit, prorated target cost, and net amount due today for upgrading.',
   })
   @ApiQuery({
     name: 'targetTier',
@@ -154,16 +174,19 @@ export class BillingController {
     type: UpgradePreviewResponseDto,
   })
   @ApiResponse({ status: HttpStatus.BAD_REQUEST, description: 'Target plan tier is invalid' })
-  @ApiResponse({ status: HttpStatus.UNAUTHORIZED, description: 'Missing or invalid authentication token' })
-  @ApiResponse({ status: HttpStatus.NOT_FOUND, description: 'No active subscription found to upgrade' })
+  @ApiResponse({
+    status: HttpStatus.UNAUTHORIZED,
+    description: 'Missing or invalid authentication token',
+  })
+  @ApiResponse({
+    status: HttpStatus.NOT_FOUND,
+    description: 'No active subscription found to upgrade',
+  })
   async getUpgradePreview(
     @CurrentUser() user: AuthenticatedUser,
     @Query('targetTier') targetTier?: PlanTier,
   ) {
-    return this.billingService.getUpgradePreview(
-      user.userId,
-      targetTier || PlanTier.PROFESSIONAL,
-    );
+    return this.billingService.getUpgradePreview(user.userId, targetTier || PlanTier.PROFESSIONAL);
   }
 
   @ApiBearerAuth()
@@ -179,8 +202,14 @@ export class BillingController {
     type: UpgradePreviewResponseDto,
   })
   @ApiResponse({ status: HttpStatus.BAD_REQUEST, description: 'Target plan tier is invalid' })
-  @ApiResponse({ status: HttpStatus.UNAUTHORIZED, description: 'Missing or invalid authentication token' })
-  @ApiResponse({ status: HttpStatus.NOT_FOUND, description: 'No active subscription found to upgrade' })
+  @ApiResponse({
+    status: HttpStatus.UNAUTHORIZED,
+    description: 'Missing or invalid authentication token',
+  })
+  @ApiResponse({
+    status: HttpStatus.NOT_FOUND,
+    description: 'No active subscription found to upgrade',
+  })
   async upgradeSubscription(
     @CurrentUser() user: AuthenticatedUser,
     @Body() dto: UpgradeSubscriptionDto,
@@ -201,13 +230,20 @@ export class BillingController {
     type: QuoteRequestResponseDto,
   })
   @ApiResponse({ status: HttpStatus.BAD_REQUEST, description: 'Invalid input data' })
-  @ApiResponse({ status: HttpStatus.UNAUTHORIZED, description: 'Missing or invalid authentication token' })
-  @ApiResponse({ status: HttpStatus.CONFLICT, description: 'User already has a pending Enterprise quote request' })
+  @ApiResponse({
+    status: HttpStatus.UNAUTHORIZED,
+    description: 'Missing or invalid authentication token',
+  })
+  @ApiResponse({
+    status: HttpStatus.CONFLICT,
+    description: 'User already has a pending Enterprise quote request',
+  })
   async requestEnterpriseQuote(
     @CurrentUser() user: AuthenticatedUser,
     @Body() dto: RequestEnterpriseQuoteDto,
   ) {
-    const orgId = (user as AuthenticatedUser & { organizationId?: string }).organizationId || user.userId;
+    const orgId =
+      (user as AuthenticatedUser & { organizationId?: string }).organizationId || user.userId;
     const request = await this.billingService.requestEnterpriseQuote(user.userId, orgId, dto);
     return BillingPresenter.toQuoteRequestResponse(request);
   }
@@ -217,14 +253,18 @@ export class BillingController {
   @Get('enterprise/my-quote-request')
   @ApiOperation({
     summary: 'Get my latest enterprise quote request (UC-32)',
-    description: 'Retrieve the most recent enterprise quote request submitted by the authenticated user, regardless of status.',
+    description:
+      'Retrieve the most recent enterprise quote request submitted by the authenticated user, regardless of status.',
   })
   @ApiResponse({
     status: HttpStatus.OK,
     description: 'Latest quote request or null if none exists',
     type: QuoteRequestResponseDto,
   })
-  @ApiResponse({ status: HttpStatus.UNAUTHORIZED, description: 'Missing or invalid authentication token' })
+  @ApiResponse({
+    status: HttpStatus.UNAUTHORIZED,
+    description: 'Missing or invalid authentication token',
+  })
   async getMyQuoteRequest(@CurrentUser() user: AuthenticatedUser) {
     const request = await this.billingService.getMyQuoteRequest(user.userId);
     if (!request) return null;
@@ -236,13 +276,17 @@ export class BillingController {
   @Get('enterprise/quote-requests')
   @ApiOperation({
     summary: 'List enterprise quote requests (Admin only) (UC-32)',
-    description: 'Retrieve all enterprise quote requests with optional status filter and pagination. Requires Platform Admin access.',
+    description:
+      'Retrieve all enterprise quote requests with optional status filter and pagination. Requires Platform Admin access.',
   })
   @ApiResponse({
     status: HttpStatus.OK,
     description: 'List of quote requests and total count',
   })
-  @ApiResponse({ status: HttpStatus.UNAUTHORIZED, description: 'Missing or invalid authentication token' })
+  @ApiResponse({
+    status: HttpStatus.UNAUTHORIZED,
+    description: 'Missing or invalid authentication token',
+  })
   @ApiResponse({ status: HttpStatus.FORBIDDEN, description: 'Requires Platform Admin role' })
   async listQuoteRequests(
     @CurrentUser() user: AuthenticatedUser,
@@ -260,7 +304,8 @@ export class BillingController {
   @Patch('enterprise/quote-requests/:id/status')
   @ApiOperation({
     summary: 'Update enterprise quote request status (Admin only) (UC-32)',
-    description: 'Update the status of an enterprise quote request (PENDING -> CONTACTED -> CLOSED). Requires Platform Admin access.',
+    description:
+      'Update the status of an enterprise quote request (PENDING -> CONTACTED -> CLOSED). Requires Platform Admin access.',
   })
   @ApiParam({
     name: 'id',
@@ -273,7 +318,10 @@ export class BillingController {
     type: QuoteRequestResponseDto,
   })
   @ApiResponse({ status: HttpStatus.BAD_REQUEST, description: 'Invalid status transition' })
-  @ApiResponse({ status: HttpStatus.UNAUTHORIZED, description: 'Missing or invalid authentication token' })
+  @ApiResponse({
+    status: HttpStatus.UNAUTHORIZED,
+    description: 'Missing or invalid authentication token',
+  })
   @ApiResponse({ status: HttpStatus.FORBIDDEN, description: 'Requires Platform Admin role' })
   @ApiResponse({ status: HttpStatus.NOT_FOUND, description: 'Quote request not found' })
   async updateQuoteRequestStatus(
@@ -299,17 +347,19 @@ export class BillingController {
     type: CancelSubscriptionResponseDto,
   })
   @ApiResponse({ status: HttpStatus.BAD_REQUEST, description: 'Invalid cancel request' })
-  @ApiResponse({ status: HttpStatus.UNAUTHORIZED, description: 'Missing or invalid authentication token' })
-  @ApiResponse({ status: HttpStatus.NOT_FOUND, description: 'No active subscription found to cancel' })
+  @ApiResponse({
+    status: HttpStatus.UNAUTHORIZED,
+    description: 'Missing or invalid authentication token',
+  })
+  @ApiResponse({
+    status: HttpStatus.NOT_FOUND,
+    description: 'No active subscription found to cancel',
+  })
   async cancelSubscription(
     @CurrentUser() user: AuthenticatedUser,
     @Body() dto: CancelSubscriptionDto,
   ) {
-    return this.billingService.cancelSubscription(
-      user.userId,
-      dto.reason,
-      dto.feedback,
-    );
+    return this.billingService.cancelSubscription(user.userId, dto.reason, dto.feedback);
   }
 
   // ─── Invoices ────────────────────────────────────────────
@@ -326,7 +376,10 @@ export class BillingController {
     description: 'List of invoices',
     type: [InvoiceResponseDto],
   })
-  @ApiResponse({ status: HttpStatus.UNAUTHORIZED, description: 'Missing or invalid authentication token' })
+  @ApiResponse({
+    status: HttpStatus.UNAUTHORIZED,
+    description: 'Missing or invalid authentication token',
+  })
   async getInvoices(@CurrentUser() user: AuthenticatedUser) {
     const invoices = await this.billingService.getInvoices(user.userId);
     return BillingPresenter.toInvoiceListResponse(invoices);
@@ -349,11 +402,11 @@ export class BillingController {
     description: 'Invoice download URL and status',
     type: InvoiceDownloadResponseDto,
   })
-  @ApiResponse({ status: HttpStatus.UNAUTHORIZED, description: 'Missing or invalid authentication token' })
-  async downloadInvoicePdf(
-    @CurrentUser() user: AuthenticatedUser,
-    @Param('id') id: string,
-  ) {
+  @ApiResponse({
+    status: HttpStatus.UNAUTHORIZED,
+    description: 'Missing or invalid authentication token',
+  })
+  async downloadInvoicePdf(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string) {
     return {
       message: `Invoice PDF generation queued for invoice ${id} and user ${user.userId}`,
       downloadUrl: `/api/v1/billing/invoices/${id}/receipt.pdf`,
@@ -367,16 +420,21 @@ export class BillingController {
   @Get('usage')
   @ApiOperation({
     summary: 'Get resource usage statistics',
-    description: 'Get current quota usage (screens, projects, storage) and past monthly conversion volumes.',
+    description:
+      'Get current quota usage (screens, projects, storage) and past monthly conversion volumes.',
   })
   @ApiResponse({
     status: HttpStatus.OK,
     description: 'Resource usage statistics and plan limits',
     type: UsageStatsResponseDto,
   })
-  @ApiResponse({ status: HttpStatus.UNAUTHORIZED, description: 'Missing or invalid authentication token' })
+  @ApiResponse({
+    status: HttpStatus.UNAUTHORIZED,
+    description: 'Missing or invalid authentication token',
+  })
   async getUsageStats(@CurrentUser() user: AuthenticatedUser) {
-    const orgId = (user as AuthenticatedUser & { organizationId?: string }).organizationId || user.userId;
+    const orgId =
+      (user as AuthenticatedUser & { organizationId?: string }).organizationId || user.userId;
     return this.usageService.getUsageStats(user.userId, orgId);
   }
 }

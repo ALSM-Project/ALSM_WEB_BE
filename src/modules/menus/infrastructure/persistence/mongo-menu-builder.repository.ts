@@ -2,16 +2,26 @@ import { Injectable } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model } from 'mongoose';
 import { MenuItem, MenuItemDocument } from '../schemas/menu-item.schema';
-import { MenuItemPermission, MenuItemPermissionDocument } from '../schemas/menu-item-permission.schema';
-import { Permission, PermissionDocument } from '../../../rbac/infrastructure/schemas/permission.schema';
-import { IMenuBuilderRepository, IMenuItemData } from '../../domain/interfaces/menu-builder.repository.interface';
+import {
+  MenuItemPermission,
+  MenuItemPermissionDocument,
+} from '../schemas/menu-item-permission.schema';
+import {
+  Permission,
+  PermissionDocument,
+} from '../../../rbac/infrastructure/schemas/permission.schema';
+import {
+  IMenuBuilderRepository,
+  IMenuItemData,
+} from '../../domain/interfaces/menu-builder.repository.interface';
 import { ApplicationContext } from '../../domain/enums/menu.enums';
 
 @Injectable()
 export class MongoMenuBuilderRepository implements IMenuBuilderRepository {
   constructor(
     @InjectModel(MenuItem.name) private readonly menuItemModel: Model<MenuItemDocument>,
-    @InjectModel(MenuItemPermission.name) private readonly menuItemPermissionModel: Model<MenuItemPermissionDocument>,
+    @InjectModel(MenuItemPermission.name)
+    private readonly menuItemPermissionModel: Model<MenuItemPermissionDocument>,
     @InjectModel(Permission.name) private readonly permissionModel: Model<PermissionDocument>,
   ) {}
 
@@ -45,7 +55,10 @@ export class MongoMenuBuilderRepository implements IMenuBuilderRepository {
     return perms.map((p) => p.permissionKey);
   }
 
-  async createMenuItem(data: Partial<IMenuItemData>, permissions?: string[]): Promise<IMenuItemData> {
+  async createMenuItem(
+    data: Partial<IMenuItemData>,
+    permissions?: string[],
+  ): Promise<IMenuItemData> {
     const created = new this.menuItemModel(data);
     const saved = await created.save();
 
@@ -57,7 +70,11 @@ export class MongoMenuBuilderRepository implements IMenuBuilderRepository {
     return this.toData(saved);
   }
 
-  async updateMenuItem(id: string, data: Partial<IMenuItemData>, permissions?: string[]): Promise<IMenuItemData | null> {
+  async updateMenuItem(
+    id: string,
+    data: Partial<IMenuItemData>,
+    permissions?: string[],
+  ): Promise<IMenuItemData | null> {
     const item = await this.menuItemModel.findOne({ id }).exec();
     if (!item) return null;
 

@@ -61,8 +61,17 @@ export interface PaginatedErrorLogs {
 export interface ErrorLogRepository {
   create(input: Omit<ErrorLogRecord, 'id' | 'createdAt'>): Promise<ErrorLogRecord>;
   findById(id: string, projectId: string, organizationId: string): Promise<ErrorLogRecord | null>;
-  list(projectId: string, organizationId: string, query: ErrorLogListQuery): Promise<PaginatedErrorLogs>;
-  resolve(id: string, projectId: string, organizationId: string, userId: string): Promise<ErrorLogRecord | null>;
+  list(
+    projectId: string,
+    organizationId: string,
+    query: ErrorLogListQuery,
+  ): Promise<PaginatedErrorLogs>;
+  resolve(
+    id: string,
+    projectId: string,
+    organizationId: string,
+    userId: string,
+  ): Promise<ErrorLogRecord | null>;
   ignore(id: string, projectId: string, organizationId: string): Promise<ErrorLogRecord | null>;
   getSummary(projectId: string, organizationId: string): Promise<ErrorLogSummary>;
 }

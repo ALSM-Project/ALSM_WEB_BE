@@ -22,9 +22,7 @@ describe('ValidationSecretRedactorService', () => {
   it('redacts URI credentials as one secret occurrence', () => {
     const result = redactor.redact('jdbc:postgresql://synthetic-user:synthetic-pass@db.test/app');
 
-    expect(result.content).toBe(
-      'jdbc:postgresql://[REDACTED:URI_CREDENTIALS]@db.test/app',
-    );
+    expect(result.content).toBe('jdbc:postgresql://[REDACTED:URI_CREDENTIALS]@db.test/app');
     expect(result.content).not.toContain('synthetic-user');
     expect(result.content).not.toContain('synthetic-pass');
     expect(result.redactionCount).toBe(1);

@@ -33,9 +33,10 @@ export function createLiveValidator(environment: NodeJS.ProcessEnv): LiveValidat
   });
   return {
     config,
-    validator: provider === 'openai'
-      ? new OpenAiValidatorAdapter(config)
-      : new GeminiAiValidatorAdapter(config),
+    validator:
+      provider === 'openai'
+        ? new OpenAiValidatorAdapter(config)
+        : new GeminiAiValidatorAdapter(config),
   };
 }
 
@@ -45,10 +46,15 @@ function requiredEnvironment(environment: NodeJS.ProcessEnv, name: string): stri
   return value;
 }
 
-function environmentInteger(environment: NodeJS.ProcessEnv, name: string, fallback: number): number {
+function environmentInteger(
+  environment: NodeJS.ProcessEnv,
+  name: string,
+  fallback: number,
+): number {
   const raw = environment[name];
   if (raw === undefined) return fallback;
   const value = Number(raw);
-  if (!Number.isInteger(value) || value < 0) throw new Error(`${name} must be a non-negative integer`);
+  if (!Number.isInteger(value) || value < 0)
+    throw new Error(`${name} must be a non-negative integer`);
   return value;
 }

@@ -8,7 +8,12 @@ export interface EmailVerificationRecord {
 }
 
 export interface EmailVerificationRepository {
-  create(input: { userId: string; tokenHash: string; code: string; expiresAt: Date }): Promise<EmailVerificationRecord>;
+  create(input: {
+    userId: string;
+    tokenHash: string;
+    code: string;
+    expiresAt: Date;
+  }): Promise<EmailVerificationRecord>;
   findLatestActiveByUserId(userId: string): Promise<EmailVerificationRecord | null>;
   markConsumed(id: string): Promise<void>;
   revokeAllForUser(userId: string): Promise<void>;

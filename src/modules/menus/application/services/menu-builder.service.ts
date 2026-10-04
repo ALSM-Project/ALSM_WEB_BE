@@ -45,7 +45,10 @@ export class MenuBuilderService {
     if (dto.parentId) {
       const parent = await this.menuBuilderRepo.findMenuItemById(dto.parentId);
       if (!parent) {
-        throw new NotFoundException({ code: 'PARENT_NOT_FOUND', message: `Parent menu item '${dto.parentId}' not found` });
+        throw new NotFoundException({
+          code: 'PARENT_NOT_FOUND',
+          message: `Parent menu item '${dto.parentId}' not found`,
+        });
       }
       if (parent.application !== dto.application) {
         throw new BadRequestException({
@@ -101,18 +104,27 @@ export class MenuBuilderService {
   async updateMenuItem(id: string, dto: UpdateMenuItemDto): Promise<NavNode> {
     const item = await this.menuBuilderRepo.findMenuItemById(id);
     if (!item) {
-      throw new NotFoundException({ code: 'MENU_ITEM_NOT_FOUND', message: `Menu item '${id}' not found` });
+      throw new NotFoundException({
+        code: 'MENU_ITEM_NOT_FOUND',
+        message: `Menu item '${id}' not found`,
+      });
     }
 
     let newParentId = item.parentId;
     if (dto.parentId !== undefined) {
       if (dto.parentId === id) {
-        throw new BadRequestException({ code: 'SELF_PARENTING_FORBIDDEN', message: 'An item cannot be its own parent' });
+        throw new BadRequestException({
+          code: 'SELF_PARENTING_FORBIDDEN',
+          message: 'An item cannot be its own parent',
+        });
       }
       if (dto.parentId !== null) {
         const parent = await this.menuBuilderRepo.findMenuItemById(dto.parentId);
         if (!parent) {
-          throw new NotFoundException({ code: 'PARENT_NOT_FOUND', message: `Parent menu item '${dto.parentId}' not found` });
+          throw new NotFoundException({
+            code: 'PARENT_NOT_FOUND',
+            message: `Parent menu item '${dto.parentId}' not found`,
+          });
         }
         if (parent.application !== item.application) {
           throw new BadRequestException({
@@ -122,7 +134,10 @@ export class MenuBuilderService {
         }
         const descendants = await this.menuBuilderRepo.getDescendantIds(id);
         if (descendants.includes(dto.parentId)) {
-          throw new BadRequestException({ code: 'DESCENDANT_PARENTING_FORBIDDEN', message: 'An item cannot become a child of its own descendant' });
+          throw new BadRequestException({
+            code: 'DESCENDANT_PARENTING_FORBIDDEN',
+            message: 'An item cannot become a child of its own descendant',
+          });
         }
       }
       newParentId = dto.parentId;
@@ -175,7 +190,10 @@ export class MenuBuilderService {
   async deleteMenuItem(id: string): Promise<void> {
     const item = await this.menuBuilderRepo.findMenuItemById(id);
     if (!item) {
-      throw new NotFoundException({ code: 'MENU_ITEM_NOT_FOUND', message: `Menu item '${id}' not found` });
+      throw new NotFoundException({
+        code: 'MENU_ITEM_NOT_FOUND',
+        message: `Menu item '${id}' not found`,
+      });
     }
 
     const childCount = await this.menuBuilderRepo.countChildren(id);
@@ -202,7 +220,10 @@ export class MenuBuilderService {
   ): Promise<NavNode> {
     const item = await this.menuBuilderRepo.findMenuItemById(id);
     if (!item) {
-      throw new NotFoundException({ code: 'MENU_ITEM_NOT_FOUND', message: `Menu item '${id}' not found` });
+      throw new NotFoundException({
+        code: 'MENU_ITEM_NOT_FOUND',
+        message: `Menu item '${id}' not found`,
+      });
     }
 
     const oldParentId = item.parentId;
@@ -211,7 +232,10 @@ export class MenuBuilderService {
     if (targetId) {
       const targetItem = await this.menuBuilderRepo.findMenuItemById(targetId);
       if (!targetItem) {
-        throw new NotFoundException({ code: 'TARGET_NOT_FOUND', message: `Target menu item '${targetId}' not found` });
+        throw new NotFoundException({
+          code: 'TARGET_NOT_FOUND',
+          message: `Target menu item '${targetId}' not found`,
+        });
       }
 
       if (targetItem.application !== item.application) {
@@ -230,12 +254,18 @@ export class MenuBuilderService {
 
     if (newParentId !== undefined) {
       if (newParentId === id) {
-        throw new BadRequestException({ code: 'SELF_PARENTING_FORBIDDEN', message: 'An item cannot be its own parent' });
+        throw new BadRequestException({
+          code: 'SELF_PARENTING_FORBIDDEN',
+          message: 'An item cannot be its own parent',
+        });
       }
       if (newParentId !== null) {
         const parentDoc = await this.menuBuilderRepo.findMenuItemById(newParentId);
         if (!parentDoc) {
-          throw new NotFoundException({ code: 'PARENT_NOT_FOUND', message: `Parent menu item '${newParentId}' not found` });
+          throw new NotFoundException({
+            code: 'PARENT_NOT_FOUND',
+            message: `Parent menu item '${newParentId}' not found`,
+          });
         }
         if (parentDoc.application !== item.application) {
           throw new BadRequestException({

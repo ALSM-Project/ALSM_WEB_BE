@@ -29,7 +29,9 @@ describe('GetConversionResultService', () => {
 
   it('throws BadRequestException when the job has not completed yet', async () => {
     jobs.findById.mockResolvedValue({ id: 'job-1', status: ConversionJobStatus.PROCESSING });
-    await expect(service.execute('u1', 'org-1', 'job-1')).rejects.toBeInstanceOf(BadRequestException);
+    await expect(service.execute('u1', 'org-1', 'job-1')).rejects.toBeInstanceOf(
+      BadRequestException,
+    );
   });
 
   it('returns decoded file contents for a completed job', async () => {

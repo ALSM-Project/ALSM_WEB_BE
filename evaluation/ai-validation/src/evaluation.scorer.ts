@@ -83,8 +83,16 @@ export interface EvaluationScore {
     totalFindingsOnCleanCases: number;
   };
   mutationDetection: {
-    successful: { mutatedCases: number; mutatedCasesDetected: number; mutationDetectionRate: number };
-    conservative: { mutatedCases: number; mutatedCasesDetected: number; mutationDetectionRate: number };
+    successful: {
+      mutatedCases: number;
+      mutatedCasesDetected: number;
+      mutationDetectionRate: number;
+    };
+    conservative: {
+      mutatedCases: number;
+      mutatedCasesDetected: number;
+      mutationDetectionRate: number;
+    };
     mutations: { total: number; detected: number; detectionRate: number };
   };
   severityAgreement: {
@@ -212,7 +220,15 @@ export function scoreEvaluation(
       detectedMutations += matchedMutationIds.size;
     }
 
-    caseScores.push(successfulCaseScore(benchmarkCase, result, matching.matches, matching.unmatchedExpectedIndexes, matching.unmatchedPredictedIndexes));
+    caseScores.push(
+      successfulCaseScore(
+        benchmarkCase,
+        result,
+        matching.matches,
+        matching.unmatchedExpectedIndexes,
+        matching.unmatchedPredictedIndexes,
+      ),
+    );
   }
 
   const successfulMetrics = finalizeMetricSet(successfulCounts);
@@ -287,12 +303,21 @@ function emptyCategoryCounts(): Map<EvaluationCategory, MutableCounts> {
   return new Map(
     EVALUATION_CATEGORIES.map((category) => [
       category,
-      { truePositives: 0, falsePositives: 0, falseNegatives: 0, expectedCount: 0, predictedCount: 0 },
+      {
+        truePositives: 0,
+        falsePositives: 0,
+        falseNegatives: 0,
+        expectedCount: 0,
+        predictedCount: 0,
+      },
     ]),
   );
 }
 
-function addMatch(counts: Map<EvaluationCategory, MutableCounts>, category: EvaluationCategory): void {
+function addMatch(
+  counts: Map<EvaluationCategory, MutableCounts>,
+  category: EvaluationCategory,
+): void {
   const value = counts.get(category)!;
   value.truePositives += 1;
   value.expectedCount += 1;
@@ -322,7 +347,11 @@ function addPrediction(
 function finalizeMetricSet(counts: Map<EvaluationCategory, MutableCounts>): MetricSet {
   const categories = EVALUATION_CATEGORIES.map((category) => {
     const count = counts.get(category)!;
-    return { category, ...count, ...calculate(count.truePositives, count.falsePositives, count.falseNegatives) };
+    return {
+      category,
+      ...count,
+      ...calculate(count.truePositives, count.falsePositives, count.falseNegatives),
+    };
   });
   const totals = categories.reduce(
     (sum, category) => ({
@@ -334,7 +363,10 @@ function finalizeMetricSet(counts: Map<EvaluationCategory, MutableCounts>): Metr
   );
   const included = categories.filter((category) => category.expectedCount > 0);
   return {
-    micro: { ...totals, ...calculate(totals.truePositives, totals.falsePositives, totals.falseNegatives) },
+    micro: {
+      ...totals,
+      ...calculate(totals.truePositives, totals.falsePositives, totals.falseNegatives),
+    },
     categories,
     macro: {
       includedCategories: included.map((category) => category.category),
@@ -345,7 +377,11 @@ function finalizeMetricSet(counts: Map<EvaluationCategory, MutableCounts>): Metr
   };
 }
 
-function calculate(truePositives: number, falsePositives: number, falseNegatives: number): Omit<CountMetrics, 'truePositives' | 'falsePositives' | 'falseNegatives'> {
+function calculate(
+  truePositives: number,
+  falsePositives: number,
+  falseNegatives: number,
+): Omit<CountMetrics, 'truePositives' | 'falsePositives' | 'falseNegatives'> {
   const precision = ratio(truePositives, truePositives + falsePositives);
   const recall = ratio(truePositives, truePositives + falseNegatives);
   return { precision, recall, f1: ratio(2 * precision * recall, precision + recall) };
@@ -363,7 +399,9 @@ function emptySeverityMatrix(): Record<string, Record<string, number>> {
   return Object.fromEntries(
     Object.values(ValidationFindingSeverity).map((expected) => [
       expected,
-      Object.fromEntries(Object.values(ValidationFindingSeverity).map((predicted) => [predicted, 0])),
+      Object.fromEntries(
+        Object.values(ValidationFindingSeverity).map((predicted) => [predicted, 0]),
+      ),
     ]),
   );
 }
@@ -384,7 +422,11 @@ function collectLocation(
   if (detail.compatible) output.tolerant += 1;
 }
 
-function finalizeLocationAgreement(value: { comparable: number; exact: number; tolerant: number }): LocationAgreement {
+function finalizeLocationAgreement(value: {
+  comparable: number;
+  exact: number;
+  tolerant: number;
+}): LocationAgreement {
   return {
     ...value,
     exactRate: ratio(value.exact, value.comparable),

@@ -50,9 +50,7 @@ export class MenuAnalyticsService {
     }
 
     if (popular.length > 0) {
-      suggestions.push(
-        `Đưa các mục phổ biến lên thanh truy cập nhanh: ${popular.join(', ')}`,
-      );
+      suggestions.push(`Đưa các mục phổ biến lên thanh truy cập nhanh: ${popular.join(', ')}`);
     }
 
     return suggestions;

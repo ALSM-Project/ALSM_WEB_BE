@@ -3,11 +3,7 @@ import {
   IMenuRepository,
   MENU_REPOSITORY,
 } from '../../domain/interfaces/menu.repository.interface';
-import {
-  IMenuItem,
-  MenuPosition,
-  NavigationLevel,
-} from '../../domain/value-objects/menu-item.vo';
+import { IMenuItem, MenuPosition, NavigationLevel } from '../../domain/value-objects/menu-item.vo';
 import { MenuPersonalizationService } from './personalization.service';
 
 export interface MenuContext {
@@ -81,13 +77,13 @@ export class GetPersonalizedMenuService {
    */
   private filterByPermissions(items: IMenuItem[], permissions: string[]): IMenuItem[] {
     return items
-      .filter(item => {
+      .filter((item) => {
         if (!item.permissions || item.permissions.length === 0) {
           return true;
         }
-        return item.permissions.some(p => permissions.includes(p));
+        return item.permissions.some((p) => permissions.includes(p));
       })
-      .map(item => {
+      .map((item) => {
         if (item.children) {
           return {
             ...item,
@@ -103,18 +99,18 @@ export class GetPersonalizedMenuService {
    */
   private filterByFeatureFlags(items: IMenuItem[], flags: Record<string, boolean>): IMenuItem[] {
     return items
-      .filter(item => {
+      .filter((item) => {
         if (!item.conditions || item.conditions.length === 0) {
           return true;
         }
-        return item.conditions.every(condition => {
+        return item.conditions.every((condition) => {
           if (condition.type === 'feature_flag') {
             return flags[condition.value as string] === true;
           }
           return true;
         });
       })
-      .map(item => {
+      .map((item) => {
         if (item.children) {
           return {
             ...item,
@@ -130,12 +126,12 @@ export class GetPersonalizedMenuService {
    */
   private filterByDevice(items: IMenuItem[], deviceType: string): IMenuItem[] {
     return items
-      .filter(item => {
+      .filter((item) => {
         if (deviceType === 'mobile' && item.hideOnMobile) return false;
         if (deviceType === 'tablet' && item.hideOnTablet) return false;
         return true;
       })
-      .map(item => {
+      .map((item) => {
         if (item.children) {
           return {
             ...item,
@@ -149,9 +145,12 @@ export class GetPersonalizedMenuService {
   /**
    * Xây dựng Top Navigation
    */
-  private buildTopNav(items: IMenuItem[], personalized: { pinnedItems?: IMenuItem[] }): IMenuItem[] {
+  private buildTopNav(
+    items: IMenuItem[],
+    personalized: { pinnedItems?: IMenuItem[] },
+  ): IMenuItem[] {
     const topItems = items.filter(
-      item =>
+      (item) =>
         item.level === NavigationLevel.GLOBAL &&
         item.position === MenuPosition.TOP &&
         item.isVisible,
@@ -167,9 +166,12 @@ export class GetPersonalizedMenuService {
   /**
    * Xây dựng Sidebar Navigation
    */
-  private buildSidebarNav(items: IMenuItem[], personalized: { recentItems?: IMenuItem[] }): IMenuItem[] {
+  private buildSidebarNav(
+    items: IMenuItem[],
+    personalized: { recentItems?: IMenuItem[] },
+  ): IMenuItem[] {
     let sidebarItems = items.filter(
-      item =>
+      (item) =>
         item.level === NavigationLevel.PRIMARY &&
         item.position === MenuPosition.LEFT &&
         item.isVisible,
@@ -196,15 +198,13 @@ export class GetPersonalizedMenuService {
   /**
    * Xây dựng Secondary Navigation (tabs)
    */
-  private buildSecondaryNav(
-    items: IMenuItem[],
-  ): Record<string, IMenuItem[]> {
+  private buildSecondaryNav(items: IMenuItem[]): Record<string, IMenuItem[]> {
     const secondaryItems = items.filter(
-      item => item.level === NavigationLevel.SECONDARY && item.isVisible,
+      (item) => item.level === NavigationLevel.SECONDARY && item.isVisible,
     );
 
     const groups: Record<string, IMenuItem[]> = {};
-    secondaryItems.forEach(item => {
+    secondaryItems.forEach((item) => {
       const key = item.parentId || 'default';
       if (!groups[key]) {
         groups[key] = [];
@@ -212,7 +212,7 @@ export class GetPersonalizedMenuService {
       groups[key].push(item);
     });
 
-    Object.keys(groups).forEach(key => {
+    Object.keys(groups).forEach((key) => {
       groups[key] = groups[key].sort((a, b) => (a.order || 0) - (b.order || 0));
     });
 
@@ -223,9 +223,7 @@ export class GetPersonalizedMenuService {
    * Xây dựng Contextual Navigation
    */
   private buildContextualNav(items: IMenuItem[]): IMenuItem[] {
-    return items.filter(
-      item => item.level === NavigationLevel.CONTEXTUAL && item.isVisible,
-    );
+    return items.filter((item) => item.level === NavigationLevel.CONTEXTUAL && item.isVisible);
   }
 
   private getFallbackMenu(): Record<string, unknown> {

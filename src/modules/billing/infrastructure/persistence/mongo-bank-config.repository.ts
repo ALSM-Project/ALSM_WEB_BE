@@ -59,11 +59,7 @@ export class MongoBankConfigRepository implements IBankConfigRepository {
 
   async updateConfig(props: Partial<BankConfigProps>): Promise<BankConfigProps> {
     const doc = await this.model
-      .findOneAndUpdate(
-        { isActive: true },
-        { $set: props },
-        { new: true, upsert: true },
-      )
+      .findOneAndUpdate({ isActive: true }, { $set: props }, { new: true, upsert: true })
       .exec();
     return this.toDomain(doc);
   }

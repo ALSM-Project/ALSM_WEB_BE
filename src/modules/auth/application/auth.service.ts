@@ -20,6 +20,7 @@ import { getSessionClientMetadata } from './session-client-metadata';
 export interface AuthTokens {
   accessToken: string;
   refreshToken: string;
+  mustChangePassword?: boolean;
 }
 
 export interface RegisterResult {
@@ -267,7 +268,11 @@ export class AuthService {
       },
     );
     await this.sessions.updateTokenHash(session.id, await bcrypt.hash(refreshToken, 12));
-    return { accessToken, refreshToken };
+    return {
+      accessToken,
+      refreshToken,
+      mustChangePassword: user.mustChangePassword,
+    };
   }
 
   private async verifyRefresh(token: string): Promise<{ sub: string; tid: string }> {
