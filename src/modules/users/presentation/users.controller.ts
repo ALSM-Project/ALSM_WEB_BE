@@ -43,7 +43,6 @@ export class UsersController {
       email: dto.email,
       fullName: dto.fullName,
       role: dto.role,
-      temporaryPassword: dto.temporaryPassword,
       organizationId: dto.organizationId,
       actorUserId: user.userId,
     });

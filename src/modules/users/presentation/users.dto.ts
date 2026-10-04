@@ -1,5 +1,5 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { IsEmail, IsIn, IsNotEmpty, IsOptional, IsString, MinLength } from 'class-validator';
+import { IsEmail, IsIn, IsNotEmpty, IsOptional, IsString } from 'class-validator';
 
 export class OnboardUserDto {
   @ApiProperty({ example: 'alex.vance@acmecorp.com' })
@@ -18,11 +18,6 @@ export class OnboardUserDto {
   @IsString()
   @IsNotEmpty()
   role!: string;
-
-  @ApiProperty({ example: 'TmpPass123!', description: 'Temporary password set by the admin' })
-  @IsString()
-  @MinLength(8)
-  temporaryPassword!: string;
 
   @ApiPropertyOptional({ description: 'Target organization; defaults to the caller organization' })
   @IsOptional()
