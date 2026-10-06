@@ -14,6 +14,12 @@ import {
 } from './ai-validation-output.validator';
 import { buildAiValidationPrompt } from './ai-validation.prompt';
 import { createGeminiValidationSchema } from './gemini-validation-schema';
+import {
+  geminiBackoffMs,
+  geminiRateLimitScope,
+  GEMINI_RETRY_WAIT_BUDGET_MS,
+  retryAfterMs,
+} from './gemini-retry-policy';
 
 const GEMINI_GENERATE_CONTENT_ENDPOINT = 'https://generativelanguage.googleapis.com/v1beta/models';
 const MAX_CONFIGURED_RETRIES = 5;
@@ -29,6 +35,8 @@ interface GeminiResponseBody {
 }
 
 interface RetryableFailure {
+  rateLimitScope?: AiProviderDiagnostics['rateLimitScope'];
+  retryAfterMs?: number;
   error: AiValidatorError;
   retryable: boolean;
   finalFailureClass: AiProviderDiagnostics['finalFailureClass'];
@@ -37,6 +45,8 @@ interface RetryableFailure {
 
 @Injectable()
 export class GeminiAiValidatorAdapter implements AiValidatorPort {
+  private startQueue: Promise<void> = Promise.resolve();
+  private lastStartedAt: number | undefined;
   constructor(private readonly config: ConfigService) {}
 
   getMetadata(): AiValidatorMetadata {
@@ -101,23 +111,33 @@ export class GeminiAiValidatorAdapter implements AiValidatorPort {
     const configuredRetries = this.config.getOrThrow<number>('AI_MAX_RETRIES');
     const maxRetries = Math.min(Math.max(configuredRetries, 0), MAX_CONFIGURED_RETRIES);
     let lastFailure: RetryableFailure | undefined;
+    let retryWaitMs = 0;
 
     for (let attempt = 0; attempt <= maxRetries; attempt += 1) {
       try {
-        return { ...(await this.requestOnce(model, body)), attempts: attempt + 1 };
+        return { ...(await this.pacedRequest(model, body)), attempts: attempt + 1 };
       } catch (error) {
         const failure = this.classifyFailure(error);
         lastFailure = failure;
-        if (!failure.retryable || attempt === maxRetries) {
+        const wait = failure.retryAfterMs ?? geminiBackoffMs(attempt);
+        if (
+          !failure.retryable ||
+          attempt === maxRetries ||
+          wait > GEMINI_RETRY_WAIT_BUDGET_MS - retryWaitMs
+        ) {
           throw new AiValidatorError(failure.error.code, failure.error.message, {
             finalFailureClass: failure.finalFailureClass,
             ...(failure.httpStatus === undefined ? {} : { httpStatus: failure.httpStatus }),
+            ...(failure.rateLimitScope === undefined
+              ? {}
+              : { rateLimitScope: failure.rateLimitScope }),
             attempts: attempt + 1,
             retriesExhausted: failure.retryable && attempt === maxRetries,
             totalLatencyMs: Math.max(0, Date.now() - startedAt),
           });
         }
-        await this.delay(Math.min(50 * 2 ** attempt, 500));
+        retryWaitMs += wait;
+        await this.delay(wait);
       }
     }
     throw (
@@ -126,29 +146,75 @@ export class GeminiAiValidatorAdapter implements AiValidatorPort {
     );
   }
 
+  private async pacedRequest(model: string, body: Record<string, unknown>) {
+    const interval = this.config.get<number>('GEMINI_MIN_REQUEST_INTERVAL_MS') ?? 0;
+    const endpoint = `${GEMINI_GENERATE_CONTENT_ENDPOINT}/${encodeURIComponent(model)}:generateContent`;
+    const init: RequestInit = {
+      method: 'POST',
+      headers: {
+        'x-goog-api-key': this.config.getOrThrow<string>('GEMINI_API_KEY'),
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(body),
+    };
+    const timeoutMs = this.config.getOrThrow<number>('AI_TIMEOUT_MS');
+    if (interval === 0) return this.requestOnce(endpoint, init, timeoutMs, false);
+    // Serialize starts, not responses. Record the actual start after waiting, so an
+    // event-loop stall cannot collapse reserved future slots into a burst.
+    const start = this.startQueue.then(async () => {
+      if (this.lastStartedAt !== undefined) {
+        let wait = interval - (performance.now() - this.lastStartedAt);
+        while (wait > 0) {
+          await this.delay(Math.ceil(wait));
+          wait = interval - (performance.now() - this.lastStartedAt);
+        }
+      }
+      return { response: this.requestOnce(endpoint, init, timeoutMs, true) };
+    });
+    this.startQueue = start.then(
+      () => undefined,
+      () => undefined,
+    );
+    return (await start).response;
+  }
+
   private async requestOnce(
-    model: string,
-    body: Record<string, unknown>,
+    endpoint: string,
+    init: RequestInit,
+    timeoutMs: number,
+    paced: boolean,
   ): Promise<{ body: GeminiResponseBody; httpStatus: number }> {
     const controller = new AbortController();
-    const timeout = setTimeout(
-      () => controller.abort(),
-      this.config.getOrThrow<number>('AI_TIMEOUT_MS'),
-    );
-    const endpoint = `${GEMINI_GENERATE_CONTENT_ENDPOINT}/${encodeURIComponent(model)}:generateContent`;
+    const timeout = setTimeout(() => controller.abort(), timeoutMs);
+    init.signal = controller.signal;
     let httpStatus: number | undefined;
+    let knownRetryAfterMs: number | undefined;
+    let rateLimitScope: AiProviderDiagnostics['rateLimitScope'];
     try {
-      const response = await fetch(endpoint, {
-        method: 'POST',
-        headers: {
-          'x-goog-api-key': this.config.getOrThrow<string>('GEMINI_API_KEY'),
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(body),
-        signal: controller.signal,
-      });
+      // Preparation is complete: no await or serialization between timestamp and fetch.
+      if (paced) this.lastStartedAt = performance.now();
+      const response = await fetch(endpoint, init);
       httpStatus = response.status;
-      if (!response.ok) throw this.httpFailure(response.status);
+      if (!response.ok) {
+        const failure = this.httpFailure(response.status);
+        if (failure.retryable)
+          knownRetryAfterMs = retryAfterMs(
+            response.headers?.get('Retry-After') ?? null,
+            Date.now(),
+          );
+        failure.retryAfterMs = knownRetryAfterMs;
+        if (response.status === 429) {
+          rateLimitScope = 'UNKNOWN';
+          try {
+            rateLimitScope = geminiRateLimitScope(await response.json());
+          } catch {
+            // Keep safe transport metadata even if the body is unreadable or aborted.
+          }
+          failure.rateLimitScope = rateLimitScope;
+          if (failure.rateLimitScope === 'DAILY_QUOTA') failure.retryable = false;
+        }
+        throw failure;
+      }
       try {
         return { body: (await response.json()) as GeminiResponseBody, httpStatus: response.status };
       } catch {
@@ -166,6 +232,8 @@ export class GeminiAiValidatorAdapter implements AiValidatorPort {
           retryable: true,
           finalFailureClass: 'TIMEOUT',
           ...(httpStatus === undefined ? {} : { httpStatus }),
+          ...(knownRetryAfterMs === undefined ? {} : { retryAfterMs: knownRetryAfterMs }),
+          ...(rateLimitScope === undefined ? {} : { rateLimitScope }),
         } satisfies RetryableFailure;
       }
       throw error;

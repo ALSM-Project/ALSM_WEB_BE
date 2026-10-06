@@ -12,7 +12,10 @@ describe('GeminiAiValidatorAdapter', () => {
     AI_MAX_RETRIES: 0,
     AI_MAX_FINDINGS: 2,
   };
-  const config = { getOrThrow: jest.fn((key: string) => values[key]) };
+  const config = {
+    get: jest.fn((key: string) => values[key]),
+    getOrThrow: jest.fn((key: string) => values[key]),
+  };
   const adapter = new GeminiAiValidatorAdapter(config as unknown as ConfigService);
   const input: AiValidationInput = {
     conversionJobId: 'job-1',
@@ -34,6 +37,9 @@ describe('GeminiAiValidatorAdapter', () => {
 
   beforeEach(() => {
     jest.restoreAllMocks();
+    jest
+      .spyOn(adapter as unknown as { delay(ms: number): Promise<void> }, 'delay')
+      .mockResolvedValue();
     values.AI_TIMEOUT_MS = 30;
     values.AI_MAX_RETRIES = 0;
     values.AI_MAX_FINDINGS = 2;

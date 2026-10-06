@@ -18,11 +18,20 @@ export function createLiveValidator(environment: NodeJS.ProcessEnv): LiveValidat
   const modelName = provider === 'openai' ? 'OPENAI_MODEL' : 'GEMINI_MODEL';
   const key = requiredEnvironment(environment, keyName);
   const model = requiredEnvironment(environment, modelName);
+  if (provider === 'gemini' && environment.GEMINI_MIN_REQUEST_INTERVAL_MS?.trim() === '')
+    throw new Error('GEMINI_MIN_REQUEST_INTERVAL_MS must not be blank');
+  const geminiInterval =
+    provider === 'gemini'
+      ? environmentInteger(environment, 'GEMINI_MIN_REQUEST_INTERVAL_MS', 0)
+      : 0;
+  if (geminiInterval > 60_000)
+    throw new Error('GEMINI_MIN_REQUEST_INTERVAL_MS must be at most 60000');
   const config = new ConfigService({
     OPENAI_API_KEY: provider === 'openai' ? key : '',
     OPENAI_MODEL: provider === 'openai' ? model : '',
     GEMINI_API_KEY: provider === 'gemini' ? key : '',
     GEMINI_MODEL: provider === 'gemini' ? model : '',
+    GEMINI_MIN_REQUEST_INTERVAL_MS: geminiInterval,
     AI_PROMPT_VERSION: environment.AI_PROMPT_VERSION ?? 'semantic-cobol-java-v1',
     AI_TIMEOUT_MS: environmentInteger(environment, 'AI_TIMEOUT_MS', 60_000),
     AI_MAX_RETRIES: environmentInteger(environment, 'AI_MAX_RETRIES', 2),
