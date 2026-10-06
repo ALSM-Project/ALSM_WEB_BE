@@ -219,6 +219,78 @@ describe('Gemini quota-aware transport', () => {
       attempts: 3,
     });
   });
+  it.each([
+    ['60', [0], 1000, false],
+    ['5', [0, 6000, 12000], 13000, true],
+  ])(
+    'preserves Retry-After %s through error-body timeout',
+    async (header, expectedStarts, latency, exhausted) => {
+      const starts: number[] = [];
+      jest.spyOn(globalThis, 'fetch').mockImplementation(async (_url, init) => {
+        starts.push(performance.now());
+        return {
+          ok: false,
+          status: 429,
+          headers: new Headers({ 'Retry-After': header as string, 'x-private': sensitive }),
+          json: () =>
+            new Promise((_resolve, reject) => {
+              init?.signal?.addEventListener('abort', () => reject(new Error(sensitive)));
+            }),
+        } as unknown as Response;
+      });
+      const error = await fail();
+      expect(starts).toEqual(expectedStarts);
+      expect(error.diagnostics).toEqual({
+        finalFailureClass: 'TIMEOUT',
+        httpStatus: 429,
+        rateLimitScope: 'UNKNOWN',
+        attempts: (expectedStarts as number[]).length,
+        retriesExhausted: exhausted,
+        totalLatencyMs: latency,
+      });
+      expect(
+        JSON.stringify({ message: error.message, diagnostics: error.diagnostics }),
+      ).not.toContain(sensitive);
+      expect(error.diagnostics).not.toHaveProperty('retryAfterMs');
+      expect(error.diagnostics).not.toHaveProperty('headers');
+      expect(error.diagnostics).not.toHaveProperty('body');
+    },
+  );
+  it.each([0, 1000, 2000])(
+    'paces fetch starts after serialization cost with interval %i',
+    async (interval) => {
+      config.set('GEMINI_MIN_REQUEST_INTERVAL_MS', interval);
+      config.set('AI_MAX_RETRIES', 1);
+      const stringify = JSON.stringify;
+      let prepared = false;
+      jest.spyOn(JSON, 'stringify').mockImplementation((value, ...args) => {
+        if (value?.generationConfig && !prepared) {
+          prepared = true;
+          jest.advanceTimersByTime(100);
+        }
+        return stringify(value, ...args);
+      });
+      const starts: number[] = [];
+      jest.spyOn(globalThis, 'fetch').mockImplementation(async () => {
+        starts.push(performance.now());
+        return response(500);
+      });
+      const pending = Promise.all([
+        adapter.validate(input).catch((error) => error),
+        adapter.validate(input).catch((error) => error),
+      ]);
+      await jest.runAllTimersAsync();
+      const errors = (await pending) as AiValidatorError[];
+      expect(starts).toEqual(
+        interval === 0
+          ? [100, 100, 1100, 1100]
+          : [100, 100 + interval, 100 + 2 * interval, 100 + 3 * interval],
+      );
+      expect(errors.map((error) => error.diagnostics?.attempts)).toEqual([2, 2]);
+      for (let i = 1; i < starts.length; i++)
+        expect(starts[i] - starts[i - 1]).toBeGreaterThanOrEqual(interval);
+    },
+  );
   it('never retries daily quota even when Retry-After suggests a short wait', async () => {
     const fetchMock = jest
       .spyOn(globalThis, 'fetch')

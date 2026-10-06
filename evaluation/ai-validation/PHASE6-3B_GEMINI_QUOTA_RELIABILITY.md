@@ -68,6 +68,9 @@ RetryInfo text/durations are not used as a substitute for quota scope or Retry-A
 - Valid Retry-After overrides fallback on retryable HTTP errors. Integer seconds and
   all three HTTP-date formats are accepted. Negative/past, malformed, nonfinite,
   impossible dates and non-HTTP date strings are rejected. No raw header is retained.
+  Already-received HTTP status and sanitized wait survive subsequent error-body read
+  failures/timeouts for retry-policy decisions. A body timeout remains TIMEOUT, with
+  UNKNOWN quota scope when no typed evidence was obtained. The wait is internal only.
 - Cumulative explicit retry-delay budget: 30,000 ms per validate call. A valid provider
   wait larger than the remaining budget ends the cycle; it is never shortened.
   No next-day wait. retriesExhausted remains the Phase 6.3A *attempt-count* indicator:
@@ -82,12 +85,18 @@ RetryInfo text/durations are not used as a substitute for quota scope or Retry-A
 GEMINI_MIN_REQUEST_INTERVAL_MS is an integer 0..60000, default 0 (disabled), in both
 application environment validation and evaluation live factory. For the currently
 observed ALSM 5 RPM tier recommend 13000 ms, above the mathematical 12000 ms boundary.
+Absence defaults to 0; explicit blank or whitespace-only values are invalid. Explicit
+"0" disables pacing; integers 1..60000 enable it. Neither path mutates the environment.
 Setting it does not authorize a live run or alter existing live CLI opt-in safeguards.
 
 An adapter-level promise queue serializes actual HTTP starts, including retries and
 concurrent validate calls, while responses may overlap. The next start is based on the
 previous actual start using a monotonic clock, not pre-reserved slots that could collapse
-after event-loop delay. Timer rounding is checked again before admission.
+after event-loop delay. Endpoint, headers, timeout configuration and serialized body
+are prepared before queue admission. The timestamp is recorded immediately before
+fetch, with no intervening await or serialization. Timer rounding is checked again
+before admission. Fake-time tests include 100 ms first-request preparation, concurrent
+calls and retries with 0/1000/2000 ms intervals; enabled intervals separate actual starts.
 Concurrent callers queue; queue latency grows with caller count. Keep evaluation
 sequential as it is today. A singleton adapter shares this gate in one application
 process. Independent adapter instances, other Gemini clients and multiple processes
@@ -118,6 +127,8 @@ OpenAI, Gemini model, prompt, structured-output compatibility (maxItems), canoni
 schema, runtime validation, labels, scorer, matching tolerance, Product Human Review,
 RAG and fine-tuning are unchanged. The frozen Phase 6.2C baseline stays 40 total,
 18 SUCCESS / 22 PROVIDER_FAILED. This phase does not claim those failures were all 429.
+Phase 6.3A diagnostics did not exist when that baseline was recorded, so those
+historical failures cannot be retrospectively recovered by provider failure subclass.
 
 ## Verification
 
@@ -129,7 +140,8 @@ Final validation results:
 - npm ci: passed; 12 existing audit findings (4 moderate, 7 high, 1 critical).
   No dependencies changed; no audit fix command was run.
 - npm run lint: passed.
-- npm run test: 73 suites, 580 tests passed.
+- Focused review-fix tests: 5 suites, 131 tests passed.
+- npm run test: fresh review-fix regression passed, 73 suites / 593 tests.
 - npm run build: passed.
 - npm run test:e2e: exit 0; no e2e tests found (script permits this).
 - Dataset validation: all 40 cases valid (10 clean, 30 mutated), no provider execution.

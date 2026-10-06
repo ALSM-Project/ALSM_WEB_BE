@@ -148,7 +148,17 @@ export class GeminiAiValidatorAdapter implements AiValidatorPort {
 
   private async pacedRequest(model: string, body: Record<string, unknown>) {
     const interval = this.config.get<number>('GEMINI_MIN_REQUEST_INTERVAL_MS') ?? 0;
-    if (interval === 0) return this.requestOnce(model, body);
+    const endpoint = `${GEMINI_GENERATE_CONTENT_ENDPOINT}/${encodeURIComponent(model)}:generateContent`;
+    const init: RequestInit = {
+      method: 'POST',
+      headers: {
+        'x-goog-api-key': this.config.getOrThrow<string>('GEMINI_API_KEY'),
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(body),
+    };
+    const timeoutMs = this.config.getOrThrow<number>('AI_TIMEOUT_MS');
+    if (interval === 0) return this.requestOnce(endpoint, init, timeoutMs, false);
     // Serialize starts, not responses. Record the actual start after waiting, so an
     // event-loop stall cannot collapse reserved future slots into a burst.
     const start = this.startQueue.then(async () => {
@@ -159,8 +169,7 @@ export class GeminiAiValidatorAdapter implements AiValidatorPort {
           wait = interval - (performance.now() - this.lastStartedAt);
         }
       }
-      this.lastStartedAt = performance.now();
-      return { response: this.requestOnce(model, body) };
+      return { response: this.requestOnce(endpoint, init, timeoutMs, true) };
     });
     this.startQueue = start.then(
       () => undefined,
@@ -170,40 +179,38 @@ export class GeminiAiValidatorAdapter implements AiValidatorPort {
   }
 
   private async requestOnce(
-    model: string,
-    body: Record<string, unknown>,
+    endpoint: string,
+    init: RequestInit,
+    timeoutMs: number,
+    paced: boolean,
   ): Promise<{ body: GeminiResponseBody; httpStatus: number }> {
     const controller = new AbortController();
-    const timeout = setTimeout(
-      () => controller.abort(),
-      this.config.getOrThrow<number>('AI_TIMEOUT_MS'),
-    );
-    const endpoint = `${GEMINI_GENERATE_CONTENT_ENDPOINT}/${encodeURIComponent(model)}:generateContent`;
+    const timeout = setTimeout(() => controller.abort(), timeoutMs);
+    init.signal = controller.signal;
     let httpStatus: number | undefined;
+    let knownRetryAfterMs: number | undefined;
+    let rateLimitScope: AiProviderDiagnostics['rateLimitScope'];
     try {
-      const response = await fetch(endpoint, {
-        method: 'POST',
-        headers: {
-          'x-goog-api-key': this.config.getOrThrow<string>('GEMINI_API_KEY'),
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(body),
-        signal: controller.signal,
-      });
+      // Preparation is complete: no await or serialization between timestamp and fetch.
+      if (paced) this.lastStartedAt = performance.now();
+      const response = await fetch(endpoint, init);
       httpStatus = response.status;
       if (!response.ok) {
         const failure = this.httpFailure(response.status);
         if (failure.retryable)
-          failure.retryAfterMs = retryAfterMs(
+          knownRetryAfterMs = retryAfterMs(
             response.headers?.get('Retry-After') ?? null,
             Date.now(),
           );
+        failure.retryAfterMs = knownRetryAfterMs;
         if (response.status === 429) {
+          rateLimitScope = 'UNKNOWN';
           try {
-            failure.rateLimitScope = geminiRateLimitScope(await response.json());
+            rateLimitScope = geminiRateLimitScope(await response.json());
           } catch {
-            failure.rateLimitScope = 'UNKNOWN';
+            // Keep safe transport metadata even if the body is unreadable or aborted.
           }
+          failure.rateLimitScope = rateLimitScope;
           if (failure.rateLimitScope === 'DAILY_QUOTA') failure.retryable = false;
         }
         throw failure;
@@ -225,6 +232,8 @@ export class GeminiAiValidatorAdapter implements AiValidatorPort {
           retryable: true,
           finalFailureClass: 'TIMEOUT',
           ...(httpStatus === undefined ? {} : { httpStatus }),
+          ...(knownRetryAfterMs === undefined ? {} : { retryAfterMs: knownRetryAfterMs }),
+          ...(rateLimitScope === undefined ? {} : { rateLimitScope }),
         } satisfies RetryableFailure;
       }
       throw error;

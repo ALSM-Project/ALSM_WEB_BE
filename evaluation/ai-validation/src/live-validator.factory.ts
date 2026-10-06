@@ -18,6 +18,8 @@ export function createLiveValidator(environment: NodeJS.ProcessEnv): LiveValidat
   const modelName = provider === 'openai' ? 'OPENAI_MODEL' : 'GEMINI_MODEL';
   const key = requiredEnvironment(environment, keyName);
   const model = requiredEnvironment(environment, modelName);
+  if (provider === 'gemini' && environment.GEMINI_MIN_REQUEST_INTERVAL_MS?.trim() === '')
+    throw new Error('GEMINI_MIN_REQUEST_INTERVAL_MS must not be blank');
   const geminiInterval =
     provider === 'gemini'
       ? environmentInteger(environment, 'GEMINI_MIN_REQUEST_INTERVAL_MS', 0)
