@@ -105,6 +105,8 @@ describe('AI environment validation', () => {
     expect(result.error).toBeUndefined();
     expect(result.value).toEqual(
       expect.objectContaining({
+        GEMINI_MIN_REQUEST_INTERVAL_MS: 0,
+        AI_MAX_RETRIES: 2,
         VALIDATION_WORKER_ENABLED: false,
         VALIDATION_WORKER_CONCURRENCY: 1,
         VALIDATION_JOB_ATTEMPTS: 2,
@@ -114,6 +116,9 @@ describe('AI environment validation', () => {
   });
 
   it.each([
+    ['GEMINI_MIN_REQUEST_INTERVAL_MS', -1],
+    ['GEMINI_MIN_REQUEST_INTERVAL_MS', 1.5],
+    ['GEMINI_MIN_REQUEST_INTERVAL_MS', 60001],
     ['VALIDATION_WORKER_CONCURRENCY', 0],
     ['VALIDATION_JOB_ATTEMPTS', 0],
     ['VALIDATION_JOB_ATTEMPTS', 6],

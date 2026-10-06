@@ -156,6 +156,7 @@ describe('AI evaluation live runner safeguards', () => {
   });
   it('serializes only safe diagnostics and leaves legacy scoring identical', async () => {
     const diagnostics = {
+      rateLimitScope: 'DAILY_QUOTA' as const,
       finalFailureClass: 'RATE_LIMITED' as const,
       httpStatus: 429,
       attempts: 3,
@@ -186,6 +187,7 @@ describe('AI evaluation live runner safeguards', () => {
     expect(serialized).not.toContain('DISPLAY TOTAL');
     expect(serialized).not.toContain('show(total)');
     expect(result.cases[0].failure?.diagnostics).toEqual({
+      rateLimitScope: 'DAILY_QUOTA',
       finalFailureClass: 'RATE_LIMITED',
       httpStatus: 429,
       attempts: 3,
@@ -202,6 +204,7 @@ describe('AI evaluation live runner safeguards', () => {
     );
     expect(validated.cases.every((value) => value.status === 'PROVIDER_FAILED')).toBe(true);
     for (const unsafe of [
+      { rateLimitScope: 'arbitrary-provider-text' },
       { httpStatus: '429' },
       { headers: 'private' },
       { body: 'private' },

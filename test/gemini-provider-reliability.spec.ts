@@ -14,6 +14,7 @@ describe('Gemini provider reliability diagnostics', () => {
 
   beforeEach(() => {
     jest.useFakeTimers();
+    jest.spyOn(Math, 'random').mockReturnValue(0);
     retries = 2;
     adapter = new GeminiAiValidatorAdapter(
       new ConfigService({
@@ -45,7 +46,7 @@ describe('Gemini provider reliability diagnostics', () => {
     return {
       ok: status >= 200 && status < 300,
       status,
-      headers: new Headers({ 'Retry-After': '120', 'x-private': secret }),
+      headers: new Headers({ 'Retry-After': secret, 'x-private': secret }),
       json: jest.fn().mockResolvedValue(body),
     } as unknown as Response;
   }
@@ -53,6 +54,7 @@ describe('Gemini provider reliability diagnostics', () => {
   it.each([
     [429, 'RATE_LIMITED', 'AI_PROVIDER_UNAVAILABLE', 3, true],
     [500, 'SERVER_ERROR', 'AI_PROVIDER_UNAVAILABLE', 3, true],
+    [502, 'SERVER_ERROR', 'AI_PROVIDER_UNAVAILABLE', 3, true],
     [503, 'SERVER_ERROR', 'AI_PROVIDER_UNAVAILABLE', 3, true],
     [400, 'REQUEST_REJECTED', 'AI_PROVIDER_REQUEST_REJECTED', 1, false],
     [401, 'AUTHENTICATION_FAILED', 'AI_PROVIDER_AUTHENTICATION_FAILED', 1, false],
@@ -66,13 +68,16 @@ describe('Gemini provider reliability diagnostics', () => {
       expect(error.code).toBe(code);
       expect(error.diagnostics).toEqual({
         finalFailureClass,
+        ...(status === 429 ? { rateLimitScope: 'UNKNOWN' } : {}),
         httpStatus: status,
         attempts,
         retriesExhausted,
-        totalLatencyMs: attempts === 3 ? 150 : 0,
+        totalLatencyMs: attempts === 3 ? 3000 : 0,
       });
       expect(fetchMock).toHaveBeenCalledTimes(attempts as number);
-      expect(providerResponse.json).not.toHaveBeenCalled();
+      expect(providerResponse.json).toHaveBeenCalledTimes(
+        status === 429 ? (attempts as number) : 0,
+      );
       expect(typeof error.diagnostics?.httpStatus).toBe('number');
       expect(JSON.stringify(error.diagnostics)).not.toContain(secret);
       expect(JSON.stringify(error)).not.toContain('diagnostics');
@@ -81,8 +86,8 @@ describe('Gemini provider reliability diagnostics', () => {
 
   it.each([
     [0, 1, 0],
-    [2, 3, 150],
-    [99, 6, 1250],
+    [2, 3, 3000],
+    [99, 6, 23000],
   ])(
     'bounds retries=%i and includes backoff in latency',
     async (configured, attempts, totalLatencyMs) => {
@@ -122,7 +127,7 @@ describe('Gemini provider reliability diagnostics', () => {
         ...(stage === 'body' ? { httpStatus: 200 } : {}),
         attempts: 3,
         retriesExhausted: true,
-        totalLatencyMs: 3150,
+        totalLatencyMs: 6000,
       });
     },
   );
@@ -137,7 +142,7 @@ describe('Gemini provider reliability diagnostics', () => {
       finalFailureClass: 'NETWORK_ERROR',
       attempts: 3,
       retriesExhausted: true,
-      totalLatencyMs: 150,
+      totalLatencyMs: 3000,
     });
   });
 
@@ -168,7 +173,7 @@ describe('Gemini provider reliability diagnostics', () => {
         httpStatus: 200,
         attempts: 2,
         retriesExhausted: false,
-        totalLatencyMs: 50,
+        totalLatencyMs: 1000,
       });
       expect(fetchMock).toHaveBeenCalledTimes(2);
     },

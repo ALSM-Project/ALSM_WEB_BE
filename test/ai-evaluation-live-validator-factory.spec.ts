@@ -3,6 +3,28 @@ import { OpenAiValidatorAdapter } from '../src/modules/validation/infrastructure
 import { createLiveValidator } from '../evaluation/ai-validation/src/live-validator.factory';
 
 describe('live evaluation validator factory', () => {
+  it.each([undefined, '0', '13000', '60000'])('passes optional pacing %s to Gemini', (value) => {
+    const { config } = createLiveValidator({
+      AI_PROVIDER: 'gemini',
+      GEMINI_API_KEY: 'synthetic',
+      GEMINI_MODEL: 'synthetic',
+      GEMINI_MIN_REQUEST_INTERVAL_MS: value,
+    });
+    expect(config.get('GEMINI_MIN_REQUEST_INTERVAL_MS')).toBe(Number(value ?? 0));
+  });
+  it.each(['-1', '1.5', '60001', 'Infinity', 'invalid'])(
+    'rejects unsafe pacing %s in the evaluation factory',
+    (value) => {
+      expect(() =>
+        createLiveValidator({
+          AI_PROVIDER: 'gemini',
+          GEMINI_API_KEY: 'synthetic',
+          GEMINI_MODEL: 'synthetic',
+          GEMINI_MIN_REQUEST_INTERVAL_MS: value,
+        }),
+      ).toThrow('GEMINI_MIN_REQUEST_INTERVAL_MS');
+    },
+  );
   it('creates OpenAI validator without executing it', () => {
     const fetchMock = jest.spyOn(globalThis, 'fetch');
     const { validator } = createLiveValidator({

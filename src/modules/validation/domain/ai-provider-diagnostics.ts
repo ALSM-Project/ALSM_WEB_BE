@@ -9,7 +9,10 @@ export const PROVIDER_FAILURE_CLASSES = [
   'INVALID_OUTPUT',
 ] as const;
 
+export const RATE_LIMIT_SCOPES = ['SHORT_WINDOW', 'DAILY_QUOTA', 'UNKNOWN'] as const;
+
 export interface AiProviderDiagnostics {
+  rateLimitScope?: (typeof RATE_LIMIT_SCOPES)[number];
   finalFailureClass: (typeof PROVIDER_FAILURE_CLASSES)[number];
   httpStatus?: number;
   attempts: number;
@@ -23,6 +26,7 @@ export function sanitizeProviderDiagnostics(
 ): AiProviderDiagnostics | undefined {
   if (
     !PROVIDER_FAILURE_CLASSES.includes(value.finalFailureClass) ||
+    (value.rateLimitScope !== undefined && !RATE_LIMIT_SCOPES.includes(value.rateLimitScope)) ||
     !Number.isInteger(value.attempts) ||
     value.attempts < 1 ||
     value.attempts > 6 ||
@@ -34,6 +38,7 @@ export function sanitizeProviderDiagnostics(
   )
     return undefined;
   return {
+    ...(value.rateLimitScope === undefined ? {} : { rateLimitScope: value.rateLimitScope }),
     finalFailureClass: value.finalFailureClass,
     ...(value.httpStatus === undefined ? {} : { httpStatus: value.httpStatus }),
     attempts: value.attempts,

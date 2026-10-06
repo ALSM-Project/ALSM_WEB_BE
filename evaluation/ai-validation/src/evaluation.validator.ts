@@ -1,4 +1,7 @@
-import { PROVIDER_FAILURE_CLASSES } from '../../../src/modules/validation/domain/ai-provider-diagnostics';
+import {
+  PROVIDER_FAILURE_CLASSES,
+  RATE_LIMIT_SCOPES,
+} from '../../../src/modules/validation/domain/ai-provider-diagnostics';
 import * as Joi from 'joi';
 import { ValidationFindingSeverity } from '../../../src/modules/validation/domain/validation-finding.types';
 import {
@@ -105,6 +108,7 @@ const predictionCaseSchema = Joi.object({
     then: Joi.forbidden(),
     otherwise: Joi.object({
       diagnostics: Joi.object({
+        rateLimitScope: Joi.string().valid(...RATE_LIMIT_SCOPES),
         finalFailureClass: Joi.string()
           .valid(...PROVIDER_FAILURE_CLASSES)
           .required(),
