@@ -240,6 +240,14 @@ accepts only candidate text, maps explicit safety blocks to a refusal error, and
 runtime validation before returning findings. Both adapters share timeout, retry, file, character,
 finding, and prompt-version limits; provider-specific credentials and models are selected separately.
 
+Gemini's structured-output request uses the `APPLICATION_JSON` MIME enum. Its transport schema
+is a deep clone of the canonical ALSM schema with only `properties.findings.maxItems` omitted:
+the configured Gemini model rejected that constraint in this exact schema during synthetic
+compatibility probes. Nullable `anyOf`, enums, required fields, confidence bounds, and
+`additionalProperties` remain intact. The canonical schema retains `maxItems`, and ALSM's
+unchanged runtime validator rejects responses exceeding `AI_MAX_FINDINGS` before any findings
+are returned or persisted. OpenAI continues to receive the canonical schema.
+
 Raw prompts, provider responses, source, and generated Java are not logged or persisted in
 `validation_runs` or `validation_findings`. Sanitized run metadata may include provider, model,
 prompt version, redaction count, selected-file count, input character count, and sanitized failure

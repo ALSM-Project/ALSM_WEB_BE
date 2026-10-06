@@ -9,6 +9,7 @@ import {
 } from '../domain/ai-validator.port';
 import { buildAiValidationJsonSchema, validateAiValidationOutput } from './ai-validation-output.validator';
 import { buildAiValidationPrompt } from './ai-validation.prompt';
+import { createGeminiValidationSchema } from './gemini-validation-schema';
 
 const GEMINI_GENERATE_CONTENT_ENDPOINT = 'https://generativelanguage.googleapis.com/v1beta/models';
 const MAX_CONFIGURED_RETRIES = 5;
@@ -44,6 +45,8 @@ export class GeminiAiValidatorAdapter implements AiValidatorPort {
     const metadata = this.getMetadata();
     const maxFindings = this.config.getOrThrow<number>('AI_MAX_FINDINGS');
     const prompt = buildAiValidationPrompt(input, metadata.promptVersion);
+    const canonicalSchema = buildAiValidationJsonSchema(maxFindings);
+    const geminiSchema = createGeminiValidationSchema(canonicalSchema);
     const response = await this.requestWithRetries(metadata.model, {
       systemInstruction: { parts: [{ text: prompt.instructions }] },
       contents: [{ role: 'user', parts: [{ text: prompt.input }] }],
@@ -51,8 +54,8 @@ export class GeminiAiValidatorAdapter implements AiValidatorPort {
         candidateCount: 1,
         responseFormat: {
           text: {
-            mimeType: 'application/json',
-            schema: buildAiValidationJsonSchema(maxFindings),
+            mimeType: 'APPLICATION_JSON',
+            schema: geminiSchema,
           },
         },
       },

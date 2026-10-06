@@ -1,6 +1,7 @@
 import { ConfigService } from '@nestjs/config';
 import { GeminiAiValidatorAdapter } from '../src/modules/validation/infrastructure/gemini-ai-validator.adapter';
 import { AiValidationInput } from '../src/modules/validation/domain/ai-validator.port';
+import { buildAiValidationJsonSchema } from '../src/modules/validation/infrastructure/ai-validation-output.validator';
 
 describe('GeminiAiValidatorAdapter', () => {
   const values: Record<string, string | number> = {
@@ -54,10 +55,13 @@ describe('GeminiAiValidatorAdapter', () => {
     expect(body.contents[0].parts[0].text).toContain('PROGRAM.cob');
     expect(body.generationConfig).toEqual({
       candidateCount: 1,
-      responseFormat: { text: { mimeType: 'application/json', schema: expect.objectContaining({
-        properties: expect.objectContaining({ findings: expect.objectContaining({ maxItems: 2 }) }),
-      }) } },
+      responseFormat: { text: { mimeType: 'APPLICATION_JSON', schema: expect.any(Object) } },
     });
+    expect(body.generationConfig.responseFormat.text.mimeType).not.toBe('application/json');
+    const providerSchema = body.generationConfig.responseFormat.text.schema;
+    expect(providerSchema).not.toHaveProperty('properties.findings.maxItems');
+    providerSchema.properties.findings.maxItems = values.AI_MAX_FINDINGS;
+    expect(providerSchema).toStrictEqual(buildAiValidationJsonSchema(Number(values.AI_MAX_FINDINGS)));
   });
 
   it('accepts an ordinary empty findings result', async () => {
@@ -65,11 +69,31 @@ describe('GeminiAiValidatorAdapter', () => {
     await expect(adapter.validate(input)).resolves.toEqual({ findings: [] });
   });
 
+  it.each([2, 50])('accepts exactly the configured limit of %i findings', async (maxFindings) => {
+    values.AI_MAX_FINDINGS = maxFindings;
+    jest.spyOn(globalThis, 'fetch').mockResolvedValue(response(200, generated({
+      findings: Array.from({ length: maxFindings }, () => ({ ...validFinding })),
+    })));
+    await expect(adapter.validate(input)).resolves.toEqual({
+      findings: Array.from({ length: maxFindings }, () => validFinding),
+    });
+  });
+
+  it.each([2, 50])('rejects responses exceeding maxFindings=%i through ALSM validation', async (maxFindings) => {
+    values.AI_MAX_FINDINGS = maxFindings;
+    const fetchMock = jest.spyOn(globalThis, 'fetch').mockResolvedValue(response(200, generated({
+      findings: Array.from({ length: maxFindings + 1 }, () => ({ ...validFinding })),
+    })));
+    await expect(adapter.validate(input)).rejects.toMatchObject({ code: 'AI_PROVIDER_RESPONSE_INVALID' });
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
   it.each([
     ['malformed JSON', '{not-json'],
     ['invalid category', JSON.stringify({ findings: [{ ...validFinding, category: 'UNKNOWN' }] })],
     ['invalid location', JSON.stringify({ findings: [{ ...validFinding, sourceLocation: { file: 'other.cob', startLine: 1, endLine: 1 } }] })],
     ['structurally invalid finding', JSON.stringify({ findings: [{ ...validFinding, extra: 'no' }] })],
+    ['unknown top-level field', JSON.stringify({ findings: [], extra: 'no' })],
   ])('rejects %s with sanitized invalid-output error', async (_name, text) => {
     jest.spyOn(globalThis, 'fetch').mockResolvedValue(response(200, generatedText(text)));
     await expect(adapter.validate(input)).rejects.toMatchObject({ code: 'AI_PROVIDER_RESPONSE_INVALID' });
