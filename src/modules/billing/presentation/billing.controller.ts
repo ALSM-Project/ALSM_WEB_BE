@@ -35,6 +35,8 @@ import {
   PlanResponseDto,
   QuoteRequestResponseDto,
   RequestEnterpriseQuoteDto,
+  SubmitEnterpriseAppealDto,
+  ResolveEnterpriseAppealDto,
   SubscriptionResponseDto,
   UpdateQuoteRequestStatusDto,
   UpgradePreviewResponseDto,
@@ -242,9 +244,7 @@ export class BillingController {
     @CurrentUser() user: AuthenticatedUser,
     @Body() dto: RequestEnterpriseQuoteDto,
   ) {
-    const orgId =
-      (user as AuthenticatedUser & { organizationId?: string }).organizationId || user.userId;
-    const request = await this.billingService.requestEnterpriseQuote(user.userId, orgId, dto);
+    const request = await this.billingService.requestEnterpriseQuote(user, dto);
     return BillingPresenter.toQuoteRequestResponse(request);
   }
 
@@ -268,6 +268,15 @@ export class BillingController {
   async getMyQuoteRequest(@CurrentUser() user: AuthenticatedUser) {
     const request = await this.billingService.getMyQuoteRequest(user.userId);
     if (!request) return null;
+    return BillingPresenter.toQuoteRequestResponse(request);
+  }
+
+  @ApiBearerAuth()
+  @UseGuards(JwtAuthGuard)
+  @Post('enterprise/my-quote-request/appeal')
+  @ApiOperation({ summary: 'Submit an appeal for a suspended Enterprise request' })
+  async submitEnterpriseAppeal(@CurrentUser() user: AuthenticatedUser, @Body() dto: SubmitEnterpriseAppealDto) {
+    const request = await this.billingService.submitQuoteAppeal(user.userId, dto.message);
     return BillingPresenter.toQuoteRequestResponse(request);
   }
 
@@ -304,8 +313,7 @@ export class BillingController {
   @Patch('enterprise/quote-requests/:id/status')
   @ApiOperation({
     summary: 'Update enterprise quote request status (Admin only) (UC-32)',
-    description:
-      'Update the status of an enterprise quote request (PENDING -> CONTACTED -> CLOSED). Requires Platform Admin access.',
+    description: 'Update an enterprise quote request. APPROVED activates/restores Enterprise access; SUSPENDED blocks access until restored. Requires Platform Admin access.',
   })
   @ApiParam({
     name: 'id',
@@ -329,7 +337,20 @@ export class BillingController {
     @Param('id') id: string,
     @Body() dto: UpdateQuoteRequestStatusDto,
   ) {
-    const request = await this.billingService.updateQuoteRequestStatus(user, id, dto.status);
+    const request = await this.billingService.updateQuoteRequestStatus(user, id, dto.status, dto.reason);
+    return BillingPresenter.toQuoteRequestResponse(request);
+  }
+
+  @ApiBearerAuth()
+  @UseGuards(JwtAuthGuard)
+  @Patch('enterprise/quote-requests/:id/appeal')
+  @ApiOperation({ summary: 'Approve or decline a customer appeal (Admin only)' })
+  async resolveEnterpriseAppeal(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('id') id: string,
+    @Body() dto: ResolveEnterpriseAppealDto,
+  ) {
+    const request = await this.billingService.resolveQuoteAppeal(user, id, dto.decision, dto.response);
     return BillingPresenter.toQuoteRequestResponse(request);
   }
 

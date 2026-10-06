@@ -4,11 +4,16 @@ import {
   IsEmail,
   IsEnum,
   IsNotEmpty,
+  IsIn,
   IsNumber,
+  IsInt,
   IsOptional,
   IsString,
   Matches,
   MaxLength,
+  Max,
+  Min,
+  MinLength,
   ValidateNested,
 } from 'class-validator';
 import { Type } from 'class-transformer';
@@ -78,6 +83,7 @@ export class RequestEnterpriseQuoteDto {
   })
   @IsEmail()
   @IsNotEmpty()
+  @MaxLength(254)
   email!: string;
 
   @ApiPropertyOptional({
@@ -103,10 +109,31 @@ export class RequestEnterpriseQuoteDto {
   message?: string;
 }
 
+export class SubmitEnterpriseAppealDto {
+  @ApiProperty({ example: 'We have corrected the issue and would like the suspension reviewed.', maxLength: 2000 })
+  @IsString()
+  @IsNotEmpty()
+  @MinLength(10)
+  @MaxLength(2000)
+  message!: string;
+}
+
+export class ResolveEnterpriseAppealDto {
+  @ApiProperty({ enum: ['APPROVED', 'DECLINED'] })
+  @IsIn(['APPROVED', 'DECLINED'])
+  decision!: 'APPROVED' | 'DECLINED';
+
+  @ApiPropertyOptional({ maxLength: 1000, description: 'Optional explanation shown to the customer' })
+  @IsOptional()
+  @IsString()
+  @MaxLength(1000)
+  response?: string;
+}
+
 export class ListQuoteRequestsQueryDto {
   @ApiPropertyOptional({
     enum: QuoteRequestStatus,
-    description: 'Filter quote requests by status (PENDING, CONTACTED, CLOSED)',
+    description: 'Filter quote requests by status (PENDING, CONTACTED, APPROVED, SUSPENDED, REJECTED, CLOSED)',
   })
   @IsOptional()
   @IsEnum(QuoteRequestStatus)
@@ -115,13 +142,17 @@ export class ListQuoteRequestsQueryDto {
   @ApiPropertyOptional({ example: 1, description: 'Page number for pagination (1-based)' })
   @IsOptional()
   @Type(() => Number)
-  @IsNumber()
+  @IsInt()
+  @Min(1)
+  @Max(100000)
   page?: number;
 
   @ApiPropertyOptional({ example: 10, description: 'Number of records per page' })
   @IsOptional()
   @Type(() => Number)
-  @IsNumber()
+  @IsInt()
+  @Min(1)
+  @Max(100)
   limit?: number;
 }
 
@@ -129,11 +160,17 @@ export class UpdateQuoteRequestStatusDto {
   @ApiProperty({
     enum: QuoteRequestStatus,
     example: QuoteRequestStatus.CONTACTED,
-    description: 'New status for the quote request (CONTACTED or CLOSED)',
+    description: 'APPROVED activates or restores Enterprise access; SUSPENDED requires a reason and blocks Enterprise access; REJECTED declines the request. CLOSED is retained for legacy data.',
   })
   @IsEnum(QuoteRequestStatus)
   @IsNotEmpty()
   status!: QuoteRequestStatus;
+
+  @ApiPropertyOptional({ example: 'Repeated abuse of service quotas', maxLength: 1000 })
+  @IsOptional()
+  @IsString()
+  @MaxLength(1000)
+  reason?: string;
 }
 
 export class CancelSubscriptionDto {
@@ -550,6 +587,24 @@ export class QuoteRequestResponseDto {
 
   @ApiProperty({ enum: QuoteRequestStatus, example: QuoteRequestStatus.PENDING })
   status!: QuoteRequestStatus;
+
+  @ApiPropertyOptional({ example: 'Repeated abuse of service quotas' })
+  statusReason?: string;
+
+  @ApiPropertyOptional({ example: 'We corrected the issue and request a review.' })
+  appealMessage?: string;
+
+  @ApiPropertyOptional({ enum: ['PENDING', 'APPROVED', 'DECLINED'] })
+  appealStatus?: 'PENDING' | 'APPROVED' | 'DECLINED';
+
+  @ApiPropertyOptional()
+  appealResponse?: string;
+
+  @ApiPropertyOptional()
+  appealedAt?: Date | string;
+
+  @ApiPropertyOptional()
+  appealResolvedAt?: Date | string;
 
   @ApiProperty({ example: 'John Doe' })
   fullName!: string;

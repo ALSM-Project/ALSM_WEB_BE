@@ -46,6 +46,15 @@ export class Subscription {
   @Prop()
   cancelFeedback?: string;
 
+  @Prop()
+  suspensionReason?: string;
+
+  @Prop()
+  suspendedAt?: Date;
+
+  @Prop({ type: Types.ObjectId })
+  suspendedBy?: Types.ObjectId;
+
   createdAt!: Date;
   updatedAt!: Date;
 }

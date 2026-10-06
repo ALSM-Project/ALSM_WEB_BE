@@ -17,6 +17,7 @@ export enum BillingCycle {
 export enum SubscriptionStatus {
   TRIAL = 'TRIAL',
   ACTIVE = 'ACTIVE',
+  SUSPENDED = 'SUSPENDED',
   CANCELLED = 'CANCELLED',
   EXPIRED = 'EXPIRED',
   PENDING_PAYMENT = 'PENDING_PAYMENT',
@@ -135,6 +136,10 @@ export const VIETQR_BANK_CONFIG = DEFAULT_BANK_CONFIG;
 export enum QuoteRequestStatus {
   PENDING = 'PENDING',
   CONTACTED = 'CONTACTED',
+  APPROVED = 'APPROVED',
+  SUSPENDED = 'SUSPENDED',
+  REJECTED = 'REJECTED',
+  // Retained for older quote requests. New requests should use APPROVED or REJECTED.
   CLOSED = 'CLOSED',
 }
 
