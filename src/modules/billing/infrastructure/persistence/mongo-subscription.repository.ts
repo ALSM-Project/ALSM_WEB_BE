@@ -1,6 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
-import { Model, Types } from 'mongoose';
+import { ClientSession, Model, Types } from 'mongoose';
 import {
   ISubscriptionRepository,
   SubscriptionProps,
@@ -21,7 +21,7 @@ export class MongoSubscriptionRepository implements ISubscriptionRepository {
     return doc ? SubscriptionMapper.toDomain(doc) : null;
   }
 
-  async findActiveByUser(userId: string): Promise<SubscriptionProps | null> {
+  async findActiveByUser(userId: string, session?: ClientSession): Promise<SubscriptionProps | null> {
     const doc = await this.model
       .findOne({
         userId: new Types.ObjectId(userId),
@@ -34,24 +34,60 @@ export class MongoSubscriptionRepository implements ISubscriptionRepository {
         },
       })
       .sort({ createdAt: -1 })
+      .session(session ?? null)
       .exec();
 
     return doc ? SubscriptionMapper.toDomain(doc) : null;
   }
 
-  async create(props: Omit<SubscriptionProps, 'id'>): Promise<SubscriptionProps> {
-    const doc = await this.model.create({
+  async findLatestByUser(userId: string, session?: ClientSession): Promise<SubscriptionProps | null> {
+    const doc = await this.model
+      .findOne({ userId: new Types.ObjectId(userId) })
+      .sort({ createdAt: -1 })
+      .session(session ?? null)
+      .exec();
+    return doc ? SubscriptionMapper.toDomain(doc) : null;
+  }
+
+  async create(props: Omit<SubscriptionProps, 'id'>, session?: ClientSession): Promise<SubscriptionProps> {
+    const payload = {
       ...props,
       userId: new Types.ObjectId(props.userId),
       organizationId: new Types.ObjectId(props.organizationId),
-    });
+    };
+    const [doc] = session
+      ? await this.model.create([payload], { session })
+      : await this.model.create([payload]);
 
     return SubscriptionMapper.toDomain(doc);
   }
 
-  async updateStatus(id: string, status: SubscriptionStatus): Promise<SubscriptionProps | null> {
+  async updatePlan(
+    id: string,
+    props: Pick<SubscriptionProps, 'planTier' | 'planName' | 'billingCycle' | 'status' | 'amountVnd' | 'currentPeriodStart' | 'currentPeriodEnd'>,
+    session?: ClientSession,
+  ): Promise<SubscriptionProps | null> {
+    const doc = await this.model.findByIdAndUpdate(id, props, { new: true, session }).exec();
+    return doc ? SubscriptionMapper.toDomain(doc) : null;
+  }
+
+  async updateStatus(
+    id: string,
+    status: SubscriptionStatus,
+    suspension?: { reason: string; actorUserId: string },
+    session?: ClientSession,
+  ): Promise<SubscriptionProps | null> {
+    const set: Record<string, unknown> = { status };
+    if (status === SubscriptionStatus.SUSPENDED && suspension) {
+      set.suspensionReason = suspension.reason;
+      set.suspendedAt = new Date();
+      set.suspendedBy = new Types.ObjectId(suspension.actorUserId);
+    }
+    const update = status === SubscriptionStatus.ACTIVE
+      ? { $set: set, $unset: { suspensionReason: '', suspendedAt: '', suspendedBy: '' } }
+      : { $set: set };
     const doc = await this.model
-      .findByIdAndUpdate(id, { status }, { new: true })
+      .findByIdAndUpdate(id, update, { new: true, session })
       .exec();
 
     return doc ? SubscriptionMapper.toDomain(doc) : null;

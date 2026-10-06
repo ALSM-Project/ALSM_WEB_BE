@@ -2,13 +2,21 @@ import {
   BadRequestException,
   ConflictException,
   ForbiddenException,
+  HttpException,
   Inject,
   Injectable,
   Logger,
   NotFoundException,
   OnModuleInit,
+  Optional,
+  ServiceUnavailableException,
 } from '@nestjs/common';
+import { InjectConnection } from '@nestjs/mongoose';
+import { ClientSession, Connection, Types } from 'mongoose';
 import { AuthenticatedUser } from '../../../shared/logging/request-id.middleware';
+import { OrganizationContextService } from '../../organizations/application/organization-context.service';
+import { OrganizationRole } from '../../organizations/domain/organization.types';
+import { AUDIT_REPOSITORY, AuditRepository } from '../../audit/domain/audit.repository';
 import {
   BillingCycle,
   InvoiceStatus,
@@ -36,6 +44,9 @@ export class BillingService implements OnModuleInit {
   private readonly logger = new Logger(BillingService.name);
 
   constructor(
+    @InjectConnection()
+    private readonly connection: Connection,
+    private readonly organizationContext: OrganizationContextService,
     @Inject(SUBSCRIPTION_REPOSITORY)
     private readonly subscriptionRepo: ISubscriptionRepository,
     @Inject(INVOICE_REPOSITORY)
@@ -44,6 +55,9 @@ export class BillingService implements OnModuleInit {
     private readonly planRepo: IPlanRepository,
     @Inject(QUOTE_REQUEST_REPOSITORY)
     private readonly quoteRequestRepo: IQuoteRequestRepository,
+    @Optional()
+    @Inject(AUDIT_REPOSITORY)
+    private readonly audit?: AuditRepository,
   ) {}
 
   async onModuleInit() {
@@ -302,8 +316,7 @@ export class BillingService implements OnModuleInit {
   // ─── Enterprise Quote Request (UC-32) ───────────────────
 
   async requestEnterpriseQuote(
-    userId: string,
-    organizationId: string,
+    user: AuthenticatedUser,
     dto: {
       fullName: string;
       companyName: string;
@@ -312,28 +325,63 @@ export class BillingService implements OnModuleInit {
       message?: string;
     },
   ): Promise<QuoteRequestProps> {
+    const fullName = dto.fullName.trim();
+    const companyName = dto.companyName.trim();
+    const email = dto.email.trim();
+    const phone = dto.phone?.trim();
+    const message = dto.message?.trim();
+    if (fullName.length < 2 || !companyName || !email) {
+      throw new BadRequestException('Name, company, and email are required.');
+    }
+    if (message && message.length > 1000) {
+      throw new BadRequestException('Request details must be 1000 characters or fewer.');
+    }
+
+    const userId = user.userId;
+
     const existing = await this.quoteRequestRepo.findPendingByUser(userId);
     if (existing) {
       throw new ConflictException({
         code: 'QUOTE_REQUEST_EXISTS',
-        message: 'You already have a pending Enterprise quote request.',
+        message: 'You already have an open Enterprise quote request.',
       });
     }
 
-    const currentSub = await this.subscriptionRepo.findActiveByUser(userId);
+    const currentSub = await this.subscriptionRepo.findLatestByUser(userId);
+    if (
+      currentSub?.planTier === PlanTier.ENTERPRISE &&
+      ![SubscriptionStatus.CANCELLED, SubscriptionStatus.EXPIRED].includes(currentSub.status)
+    ) {
+      throw new ConflictException('An Enterprise subscription already exists for this account.');
+    }
+
+    const organization = await this.organizationContext.resolve(user.userId);
+    const membership = organization.members.find((member) => member.userId === user.userId);
+    if (!membership || ![OrganizationRole.OWNER, OrganizationRole.ADMIN].includes(membership.role)) {
+      throw new ForbiddenException('Only organization owners or admins can request an Enterprise migration quote.');
+    }
+    const organizationId = organization.id;
     const currentPlanTier = currentSub ? currentSub.planTier : PlanTier.STARTER;
 
-    const request = await this.quoteRequestRepo.create({
-      userId,
-      organizationId,
-      fullName: dto.fullName,
-      companyName: dto.companyName,
-      email: dto.email,
-      phone: dto.phone,
-      message: dto.message,
-      currentPlanTier,
-      status: QuoteRequestStatus.PENDING,
-    });
+    let request: QuoteRequestProps;
+    try {
+      request = await this.quoteRequestRepo.create({
+        userId,
+        organizationId,
+        fullName,
+        companyName,
+        email,
+        phone: phone || undefined,
+        message: message || undefined,
+        currentPlanTier,
+        status: QuoteRequestStatus.PENDING,
+      });
+    } catch (error) {
+      if ((error as { code?: number })?.code === 11000) {
+        throw new ConflictException({ code: 'QUOTE_REQUEST_EXISTS', message: 'You already have an open Enterprise quote request.' });
+      }
+      throw error;
+    }
 
     this.logger.log(`Enterprise quote requested by user ${userId} for org ${organizationId}`);
     return request;
@@ -343,17 +391,81 @@ export class BillingService implements OnModuleInit {
     return this.quoteRequestRepo.findLatestByUser(userId);
   }
 
+  async submitQuoteAppeal(userId: string, message: string): Promise<QuoteRequestProps> {
+    const normalizedMessage = message.trim();
+    if (normalizedMessage.length < 10 || normalizedMessage.length > 2000) {
+      throw new BadRequestException('Appeal details must be between 10 and 2000 characters.');
+    }
+    const request = await this.quoteRequestRepo.findLatestByUser(userId);
+    if (!request) throw new NotFoundException('Enterprise quote request not found');
+    if (request.status !== QuoteRequestStatus.SUSPENDED) {
+      throw new BadRequestException('Only suspended Enterprise requests can be appealed');
+    }
+    if (request.appealStatus === 'PENDING') {
+      throw new ConflictException('An appeal is already awaiting admin review');
+    }
+    const updated = await this.quoteRequestRepo.submitAppeal(request.id, normalizedMessage);
+    if (!updated) throw new ConflictException('The appeal could not be submitted; refresh and try again');
+    this.logger.log(`Enterprise suspension appeal submitted for quote ${request.id}`);
+    return updated;
+  }
+
+  async resolveQuoteAppeal(
+    user: AuthenticatedUser,
+    quoteId: string,
+    decision: 'APPROVED' | 'DECLINED',
+    response?: string,
+  ): Promise<QuoteRequestProps> {
+    this.assertPlatformAdmin(user);
+    this.assertQuoteId(quoteId);
+    const normalizedResponse = response?.trim();
+    if (normalizedResponse && normalizedResponse.length > 1000) {
+      throw new BadRequestException('Admin response must be 1000 characters or fewer.');
+    }
+    const result = await this.withMongoTransaction(async (session) => {
+      const request = await this.quoteRequestRepo.findById(quoteId, session);
+      if (!request) throw new NotFoundException('Quote request not found');
+      if (request.status !== QuoteRequestStatus.SUSPENDED || request.appealStatus !== 'PENDING') {
+        throw new BadRequestException('This request has no pending appeal');
+      }
+      if (decision === 'APPROVED') {
+        await this.applyQuoteRequestStatus(user, request, QuoteRequestStatus.APPROVED, undefined, session, false);
+      }
+      const updated = await this.quoteRequestRepo.resolveAppeal(quoteId, decision, normalizedResponse, session);
+      if (!updated) throw new ConflictException('The appeal was already resolved; refresh the request');
+      return { request, updated };
+    });
+    if (decision === 'APPROVED') {
+      await this.appendBillingAudit({
+        actorUserId: user.userId,
+        organizationId: result.request.organizationId,
+        action: `ENTERPRISE_QUOTE_${QuoteRequestStatus.APPROVED}`,
+        resourceType: 'enterprise_quote_request',
+        resourceId: quoteId,
+        metadata: { previousStatus: QuoteRequestStatus.SUSPENDED, newStatus: QuoteRequestStatus.APPROVED, planTier: PlanTier.ENTERPRISE },
+      });
+    }
+    await this.appendBillingAudit({
+      actorUserId: user.userId,
+      organizationId: result.request.organizationId,
+      action: `ENTERPRISE_APPEAL_${decision}`,
+      resourceType: 'enterprise_quote_request',
+      resourceId: quoteId,
+      metadata: { appealMessage: result.request.appealMessage ?? '', ...(normalizedResponse ? { response: normalizedResponse } : {}) },
+    });
+    return result.updated;
+  }
+
   async listQuoteRequests(
     user: AuthenticatedUser,
     filters?: { status?: QuoteRequestStatus; page?: number; limit?: number },
   ): Promise<{ items: QuoteRequestProps[]; total: number }> {
-    const isAdmin = Boolean(
-      user.isPlatformAdmin ||
-      (user as AuthenticatedUser & { roles?: string[]; role?: string }).roles?.includes('ADMIN') ||
-      (user as AuthenticatedUser & { roles?: string[]; role?: string }).role === 'ADMIN',
-    );
-    if (!isAdmin) {
-      throw new ForbiddenException('Only platform admins can view quote requests.');
+    this.assertPlatformAdmin(user);
+    if (filters?.page !== undefined && (!Number.isInteger(filters.page) || filters.page < 1)) {
+      throw new BadRequestException('Page must be a positive integer.');
+    }
+    if (filters?.limit !== undefined && (!Number.isInteger(filters.limit) || filters.limit < 1 || filters.limit > 100)) {
+      throw new BadRequestException('Limit must be an integer between 1 and 100.');
     }
     return this.quoteRequestRepo.findAll(filters, filters?.page, filters?.limit);
   }
@@ -362,61 +474,219 @@ export class BillingService implements OnModuleInit {
     user: AuthenticatedUser,
     quoteId: string,
     newStatus: QuoteRequestStatus,
+    reason?: string,
   ): Promise<QuoteRequestProps> {
+    this.assertPlatformAdmin(user);
+    this.assertQuoteId(quoteId);
+    const normalizedReason = reason?.trim();
+    if (newStatus === QuoteRequestStatus.SUSPENDED && !normalizedReason) {
+      throw new BadRequestException('A policy violation reason is required to suspend Enterprise access');
+    }
+    const result = await this.withMongoTransaction(async (session) => {
+      const request = await this.quoteRequestRepo.findById(quoteId, session);
+      if (!request) throw new NotFoundException('Quote request not found');
+      const updated = await this.applyQuoteRequestStatus(user, request, newStatus, normalizedReason, session);
+      return { request, updated };
+    });
+
+    if (result.request.status === newStatus) return result.updated;
+    await this.appendBillingAudit({
+      actorUserId: user.userId,
+      organizationId: result.request.organizationId,
+      action: `ENTERPRISE_QUOTE_${newStatus}`,
+      resourceType: 'enterprise_quote_request',
+      resourceId: quoteId,
+      metadata: {
+        previousStatus: result.request.status,
+        newStatus,
+        ...(normalizedReason ? { reason: normalizedReason } : {}),
+        ...(newStatus === QuoteRequestStatus.APPROVED ? { planTier: PlanTier.ENTERPRISE } : {}),
+      },
+    });
+    if (
+      result.request.status === QuoteRequestStatus.SUSPENDED &&
+      result.request.appealStatus === 'PENDING' &&
+      newStatus === QuoteRequestStatus.APPROVED
+    ) {
+      await this.appendBillingAudit({
+        actorUserId: user.userId,
+        organizationId: result.request.organizationId,
+        action: 'ENTERPRISE_APPEAL_APPROVED',
+        resourceType: 'enterprise_quote_request',
+        resourceId: quoteId,
+        metadata: { appealMessage: result.request.appealMessage ?? '', resolution: 'Enterprise access restored by admin' },
+      });
+    }
+
+    this.logger.log(`Quote request ${quoteId} status updated to ${newStatus} by admin ${user.userId}`);
+    return result.updated;
+  }
+
+  private async applyQuoteRequestStatus(
+    user: AuthenticatedUser,
+    request: QuoteRequestProps,
+    newStatus: QuoteRequestStatus,
+    reason: string | undefined,
+    session: ClientSession,
+    resolvePendingAppeal = true,
+  ): Promise<QuoteRequestProps> {
+    if (request.status === newStatus) {
+      if (newStatus === QuoteRequestStatus.APPROVED) {
+        await this.activateEnterpriseSubscription(request, session);
+      }
+      return request;
+    }
+    const allowedTransitions: Record<QuoteRequestStatus, QuoteRequestStatus[]> = {
+      [QuoteRequestStatus.PENDING]: [QuoteRequestStatus.CONTACTED, QuoteRequestStatus.APPROVED, QuoteRequestStatus.REJECTED, QuoteRequestStatus.CLOSED],
+      [QuoteRequestStatus.CONTACTED]: [QuoteRequestStatus.APPROVED, QuoteRequestStatus.REJECTED, QuoteRequestStatus.CLOSED],
+      [QuoteRequestStatus.APPROVED]: [QuoteRequestStatus.SUSPENDED],
+      [QuoteRequestStatus.SUSPENDED]: [QuoteRequestStatus.APPROVED],
+      [QuoteRequestStatus.REJECTED]: [],
+      [QuoteRequestStatus.CLOSED]: [],
+    };
+    if (!allowedTransitions[request.status]?.includes(newStatus)) {
+      throw new BadRequestException(`Cannot transition quote request from ${request.status} to ${newStatus}`);
+    }
+    if (newStatus === QuoteRequestStatus.SUSPENDED) {
+      if (!reason) throw new BadRequestException('A policy violation reason is required to suspend Enterprise access');
+      await this.suspendEnterpriseSubscription(request, user.userId, reason, session);
+    } else if (newStatus === QuoteRequestStatus.APPROVED) {
+      if (request.status === QuoteRequestStatus.SUSPENDED) {
+        await this.restoreEnterpriseSubscription(request, session);
+      } else {
+        await this.activateEnterpriseSubscription(request, session);
+      }
+    }
+    let updated = await this.quoteRequestRepo.updateStatus(request.id, newStatus, reason, session, request.status);
+    if (!updated) throw new ConflictException('The request changed while it was being processed. Refresh and try again.');
+    if (resolvePendingAppeal && request.status === QuoteRequestStatus.SUSPENDED && newStatus === QuoteRequestStatus.APPROVED && request.appealStatus === 'PENDING') {
+      updated = await this.quoteRequestRepo.resolveAppeal(request.id, 'APPROVED', undefined, session);
+      if (!updated) throw new ConflictException('The appeal changed while access was being restored. Refresh and try again.');
+    }
+    return updated;
+  }
+
+  private async suspendEnterpriseSubscription(
+    request: QuoteRequestProps,
+    actorUserId: string,
+    reason: string,
+    session: ClientSession,
+  ): Promise<void> {
+    const subscription = await this.subscriptionRepo.findLatestByUser(request.userId, session);
+    if (
+      !subscription ||
+      subscription.organizationId !== request.organizationId ||
+      subscription.planTier !== PlanTier.ENTERPRISE
+    ) {
+      throw new BadRequestException('No Enterprise subscription is available to suspend');
+    }
+    if (subscription.status === SubscriptionStatus.SUSPENDED) return;
+    if (subscription.status !== SubscriptionStatus.ACTIVE) {
+      throw new BadRequestException('Only an active Enterprise subscription can be suspended');
+    }
+
+    const suspended = await this.subscriptionRepo.updateStatus(subscription.id, SubscriptionStatus.SUSPENDED, {
+      reason,
+      actorUserId,
+    }, session);
+    if (!suspended) throw new NotFoundException('Enterprise subscription not found');
+  }
+
+  private async restoreEnterpriseSubscription(request: QuoteRequestProps, session: ClientSession): Promise<void> {
+    const subscription = await this.subscriptionRepo.findLatestByUser(request.userId, session);
+    if (
+      !subscription ||
+      subscription.organizationId !== request.organizationId ||
+      subscription.planTier !== PlanTier.ENTERPRISE
+    ) {
+      throw new BadRequestException('No suspended Enterprise subscription is available to restore');
+    }
+    if (subscription.status === SubscriptionStatus.ACTIVE) return;
+    if (subscription.status !== SubscriptionStatus.SUSPENDED) {
+      throw new BadRequestException('Enterprise subscription is not suspended');
+    }
+    const restored = await this.subscriptionRepo.updateStatus(subscription.id, SubscriptionStatus.ACTIVE, undefined, session);
+    if (!restored) throw new NotFoundException('Enterprise subscription not found');
+  }
+
+  private async activateEnterpriseSubscription(request: QuoteRequestProps, session: ClientSession): Promise<void> {
+    const existing = await this.subscriptionRepo.findActiveByUser(request.userId, session);
+    if (
+      existing?.organizationId === request.organizationId &&
+      existing.planTier === PlanTier.ENTERPRISE &&
+      existing.status === SubscriptionStatus.ACTIVE
+    ) {
+      return;
+    }
+
+    const now = new Date();
+    const nextYear = new Date(now);
+    nextYear.setFullYear(nextYear.getFullYear() + 1);
+    const enterprisePlan = {
+      planTier: PlanTier.ENTERPRISE,
+      planName: 'Enterprise',
+      billingCycle: BillingCycle.ANNUAL,
+      status: SubscriptionStatus.ACTIVE,
+      amountVnd: 0,
+      currentPeriodStart: now,
+      currentPeriodEnd: nextYear,
+    };
+
+    if (existing?.organizationId === request.organizationId) {
+      const upgraded = await this.subscriptionRepo.updatePlan(existing.id, enterprisePlan, session);
+      if (!upgraded) {
+        throw new NotFoundException('Active subscription not found while approving Enterprise upgrade');
+      }
+      return;
+    }
+
+    await this.subscriptionRepo.create({
+      userId: request.userId,
+      organizationId: request.organizationId,
+      ...enterprisePlan,
+    }, session);
+  }
+
+  private assertPlatformAdmin(user: AuthenticatedUser): void {
     const isAdmin = Boolean(
       user.isPlatformAdmin ||
       (user as AuthenticatedUser & { roles?: string[]; role?: string }).roles?.includes('ADMIN') ||
       (user as AuthenticatedUser & { roles?: string[]; role?: string }).role === 'ADMIN',
     );
-    if (!isAdmin) {
-      throw new ForbiddenException('Only platform admins can update quote requests.');
-    }
+    if (!isAdmin) throw new ForbiddenException('Only platform admins can manage Enterprise quote requests.');
+  }
 
-    const request = await this.quoteRequestRepo.findById(quoteId);
-    if (!request) {
-      throw new NotFoundException('Quote request not found');
-    }
+  private assertQuoteId(quoteId: string): void {
+    if (!/^[a-f\d]{24}$/i.test(quoteId)) throw new BadRequestException('Invalid Enterprise request ID.');
+  }
 
-    if (request.status === newStatus) {
-      return request;
-    }
-
-    if (request.status === QuoteRequestStatus.CLOSED) {
-      throw new BadRequestException('Cannot change status of a closed quote request');
-    }
-
-    if (
-      request.status === QuoteRequestStatus.CONTACTED &&
-      newStatus === QuoteRequestStatus.PENDING
-    ) {
-      throw new BadRequestException('Cannot transition from CONTACTED to PENDING');
-    }
-
-    const updated = await this.quoteRequestRepo.updateStatus(quoteId, newStatus);
-    if (!updated) {
-      throw new NotFoundException('Quote request not found');
-    }
-
-    if (newStatus === QuoteRequestStatus.CLOSED) {
-      const now = new Date();
-      const nextYear = new Date(now);
-      nextYear.setFullYear(nextYear.getFullYear() + 1);
-
-      await this.subscriptionRepo.create({
-        userId: request.userId,
-        organizationId: request.organizationId,
-        planTier: PlanTier.ENTERPRISE,
-        planName: 'Enterprise',
-        billingCycle: BillingCycle.ANNUAL,
-        status: SubscriptionStatus.ACTIVE,
-        amountVnd: 0,
-        currentPeriodStart: now,
-        currentPeriodEnd: nextYear,
+  private async withMongoTransaction<T>(work: (session: ClientSession) => Promise<T>): Promise<T> {
+    const session = await this.connection.startSession();
+    try {
+      let result: T | undefined;
+      await session.withTransaction(async () => {
+        result = await work(session);
       });
-      this.logger.log(`Enterprise plan activated for user ${request.userId} / org ${request.organizationId}`);
+      if (result === undefined) throw new ServiceUnavailableException('The Enterprise request could not be completed. Please retry.');
+      return result;
+    } catch (error) {
+      if (error instanceof HttpException) throw error;
+      if ((error as { code?: number })?.code === 11000) {
+        throw new ConflictException({ code: 'QUOTE_REQUEST_EXISTS', message: 'You already have an open Enterprise quote request.' });
+      }
+      this.logger.error('Enterprise billing transaction failed; changes were rolled back.');
+      throw new ServiceUnavailableException('The Enterprise request could not be completed. Please retry.');
+    } finally {
+      await session.endSession();
     }
+  }
 
-    this.logger.log(`Quote request ${quoteId} status updated to ${newStatus} by admin ${user.userId}`);
-    return updated;
+  private async appendBillingAudit(event: Parameters<NonNullable<typeof this.audit>['append']>[0]): Promise<void> {
+    try {
+      await this.audit?.append(event);
+    } catch {
+      // The state transition has committed. Audit failure must not make the caller retry a completed operation.
+      this.logger.error('Enterprise billing state was saved, but its audit event could not be recorded.');
+    }
   }
 }

@@ -1,3 +1,4 @@
+import { ClientSession } from 'mongoose';
 import {
   BillingCycle,
   InvoiceStatus,
@@ -22,6 +23,9 @@ export interface SubscriptionProps {
   cancelledAt?: Date;
   cancelReason?: string;
   cancelFeedback?: string;
+  suspensionReason?: string;
+  suspendedAt?: Date;
+  suspendedBy?: string;
   createdAt?: Date;
   updatedAt?: Date;
 }
@@ -81,9 +85,11 @@ export interface PlanProps {
 
 export interface ISubscriptionRepository {
   findById(id: string): Promise<SubscriptionProps | null>;
-  findActiveByUser(userId: string): Promise<SubscriptionProps | null>;
-  create(props: Omit<SubscriptionProps, 'id'>): Promise<SubscriptionProps>;
-  updateStatus(id: string, status: SubscriptionStatus): Promise<SubscriptionProps | null>;
+  findActiveByUser(userId: string, session?: ClientSession): Promise<SubscriptionProps | null>;
+  findLatestByUser(userId: string, session?: ClientSession): Promise<SubscriptionProps | null>;
+  create(props: Omit<SubscriptionProps, 'id'>, session?: ClientSession): Promise<SubscriptionProps>;
+  updatePlan(id: string, props: Pick<SubscriptionProps, 'planTier' | 'planName' | 'billingCycle' | 'status' | 'amountVnd' | 'currentPeriodStart' | 'currentPeriodEnd'>, session?: ClientSession): Promise<SubscriptionProps | null>;
+  updateStatus(id: string, status: SubscriptionStatus, suspension?: { reason: string; actorUserId: string }, session?: ClientSession): Promise<SubscriptionProps | null>;
   cancel(id: string, reason: string, feedback?: string): Promise<SubscriptionProps | null>;
 }
 
@@ -142,12 +148,18 @@ export interface QuoteRequestProps {
   message?: string;
   currentPlanTier: PlanTier;
   status: QuoteRequestStatus;
+  statusReason?: string;
+  appealMessage?: string;
+  appealStatus?: 'PENDING' | 'APPROVED' | 'DECLINED';
+  appealResponse?: string;
+  appealedAt?: Date;
+  appealResolvedAt?: Date;
   createdAt?: Date;
   updatedAt?: Date;
 }
 
 export interface IQuoteRequestRepository {
-  findById(id: string): Promise<QuoteRequestProps | null>;
+  findById(id: string, session?: ClientSession): Promise<QuoteRequestProps | null>;
   findPendingByUser(userId: string): Promise<QuoteRequestProps | null>;
   findLatestByUser(userId: string): Promise<QuoteRequestProps | null>;
   findAll(
@@ -156,7 +168,9 @@ export interface IQuoteRequestRepository {
     limit?: number,
   ): Promise<{ items: QuoteRequestProps[]; total: number }>;
   create(props: Omit<QuoteRequestProps, 'id'>): Promise<QuoteRequestProps>;
-  updateStatus(id: string, status: QuoteRequestStatus): Promise<QuoteRequestProps | null>;
+  updateStatus(id: string, status: QuoteRequestStatus, reason?: string, session?: ClientSession, expectedStatus?: QuoteRequestStatus): Promise<QuoteRequestProps | null>;
+  submitAppeal(id: string, message: string): Promise<QuoteRequestProps | null>;
+  resolveAppeal(id: string, status: 'APPROVED' | 'DECLINED', response?: string, session?: ClientSession): Promise<QuoteRequestProps | null>;
 }
 
 export const SUBSCRIPTION_REPOSITORY = Symbol('SUBSCRIPTION_REPOSITORY');
