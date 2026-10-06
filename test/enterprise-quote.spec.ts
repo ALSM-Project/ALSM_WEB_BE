@@ -3,6 +3,9 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { validate } from 'class-validator';
 import { plainToInstance } from 'class-transformer';
 import { BillingService } from '../src/modules/billing/application/billing.service';
+import { getConnectionToken } from '@nestjs/mongoose';
+import { OrganizationContextService } from '../src/modules/organizations/application/organization-context.service';
+import { OrganizationRole } from '../src/modules/organizations/domain/organization.types';
 import { BillingController } from '../src/modules/billing/presentation/billing.controller';
 import { UsageService } from '../src/modules/billing/application/usage.service';
 import {
@@ -29,6 +32,7 @@ describe('UC-32: Enterprise Quote Request', () => {
   };
   let subscriptionRepo: {
     findActiveByUser: jest.Mock;
+    findLatestByUser: jest.Mock;
   };
   let invoiceRepo: {
     findRecentByUser: jest.Mock;
@@ -41,6 +45,18 @@ describe('UC-32: Enterprise Quote Request', () => {
   };
   let usageService: {
     getUsageStats: jest.Mock;
+  };
+  const validQuoteId = '507f1f77bcf86cd799439011';
+  const mockSession = {
+    withTransaction: jest.fn(async (callback: () => Promise<void>) => callback()),
+    endSession: jest.fn(),
+  };
+  const mockConnection = { startSession: jest.fn().mockResolvedValue(mockSession) };
+  const organizationContext = {
+    resolve: jest.fn().mockResolvedValue({
+      id: 'org-123',
+      members: [{ userId: 'user-123', role: OrganizationRole.OWNER }],
+    }),
   };
 
   const mockUser: AuthenticatedUser = {
@@ -63,6 +79,12 @@ describe('UC-32: Enterprise Quote Request', () => {
         id: 'sub-1',
         planTier: PlanTier.PROFESSIONAL,
       }),
+      findLatestByUser: jest.fn().mockResolvedValue({
+        id: 'sub-1',
+        organizationId: 'org-123',
+        planTier: PlanTier.PROFESSIONAL,
+        status: 'ACTIVE',
+      }),
     };
     invoiceRepo = {
       findRecentByUser: jest.fn(),
@@ -81,6 +103,8 @@ describe('UC-32: Enterprise Quote Request', () => {
       controllers: [BillingController],
       providers: [
         BillingService,
+        { provide: getConnectionToken(), useValue: mockConnection },
+        { provide: OrganizationContextService, useValue: organizationContext },
         { provide: UsageService, useValue: usageService },
         { provide: QUOTE_REQUEST_REPOSITORY, useValue: quoteRequestRepo },
         { provide: SUBSCRIPTION_REPOSITORY, useValue: subscriptionRepo },
@@ -175,7 +199,7 @@ describe('UC-32: Enterprise Quote Request', () => {
         createdAt: new Date('2026-09-25T10:00:00Z'),
       });
 
-      const result = await service.requestEnterpriseQuote('user-123', 'org-123', {
+      const result = await service.requestEnterpriseQuote(mockUser, {
         fullName: 'Jane Doe',
         companyName: 'ACME Enterprise',
         email: 'jane@acme.com',
@@ -207,7 +231,7 @@ describe('UC-32: Enterprise Quote Request', () => {
       });
 
       await expect(
-        service.requestEnterpriseQuote('user-123', 'org-123', {
+        service.requestEnterpriseQuote(mockUser, {
           fullName: 'Jane Doe',
           companyName: 'ACME Enterprise',
           email: 'jane@acme.com',
@@ -239,10 +263,7 @@ describe('UC-32: Enterprise Quote Request', () => {
         email: 'john@legacybank.com',
       };
 
-      const response = await controller.requestEnterpriseQuote(
-        { ...mockUser, organizationId: 'org-123' } as AuthenticatedUser & { organizationId?: string },
-        dto,
-      );
+      const response = await controller.requestEnterpriseQuote(mockUser, dto);
 
       expect(response).toEqual(
         expect.objectContaining({
@@ -363,7 +384,7 @@ describe('UC-32: Enterprise Quote Request', () => {
 
     it('should throw ForbiddenException if user is not platform admin', async () => {
       await expect(
-        service.updateQuoteRequestStatus(mockUser, 'quote-1', QuoteRequestStatus.CONTACTED),
+        service.updateQuoteRequestStatus(mockUser, validQuoteId, QuoteRequestStatus.CONTACTED),
       ).rejects.toThrow(ForbiddenException);
     });
 
@@ -371,45 +392,51 @@ describe('UC-32: Enterprise Quote Request', () => {
       quoteRequestRepo.findById.mockResolvedValue(null);
 
       await expect(
-        service.updateQuoteRequestStatus(adminUser, 'non-existent', QuoteRequestStatus.CONTACTED),
+        service.updateQuoteRequestStatus(adminUser, validQuoteId, QuoteRequestStatus.CONTACTED),
       ).rejects.toThrow(NotFoundException);
     });
 
     it('should update status from PENDING to CONTACTED for admin', async () => {
       quoteRequestRepo.findById.mockResolvedValue({
-        id: 'quote-1',
+        id: validQuoteId,
         status: QuoteRequestStatus.PENDING,
       });
       quoteRequestRepo.updateStatus.mockResolvedValue({
-        id: 'quote-1',
+        id: validQuoteId,
         status: QuoteRequestStatus.CONTACTED,
       });
 
-      const result = await service.updateQuoteRequestStatus(adminUser, 'quote-1', QuoteRequestStatus.CONTACTED);
+      const result = await service.updateQuoteRequestStatus(adminUser, validQuoteId, QuoteRequestStatus.CONTACTED);
 
-      expect(quoteRequestRepo.updateStatus).toHaveBeenCalledWith('quote-1', QuoteRequestStatus.CONTACTED);
+      expect(quoteRequestRepo.updateStatus).toHaveBeenCalledWith(
+        validQuoteId,
+        QuoteRequestStatus.CONTACTED,
+        undefined,
+        mockSession,
+        QuoteRequestStatus.PENDING,
+      );
       expect(result.status).toBe(QuoteRequestStatus.CONTACTED);
     });
 
     it('should throw BadRequestException on invalid transition from CONTACTED to PENDING', async () => {
       quoteRequestRepo.findById.mockResolvedValue({
-        id: 'quote-1',
+        id: validQuoteId,
         status: QuoteRequestStatus.CONTACTED,
       });
 
       await expect(
-        service.updateQuoteRequestStatus(adminUser, 'quote-1', QuoteRequestStatus.PENDING),
+        service.updateQuoteRequestStatus(adminUser, validQuoteId, QuoteRequestStatus.PENDING),
       ).rejects.toThrow(BadRequestException);
     });
 
     it('should throw BadRequestException on modifying a CLOSED quote request', async () => {
       quoteRequestRepo.findById.mockResolvedValue({
-        id: 'quote-1',
+        id: validQuoteId,
         status: QuoteRequestStatus.CLOSED,
       });
 
       await expect(
-        service.updateQuoteRequestStatus(adminUser, 'quote-1', QuoteRequestStatus.CONTACTED),
+        service.updateQuoteRequestStatus(adminUser, validQuoteId, QuoteRequestStatus.CONTACTED),
       ).rejects.toThrow(BadRequestException);
     });
   });
