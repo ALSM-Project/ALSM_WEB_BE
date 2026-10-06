@@ -99,7 +99,8 @@ export class RequestEnterpriseQuoteDto {
   phone?: string;
 
   @ApiPropertyOptional({
-    example: 'We require custom on-premise deployment and full legacy modernization for 500+ screens.',
+    example:
+      'We require custom on-premise deployment and full legacy modernization for 500+ screens.',
     description: 'Custom modernization requirements and scope description',
   })
   @IsOptional()
@@ -366,7 +367,10 @@ export class CancelSubscriptionResponseDto {
   @ApiProperty({ example: '2026-09-05T20:30:00.000Z' })
   cancelledAt!: Date | string;
 
-  @ApiProperty({ example: '2026-10-05T20:00:00.000Z', description: 'Access continues until the end of paid period' })
+  @ApiProperty({
+    example: '2026-10-05T20:00:00.000Z',
+    description: 'Access continues until the end of paid period',
+  })
   accessUntil!: Date | string;
 }
 
@@ -391,7 +395,10 @@ export class UpgradePlanInfoDto {
 }
 
 export class ProrationDto {
-  @ApiProperty({ example: 120000, description: 'Remaining credit from current subscription in VND' })
+  @ApiProperty({
+    example: 120000,
+    description: 'Remaining credit from current subscription in VND',
+  })
   creditRemainingVnd!: number;
 
   @ApiProperty({ example: 400000, description: 'Prorated cost for target subscription in VND' })

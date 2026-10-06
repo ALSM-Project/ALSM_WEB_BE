@@ -11,16 +11,11 @@ import { MenuPresenter } from '../response/menu.presenter';
 @UseGuards(JwtAuthGuard)
 @Controller('commands')
 export class CommandPaletteController {
-  constructor(
-    private readonly commandPaletteService: CommandPaletteService,
-  ) {}
+  constructor(private readonly commandPaletteService: CommandPaletteService) {}
 
   @Get('search')
   @ApiOperation({ summary: 'Search commands for Command Palette (Ctrl+K)' })
-  async searchCommands(
-    @Query('q') query: string,
-    @CurrentUser() user: AuthenticatedUser,
-  ) {
+  async searchCommands(@Query('q') query: string, @CurrentUser() user: AuthenticatedUser) {
     const role = (user as AuthenticatedUser & { role?: string }).role || 'user';
     const commands = await this.commandPaletteService.searchCommands(
       query || '',
@@ -33,14 +28,9 @@ export class CommandPaletteController {
 
   @Get('all')
   @ApiOperation({ summary: 'Get all available commands' })
-  async getAllCommands(
-    @CurrentUser() user: AuthenticatedUser,
-  ) {
+  async getAllCommands(@CurrentUser() user: AuthenticatedUser) {
     const role = (user as AuthenticatedUser & { role?: string }).role || 'user';
-    const commands = await this.commandPaletteService.getCommands(
-      user.userId,
-      role,
-    );
+    const commands = await this.commandPaletteService.getCommands(user.userId, role);
 
     return MenuPresenter.toCommandResponse(commands);
   }

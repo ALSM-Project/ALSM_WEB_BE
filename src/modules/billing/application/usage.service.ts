@@ -3,9 +3,7 @@ import {
   BILLING_USAGE_REPOSITORY,
   IBillingUsageRepository,
 } from '../domain/billing.repository.interface';
-import {
-  PLAN_CATALOGUE,
-} from '../domain/billing.types';
+import { PLAN_CATALOGUE } from '../domain/billing.types';
 
 @Injectable()
 export class UsageService {
@@ -25,13 +23,21 @@ export class UsageService {
 
     const projectCount = await this.usageRepo.countProjectsByOrganization(organizationId);
 
-    const periodStart = subscription?.currentPeriodStart || new Date(new Date().getFullYear(), new Date().getMonth(), 1);
-    const conversionCount = await this.usageRepo.countConversionsByOrganizationSince(organizationId, periodStart);
+    const periodStart =
+      subscription?.currentPeriodStart ||
+      new Date(new Date().getFullYear(), new Date().getMonth(), 1);
+    const conversionCount = await this.usageRepo.countConversionsByOrganizationSince(
+      organizationId,
+      periodStart,
+    );
 
     const sixMonthsAgo = new Date();
     sixMonthsAgo.setMonth(sixMonthsAgo.getMonth() - 6);
 
-    const formattedMonthly = await this.usageRepo.getMonthlyConversions(organizationId, sixMonthsAgo);
+    const formattedMonthly = await this.usageRepo.getMonthlyConversions(
+      organizationId,
+      sixMonthsAgo,
+    );
 
     return {
       plan: {

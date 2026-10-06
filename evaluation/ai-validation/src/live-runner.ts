@@ -1,3 +1,4 @@
+import { sanitizeProviderDiagnostics } from '../../../src/modules/validation/domain/ai-provider-diagnostics';
 import { BadRequestException } from '@nestjs/common';
 import { AiValidatorError } from '../../../src/modules/validation/domain/ai-validator.error';
 import {
@@ -167,8 +168,11 @@ function classifyFailure(error: unknown): EvaluationPredictionCase['status'] {
   return 'PROVIDER_FAILED';
 }
 
-function sanitizeFailure(error: unknown): { code: string; message: string } {
-  if (error instanceof AiValidatorError) return { code: error.code, message: error.message };
+function sanitizeFailure(error: unknown): NonNullable<EvaluationPredictionCase['failure']> {
+  if (error instanceof AiValidatorError) {
+    const diagnostics = error.diagnostics && sanitizeProviderDiagnostics(error.diagnostics);
+    return { code: error.code, message: error.message, ...(diagnostics ? { diagnostics } : {}) };
+  }
   if (error instanceof BadRequestException) {
     const response = error.getResponse();
     if (typeof response === 'object' && response !== null) {

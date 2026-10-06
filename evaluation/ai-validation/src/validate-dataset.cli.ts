@@ -10,9 +10,9 @@ function main(): void {
   const categoryDistribution = Object.fromEntries(
     EVALUATION_CATEGORIES.map((category) => [
       category,
-      dataset.cases.flatMap((benchmarkCase) => benchmarkCase.expectedFindings).filter(
-        (finding) => finding.category === category,
-      ).length,
+      dataset.cases
+        .flatMap((benchmarkCase) => benchmarkCase.expectedFindings)
+        .filter((finding) => finding.category === category).length,
     ]),
   );
   const difficultyDistribution = Object.fromEntries(

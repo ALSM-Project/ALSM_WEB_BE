@@ -81,4 +81,3 @@ describe('AuthService user projection', () => {
     expect(response.providers).toEqual(['GOOGLE']);
   });
 });
-

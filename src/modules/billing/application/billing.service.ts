@@ -219,8 +219,14 @@ export class BillingService implements OnModuleInit {
     const now = new Date();
     const periodEnd = current.currentPeriodEnd || now;
     const periodStart = current.currentPeriodStart || now;
-    const totalDays = Math.max(1, Math.ceil((periodEnd.getTime() - periodStart.getTime()) / (24 * 60 * 60 * 1000)));
-    const remainingDays = Math.max(0, Math.ceil((periodEnd.getTime() - now.getTime()) / (24 * 60 * 60 * 1000)));
+    const totalDays = Math.max(
+      1,
+      Math.ceil((periodEnd.getTime() - periodStart.getTime()) / (24 * 60 * 60 * 1000)),
+    );
+    const remainingDays = Math.max(
+      0,
+      Math.ceil((periodEnd.getTime() - now.getTime()) / (24 * 60 * 60 * 1000)),
+    );
 
     const dailyRateCurrent = current.amountVnd / totalDays;
     const creditRemaining = Math.round(dailyRateCurrent * remainingDays);

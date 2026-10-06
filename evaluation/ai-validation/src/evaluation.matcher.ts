@@ -103,7 +103,8 @@ function buildCandidate(
   const source = compareLocation(expected.sourceLocation, predicted.sourceLocation, toleranceLines);
   const target = compareLocation(expected.targetLocation, predicted.targetLocation, toleranceLines);
   if (!source.compatible || !target.compatible) return undefined;
-  if (!expected.sourceLocation && !expected.targetLocation && !expected.allowCategoryOnly) return undefined;
+  if (!expected.sourceLocation && !expected.targetLocation && !expected.allowCategoryOnly)
+    return undefined;
 
   return {
     expectedIndex,
@@ -112,10 +113,7 @@ function buildCandidate(
     acceptedCategoryMatch,
     source,
     target,
-    score:
-      (primaryCategoryExact ? 100 : 50) +
-      locationScore(source) +
-      locationScore(target),
+    score: (primaryCategoryExact ? 100 : 50) + locationScore(source) + locationScore(target),
   };
 }
 

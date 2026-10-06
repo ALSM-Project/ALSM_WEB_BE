@@ -24,7 +24,10 @@ export class GetConversionResultService {
     const organization = await this.organizationContext.resolve(userId, organizationHeader);
     const job = await this.jobs.findById(id, organization.id);
     if (!job) {
-      throw new NotFoundException({ code: 'CONVERSION_JOB_NOT_FOUND', message: 'Conversion job was not found' });
+      throw new NotFoundException({
+        code: 'CONVERSION_JOB_NOT_FOUND',
+        message: 'Conversion job was not found',
+      });
     }
     if (job.status !== ConversionJobStatus.COMPLETED || !job.resultReference) {
       throw new BadRequestException({

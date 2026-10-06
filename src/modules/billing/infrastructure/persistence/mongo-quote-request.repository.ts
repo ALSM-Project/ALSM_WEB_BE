@@ -95,7 +95,6 @@ export class MongoQuoteRequestRepository implements IQuoteRequestRepository {
       { new: true, session },
     )
       .exec();
-
     return doc ? QuoteRequestMapper.toDomain(doc) : null;
   }
 

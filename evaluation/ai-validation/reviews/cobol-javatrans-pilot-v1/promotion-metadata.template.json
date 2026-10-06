@@ -1,0 +1,11 @@
+{
+  "datasetId": "cobol-java-external-clean-pilot",
+  "version": "1.0.0",
+  "description": "Human-confirmed clean COBOL-JavaTrans controls from the Phase 6.2A pilot.",
+  "creationMethodology": "Deterministic size-stratified pilot selection followed by independent CLEAN decisions from two distinct ALSM human reviewers and separate human-authored title, description, and semantic review difficulty.",
+  "limitations": [
+    "CLEAN records human review judgment, not formal equivalence proof, exhaustive input coverage, or production correctness.",
+    "The pilot contains only cases where both independent reviewers selected CLEAN; disagreements and non-clean or uncertain cases are excluded pending separate human adjudication.",
+    "Size strata are based only on character count and do not represent semantic difficulty."
+  ]
+}

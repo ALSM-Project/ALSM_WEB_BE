@@ -1,0 +1,25 @@
+{
+  "schemaVersion": "1.0.0",
+  "pilotId": "cobol-javatrans-pilot-v1",
+  "selectionHash": "4e410cbe0c81aea46f9af3832efe0ea1739f7df49686ff27d4c80251f92d4ce7",
+  "recordedAt": "2026-09-28T09:25:00.000Z",
+  "tools": {
+    "cobc": {
+      "status": "NOT_RUN_TOOL_UNAVAILABLE",
+      "command": "cobc --version",
+      "summary": "cobc was not found on PATH; no software was installed."
+    },
+    "javac": {
+      "status": "NOT_RUN",
+      "command": "javac --version",
+      "summary": "Available: javac 21.0.12. Per-case compilation was not run because it is optional and no generated source files were created from the immutable candidate manifest."
+    },
+    "java": {
+      "status": "NOT_RUN",
+      "command": "java --version",
+      "summary": "Available: OpenJDK 21.0.12. Per-case tests were not run; upstream tests remain evidence only."
+    }
+  },
+  "caseVerification": [],
+  "humanApprovalEffect": "NONE"
+}

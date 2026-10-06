@@ -47,9 +47,9 @@ export interface SubscriptionPlanDefinition {
   monthlyPriceVnd: number;
   annualPriceVnd: number;
   isPopular: boolean;
-  maxProjects: number;       // -1 = unlimited
+  maxProjects: number; // -1 = unlimited
   maxScreensPerMonth: number; // -1 = unlimited
-  storageGb: number;         // -1 = unlimited
+  storageGb: number; // -1 = unlimited
   features: string[];
 }
 
@@ -148,4 +148,3 @@ export const SUBSCRIPTION_REPOSITORY = Symbol('SUBSCRIPTION_REPOSITORY');
 export const INVOICE_REPOSITORY = Symbol('INVOICE_REPOSITORY');
 export const PAYMENT_REPOSITORY = Symbol('PAYMENT_REPOSITORY');
 export const QUOTE_REQUEST_REPOSITORY = Symbol('QUOTE_REQUEST_REPOSITORY');
-

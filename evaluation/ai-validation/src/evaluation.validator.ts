@@ -1,3 +1,7 @@
+import {
+  PROVIDER_FAILURE_CLASSES,
+  RATE_LIMIT_SCOPES,
+} from '../../../src/modules/validation/domain/ai-provider-diagnostics';
 import * as Joi from 'joi';
 import { ValidationFindingSeverity } from '../../../src/modules/validation/domain/validation-finding.types';
 import {
@@ -103,6 +107,16 @@ const predictionCaseSchema = Joi.object({
     is: 'SUCCESS',
     then: Joi.forbidden(),
     otherwise: Joi.object({
+      diagnostics: Joi.object({
+        rateLimitScope: Joi.string().valid(...RATE_LIMIT_SCOPES),
+        finalFailureClass: Joi.string()
+          .valid(...PROVIDER_FAILURE_CLASSES)
+          .required(),
+        httpStatus: Joi.number().integer().min(100).max(599).strict(),
+        attempts: Joi.number().integer().min(1).max(6).strict().required(),
+        retriesExhausted: Joi.boolean().strict().required(),
+        totalLatencyMs: Joi.number().integer().min(0).strict().required(),
+      }).unknown(false),
       code: Joi.string().trim().min(1).required(),
       message: Joi.string().trim().min(1).required(),
     })

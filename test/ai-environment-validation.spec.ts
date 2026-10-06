@@ -44,6 +44,59 @@ describe('AI environment validation', () => {
     });
 
     expect(result.error).toBeUndefined();
+    expect(result.value.GEMINI_API_KEY).toBe('');
+    expect(result.value.GEMINI_MODEL).toBe('');
+  });
+
+  it.each([
+    [{ GEMINI_API_KEY: 'synthetic-key', GEMINI_MODEL: 'test-model' }, false],
+    [{ GEMINI_API_KEY: '', GEMINI_MODEL: 'test-model' }, true],
+    [{ GEMINI_API_KEY: 'synthetic-key', GEMINI_MODEL: '' }, true],
+  ])('conditionally validates enabled Gemini configuration', (gemini, invalid) => {
+    const result = environmentValidationSchema.validate({
+      ...requiredEnvironment,
+      AI_VALIDATION_ENABLED: true,
+      AI_PROVIDER: 'gemini',
+      ...gemini,
+    });
+    expect(Boolean(result.error)).toBe(invalid);
+    if (!invalid) {
+      expect(result.value.OPENAI_API_KEY).toBe('');
+      expect(result.value.OPENAI_MODEL).toBe('');
+    }
+  });
+
+  it('requires both selected OpenAI credentials independently', () => {
+    for (const values of [
+      { OPENAI_API_KEY: '', OPENAI_MODEL: 'test-model' },
+      { OPENAI_API_KEY: 'synthetic-key', OPENAI_MODEL: '' },
+    ]) {
+      expect(
+        environmentValidationSchema.validate({
+          ...requiredEnvironment,
+          AI_VALIDATION_ENABLED: true,
+          AI_PROVIDER: 'openai',
+          ...values,
+        }).error,
+      ).toBeDefined();
+    }
+  });
+
+  it('rejects unsupported providers and accepts disabled real-provider config without credentials', () => {
+    expect(
+      environmentValidationSchema.validate({
+        ...requiredEnvironment,
+        AI_VALIDATION_ENABLED: true,
+        AI_PROVIDER: 'other',
+      }).error,
+    ).toBeDefined();
+    expect(
+      environmentValidationSchema.validate({
+        ...requiredEnvironment,
+        AI_VALIDATION_ENABLED: false,
+        AI_PROVIDER: 'gemini',
+      }).error,
+    ).toBeUndefined();
   });
 
   it('applies bounded validation queue defaults without requiring the worker', () => {
@@ -52,6 +105,8 @@ describe('AI environment validation', () => {
     expect(result.error).toBeUndefined();
     expect(result.value).toEqual(
       expect.objectContaining({
+        GEMINI_MIN_REQUEST_INTERVAL_MS: 0,
+        AI_MAX_RETRIES: 2,
         VALIDATION_WORKER_ENABLED: false,
         VALIDATION_WORKER_CONCURRENCY: 1,
         VALIDATION_JOB_ATTEMPTS: 2,
@@ -61,6 +116,13 @@ describe('AI environment validation', () => {
   });
 
   it.each([
+    ['GEMINI_MIN_REQUEST_INTERVAL_MS', -1],
+    ['GEMINI_MIN_REQUEST_INTERVAL_MS', ''],
+    ['GEMINI_MIN_REQUEST_INTERVAL_MS', '   '],
+    ['GEMINI_MIN_REQUEST_INTERVAL_MS', 'NaN'],
+    ['GEMINI_MIN_REQUEST_INTERVAL_MS', 'abc'],
+    ['GEMINI_MIN_REQUEST_INTERVAL_MS', 1.5],
+    ['GEMINI_MIN_REQUEST_INTERVAL_MS', 60001],
     ['VALIDATION_WORKER_CONCURRENCY', 0],
     ['VALIDATION_JOB_ATTEMPTS', 0],
     ['VALIDATION_JOB_ATTEMPTS', 6],

@@ -5,7 +5,10 @@ import { RequestWithContext } from '../logging/request-id.middleware';
 
 @Injectable()
 export class JwtAuthGuard implements CanActivate {
-  constructor(private readonly jwt: JwtService, private readonly config: ConfigService) {}
+  constructor(
+    private readonly jwt: JwtService,
+    private readonly config: ConfigService,
+  ) {}
 
   async canActivate(context: ExecutionContext): Promise<boolean> {
     const request = context.switchToHttp().getRequest<RequestWithContext>();
@@ -13,10 +16,17 @@ export class JwtAuthGuard implements CanActivate {
 
     if (!token) {
       if (process.env.NODE_ENV !== 'production') {
-        request.user = { userId: '65f1a2b3c4d5e6f7a8b9c0d1', email: 'dev@alsm.local', isPlatformAdmin: true };
+        request.user = {
+          userId: '65f1a2b3c4d5e6f7a8b9c0d1',
+          email: 'dev@alsm.local',
+          isPlatformAdmin: true,
+        };
         return true;
       }
-      throw new UnauthorizedException({ code: 'UNAUTHORIZED', message: 'Access token is required' });
+      throw new UnauthorizedException({
+        code: 'UNAUTHORIZED',
+        message: 'Access token is required',
+      });
     }
 
     try {
@@ -35,10 +45,17 @@ export class JwtAuthGuard implements CanActivate {
       return true;
     } catch {
       if (process.env.NODE_ENV !== 'production') {
-        request.user = { userId: '65f1a2b3c4d5e6f7a8b9c0d1', email: 'dev@alsm.local', isPlatformAdmin: true };
+        request.user = {
+          userId: '65f1a2b3c4d5e6f7a8b9c0d1',
+          email: 'dev@alsm.local',
+          isPlatformAdmin: true,
+        };
         return true;
       }
-      throw new UnauthorizedException({ code: 'UNAUTHORIZED', message: 'Invalid or expired access token' });
+      throw new UnauthorizedException({
+        code: 'UNAUTHORIZED',
+        message: 'Invalid or expired access token',
+      });
     }
   }
 }

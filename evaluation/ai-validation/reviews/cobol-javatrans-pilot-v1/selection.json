@@ -1,0 +1,329 @@
+{
+  "schemaVersion": "1.0.0",
+  "pilotId": "cobol-javatrans-pilot-v1",
+  "version": "1.0.0",
+  "sourceDataset": "COBOL_JAVATRANS",
+  "sourceCandidateManifest": "evaluation/ai-validation/imports/cobol-javatrans/candidates.json",
+  "sourceCandidateManifestHash": "a00385bc057f9e897786b23a674cdd333f040628ee7d677b3af9325cb7d3ad1d",
+  "selectionAlgorithm": "Validate the pinned COBOL_JAVATRANS manifest; retain pending, unscorable, human-review-required, context-compatible candidates with non-empty COBOL and upstream Java files, complete provenance, and matching SHA-256 integrity. Sort eligible candidates by total COBOL+Java characters ascending then candidateId ascending. Split that ordered list at ceil(n/3) and ceil(2n/3) into SMALL, MEDIUM, and LARGE. Within each stratum rank candidates with upstream test evidence first, then SHA-256(pilotId + \":\" + stratum + \":\" + candidateId) ascending, then candidateId ascending; select the first five.",
+  "eligibleCandidateCount": 143,
+  "selectedCandidates": [
+    {
+      "candidateId": "external-cjt-humaneval-102",
+      "sourcePath": "source/humaneval-102.cbl",
+      "targetPath": "target/humaneval-102.java",
+      "totalCharacters": 1451,
+      "sizeStratum": "SMALL",
+      "testEvidencePresent": true,
+      "contextCompatibility": "COMPATIBLE",
+      "sourceSha256": "c98a1e0d621d3f17dfe747d71cb092a40f0faab3682a8c281dbd0b72a288406e",
+      "targetSha256": "57f5b4dcbb355e7d5d0fb268c50b9cf9620632e694661456cc868590a8fa29c0",
+      "provenance": {
+        "upstreamRepository": "COBOL-Coder/COBOL-Coder",
+        "upstreamRepositoryUrl": "https://github.com/COBOL-Coder/COBOL-Coder",
+        "upstreamCommit": "2b14b7bf7e55556205654c6f7657fa60e36251fa",
+        "upstreamPath": "evaluation/data/COBOL-JavaTrans.jsonl",
+        "upstreamCaseId": "HumanEval/102",
+        "upstreamBlobSha": "b29ce552a209e6a12cb5b31e130188404ccf8958",
+        "licenseSpdx": "Apache-2.0",
+        "licensePath": "LICENSE.upstream.txt"
+      }
+    },
+    {
+      "candidateId": "external-cjt-humaneval-55",
+      "sourcePath": "source/humaneval-55.cbl",
+      "targetPath": "target/humaneval-55.java",
+      "totalCharacters": 1748,
+      "sizeStratum": "SMALL",
+      "testEvidencePresent": true,
+      "contextCompatibility": "COMPATIBLE",
+      "sourceSha256": "d5131a70803c35822294b8ee804e15a0be6fd108af5e48927b13bae299e0b417",
+      "targetSha256": "4c7750a00c992a025913f62c663fcccdd258185528e5bf0dc6315ca2095eec16",
+      "provenance": {
+        "upstreamRepository": "COBOL-Coder/COBOL-Coder",
+        "upstreamRepositoryUrl": "https://github.com/COBOL-Coder/COBOL-Coder",
+        "upstreamCommit": "2b14b7bf7e55556205654c6f7657fa60e36251fa",
+        "upstreamPath": "evaluation/data/COBOL-JavaTrans.jsonl",
+        "upstreamCaseId": "HumanEval/55",
+        "upstreamBlobSha": "b29ce552a209e6a12cb5b31e130188404ccf8958",
+        "licenseSpdx": "Apache-2.0",
+        "licensePath": "LICENSE.upstream.txt"
+      }
+    },
+    {
+      "candidateId": "external-cjt-humaneval-100",
+      "sourcePath": "source/humaneval-100.cbl",
+      "targetPath": "target/humaneval-100.java",
+      "totalCharacters": 2359,
+      "sizeStratum": "SMALL",
+      "testEvidencePresent": true,
+      "contextCompatibility": "COMPATIBLE",
+      "sourceSha256": "9ca644127839ab461626aa4907b014db998135839b6323211682bb07419d93e0",
+      "targetSha256": "7747b684f8b0319d6f97b8b8574d33f318a577325de56be48fad289bdd7c6dd4",
+      "provenance": {
+        "upstreamRepository": "COBOL-Coder/COBOL-Coder",
+        "upstreamRepositoryUrl": "https://github.com/COBOL-Coder/COBOL-Coder",
+        "upstreamCommit": "2b14b7bf7e55556205654c6f7657fa60e36251fa",
+        "upstreamPath": "evaluation/data/COBOL-JavaTrans.jsonl",
+        "upstreamCaseId": "HumanEval/100",
+        "upstreamBlobSha": "b29ce552a209e6a12cb5b31e130188404ccf8958",
+        "licenseSpdx": "Apache-2.0",
+        "licensePath": "LICENSE.upstream.txt"
+      }
+    },
+    {
+      "candidateId": "external-cjt-humaneval-83",
+      "sourcePath": "source/humaneval-83.cbl",
+      "targetPath": "target/humaneval-83.java",
+      "totalCharacters": 1874,
+      "sizeStratum": "SMALL",
+      "testEvidencePresent": true,
+      "contextCompatibility": "COMPATIBLE",
+      "sourceSha256": "953aaf2d4d9b317e134f17eb88908d154795c0bfce3cebb47e23ec0b940fc06a",
+      "targetSha256": "39298ac4274ab658390421ca8cfecfcdecc6b880758c751393da865add6d8804",
+      "provenance": {
+        "upstreamRepository": "COBOL-Coder/COBOL-Coder",
+        "upstreamRepositoryUrl": "https://github.com/COBOL-Coder/COBOL-Coder",
+        "upstreamCommit": "2b14b7bf7e55556205654c6f7657fa60e36251fa",
+        "upstreamPath": "evaluation/data/COBOL-JavaTrans.jsonl",
+        "upstreamCaseId": "HumanEval/83",
+        "upstreamBlobSha": "b29ce552a209e6a12cb5b31e130188404ccf8958",
+        "licenseSpdx": "Apache-2.0",
+        "licensePath": "LICENSE.upstream.txt"
+      }
+    },
+    {
+      "candidateId": "external-cjt-humaneval-131",
+      "sourcePath": "source/humaneval-131.cbl",
+      "targetPath": "target/humaneval-131.java",
+      "totalCharacters": 2252,
+      "sizeStratum": "SMALL",
+      "testEvidencePresent": true,
+      "contextCompatibility": "COMPATIBLE",
+      "sourceSha256": "15b12a2d8022a9d0f72d0ff3a584fd81620eb37156c660b2c74ea24f941dba43",
+      "targetSha256": "b1e3e423ad4aac46be936fad029022fc757b062232f723c5b1dd2bcb7497b922",
+      "provenance": {
+        "upstreamRepository": "COBOL-Coder/COBOL-Coder",
+        "upstreamRepositoryUrl": "https://github.com/COBOL-Coder/COBOL-Coder",
+        "upstreamCommit": "2b14b7bf7e55556205654c6f7657fa60e36251fa",
+        "upstreamPath": "evaluation/data/COBOL-JavaTrans.jsonl",
+        "upstreamCaseId": "HumanEval/131",
+        "upstreamBlobSha": "b29ce552a209e6a12cb5b31e130188404ccf8958",
+        "licenseSpdx": "Apache-2.0",
+        "licensePath": "LICENSE.upstream.txt"
+      }
+    },
+    {
+      "candidateId": "external-cjt-humaneval-63",
+      "sourcePath": "source/humaneval-63.cbl",
+      "targetPath": "target/humaneval-63.java",
+      "totalCharacters": 2700,
+      "sizeStratum": "MEDIUM",
+      "testEvidencePresent": true,
+      "contextCompatibility": "COMPATIBLE",
+      "sourceSha256": "2c256de82cd820b702808a128113d1e26e9712a173de5a7d8e880089d74e529c",
+      "targetSha256": "389f385cf8eae3d596470ec8becb11d3b18d084aae76d77fe6f9657eee9ecc53",
+      "provenance": {
+        "upstreamRepository": "COBOL-Coder/COBOL-Coder",
+        "upstreamRepositoryUrl": "https://github.com/COBOL-Coder/COBOL-Coder",
+        "upstreamCommit": "2b14b7bf7e55556205654c6f7657fa60e36251fa",
+        "upstreamPath": "evaluation/data/COBOL-JavaTrans.jsonl",
+        "upstreamCaseId": "HumanEval/63",
+        "upstreamBlobSha": "b29ce552a209e6a12cb5b31e130188404ccf8958",
+        "licenseSpdx": "Apache-2.0",
+        "licensePath": "LICENSE.upstream.txt"
+      }
+    },
+    {
+      "candidateId": "external-cjt-humaneval-88",
+      "sourcePath": "source/humaneval-88.cbl",
+      "targetPath": "target/humaneval-88.java",
+      "totalCharacters": 3320,
+      "sizeStratum": "MEDIUM",
+      "testEvidencePresent": true,
+      "contextCompatibility": "COMPATIBLE",
+      "sourceSha256": "d3a25d0646ea150b9b2fed2728a5d6d8ebfaf73894f36129a7f52c328500eb2a",
+      "targetSha256": "25e7de015795c5957b79bd7528c6ffab5d580a7d552163bb18fbc4a438e104f1",
+      "provenance": {
+        "upstreamRepository": "COBOL-Coder/COBOL-Coder",
+        "upstreamRepositoryUrl": "https://github.com/COBOL-Coder/COBOL-Coder",
+        "upstreamCommit": "2b14b7bf7e55556205654c6f7657fa60e36251fa",
+        "upstreamPath": "evaluation/data/COBOL-JavaTrans.jsonl",
+        "upstreamCaseId": "HumanEval/88",
+        "upstreamBlobSha": "b29ce552a209e6a12cb5b31e130188404ccf8958",
+        "licenseSpdx": "Apache-2.0",
+        "licensePath": "LICENSE.upstream.txt"
+      }
+    },
+    {
+      "candidateId": "external-cjt-humaneval-68",
+      "sourcePath": "source/humaneval-68.cbl",
+      "targetPath": "target/humaneval-68.java",
+      "totalCharacters": 3365,
+      "sizeStratum": "MEDIUM",
+      "testEvidencePresent": true,
+      "contextCompatibility": "COMPATIBLE",
+      "sourceSha256": "ed247f0c60e73cc0d3050f8d405bd31b8a7b0a53d8dec681fcc083cac2599d1c",
+      "targetSha256": "61abd3da9c39af883e75b44e2ff9aefb88fed8828a81985be8d8e113fb93d477",
+      "provenance": {
+        "upstreamRepository": "COBOL-Coder/COBOL-Coder",
+        "upstreamRepositoryUrl": "https://github.com/COBOL-Coder/COBOL-Coder",
+        "upstreamCommit": "2b14b7bf7e55556205654c6f7657fa60e36251fa",
+        "upstreamPath": "evaluation/data/COBOL-JavaTrans.jsonl",
+        "upstreamCaseId": "HumanEval/68",
+        "upstreamBlobSha": "b29ce552a209e6a12cb5b31e130188404ccf8958",
+        "licenseSpdx": "Apache-2.0",
+        "licensePath": "LICENSE.upstream.txt"
+      }
+    },
+    {
+      "candidateId": "external-cjt-humaneval-93",
+      "sourcePath": "source/humaneval-93.cbl",
+      "targetPath": "target/humaneval-93.java",
+      "totalCharacters": 3419,
+      "sizeStratum": "MEDIUM",
+      "testEvidencePresent": true,
+      "contextCompatibility": "COMPATIBLE",
+      "sourceSha256": "752a1295928e52b920456f86acfab88cfb60db61a454498f91ff397e61749fb5",
+      "targetSha256": "62d085cc4d6bc614adb0e1beeea5bc12c3508b5583b97bee2982ce3c580c888f",
+      "provenance": {
+        "upstreamRepository": "COBOL-Coder/COBOL-Coder",
+        "upstreamRepositoryUrl": "https://github.com/COBOL-Coder/COBOL-Coder",
+        "upstreamCommit": "2b14b7bf7e55556205654c6f7657fa60e36251fa",
+        "upstreamPath": "evaluation/data/COBOL-JavaTrans.jsonl",
+        "upstreamCaseId": "HumanEval/93",
+        "upstreamBlobSha": "b29ce552a209e6a12cb5b31e130188404ccf8958",
+        "licenseSpdx": "Apache-2.0",
+        "licensePath": "LICENSE.upstream.txt"
+      }
+    },
+    {
+      "candidateId": "external-cjt-humaneval-146",
+      "sourcePath": "source/humaneval-146.cbl",
+      "targetPath": "target/humaneval-146.java",
+      "totalCharacters": 3400,
+      "sizeStratum": "MEDIUM",
+      "testEvidencePresent": true,
+      "contextCompatibility": "COMPATIBLE",
+      "sourceSha256": "1470dd135b5232dc7dde0669b478c2929273f66c3292c5348c17f0ae4d476026",
+      "targetSha256": "560c673629f2146f22729dbb587cc2d37e80b09bf519c5b2c171f6032f578f3d",
+      "provenance": {
+        "upstreamRepository": "COBOL-Coder/COBOL-Coder",
+        "upstreamRepositoryUrl": "https://github.com/COBOL-Coder/COBOL-Coder",
+        "upstreamCommit": "2b14b7bf7e55556205654c6f7657fa60e36251fa",
+        "upstreamPath": "evaluation/data/COBOL-JavaTrans.jsonl",
+        "upstreamCaseId": "HumanEval/146",
+        "upstreamBlobSha": "b29ce552a209e6a12cb5b31e130188404ccf8958",
+        "licenseSpdx": "Apache-2.0",
+        "licensePath": "LICENSE.upstream.txt"
+      }
+    },
+    {
+      "candidateId": "external-cjt-humaneval-159",
+      "sourcePath": "source/humaneval-159.cbl",
+      "targetPath": "target/humaneval-159.java",
+      "totalCharacters": 3604,
+      "sizeStratum": "LARGE",
+      "testEvidencePresent": true,
+      "contextCompatibility": "COMPATIBLE",
+      "sourceSha256": "19342c5fdef87f77a42ba92f657b25aaa56e1c882b3f982601c2311bf2e647b3",
+      "targetSha256": "f34e646cfd4c46cd5a676986f1db7f0b752b4f0e763779230a970e65fffdfd5e",
+      "provenance": {
+        "upstreamRepository": "COBOL-Coder/COBOL-Coder",
+        "upstreamRepositoryUrl": "https://github.com/COBOL-Coder/COBOL-Coder",
+        "upstreamCommit": "2b14b7bf7e55556205654c6f7657fa60e36251fa",
+        "upstreamPath": "evaluation/data/COBOL-JavaTrans.jsonl",
+        "upstreamCaseId": "HumanEval/159",
+        "upstreamBlobSha": "b29ce552a209e6a12cb5b31e130188404ccf8958",
+        "licenseSpdx": "Apache-2.0",
+        "licensePath": "LICENSE.upstream.txt"
+      }
+    },
+    {
+      "candidateId": "external-cjt-humaneval-158",
+      "sourcePath": "source/humaneval-158.cbl",
+      "targetPath": "target/humaneval-158.java",
+      "totalCharacters": 3475,
+      "sizeStratum": "LARGE",
+      "testEvidencePresent": true,
+      "contextCompatibility": "COMPATIBLE",
+      "sourceSha256": "0c50c54e8553817867679d51dae528a6ced1177a0d49a1df4de6d1a6339cea27",
+      "targetSha256": "398e1b2bd2b50d9a3826498fe49bf6da117e48887fa95440c25b886ea361eda8",
+      "provenance": {
+        "upstreamRepository": "COBOL-Coder/COBOL-Coder",
+        "upstreamRepositoryUrl": "https://github.com/COBOL-Coder/COBOL-Coder",
+        "upstreamCommit": "2b14b7bf7e55556205654c6f7657fa60e36251fa",
+        "upstreamPath": "evaluation/data/COBOL-JavaTrans.jsonl",
+        "upstreamCaseId": "HumanEval/158",
+        "upstreamBlobSha": "b29ce552a209e6a12cb5b31e130188404ccf8958",
+        "licenseSpdx": "Apache-2.0",
+        "licensePath": "LICENSE.upstream.txt"
+      }
+    },
+    {
+      "candidateId": "external-cjt-humaneval-130",
+      "sourcePath": "source/humaneval-130.cbl",
+      "targetPath": "target/humaneval-130.java",
+      "totalCharacters": 3829,
+      "sizeStratum": "LARGE",
+      "testEvidencePresent": true,
+      "contextCompatibility": "COMPATIBLE",
+      "sourceSha256": "d5909342d7710e7c6d964aa6666d8685ad0c0fa2e91cc9c4d9598474d163ea32",
+      "targetSha256": "d813b70ef756ef2c476e56a9229d52c334b52fc3864e2958e6c485e5449f36ca",
+      "provenance": {
+        "upstreamRepository": "COBOL-Coder/COBOL-Coder",
+        "upstreamRepositoryUrl": "https://github.com/COBOL-Coder/COBOL-Coder",
+        "upstreamCommit": "2b14b7bf7e55556205654c6f7657fa60e36251fa",
+        "upstreamPath": "evaluation/data/COBOL-JavaTrans.jsonl",
+        "upstreamCaseId": "HumanEval/130",
+        "upstreamBlobSha": "b29ce552a209e6a12cb5b31e130188404ccf8958",
+        "licenseSpdx": "Apache-2.0",
+        "licensePath": "LICENSE.upstream.txt"
+      }
+    },
+    {
+      "candidateId": "external-cjt-humaneval-123",
+      "sourcePath": "source/humaneval-123.cbl",
+      "targetPath": "target/humaneval-123.java",
+      "totalCharacters": 4323,
+      "sizeStratum": "LARGE",
+      "testEvidencePresent": true,
+      "contextCompatibility": "COMPATIBLE",
+      "sourceSha256": "f9628e056b96d4cd52636c1edf705a5d35cb85b2fc4023999eb5233634f090eb",
+      "targetSha256": "bdb9d0c34e06680eb45bd6a626598cebb4f4a869d6bc8bc0fd217b9285c99c68",
+      "provenance": {
+        "upstreamRepository": "COBOL-Coder/COBOL-Coder",
+        "upstreamRepositoryUrl": "https://github.com/COBOL-Coder/COBOL-Coder",
+        "upstreamCommit": "2b14b7bf7e55556205654c6f7657fa60e36251fa",
+        "upstreamPath": "evaluation/data/COBOL-JavaTrans.jsonl",
+        "upstreamCaseId": "HumanEval/123",
+        "upstreamBlobSha": "b29ce552a209e6a12cb5b31e130188404ccf8958",
+        "licenseSpdx": "Apache-2.0",
+        "licensePath": "LICENSE.upstream.txt"
+      }
+    },
+    {
+      "candidateId": "external-cjt-humaneval-109",
+      "sourcePath": "source/humaneval-109.cbl",
+      "targetPath": "target/humaneval-109.java",
+      "totalCharacters": 5590,
+      "sizeStratum": "LARGE",
+      "testEvidencePresent": true,
+      "contextCompatibility": "COMPATIBLE",
+      "sourceSha256": "9fa50628319fd3139cdab274be5b45a0d8aeaf25df8b87f3efec73adb55ea9ec",
+      "targetSha256": "6d497d0d80e11a5b4c929e8a2a232002b9622cf6f0a83dff26e031c4619fde93",
+      "provenance": {
+        "upstreamRepository": "COBOL-Coder/COBOL-Coder",
+        "upstreamRepositoryUrl": "https://github.com/COBOL-Coder/COBOL-Coder",
+        "upstreamCommit": "2b14b7bf7e55556205654c6f7657fa60e36251fa",
+        "upstreamPath": "evaluation/data/COBOL-JavaTrans.jsonl",
+        "upstreamCaseId": "HumanEval/109",
+        "upstreamBlobSha": "b29ce552a209e6a12cb5b31e130188404ccf8958",
+        "licenseSpdx": "Apache-2.0",
+        "licensePath": "LICENSE.upstream.txt"
+      }
+    }
+  ],
+  "selectedAt": "2026-09-28T09:27:58.813Z",
+  "selectionHash": "4e410cbe0c81aea46f9af3832efe0ea1739f7df49686ff27d4c80251f92d4ce7"
+}

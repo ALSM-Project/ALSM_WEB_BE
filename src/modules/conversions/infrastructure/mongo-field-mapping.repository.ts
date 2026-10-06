@@ -24,10 +24,7 @@ export class MongoFieldMappingRepository implements FieldMappingRepository {
 
     const doc = await this.model
       .findOne({
-        $or: [
-          { organizationId: orgObjId, projectId: projObjId, screenId },
-          { screenId },
-        ],
+        $or: [{ organizationId: orgObjId, projectId: projObjId, screenId }, { screenId }],
       })
       .exec();
 

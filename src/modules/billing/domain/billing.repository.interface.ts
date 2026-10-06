@@ -105,7 +105,12 @@ export interface IPaymentRepository {
   findById(id: string): Promise<PaymentProps | null>;
   findPending(): Promise<PaymentProps[]>;
   create(props: Omit<PaymentProps, 'id'>): Promise<PaymentProps>;
-  updateStatus(id: string, status: PaymentStatus, paidAt?: Date, cassoTxId?: string): Promise<PaymentProps | null>;
+  updateStatus(
+    id: string,
+    status: PaymentStatus,
+    paidAt?: Date,
+    cassoTxId?: string,
+  ): Promise<PaymentProps | null>;
 }
 
 export interface BankConfigProps {
@@ -134,7 +139,10 @@ export interface IBillingUsageRepository {
   findActiveSubscription(userId: string): Promise<SubscriptionProps | null>;
   countProjectsByOrganization(organizationId: string): Promise<number>;
   countConversionsByOrganizationSince(organizationId: string, sinceDate: Date): Promise<number>;
-  getMonthlyConversions(organizationId: string, sinceDate: Date): Promise<Array<{ month: string; count: number }>>;
+  getMonthlyConversions(
+    organizationId: string,
+    sinceDate: Date,
+  ): Promise<Array<{ month: string; count: number }>>;
 }
 
 export interface QuoteRequestProps {

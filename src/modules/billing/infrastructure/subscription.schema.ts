@@ -1,10 +1,6 @@
 import { Prop, Schema, SchemaFactory } from '@nestjs/mongoose';
 import { HydratedDocument, Types } from 'mongoose';
-import {
-  BillingCycle,
-  PlanTier,
-  SubscriptionStatus,
-} from '../domain/billing.types';
+import { BillingCycle, PlanTier, SubscriptionStatus } from '../domain/billing.types';
 
 export type SubscriptionDocument = HydratedDocument<Subscription>;
 

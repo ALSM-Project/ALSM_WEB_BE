@@ -69,7 +69,10 @@ describe('CobolJavaConversionAdapter', () => {
         // perspective) -odir value.
         const generatedDir = path.join(options.cwd, 'cobolprogramclasses');
         await fs.promises.mkdir(generatedDir, { recursive: true });
-        await fs.promises.writeFile(path.join(generatedDir, 'Bubblesort.java'), 'public class Bubblesort {}');
+        await fs.promises.writeFile(
+          path.join(generatedDir, 'Bubblesort.java'),
+          'public class Bubblesort {}',
+        );
         return {
           code: 0,
           stdout: 'Parsing Cobol started for: BUBBLESORT.cob\nDone in 0s.',
@@ -94,20 +97,22 @@ describe('CobolJavaConversionAdapter', () => {
   it('records an ErrorLogRecord parsed from a ParseException block', async () => {
     await fs.promises.writeFile(path.join(sourceDir, 'OK.cob'), 'COBOL');
     await fs.promises.writeFile(path.join(sourceDir, 'BROKEN.cob'), 'COBOL');
-    (toolRunner.runConversionTool as jest.Mock).mockImplementation(async (_exe: string, args: string[]) => {
-      const outDir = args[4];
-      await fs.promises.writeFile(path.join(outDir, 'Ok.java'), 'public class Ok {}');
-      return {
-        code: 0,
-        stdout: [
-          'Parsing Cobol started for: BROKEN.cob',
-          'com.res.cobol.parser.ParseException: Encountered "x" at line 4, column 8.',
-          'Errors encountered. Processing terminated.',
-        ].join('\n'),
-        stderr: '',
-        timedOut: false,
-      };
-    });
+    (toolRunner.runConversionTool as jest.Mock).mockImplementation(
+      async (_exe: string, args: string[]) => {
+        const outDir = args[4];
+        await fs.promises.writeFile(path.join(outDir, 'Ok.java'), 'public class Ok {}');
+        return {
+          code: 0,
+          stdout: [
+            'Parsing Cobol started for: BROKEN.cob',
+            'com.res.cobol.parser.ParseException: Encountered "x" at line 4, column 8.',
+            'Errors encountered. Processing terminated.',
+          ].join('\n'),
+          stderr: '',
+          timedOut: false,
+        };
+      },
+    );
 
     await buildAdapter().execute(baseInput);
 
@@ -123,20 +128,22 @@ describe('CobolJavaConversionAdapter', () => {
 
   it('does not fail the job when recording a parse error fails (e.g. a DB validation error for an unrelated program in the same -dld batch)', async () => {
     await fs.promises.writeFile(path.join(sourceDir, 'OK.cob'), 'COBOL');
-    (toolRunner.runConversionTool as jest.Mock).mockImplementation(async (_exe: string, args: string[]) => {
-      const outDir = args[4];
-      await fs.promises.writeFile(path.join(outDir, 'Ok.java'), 'public class Ok {}');
-      return {
-        code: 0,
-        stdout: [
-          'Parsing Cobol started for: UNRELATED.cob',
-          'com.res.cobol.parser.ParseException: Encountered "x" at line 4, column 8.',
-          'Errors encountered. Processing terminated.',
-        ].join('\n'),
-        stderr: '',
-        timedOut: false,
-      };
-    });
+    (toolRunner.runConversionTool as jest.Mock).mockImplementation(
+      async (_exe: string, args: string[]) => {
+        const outDir = args[4];
+        await fs.promises.writeFile(path.join(outDir, 'Ok.java'), 'public class Ok {}');
+        return {
+          code: 0,
+          stdout: [
+            'Parsing Cobol started for: UNRELATED.cob',
+            'com.res.cobol.parser.ParseException: Encountered "x" at line 4, column 8.',
+            'Errors encountered. Processing terminated.',
+          ].join('\n'),
+          stderr: '',
+          timedOut: false,
+        };
+      },
+    );
     (errorLogs.create as jest.Mock).mockRejectedValue(new Error('ErrorLog validation failed'));
 
     const output = await buildAdapter().execute(baseInput);
@@ -161,23 +168,34 @@ describe('CobolJavaConversionAdapter', () => {
     (screens.findById as jest.Mock).mockResolvedValue({
       id: 'scr-1',
       dependencyStatus: 'BLOCKED',
-      dependencies: [{ copyName: 'ACCTFILE-STATUS', status: 'MISSING', message: "COPYBOOK 'ACCTFILE-STATUS' referenced by 'CBACT01C.cbl' could not be found." }],
+      dependencies: [
+        {
+          copyName: 'ACCTFILE-STATUS',
+          status: 'MISSING',
+          message: "COPYBOOK 'ACCTFILE-STATUS' referenced by 'CBACT01C.cbl' could not be found.",
+        },
+      ],
     });
 
-    await expect(buildAdapter().execute({ ...baseInput, screenId: 'scr-1' })).rejects.toBeInstanceOf(
-      CopybookDependencyBlockedError,
-    );
+    await expect(
+      buildAdapter().execute({ ...baseInput, screenId: 'scr-1' }),
+    ).rejects.toBeInstanceOf(CopybookDependencyBlockedError);
     expect(toolRunner.runConversionTool).not.toHaveBeenCalled();
   });
 
   it('proceeds to run tool2java when the screen is READY_FOR_CONVERSION', async () => {
-    (screens.findById as jest.Mock).mockResolvedValue({ id: 'scr-1', dependencyStatus: 'READY_FOR_CONVERSION' });
-    await fs.promises.writeFile(path.join(sourceDir, 'OK.cob'), 'COBOL SOURCE');
-    (toolRunner.runConversionTool as jest.Mock).mockImplementation(async (_exe: string, args: string[]) => {
-      const outDir = args[4];
-      await fs.promises.writeFile(path.join(outDir, 'Ok.java'), 'public class Ok {}');
-      return { code: 0, stdout: 'Done in 0s.', stderr: '', timedOut: false };
+    (screens.findById as jest.Mock).mockResolvedValue({
+      id: 'scr-1',
+      dependencyStatus: 'READY_FOR_CONVERSION',
     });
+    await fs.promises.writeFile(path.join(sourceDir, 'OK.cob'), 'COBOL SOURCE');
+    (toolRunner.runConversionTool as jest.Mock).mockImplementation(
+      async (_exe: string, args: string[]) => {
+        const outDir = args[4];
+        await fs.promises.writeFile(path.join(outDir, 'Ok.java'), 'public class Ok {}');
+        return { code: 0, stdout: 'Done in 0s.', stderr: '', timedOut: false };
+      },
+    );
 
     await buildAdapter().execute({ ...baseInput, screenId: 'scr-1' });
 

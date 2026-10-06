@@ -89,7 +89,6 @@ export class MongoSubscriptionRepository implements ISubscriptionRepository {
     const doc = await this.model
       .findByIdAndUpdate(id, update, { new: true, session })
       .exec();
-
     return doc ? SubscriptionMapper.toDomain(doc) : null;
   }
 

@@ -32,7 +32,9 @@ describe('cobol-java-semantic-v1 dataset', () => {
       for (const finding of benchmarkCase.expectedFindings) distribution[finding.category] += 1;
     }
     expect(
-      Object.fromEntries(EVALUATION_CATEGORIES.map((category) => [category, distribution[category]])),
+      Object.fromEntries(
+        EVALUATION_CATEGORIES.map((category) => [category, distribution[category]]),
+      ),
     ).toEqual(Object.fromEntries(EVALUATION_CATEGORIES.map((category) => [category, 3])));
   });
 

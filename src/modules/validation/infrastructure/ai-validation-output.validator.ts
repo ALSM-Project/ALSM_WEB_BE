@@ -1,8 +1,5 @@
 import * as Joi from 'joi';
-import {
-  AiValidationFindingDraft,
-  AiValidationInput,
-} from '../domain/ai-validator.port';
+import { AiValidationFindingDraft, AiValidationInput } from '../domain/ai-validator.port';
 import { AiValidatorError } from '../domain/ai-validator.error';
 import {
   ValidationFindingCategory,
@@ -66,10 +63,7 @@ export function buildAiValidationJsonSchema(maxFindings: number): Record<string,
             sourceLocation: nullableLocation,
             targetLocation: nullableLocation,
             confidence: {
-              anyOf: [
-                { type: 'number', minimum: 0, maximum: 1 },
-                { type: 'null' },
-              ],
+              anyOf: [{ type: 'number', minimum: 0, maximum: 1 }, { type: 'null' }],
             },
           },
           required: [
@@ -120,9 +114,7 @@ export function validateAiValidationOutput(
     suggestion: nullableText,
     sourceLocation: Joi.alternatives().try(location, Joi.valid(null)).required(),
     targetLocation: Joi.alternatives().try(location, Joi.valid(null)).required(),
-    confidence: Joi.alternatives()
-      .try(Joi.number().min(0).max(1), Joi.valid(null))
-      .required(),
+    confidence: Joi.alternatives().try(Joi.number().min(0).max(1), Joi.valid(null)).required(),
   }).unknown(false);
   const schema = Joi.object({
     findings: Joi.array().items(finding).max(maxFindings).required(),

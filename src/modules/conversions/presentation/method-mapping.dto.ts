@@ -17,7 +17,9 @@ export class MethodMappingEntryDto {
   @MaxLength(200)
   originalName!: string;
 
-  @ApiProperty({ description: 'The user-chosen replacement name (must be a valid Java identifier).' })
+  @ApiProperty({
+    description: 'The user-chosen replacement name (must be a valid Java identifier).',
+  })
   @IsString()
   @MaxLength(200)
   targetName!: string;

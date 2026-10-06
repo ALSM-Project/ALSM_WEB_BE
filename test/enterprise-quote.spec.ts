@@ -1,4 +1,9 @@
-import { BadRequestException, ConflictException, ForbiddenException, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  ConflictException,
+  ForbiddenException,
+  NotFoundException,
+} from '@nestjs/common';
 import { Test, TestingModule } from '@nestjs/testing';
 import { validate } from 'class-validator';
 import { plainToInstance } from 'class-transformer';
@@ -367,9 +372,17 @@ describe('UC-32: Enterprise Quote Request', () => {
       ];
       quoteRequestRepo.findAll.mockResolvedValue({ items: mockItems, total: 1 });
 
-      const result = await service.listQuoteRequests(adminUser, { status: QuoteRequestStatus.PENDING, page: 1, limit: 10 });
+      const result = await service.listQuoteRequests(adminUser, {
+        status: QuoteRequestStatus.PENDING,
+        page: 1,
+        limit: 10,
+      });
 
-      expect(quoteRequestRepo.findAll).toHaveBeenCalledWith({ status: QuoteRequestStatus.PENDING, page: 1, limit: 10 }, 1, 10);
+      expect(quoteRequestRepo.findAll).toHaveBeenCalledWith(
+        { status: QuoteRequestStatus.PENDING, page: 1, limit: 10 },
+        1,
+        10,
+      );
       expect(result.items.length).toBe(1);
       expect(result.total).toBe(1);
     });

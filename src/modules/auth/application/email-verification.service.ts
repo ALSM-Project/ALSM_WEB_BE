@@ -37,7 +37,9 @@ export class EmailVerificationService {
 
     const verifyUrl = this.buildVerifyUrl(plainToken, user.email);
 
-    this.logger.log(`Email verification generated for ${user.email}: Code=${code}, Token=${plainToken}`);
+    this.logger.log(
+      `Email verification generated for ${user.email}: Code=${code}, Token=${plainToken}`,
+    );
 
     await this.email.send({
       to: user.email,

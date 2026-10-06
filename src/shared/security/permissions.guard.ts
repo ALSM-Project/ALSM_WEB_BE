@@ -31,7 +31,10 @@ export class PermissionsGuard implements CanActivate {
     const userId = request.user?.userId;
 
     if (!userId) {
-      throw new UnauthorizedException({ code: 'UNAUTHORIZED', message: 'Access token is required' });
+      throw new UnauthorizedException({
+        code: 'UNAUTHORIZED',
+        message: 'Access token is required',
+      });
     }
 
     const userPermissions = await this.effectivePermissionsService.getEffectivePermissions(userId);

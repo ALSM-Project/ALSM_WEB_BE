@@ -9,7 +9,9 @@ import { toValidObjectId } from '../../../shared/utils/object-id.util';
 export class MongoProjectRepository implements ProjectRepository {
   constructor(@InjectModel(Project.name) private readonly model: Model<Project>) {}
 
-  async create(input: Omit<ProjectRecord, 'id' | 'createdAt' | 'updatedAt'> & { id?: string }): Promise<ProjectRecord> {
+  async create(
+    input: Omit<ProjectRecord, 'id' | 'createdAt' | 'updatedAt'> & { id?: string },
+  ): Promise<ProjectRecord> {
     const customId = input.id ? toValidObjectId(input.id) : undefined;
     return this.map(
       await this.model.create({
