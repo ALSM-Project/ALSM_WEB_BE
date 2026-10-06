@@ -9,7 +9,7 @@ export class MegaMenuService {
     totalColumns: number;
   } {
     // 1. Lọc các item là Mega Menu
-    const megaItems = items.filter(item => item.isMegaMenu);
+    const megaItems = items.filter((item) => item.isMegaMenu);
     if (megaItems.length === 0) {
       return { groups: [], totalColumns: 0 };
     }
@@ -17,7 +17,7 @@ export class MegaMenuService {
     // 2. Xây dựng các group
     const groups: MegaMenuGroup[] = [];
 
-    megaItems.forEach(item => {
+    megaItems.forEach((item) => {
       if (item.megaMenuGroups && item.megaMenuGroups.length > 0) {
         // Sử dụng groups đã định nghĩa sẵn
         groups.push(...item.megaMenuGroups);
@@ -38,10 +38,7 @@ export class MegaMenuService {
     const sortedGroups = groups.sort((a, b) => a.order - b.order);
 
     // 4. Tính số cột cần thiết
-    const maxItems = Math.max(
-      ...sortedGroups.map(g => g.items ? g.items.length : 0),
-      1,
-    );
+    const maxItems = Math.max(...sortedGroups.map((g) => (g.items ? g.items.length : 0)), 1);
     const totalColumns = Math.min(maxItems, 4); // Tối đa 4 cột
 
     return {
@@ -58,7 +55,7 @@ export class MegaMenuService {
 
     let html = '<div class="mega-menu" style="display:flex;flex-wrap:wrap;">';
 
-    groups.forEach(group => {
+    groups.forEach((group) => {
       html += `
         <div class="mega-menu-column" style="flex: 0 0 ${columnWidth}%; padding: 1rem;">
           <h4 class="mega-menu-group-title">
@@ -68,7 +65,7 @@ export class MegaMenuService {
           <ul class="mega-menu-group-items">
       `;
 
-      (group.items || []).forEach(item => {
+      (group.items || []).forEach((item) => {
         html += `
           <li class="mega-menu-item">
             <a href="${item.path || '#'}" class="mega-menu-link">

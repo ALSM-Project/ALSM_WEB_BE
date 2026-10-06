@@ -11,10 +11,7 @@ import {
   ErrorLogSeverity,
   ErrorLogStatus,
 } from '../domain/error-log.types';
-import {
-  FIELD_MAPPING_REPOSITORY,
-  FieldMappingRepository,
-} from '../domain/field-mapping.types';
+import { FIELD_MAPPING_REPOSITORY, FieldMappingRepository } from '../domain/field-mapping.types';
 import { runConversionTool, stripAnsi } from './conversion-tool-runner.util';
 
 const SCRIPT_BY_EXTENSION: Record<string, { script: string; flag: string }> = {
@@ -36,7 +33,9 @@ export class BmsDspfConversionAdapter {
 
   async execute(input: ConversionEngineInput): Promise<ConversionEngineOutput> {
     if (!input.inputReference) {
-      throw new Error('BMS/DSPF conversion requires an uploaded source (inputReference is missing)');
+      throw new Error(
+        'BMS/DSPF conversion requires an uploaded source (inputReference is missing)',
+      );
     }
     let toolDir = this.config.get<string>('TOOL_CONVERT_DIR');
     if (!toolDir) {
@@ -44,7 +43,9 @@ export class BmsDspfConversionAdapter {
       if (fs.existsSync(autoPath)) {
         toolDir = autoPath;
       } else {
-        throw new Error('TOOL_CONVERT_DIR is not configured and ../ALSM_TOOL/py/convert2fe was not found');
+        throw new Error(
+          'TOOL_CONVERT_DIR is not configured and ../ALSM_TOOL/py/convert2fe was not found',
+        );
       }
     }
 
@@ -102,17 +103,25 @@ export class BmsDspfConversionAdapter {
           const parsedFields = this.parseBmsFields(bmsContent);
 
           if (input.screenId) {
-            const record = await this.fieldMappings.findByScreen(input.projectId, input.screenId, input.organizationId);
+            const record = await this.fieldMappings.findByScreen(
+              input.projectId,
+              input.screenId,
+              input.organizationId,
+            );
             if (record && record.mappings) {
               for (const mapping of record.mappings) {
                 const { displayRow, displayCol } = mapping.componentMapping;
                 if (displayRow !== undefined || displayCol !== undefined) {
-                  const inputField = parsedFields.inputs.find(i => i.name === mapping.legacyField.name);
+                  const inputField = parsedFields.inputs.find(
+                    (i) => i.name === mapping.legacyField.name,
+                  );
                   if (inputField) {
                     if (displayRow !== undefined && displayRow > 0) inputField.row = displayRow;
                     if (displayCol !== undefined && displayCol > 0) inputField.col = displayCol;
                   }
-                  const labelField = parsedFields.labels.find(l => l.name === mapping.legacyField.name);
+                  const labelField = parsedFields.labels.find(
+                    (l) => l.name === mapping.legacyField.name,
+                  );
                   if (labelField) {
                     if (displayRow !== undefined && displayRow > 0) labelField.row = displayRow;
                     if (displayCol !== undefined && displayCol > 0) labelField.col = displayCol;
@@ -125,14 +134,16 @@ export class BmsDspfConversionAdapter {
           // Build JSX inputs from parsed BMS fields
           let fieldInputs = '';
           if (parsedFields.inputs.length > 0 || parsedFields.labels.length > 0) {
-            const inputJsx = parsedFields.inputs.map((f) => {
-              const inputType = f.isNumeric ? 'number' : 'text';
-              return `
+            const inputJsx = parsedFields.inputs
+              .map((f) => {
+                const inputType = f.isNumeric ? 'number' : 'text';
+                return `
             <div>
               <label style={{ display: 'block', fontWeight: 'bold', marginBottom: '4px' }}>${f.label || f.name}:</label>
               <input type="${inputType}" name="${f.name.toLowerCase()}" maxLength={${f.length}} style={{ width: '100%', padding: '8px', borderRadius: '4px', border: '1px solid #ccc' }} />
             </div>`;
-            }).join('\n');
+              })
+              .join('\n');
 
             fieldInputs = `
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px', marginBottom: '16px' }}>
@@ -143,30 +154,38 @@ ${inputJsx}
           // Build label displays for output/protected fields
           let labelDisplays = '';
           if (parsedFields.labels.length > 0) {
-            labelDisplays = parsedFields.labels.map((l) => {
-              if (l.initial) {
-                return `\n          <span style={{ color: '${l.color || '#333'}', display: 'inline-block', marginRight: '8px' }}>${l.initial}</span>`;
-              }
-              if (l.name) {
-                return `\n          <span style={{ display: 'inline-block', marginRight: '16px' }}><strong>${l.name}:</strong> <span id="${l.name.toLowerCase()}" style={{ color: '${l.color || '#0066cc'}', textDecoration: 'underline' }}>—</span></span>`;
-              }
-              return '';
-            }).join('');
+            labelDisplays = parsedFields.labels
+              .map((l) => {
+                if (l.initial) {
+                  return `\n          <span style={{ color: '${l.color || '#333'}', display: 'inline-block', marginRight: '8px' }}>${l.initial}</span>`;
+                }
+                if (l.name) {
+                  return `\n          <span style={{ display: 'inline-block', marginRight: '16px' }}><strong>${l.name}:</strong> <span id="${l.name.toLowerCase()}" style={{ color: '${l.color || '#0066cc'}', textDecoration: 'underline' }}>—</span></span>`;
+                }
+                return '';
+              })
+              .join('');
           }
 
           // Build the screen title from BMS TITLE if found
           const screenTitle = parsedFields.screenTitle || rawName;
-          
+
           // Generate Legacy View JSX
           const legacyItemsJsx = [
-            ...parsedFields.labels.filter(l => l.row > 0 && l.col > 0).map(l => 
-              `<div style={{ position: 'absolute', top: '${l.row - 1}em', left: '${l.col - 1}ch', color: '${l.color === 'blue' ? '#87ceeb' : '#00ff00'}', whiteSpace: 'pre' }}>${l.initial || (l.name ? "[" + l.name + "]" : "")}</div>`
-            ),
-            ...parsedFields.inputs.filter(i => i.row > 0 && i.col > 0).map(i => 
-              `<div style={{ position: 'absolute', top: '${i.row - 1}em', left: '${i.col - 1}ch' }}>
+            ...parsedFields.labels
+              .filter((l) => l.row > 0 && l.col > 0)
+              .map(
+                (l) =>
+                  `<div style={{ position: 'absolute', top: '${l.row - 1}em', left: '${l.col - 1}ch', color: '${l.color === 'blue' ? '#87ceeb' : '#00ff00'}', whiteSpace: 'pre' }}>${l.initial || (l.name ? '[' + l.name + ']' : '')}</div>`,
+              ),
+            ...parsedFields.inputs
+              .filter((i) => i.row > 0 && i.col > 0)
+              .map(
+                (i) =>
+                  `<div style={{ position: 'absolute', top: '${i.row - 1}em', left: '${i.col - 1}ch' }}>
                  <input type="text" name="${i.name.toLowerCase()}" placeholder="${i.name}" maxLength={${i.length}} style={{ width: '${i.length}ch', backgroundColor: '#002200', color: '#00ff00', border: '1px solid #00ff00', outline: 'none', fontFamily: 'monospace', padding: 0, margin: 0, lineHeight: 1 }} />
-               </div>`
-            )
+               </div>`,
+              ),
           ].join('\\n            ');
 
           const stubCode = `import React, { useState } from 'react';
@@ -194,15 +213,19 @@ export default function ${compName}() {
 
       {viewMode === 'modern' ? (
         <div>
-          ${labelDisplays ? `<div style={{ marginBottom: '20px', padding: '12px', background: '#f8f9fa', borderRadius: '6px', fontSize: '13px' }}>${labelDisplays}
-          </div>` : ''}
+          ${
+            labelDisplays
+              ? `<div style={{ marginBottom: '20px', padding: '12px', background: '#f8f9fa', borderRadius: '6px', fontSize: '13px' }}>${labelDisplays}
+          </div>`
+              : ''
+          }
           <div style={{ padding: '20px', border: '1px solid #e2e8f0', borderRadius: '8px', background: 'white' }}>
             <form onSubmit={(e) => e.preventDefault()}>
               ${fieldInputs}
               <button type="submit" style={{ padding: '10px 24px', background: '#2563eb', color: 'white', border: 'none', borderRadius: '6px', cursor: 'pointer', fontWeight: 500 }}>Submit Form</button>
             </form>
           </div>
-          ${parsedFields.functionKeys.length > 0 ? `<div style={{ marginTop: '16px', fontSize: '13px', color: '#64748b', display: 'flex', gap: '16px', flexWrap: 'wrap' }}>${parsedFields.functionKeys.map(k => `<span style={{ background: '#f1f5f9', padding: '4px 8px', borderRadius: '4px' }}>${k}</span>`).join('')}</div>` : ''}
+          ${parsedFields.functionKeys.length > 0 ? `<div style={{ marginTop: '16px', fontSize: '13px', color: '#64748b', display: 'flex', gap: '16px', flexWrap: 'wrap' }}>${parsedFields.functionKeys.map((k) => `<span style={{ background: '#f1f5f9', padding: '4px 8px', borderRadius: '4px' }}>${k}</span>`).join('')}</div>` : ''}
         </div>
       ) : (
         <div style={{ backgroundColor: 'black', padding: '24px', borderRadius: '8px', overflowX: 'auto', display: 'flex', justifyContent: 'center' }}>
@@ -217,7 +240,11 @@ export default function ${compName}() {
 }
 `;
           await fs.promises.writeFile(path.join(outDir, `${rawName}.tsx`), stubCode, 'utf8');
-          await fs.promises.writeFile(path.join(outDir, `${rawName}.metadata.json`), JSON.stringify(parsedFields, null, 2), 'utf8');
+          await fs.promises.writeFile(
+            path.join(outDir, `${rawName}.metadata.json`),
+            JSON.stringify(parsedFields, null, 2),
+            'utf8',
+          );
         }
         outputFiles = await fs.promises.readdir(outDir);
         generatedComponents = outputFiles.filter(
@@ -280,13 +307,28 @@ export default function ${compName}() {
    * This mirrors the logic of bms2react.py's extract_map_items / extract_property.
    */
   private parseBmsFields(bmsContent: string): {
-    inputs: { name: string; label: string; length: number; isNumeric: boolean; row: number; col: number }[];
+    inputs: {
+      name: string;
+      label: string;
+      length: number;
+      isNumeric: boolean;
+      row: number;
+      col: number;
+    }[];
     labels: { name?: string; initial?: string; color?: string; row: number; col: number }[];
     screenTitle: string;
     functionKeys: string[];
   } {
-    const inputs: { name: string; label: string; length: number; isNumeric: boolean; row: number; col: number }[] = [];
-    const labels: { name?: string; initial?: string; color?: string; row: number; col: number }[] = [];
+    const inputs: {
+      name: string;
+      label: string;
+      length: number;
+      isNumeric: boolean;
+      row: number;
+      col: number;
+    }[] = [];
+    const labels: { name?: string; initial?: string; color?: string; row: number; col: number }[] =
+      [];
     let screenTitle = '';
     const functionKeys: string[] = [];
     const addedNames = new Set<string>();
@@ -317,7 +359,11 @@ export default function ${compName}() {
       const propsStr = dfhmdfMatch[2];
 
       // Parse properties
-      const attrb = propsStr.match(/ATTRB=\(([^)]+)\)/i)?.[1]?.split(',').map((s) => s.trim()) || [];
+      const attrb =
+        propsStr
+          .match(/ATTRB=\(([^)]+)\)/i)?.[1]
+          ?.split(',')
+          .map((s) => s.trim()) || [];
       const lengthMatch = propsStr.match(/LENGTH=(\d+)/i);
       const length = lengthMatch ? parseInt(lengthMatch[1], 10) : 0;
       const initialMatch = propsStr.match(/INITIAL='([^']*)'/i);
@@ -357,7 +403,13 @@ export default function ${compName}() {
         if (initial.includes('F3=') || initial.includes('F5=') || initial.includes('ENTER=')) {
           functionKeys.push(initial);
         } else {
-          labels.push({ name: fieldName || undefined, initial, color: color || undefined, row, col });
+          labels.push({
+            name: fieldName || undefined,
+            initial,
+            color: color || undefined,
+            row,
+            col,
+          });
           // Store INITIAL as potential label for next input
           if (initial.endsWith(':') || initial.endsWith(': ')) {
             lastLabelInitial = initial.replace(/:?\s*$/, '');

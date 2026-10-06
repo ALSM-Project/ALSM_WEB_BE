@@ -2,7 +2,12 @@ import { Injectable } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model, Types } from 'mongoose';
 import { Screen, ScreenDocument } from './screen.schema';
-import { ScreenDependencyDiagnostics, ScreenRecord, ScreenRepository, ScreenStatus } from '../domain/screen.types';
+import {
+  ScreenDependencyDiagnostics,
+  ScreenRecord,
+  ScreenRepository,
+  ScreenStatus,
+} from '../domain/screen.types';
 
 @Injectable()
 export class MongoScreenRepository implements ScreenRepository {
@@ -62,9 +67,15 @@ export class MongoScreenRepository implements ScreenRepository {
       screen = await this.model.findOne({ $or: [{ name: id }, { inputReference: id }] }).exec();
     }
     if (screen) {
-      await this.model.deleteMany({
-        $or: [{ _id: screen._id }, { name: screen.name }, { inputReference: screen.inputReference }],
-      }).exec();
+      await this.model
+        .deleteMany({
+          $or: [
+            { _id: screen._id },
+            { name: screen.name },
+            { inputReference: screen.inputReference },
+          ],
+        })
+        .exec();
     } else {
       const deleteConditions: Record<string, unknown>[] = [{ name: id }, { inputReference: id }];
       if (Types.ObjectId.isValid(id)) {

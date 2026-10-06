@@ -21,7 +21,10 @@ export class PartnerController {
 
   @Get()
   @RequirePermissions('partners.view')
-  @ApiOperation({ summary: 'List partner profiles', description: 'Requires partners.view permission.' })
+  @ApiOperation({
+    summary: 'List partner profiles',
+    description: 'Requires partners.view permission.',
+  })
   @ApiResponse({ status: 200, description: 'Partner profiles retrieved successfully' })
   async list() {
     return this.listPartnersService.execute();
@@ -29,7 +32,10 @@ export class PartnerController {
 
   @Post()
   @RequirePermissions('partners.manage')
-  @ApiOperation({ summary: 'Create a partner profile', description: 'Requires partners.manage permission.' })
+  @ApiOperation({
+    summary: 'Create a partner profile',
+    description: 'Requires partners.manage permission.',
+  })
   @ApiResponse({ status: 201, description: 'Partner profile created successfully' })
   @ApiResponse({ status: 409, description: 'A partner with this contact email already exists' })
   async create(@CurrentUser() user: AuthenticatedUser, @Body() dto: CreatePartnerDto) {

@@ -98,4 +98,3 @@ export class MongoSessionRepository implements SessionRepository {
     };
   }
 }
-

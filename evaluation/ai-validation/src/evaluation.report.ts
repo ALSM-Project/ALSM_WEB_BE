@@ -73,7 +73,14 @@ export function renderEvaluationReport(score: EvaluationScore): string {
 
 function metricRow(
   label: string,
-  metric: { truePositives: number; falsePositives: number; falseNegatives: number; precision: number; recall: number; f1: number },
+  metric: {
+    truePositives: number;
+    falsePositives: number;
+    falseNegatives: number;
+    precision: number;
+    recall: number;
+    f1: number;
+  },
 ): string {
   return `| ${label} | ${metric.truePositives} | ${metric.falsePositives} | ${metric.falseNegatives} | ${percent(metric.precision)} | ${percent(metric.recall)} | ${percent(metric.f1)} |`;
 }

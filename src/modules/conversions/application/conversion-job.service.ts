@@ -147,10 +147,15 @@ export class ConversionJobService {
 
     for (const job of jobs) {
       if (
-        (job.status === ConversionJobStatus.QUEUED || job.status === ConversionJobStatus.PROCESSING) &&
+        (job.status === ConversionJobStatus.QUEUED ||
+          job.status === ConversionJobStatus.PROCESSING) &&
         new Date(job.createdAt).getTime() < twoMinutesAgo
       ) {
-        await this.jobs.markFailed(job.id, 'STALE_JOB', 'Job timed out - please re-run the conversion.');
+        await this.jobs.markFailed(
+          job.id,
+          'STALE_JOB',
+          'Job timed out - please re-run the conversion.',
+        );
         job.status = ConversionJobStatus.FAILED;
       }
     }
@@ -193,6 +198,9 @@ export class ConversionJobService {
   }
 
   private notFound(): NotFoundException {
-    return new NotFoundException({ code: 'JOB_NOT_FOUND', message: 'Conversion job was not found' });
+    return new NotFoundException({
+      code: 'JOB_NOT_FOUND',
+      message: 'Conversion job was not found',
+    });
   }
 }

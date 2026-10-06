@@ -15,17 +15,14 @@ const ENCRYPTION_VERSION = 'v1';
 const GCM_IV_LENGTH = 12;
 const MFA_BACKUP_CODE_COUNT = 8;
 const MFA_BACKUP_CODE_LENGTH = 10;
-const BACKUP_CODE_CHARACTERS =
-  'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
+const BACKUP_CODE_CHARACTERS = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
 
 @Injectable()
 export class MfaSecurityService implements MfaSecurityPort {
   private readonly encryptionKey: Buffer;
 
   constructor(config: ConfigService) {
-    this.encryptionKey = this.parseEncryptionKey(
-      config.getOrThrow<string>('MFA_ENCRYPTION_KEY'),
-    );
+    this.encryptionKey = this.parseEncryptionKey(config.getOrThrow<string>('MFA_ENCRYPTION_KEY'));
   }
 
   async createEnrollment(input: {
@@ -55,40 +52,27 @@ export class MfaSecurityService implements MfaSecurityPort {
     }
   }
 
-  async verifyEncryptedSecret(
-    encryptedSecret: string,
-    code: string,
-  ): Promise<boolean> {
+  async verifyEncryptedSecret(encryptedSecret: string, code: string): Promise<boolean> {
     const secret = this.decrypt(encryptedSecret);
     const totp = new OTPAuth.TOTP({ secret: OTPAuth.Secret.fromBase32(secret) });
     return totp.validate({ token: code, window: 1 }) !== null;
   }
 
   async createBackupCodes(): Promise<BackupCodeMaterial> {
-    const plaintextCodes = Array.from(
-      { length: MFA_BACKUP_CODE_COUNT },
-      () => this.createBackupCode(),
+    const plaintextCodes = Array.from({ length: MFA_BACKUP_CODE_COUNT }, () =>
+      this.createBackupCode(),
     );
     return {
       plaintextCodes,
-      hashes: await Promise.all(
-        plaintextCodes.map((code) => bcrypt.hash(code, 12)),
-      ),
+      hashes: await Promise.all(plaintextCodes.map((code) => bcrypt.hash(code, 12))),
     };
   }
 
   private encrypt(plaintext: string): string {
     try {
       const iv = randomBytes(GCM_IV_LENGTH);
-      const cipher = createCipheriv(
-        AES_256_GCM_ALGORITHM,
-        this.encryptionKey,
-        iv,
-      );
-      const ciphertext = Buffer.concat([
-        cipher.update(plaintext, 'utf8'),
-        cipher.final(),
-      ]);
+      const cipher = createCipheriv(AES_256_GCM_ALGORITHM, this.encryptionKey, iv);
+      const ciphertext = Buffer.concat([cipher.update(plaintext, 'utf8'), cipher.final()]);
       const authTag = cipher.getAuthTag();
       return [
         ENCRYPTION_VERSION,
@@ -106,8 +90,7 @@ export class MfaSecurityService implements MfaSecurityPort {
 
   private decrypt(payload: string): string {
     try {
-      const [version, ivEncoded, ciphertextEncoded, authTagEncoded, ...extra] =
-        payload.split('.');
+      const [version, ivEncoded, ciphertextEncoded, authTagEncoded, ...extra] = payload.split('.');
       if (
         version !== ENCRYPTION_VERSION ||
         !ivEncoded ||
@@ -123,15 +106,9 @@ export class MfaSecurityService implements MfaSecurityPort {
       if (iv.length !== GCM_IV_LENGTH || !ciphertext.length || authTag.length !== 16) {
         throw new Error('Invalid encrypted MFA secret payload');
       }
-      const decipher = createDecipheriv(
-        AES_256_GCM_ALGORITHM,
-        this.encryptionKey,
-        iv,
-      );
+      const decipher = createDecipheriv(AES_256_GCM_ALGORITHM, this.encryptionKey, iv);
       decipher.setAuthTag(authTag);
-      return Buffer.concat([decipher.update(ciphertext), decipher.final()]).toString(
-        'utf8',
-      );
+      return Buffer.concat([decipher.update(ciphertext), decipher.final()]).toString('utf8');
     } catch {
       throw new InternalServerErrorException({
         code: 'MFA_SECRET_DECRYPTION_FAILED',

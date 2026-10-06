@@ -42,7 +42,8 @@ export class NavigationService {
 
     for (const item of menuItems) {
       const required = itemPermsMap.get(item.id) || [];
-      const isPermitted = required.length === 0 || required.every((req) => userPermissions.includes(req));
+      const isPermitted =
+        required.length === 0 || required.every((req) => userPermissions.includes(req));
       if (isPermitted) {
         permittedItems.push({
           id: item.id,

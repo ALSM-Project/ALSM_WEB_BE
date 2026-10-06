@@ -3,8 +3,14 @@ import { InjectModel } from '@nestjs/mongoose';
 import { Model, Types } from 'mongoose';
 import { Subscription, SubscriptionDocument } from '../subscription.schema';
 import { Project, ProjectDocument } from '../../../projects/infrastructure/project.schema';
-import { ConversionJob, ConversionJobDocument } from '../../../conversions/infrastructure/conversion-job.schema';
-import { IBillingUsageRepository, SubscriptionProps } from '../../domain/billing.repository.interface';
+import {
+  ConversionJob,
+  ConversionJobDocument,
+} from '../../../conversions/infrastructure/conversion-job.schema';
+import {
+  IBillingUsageRepository,
+  SubscriptionProps,
+} from '../../domain/billing.repository.interface';
 import { SubscriptionStatus } from '../../domain/billing.types';
 
 @Injectable()
@@ -48,14 +54,20 @@ export class MongoBillingUsageRepository implements IBillingUsageRepository {
     });
   }
 
-  async countConversionsByOrganizationSince(organizationId: string, sinceDate: Date): Promise<number> {
+  async countConversionsByOrganizationSince(
+    organizationId: string,
+    sinceDate: Date,
+  ): Promise<number> {
     return this.conversionModel.countDocuments({
       organizationId: new Types.ObjectId(organizationId),
       createdAt: { $gte: sinceDate },
     });
   }
 
-  async getMonthlyConversions(organizationId: string, sinceDate: Date): Promise<Array<{ month: string; count: number }>> {
+  async getMonthlyConversions(
+    organizationId: string,
+    sinceDate: Date,
+  ): Promise<Array<{ month: string; count: number }>> {
     const monthlyConversions = await this.conversionModel.aggregate([
       {
         $match: {
@@ -75,7 +87,20 @@ export class MongoBillingUsageRepository implements IBillingUsageRepository {
       { $sort: { '_id.year': 1, '_id.month': 1 } },
     ]);
 
-    const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+    const monthNames = [
+      'Jan',
+      'Feb',
+      'Mar',
+      'Apr',
+      'May',
+      'Jun',
+      'Jul',
+      'Aug',
+      'Sep',
+      'Oct',
+      'Nov',
+      'Dec',
+    ];
     return monthlyConversions.map((m) => ({
       month: monthNames[(m._id.month as number) - 1],
       count: m.count as number,

@@ -1,10 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model, Types } from 'mongoose';
-import {
-  IPaymentRepository,
-  PaymentProps,
-} from '../../domain/billing.repository.interface';
+import { IPaymentRepository, PaymentProps } from '../../domain/billing.repository.interface';
 import { PaymentStatus } from '../../domain/billing.types';
 import { Payment, PaymentDocument } from '../payment.schema';
 import { PaymentMapper } from '../mapper/billing.mapper';
@@ -54,9 +51,7 @@ export class MongoPaymentRepository implements IPaymentRepository {
     if (paidAt) update.paidAt = paidAt;
     if (cassoTxId) update.cassoTransactionId = cassoTxId;
 
-    const doc = await this.model
-      .findByIdAndUpdate(id, update, { new: true })
-      .exec();
+    const doc = await this.model.findByIdAndUpdate(id, update, { new: true }).exec();
 
     return doc ? PaymentMapper.toDomain(doc) : null;
   }

@@ -1,10 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model, Types } from 'mongoose';
-import {
-  IInvoiceRepository,
-  InvoiceProps,
-} from '../../domain/billing.repository.interface';
+import { IInvoiceRepository, InvoiceProps } from '../../domain/billing.repository.interface';
 import { InvoiceStatus } from '../../domain/billing.types';
 import { Invoice, InvoiceDocument } from '../invoice.schema';
 import { InvoiceMapper } from '../mapper/billing.mapper';

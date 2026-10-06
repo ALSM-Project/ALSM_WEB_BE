@@ -1,6 +1,10 @@
 import { NotFoundException } from '@nestjs/common';
 import { ScreenService } from '../src/modules/screens/application/screen.service';
-import { ScreenRepository, ScreenSourceType, ScreenStatus } from '../src/modules/screens/domain/screen.types';
+import {
+  ScreenRepository,
+  ScreenSourceType,
+  ScreenStatus,
+} from '../src/modules/screens/domain/screen.types';
 import { OrganizationContextService } from '../src/modules/organizations/application/organization-context.service';
 import { ProjectService } from '../src/modules/projects/application/project.service';
 
@@ -57,7 +61,9 @@ describe('ScreenService', () => {
 
   it('throws NotFoundException when the screen does not exist in the resolved organization', async () => {
     screens.findById.mockResolvedValue(null);
-    await expect(service.getById('u1', 'org-1', 'scr-missing')).rejects.toBeInstanceOf(NotFoundException);
+    await expect(service.getById('u1', 'org-1', 'scr-missing')).rejects.toBeInstanceOf(
+      NotFoundException,
+    );
   });
 
   it('returns NOT_ANALYZED dependency status when the screen has never been analyzed', async () => {

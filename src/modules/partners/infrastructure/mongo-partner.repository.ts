@@ -2,7 +2,12 @@ import { Injectable } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model } from 'mongoose';
 import { Partner, PartnerDocument } from './partner.schema';
-import { CreatePartnerInput, PartnerRecord, PartnerRepository, PartnerStatus } from '../domain/partner.types';
+import {
+  CreatePartnerInput,
+  PartnerRecord,
+  PartnerRepository,
+  PartnerStatus,
+} from '../domain/partner.types';
 import { toValidObjectId } from '../../../shared/utils/object-id.util';
 
 @Injectable()

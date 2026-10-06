@@ -20,12 +20,16 @@ describe('GeminiAiValidatorAdapter', () => {
     targetFiles: [{ path: 'Program.java', content: '1 | public class Program {}', lineCount: 1 }],
   };
   const validFinding = {
-    category: 'LOGIC_MISMATCH', severity: 'HIGH', title: 'Conditional branch differs',
+    category: 'LOGIC_MISMATCH',
+    severity: 'HIGH',
+    title: 'Conditional branch differs',
     explanation: 'The generated branch reverses the source condition.',
     expectedBehavior: 'Execute the debit branch for a positive amount.',
-    actualBehavior: 'Executes the credit branch.', suggestion: 'Preserve the original condition.',
+    actualBehavior: 'Executes the credit branch.',
+    suggestion: 'Preserve the original condition.',
     sourceLocation: { file: 'PROGRAM.cob', startLine: 1, endLine: 1 },
-    targetLocation: { file: 'Program.java', startLine: 1, endLine: 1 }, confidence: 0.8,
+    targetLocation: { file: 'Program.java', startLine: 1, endLine: 1 },
+    confidence: 0.8,
   };
 
   beforeEach(() => {
@@ -38,24 +42,42 @@ describe('GeminiAiValidatorAdapter', () => {
   it('returns configured metadata without a network request', () => {
     const fetchMock = jest.spyOn(globalThis, 'fetch');
     expect(adapter.getMetadata()).toEqual({
-      provider: 'gemini', model: 'test-gemini-model', promptVersion: 'semantic-cobol-java-v1',
+      provider: 'gemini',
+      model: 'test-gemini-model',
+      promptVersion: 'semantic-cobol-java-v1',
     });
     expect(fetchMock).not.toHaveBeenCalled();
   });
 
   it('uses the configured endpoint, header, shared prompt, and structured schema', async () => {
-    const fetchMock = jest.spyOn(globalThis, 'fetch').mockResolvedValue(response(200, generated({ findings: [validFinding] })));
-    await expect(adapter.validate(input)).resolves.toEqual({ findings: [expect.objectContaining({ title: validFinding.title })] });
+    const fetchMock = jest
+      .spyOn(globalThis, 'fetch')
+      .mockResolvedValue(response(200, generated({ findings: [validFinding] })));
+    await expect(adapter.validate(input)).resolves.toEqual({
+      findings: [expect.objectContaining({ title: validFinding.title })],
+    });
     const [url, init] = fetchMock.mock.calls[0];
-    expect(url).toBe('https://generativelanguage.googleapis.com/v1beta/models/test-gemini-model:generateContent');
+    expect(url).toBe(
+      'https://generativelanguage.googleapis.com/v1beta/models/test-gemini-model:generateContent',
+    );
     expect(String(url)).not.toContain(values.GEMINI_API_KEY);
-    expect(init?.headers).toEqual({ 'x-goog-api-key': 'synthetic-gemini-key', 'Content-Type': 'application/json' });
+    expect(init?.headers).toEqual({
+      'x-goog-api-key': 'synthetic-gemini-key',
+      'Content-Type': 'application/json',
+    });
     const body = JSON.parse(String(init?.body));
-    expect(body.systemInstruction.parts[0].text).toContain('Perform semantic validation, not conversion.');
+    expect(body.systemInstruction.parts[0].text).toContain(
+      'Perform semantic validation, not conversion.',
+    );
     expect(body.contents[0].parts[0].text).toContain('PROGRAM.cob');
     expect(body.generationConfig).toEqual({
       candidateCount: 1,
-      responseFormat: { text: { mimeType: 'APPLICATION_JSON', schema: expect.any(Object) } },
+      responseFormat: {
+        text: {
+          mimeType: 'APPLICATION_JSON',
+          schema: expect.any(Object),
+        },
+      },
     });
     expect(body.generationConfig.responseFormat.text.mimeType).not.toBe('application/json');
     const providerSchema = body.generationConfig.responseFormat.text.schema;
@@ -91,38 +113,64 @@ describe('GeminiAiValidatorAdapter', () => {
   it.each([
     ['malformed JSON', '{not-json'],
     ['invalid category', JSON.stringify({ findings: [{ ...validFinding, category: 'UNKNOWN' }] })],
-    ['invalid location', JSON.stringify({ findings: [{ ...validFinding, sourceLocation: { file: 'other.cob', startLine: 1, endLine: 1 } }] })],
-    ['structurally invalid finding', JSON.stringify({ findings: [{ ...validFinding, extra: 'no' }] })],
+    [
+      'invalid location',
+      JSON.stringify({
+        findings: [
+          { ...validFinding, sourceLocation: { file: 'other.cob', startLine: 1, endLine: 1 } },
+        ],
+      }),
+    ],
+    [
+      'structurally invalid finding',
+      JSON.stringify({ findings: [{ ...validFinding, extra: 'no' }] }),
+    ],
     ['unknown top-level field', JSON.stringify({ findings: [], extra: 'no' })],
   ])('rejects %s with sanitized invalid-output error', async (_name, text) => {
     jest.spyOn(globalThis, 'fetch').mockResolvedValue(response(200, generatedText(text)));
-    await expect(adapter.validate(input)).rejects.toMatchObject({ code: 'AI_PROVIDER_RESPONSE_INVALID' });
+    await expect(adapter.validate(input)).rejects.toMatchObject({
+      code: 'AI_PROVIDER_RESPONSE_INVALID',
+    });
   });
 
   it('does not turn explicit provider blocking into empty findings', async () => {
-    jest.spyOn(globalThis, 'fetch').mockResolvedValue(response(200, { promptFeedback: { blockReason: 'SAFETY' }, candidates: [] }));
+    jest
+      .spyOn(globalThis, 'fetch')
+      .mockResolvedValue(
+        response(200, { promptFeedback: { blockReason: 'SAFETY' }, candidates: [] }),
+      );
     await expect(adapter.validate(input)).rejects.toMatchObject({ code: 'AI_PROVIDER_REFUSED' });
-    jest.spyOn(globalThis, 'fetch').mockResolvedValue(response(200, { candidates: [{ finishReason: 'SAFETY' }] }));
+    jest
+      .spyOn(globalThis, 'fetch')
+      .mockResolvedValue(response(200, { candidates: [{ finishReason: 'SAFETY' }] }));
     await expect(adapter.validate(input)).rejects.toMatchObject({ code: 'AI_PROVIDER_REFUSED' });
   });
 
   it.each([{}, { candidates: [{ content: { parts: [{ inlineData: { data: 'x' } }] } }] }])(
-    'rejects missing usable candidate text', async (body) => {
+    'rejects missing usable candidate text',
+    async (body) => {
       jest.spyOn(globalThis, 'fetch').mockResolvedValue(response(200, body));
-      await expect(adapter.validate(input)).rejects.toMatchObject({ code: 'AI_PROVIDER_RESPONSE_INVALID' });
+      await expect(adapter.validate(input)).rejects.toMatchObject({
+        code: 'AI_PROVIDER_RESPONSE_INVALID',
+      });
     },
   );
 
   it.each([401, 403])('does not retry HTTP %s or reveal provider body', async (status) => {
     values.AI_MAX_RETRIES = 2;
-    const fetchMock = jest.spyOn(globalThis, 'fetch').mockResolvedValue(response(status, { raw: 'sensitive-key-or-body' }));
-    await expect(adapter.validate(input)).rejects.toMatchObject({ code: 'AI_PROVIDER_AUTHENTICATION_FAILED' });
+    const fetchMock = jest
+      .spyOn(globalThis, 'fetch')
+      .mockResolvedValue(response(status, { raw: 'sensitive-key-or-body' }));
+    await expect(adapter.validate(input)).rejects.toMatchObject({
+      code: 'AI_PROVIDER_AUTHENTICATION_FAILED',
+    });
     expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 
   it.each([429, 500])('retries transient HTTP %s failures', async (status) => {
     values.AI_MAX_RETRIES = 1;
-    const fetchMock = jest.spyOn(globalThis, 'fetch')
+    const fetchMock = jest
+      .spyOn(globalThis, 'fetch')
       .mockResolvedValueOnce(response(status, { raw: 'not-exposed' }))
       .mockResolvedValueOnce(response(200, generated({ findings: [] })));
     await expect(adapter.validate(input)).resolves.toEqual({ findings: [] });
@@ -131,21 +179,32 @@ describe('GeminiAiValidatorAdapter', () => {
 
   it('does not retry a permanent client rejection and never exposes the body', async () => {
     values.AI_MAX_RETRIES = 2;
-    const fetchMock = jest.spyOn(globalThis, 'fetch').mockResolvedValue(response(400, { raw: 'private source' }));
-    await expect(adapter.validate(input)).rejects.toMatchObject({ code: 'AI_PROVIDER_REQUEST_REJECTED' });
+    const fetchMock = jest
+      .spyOn(globalThis, 'fetch')
+      .mockResolvedValue(response(400, { raw: 'private source' }));
+    await expect(adapter.validate(input)).rejects.toMatchObject({
+      code: 'AI_PROVIDER_REQUEST_REJECTED',
+    });
     expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 
   it('maps an aborted request to the sanitized timeout error', async () => {
-    jest.spyOn(globalThis, 'fetch').mockImplementation((_url, init) => new Promise((_resolve, reject) => {
-      init?.signal?.addEventListener('abort', () => reject(new Error('private prompt')));
-    }));
-    await expect(adapter.validate(input)).rejects.toMatchObject({ code: 'AI_PROVIDER_TIMEOUT', message: 'AI provider request timed out' });
+    jest.spyOn(globalThis, 'fetch').mockImplementation(
+      (_url, init) =>
+        new Promise((_resolve, reject) => {
+          init?.signal?.addEventListener('abort', () => reject(new Error('private prompt')));
+        }),
+    );
+    await expect(adapter.validate(input)).rejects.toMatchObject({
+      code: 'AI_PROVIDER_TIMEOUT',
+      message: 'AI provider request timed out',
+    });
   });
 
   it('retries network failures within the configured hard maximum', async () => {
     values.AI_MAX_RETRIES = 99;
-    const fetchMock = jest.spyOn(globalThis, 'fetch')
+    const fetchMock = jest
+      .spyOn(globalThis, 'fetch')
       .mockRejectedValueOnce(new Error('private prompt'))
       .mockRejectedValueOnce(new Error('private prompt'))
       .mockRejectedValueOnce(new Error('private prompt'))
@@ -158,9 +217,12 @@ describe('GeminiAiValidatorAdapter', () => {
 
   it('sanitizes final network errors', async () => {
     values.AI_MAX_RETRIES = 0;
-    jest.spyOn(globalThis, 'fetch').mockRejectedValue(new Error('secret prompt and source contents'));
+    jest
+      .spyOn(globalThis, 'fetch')
+      .mockRejectedValue(new Error('secret prompt and source contents'));
     await expect(adapter.validate(input)).rejects.toMatchObject({
-      code: 'AI_PROVIDER_UNAVAILABLE', message: 'AI provider is unavailable',
+      code: 'AI_PROVIDER_UNAVAILABLE',
+      message: 'AI provider is unavailable',
     });
   });
 });
@@ -174,5 +236,9 @@ function generatedText(text: string): Record<string, unknown> {
 }
 
 function response(status: number, body: unknown): Response {
-  return { ok: status >= 200 && status < 300, status, json: jest.fn().mockResolvedValue(body) } as unknown as Response;
+  return {
+    ok: status >= 200 && status < 300,
+    status,
+    json: jest.fn().mockResolvedValue(body),
+  } as unknown as Response;
 }

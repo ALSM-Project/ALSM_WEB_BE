@@ -50,9 +50,7 @@ export class MongoSubscriptionRepository implements ISubscriptionRepository {
   }
 
   async updateStatus(id: string, status: SubscriptionStatus): Promise<SubscriptionProps | null> {
-    const doc = await this.model
-      .findByIdAndUpdate(id, { status }, { new: true })
-      .exec();
+    const doc = await this.model.findByIdAndUpdate(id, { status }, { new: true }).exec();
 
     return doc ? SubscriptionMapper.toDomain(doc) : null;
   }

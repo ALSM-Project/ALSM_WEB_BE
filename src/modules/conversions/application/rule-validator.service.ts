@@ -1,8 +1,5 @@
 import { Inject, Injectable } from '@nestjs/common';
-import {
-  FIELD_MAPPING_REPOSITORY,
-  FieldMappingRepository,
-} from '../domain/field-mapping.types';
+import { FIELD_MAPPING_REPOSITORY, FieldMappingRepository } from '../domain/field-mapping.types';
 import {
   FindingSeverity,
   FindingStatus,
@@ -21,15 +18,25 @@ export class RuleValidatorService {
     @Inject(FIELD_MAPPING_REPOSITORY) private readonly mappingRepo: FieldMappingRepository,
   ) {}
 
-  async runValidation(job: ConversionJobRecord, organizationId: string): Promise<{
+  async runValidation(
+    job: ConversionJobRecord,
+    organizationId: string,
+  ): Promise<{
     run: ValidationRunRecord;
     findings: ValidationFindingRecord[];
   }> {
     const screenId = job.screenId ?? 'Screen';
-    const mappingRecord = await this.mappingRepo.findByScreen(job.projectId, screenId, organizationId);
+    const mappingRecord = await this.mappingRepo.findByScreen(
+      job.projectId,
+      screenId,
+      organizationId,
+    );
     const mappings = mappingRecord?.mappings ?? [];
 
-    const rawFindings: Omit<ValidationFindingRecord, 'id' | 'createdAt' | 'updatedAt' | 'validationRunId'>[] = [];
+    const rawFindings: Omit<
+      ValidationFindingRecord,
+      'id' | 'createdAt' | 'updatedAt' | 'validationRunId'
+    >[] = [];
 
     // Rule 1: Check Date semantic types against target TextInput
     const dateFields = mappings.filter(
@@ -53,7 +60,8 @@ export class RuleValidatorService {
         expectedBehavior: 'DatePicker UI component for date values',
         actualBehavior: 'TextInput UI component',
         explanation: `The legacy field ${item.legacyField.name} has semantic type DATE, but the current mapping generated a generic TextInput component.`,
-        suggestion: 'Open Field Editor, change Component Type from TextInput to DatePicker, and click "Save & Re-convert".',
+        suggestion:
+          'Open Field Editor, change Component Type from TextInput to DatePicker, and click "Save & Re-convert".',
         status: FindingStatus.OPEN,
       });
     }
@@ -61,7 +69,8 @@ export class RuleValidatorService {
     // Rule 2: Check Numeric fields missing min/max constraints
     const numericFields = mappings.filter(
       (m) =>
-        (m.legacyField.type.toUpperCase() === 'NUMERIC' || m.legacyField.name.toUpperCase().includes('LIMIT')) &&
+        (m.legacyField.type.toUpperCase() === 'NUMERIC' ||
+          m.legacyField.name.toUpperCase().includes('LIMIT')) &&
         m.componentMapping.maxLength === 0,
     );
 
@@ -98,8 +107,10 @@ export class RuleValidatorService {
         targetLocation: 'expiryDate [TextInput]',
         expectedBehavior: 'DatePicker UI component',
         actualBehavior: 'TextInput UI component',
-        explanation: 'Legacy field EXP_DATE has semantic type DATE, but generated output component is TextInput.',
-        suggestion: 'Change component mapping for EXP_DATE to DatePicker and click "Save & Re-convert".',
+        explanation:
+          'Legacy field EXP_DATE has semantic type DATE, but generated output component is TextInput.',
+        suggestion:
+          'Change component mapping for EXP_DATE to DatePicker and click "Save & Re-convert".',
         status: FindingStatus.OPEN,
       });
     }

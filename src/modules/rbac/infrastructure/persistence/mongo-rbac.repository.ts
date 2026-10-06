@@ -6,7 +6,12 @@ import { Permission, PermissionDocument } from '../schemas/permission.schema';
 import { RolePermission, RolePermissionDocument } from '../schemas/role-permission.schema';
 import { UserRole, UserRoleDocument } from '../schemas/user-role.schema';
 import { User, UserDocument } from '../../../users/infrastructure/user.schema';
-import { IRbacRepository, IRole, IPermission, IRbacUser } from '../../domain/rbac.repository.interface';
+import {
+  IRbacRepository,
+  IRole,
+  IPermission,
+  IRbacUser,
+} from '../../domain/rbac.repository.interface';
 
 interface TimestampsDoc {
   createdAt?: Date;
@@ -18,7 +23,8 @@ export class MongoRbacRepository implements IRbacRepository {
   constructor(
     @InjectModel(Role.name) private readonly roleModel: Model<RoleDocument>,
     @InjectModel(Permission.name) private readonly permissionModel: Model<PermissionDocument>,
-    @InjectModel(RolePermission.name) private readonly rolePermissionModel: Model<RolePermissionDocument>,
+    @InjectModel(RolePermission.name)
+    private readonly rolePermissionModel: Model<RolePermissionDocument>,
     @InjectModel(UserRole.name) private readonly userRoleModel: Model<UserRoleDocument>,
     @InjectModel(User.name) private readonly userModel: Model<UserDocument>,
   ) {}
@@ -52,7 +58,12 @@ export class MongoRbacRepository implements IRbacRepository {
     };
   }
 
-  async createRole(data: { id: string; name: string; description: string; isSystem: boolean }): Promise<IRole> {
+  async createRole(data: {
+    id: string;
+    name: string;
+    description: string;
+    isSystem: boolean;
+  }): Promise<IRole> {
     const created = new this.roleModel(data);
     const saved = await created.save();
     const ts = saved as unknown as TimestampsDoc;
@@ -66,7 +77,10 @@ export class MongoRbacRepository implements IRbacRepository {
     };
   }
 
-  async updateRole(id: string, data: { name?: string; description?: string }): Promise<IRole | null> {
+  async updateRole(
+    id: string,
+    data: { name?: string; description?: string },
+  ): Promise<IRole | null> {
     const role = await this.roleModel.findOne({ id }).exec();
     if (!role) return null;
     if (data.name !== undefined) role.name = data.name;
@@ -128,7 +142,12 @@ export class MongoRbacRepository implements IRbacRepository {
     };
   }
 
-  async createPermission(data: { key: string; label: string; group: string; description: string }): Promise<IPermission> {
+  async createPermission(data: {
+    key: string;
+    label: string;
+    group: string;
+    description: string;
+  }): Promise<IPermission> {
     const created = new this.permissionModel(data);
     const saved = await created.save();
     const ts = saved as unknown as TimestampsDoc;
@@ -142,7 +161,10 @@ export class MongoRbacRepository implements IRbacRepository {
     };
   }
 
-  async updatePermission(key: string, data: { label?: string; group?: string; description?: string }): Promise<IPermission | null> {
+  async updatePermission(
+    key: string,
+    data: { label?: string; group?: string; description?: string },
+  ): Promise<IPermission | null> {
     const perm = await this.permissionModel.findOne({ key }).exec();
     if (!perm) return null;
     if (data.label !== undefined) perm.label = data.label;
@@ -174,7 +196,10 @@ export class MongoRbacRepository implements IRbacRepository {
   }
 
   async findRolePermissionsByRoleIds(roleIds: string[]): Promise<string[]> {
-    const rps = await this.rolePermissionModel.find({ roleId: { $in: roleIds } }).select('permissionKey').exec();
+    const rps = await this.rolePermissionModel
+      .find({ roleId: { $in: roleIds } })
+      .select('permissionKey')
+      .exec();
     return rps.map((rp) => rp.permissionKey);
   }
 
@@ -224,7 +249,10 @@ export class MongoRbacRepository implements IRbacRepository {
   }
 
   async findAllUsers(): Promise<IRbacUser[]> {
-    const users = await this.userModel.find().select('email fullName isPlatformAdmin isActive').exec();
+    const users = await this.userModel
+      .find()
+      .select('email fullName isPlatformAdmin isActive')
+      .exec();
     return users.map((u) => ({
       id: u.id || u._id.toString(),
       email: u.email,
@@ -235,12 +263,18 @@ export class MongoRbacRepository implements IRbacRepository {
   }
 
   async findValidPermissions(keys: string[]): Promise<string[]> {
-    const docs = await this.permissionModel.find({ key: { $in: keys } }).select('key').exec();
+    const docs = await this.permissionModel
+      .find({ key: { $in: keys } })
+      .select('key')
+      .exec();
     return docs.map((d) => d.key);
   }
 
   async findValidRoles(ids: string[]): Promise<string[]> {
-    const docs = await this.roleModel.find({ id: { $in: ids } }).select('id').exec();
+    const docs = await this.roleModel
+      .find({ id: { $in: ids } })
+      .select('id')
+      .exec();
     return docs.map((d) => d.id);
   }
 }

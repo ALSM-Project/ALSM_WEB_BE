@@ -7,7 +7,10 @@ import {
   AiValidatorMetadata,
   AiValidatorPort,
 } from '../domain/ai-validator.port';
-import { buildAiValidationJsonSchema, validateAiValidationOutput } from './ai-validation-output.validator';
+import {
+  buildAiValidationJsonSchema,
+  validateAiValidationOutput,
+} from './ai-validation-output.validator';
 import { buildAiValidationPrompt } from './ai-validation.prompt';
 
 const OPENAI_RESPONSES_ENDPOINT = 'https://api.openai.com/v1/responses';
@@ -95,7 +98,10 @@ export class OpenAiValidatorAdapter implements AiValidatorPort {
       }
     }
 
-    throw lastFailure?.error ?? new AiValidatorError('AI_PROVIDER_UNAVAILABLE', 'AI provider is unavailable');
+    throw (
+      lastFailure?.error ??
+      new AiValidatorError('AI_PROVIDER_UNAVAILABLE', 'AI provider is unavailable')
+    );
   }
 
   private async requestOnce(body: Record<string, unknown>): Promise<OpenAiResponseBody> {
@@ -145,7 +151,10 @@ export class OpenAiValidatorAdapter implements AiValidatorPort {
       for (const contentValue of item.content) {
         const content = contentValue as OpenAiResponseContent;
         if (content.type === 'refusal' || typeof content.refusal === 'string') {
-          throw new AiValidatorError('AI_PROVIDER_REFUSED', 'AI provider refused the validation request');
+          throw new AiValidatorError(
+            'AI_PROVIDER_REFUSED',
+            'AI provider refused the validation request',
+          );
         }
         if (content.type === 'output_text' && typeof content.text === 'string') {
           textParts.push(content.text);
@@ -174,7 +183,10 @@ export class OpenAiValidatorAdapter implements AiValidatorPort {
       };
     }
     return {
-      error: new AiValidatorError('AI_PROVIDER_REQUEST_REJECTED', 'AI provider rejected the request'),
+      error: new AiValidatorError(
+        'AI_PROVIDER_REQUEST_REJECTED',
+        'AI provider rejected the request',
+      ),
       retryable: false,
     };
   }

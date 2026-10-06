@@ -17,7 +17,9 @@ export const PILOT_SELECTION_ALGORITHM =
 const sha256Pattern = /^[a-f0-9]{64}$/;
 
 export function isEligiblePilotCandidate(candidate: ImportedEvaluationCandidate): boolean {
-  const sourceFiles = candidate.sourceFiles.filter((file) => /\.(?:cbl|cob|cobol)$/i.test(file.path));
+  const sourceFiles = candidate.sourceFiles.filter((file) =>
+    /\.(?:cbl|cob|cobol)$/i.test(file.path),
+  );
   const targetFiles = (candidate.targetFiles ?? []).filter((file) => /\.java$/i.test(file.path));
   const allFiles = [...candidate.sourceFiles, ...(candidate.targetFiles ?? [])];
   const integrity = new Map(
@@ -29,12 +31,12 @@ export function isEligiblePilotCandidate(candidate: ImportedEvaluationCandidate)
   });
   const provenanceComplete = Boolean(
     candidate.provenance.upstreamRepository &&
-      candidate.provenance.upstreamRepositoryUrl &&
-      candidate.provenance.upstreamCommit &&
-      candidate.provenance.upstreamPath &&
-      candidate.provenance.licenseSpdx &&
-      candidate.provenance.licensePath &&
-      candidate.provenance.fileIntegrity.length === allFiles.length,
+    candidate.provenance.upstreamRepositoryUrl &&
+    candidate.provenance.upstreamCommit &&
+    candidate.provenance.upstreamPath &&
+    candidate.provenance.licenseSpdx &&
+    candidate.provenance.licensePath &&
+    candidate.provenance.fileIntegrity.length === allFiles.length,
   );
   return (
     candidate.sourceDataset === 'COBOL_JAVATRANS' &&
@@ -240,7 +242,9 @@ export function renderPilotSummary(
   selection: PilotSelectionManifest,
   candidates: ImportedCandidateManifest,
 ): string {
-  const byId = new Map(candidates.candidates.map((candidate) => [candidate.candidateId, candidate]));
+  const byId = new Map(
+    candidates.candidates.map((candidate) => [candidate.candidateId, candidate]),
+  );
   const lines = [
     '# COBOL-JavaTrans Human Review Pilot v1',
     '',
@@ -284,13 +288,21 @@ function assertSelectionMatchesCandidates(
   if (candidates.sourceDataset !== 'COBOL_JAVATRANS' || candidates.licenseStatus !== 'RECORDED') {
     throw new Error('Invalid pilot selection: source manifest is not recorded COBOL_JAVATRANS');
   }
-  const byId = new Map(candidates.candidates.map((candidate) => [candidate.candidateId, candidate]));
+  const byId = new Map(
+    candidates.candidates.map((candidate) => [candidate.candidateId, candidate]),
+  );
   for (const selected of selection.selectedCandidates) {
     const candidate = byId.get(selected.candidateId);
     if (!candidate || !isEligiblePilotCandidate(candidate)) {
-      throw new Error(`Invalid pilot selection: ineligible or unknown candidate ${selected.candidateId}`);
+      throw new Error(
+        `Invalid pilot selection: ineligible or unknown candidate ${selected.candidateId}`,
+      );
     }
-    const current = toSelectedCandidate(candidate, totalCharacters(candidate), selected.sizeStratum);
+    const current = toSelectedCandidate(
+      candidate,
+      totalCharacters(candidate),
+      selected.sizeStratum,
+    );
     if (
       current.sourcePath !== selected.sourcePath ||
       current.targetPath !== selected.targetPath ||
@@ -299,7 +311,9 @@ function assertSelectionMatchesCandidates(
       current.targetSha256 !== selected.targetSha256 ||
       stableStringify(current.provenance) !== stableStringify(selected.provenance)
     ) {
-      throw new Error(`Invalid pilot selection: candidate binding mismatch for ${selected.candidateId}`);
+      throw new Error(
+        `Invalid pilot selection: candidate binding mismatch for ${selected.candidateId}`,
+      );
     }
   }
 }
@@ -348,8 +362,8 @@ function totalCharacters(candidate: ImportedEvaluationCandidate): number {
 function hasTestEvidence(candidate: ImportedEvaluationCandidate): boolean {
   return Boolean(
     candidate.upstreamEvidence?.testDataPresent ||
-      candidate.upstreamEvidence?.structuredTests?.length ||
-      candidate.upstreamEvidence?.javaTestSource?.trim(),
+    candidate.upstreamEvidence?.structuredTests?.length ||
+    candidate.upstreamEvidence?.javaTestSource?.trim(),
   );
 }
 

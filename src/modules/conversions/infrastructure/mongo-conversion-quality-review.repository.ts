@@ -82,7 +82,12 @@ export class MongoConversionQualityReviewRepository implements ConversionQuality
       .catch((err: unknown) => {
         // Duplicate key error from upsert means a document exists but doesn't match the filter
         // (compare-and-set conflict — another reviewer changed the status first)
-        if (err && typeof err === 'object' && 'code' in err && (err as { code: number }).code === 11000) {
+        if (
+          err &&
+          typeof err === 'object' &&
+          'code' in err &&
+          (err as { code: number }).code === 11000
+        ) {
           return null;
         }
         throw err;
@@ -100,8 +105,7 @@ export class MongoConversionQualityReviewRepository implements ConversionQuality
     }
 
     // Determine if this was a create or update by checking timestamps
-    const isNew =
-      Math.abs(updatedDoc.createdAt.getTime() - updatedDoc.updatedAt.getTime()) < 100;
+    const isNew = Math.abs(updatedDoc.createdAt.getTime() - updatedDoc.updatedAt.getTime()) < 100;
 
     return {
       outcome: isNew ? 'CREATED' : 'UPDATED',
