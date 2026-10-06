@@ -1,3 +1,4 @@
+import { AiProviderDiagnostics } from '../../../src/modules/validation/domain/ai-provider-diagnostics';
 import {
   ValidationFindingCategory,
   ValidationFindingSeverity,
@@ -96,6 +97,7 @@ export interface EvaluationPredictionCase {
   latencyMs?: number;
   findings?: PredictedEvaluationFinding[];
   failure?: {
+    diagnostics?: AiProviderDiagnostics;
     code: string;
     message: string;
   };
