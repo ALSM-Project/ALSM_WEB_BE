@@ -1,5 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
+import { AiProviderDiagnostics } from '../domain/ai-provider-diagnostics';
 import { AiValidatorError } from '../domain/ai-validator.error';
 import {
   AiValidationInput,
@@ -30,6 +31,8 @@ interface GeminiResponseBody {
 interface RetryableFailure {
   error: AiValidatorError;
   retryable: boolean;
+  finalFailureClass: AiProviderDiagnostics['finalFailureClass'];
+  httpStatus?: number;
 }
 
 @Injectable()
@@ -45,50 +48,75 @@ export class GeminiAiValidatorAdapter implements AiValidatorPort {
   }
 
   async validate(input: AiValidationInput): Promise<AiValidationResult> {
+    const startedAt = Date.now();
     const metadata = this.getMetadata();
     const maxFindings = this.config.getOrThrow<number>('AI_MAX_FINDINGS');
     const prompt = buildAiValidationPrompt(input, metadata.promptVersion);
     const canonicalSchema = buildAiValidationJsonSchema(maxFindings);
     const geminiSchema = createGeminiValidationSchema(canonicalSchema);
-    const response = await this.requestWithRetries(metadata.model, {
-      systemInstruction: { parts: [{ text: prompt.instructions }] },
-      contents: [{ role: 'user', parts: [{ text: prompt.input }] }],
-      generationConfig: {
-        candidateCount: 1,
-        responseFormat: {
-          text: {
-            mimeType: 'APPLICATION_JSON',
-            schema: geminiSchema,
+    const response = await this.requestWithRetries(
+      metadata.model,
+      {
+        systemInstruction: { parts: [{ text: prompt.instructions }] },
+        contents: [{ role: 'user', parts: [{ text: prompt.input }] }],
+        generationConfig: {
+          candidateCount: 1,
+          responseFormat: {
+            text: {
+              mimeType: 'APPLICATION_JSON',
+              schema: geminiSchema,
+            },
           },
         },
       },
-    });
-    const outputText = this.extractOutputText(response);
-
-    let parsed: unknown;
+      startedAt,
+    );
     try {
-      parsed = JSON.parse(outputText);
-    } catch {
-      throw this.invalidResponse();
+      const outputText = this.extractOutputText(response.body);
+
+      let parsed: unknown;
+      try {
+        parsed = JSON.parse(outputText);
+      } catch {
+        throw this.invalidResponse();
+      }
+      return { findings: validateAiValidationOutput(parsed, input, maxFindings) };
+    } catch (error) {
+      if (!(error instanceof AiValidatorError)) throw error;
+      throw new AiValidatorError(error.code, error.message, {
+        finalFailureClass: error.code === 'AI_PROVIDER_REFUSED' ? 'REFUSED' : 'INVALID_OUTPUT',
+        httpStatus: response.httpStatus,
+        attempts: response.attempts,
+        retriesExhausted: false,
+        totalLatencyMs: Math.max(0, Date.now() - startedAt),
+      });
     }
-    return { findings: validateAiValidationOutput(parsed, input, maxFindings) };
   }
 
   private async requestWithRetries(
     model: string,
     body: Record<string, unknown>,
-  ): Promise<GeminiResponseBody> {
+    startedAt: number,
+  ): Promise<{ body: GeminiResponseBody; httpStatus: number; attempts: number }> {
     const configuredRetries = this.config.getOrThrow<number>('AI_MAX_RETRIES');
     const maxRetries = Math.min(Math.max(configuredRetries, 0), MAX_CONFIGURED_RETRIES);
     let lastFailure: RetryableFailure | undefined;
 
     for (let attempt = 0; attempt <= maxRetries; attempt += 1) {
       try {
-        return await this.requestOnce(model, body);
+        return { ...(await this.requestOnce(model, body)), attempts: attempt + 1 };
       } catch (error) {
         const failure = this.classifyFailure(error);
         lastFailure = failure;
-        if (!failure.retryable || attempt === maxRetries) throw failure.error;
+        if (!failure.retryable || attempt === maxRetries) {
+          throw new AiValidatorError(failure.error.code, failure.error.message, {
+            finalFailureClass: failure.finalFailureClass,
+            ...(failure.httpStatus === undefined ? {} : { httpStatus: failure.httpStatus }),
+            attempts: attempt + 1,
+            retriesExhausted: failure.retryable && attempt === maxRetries,
+            totalLatencyMs: Math.max(0, Date.now() - startedAt),
+          });
+        }
         await this.delay(Math.min(50 * 2 ** attempt, 500));
       }
     }
@@ -101,13 +129,14 @@ export class GeminiAiValidatorAdapter implements AiValidatorPort {
   private async requestOnce(
     model: string,
     body: Record<string, unknown>,
-  ): Promise<GeminiResponseBody> {
+  ): Promise<{ body: GeminiResponseBody; httpStatus: number }> {
     const controller = new AbortController();
     const timeout = setTimeout(
       () => controller.abort(),
       this.config.getOrThrow<number>('AI_TIMEOUT_MS'),
     );
     const endpoint = `${GEMINI_GENERATE_CONTENT_ENDPOINT}/${encodeURIComponent(model)}:generateContent`;
+    let httpStatus: number | undefined;
     try {
       const response = await fetch(endpoint, {
         method: 'POST',
@@ -118,15 +147,26 @@ export class GeminiAiValidatorAdapter implements AiValidatorPort {
         body: JSON.stringify(body),
         signal: controller.signal,
       });
+      httpStatus = response.status;
       if (!response.ok) throw this.httpFailure(response.status);
       try {
-        return (await response.json()) as GeminiResponseBody;
+        return { body: (await response.json()) as GeminiResponseBody, httpStatus: response.status };
       } catch {
-        throw this.invalidResponse();
+        throw {
+          error: this.invalidResponse(),
+          retryable: false,
+          finalFailureClass: 'INVALID_OUTPUT',
+          httpStatus: response.status,
+        } satisfies RetryableFailure;
       }
     } catch (error) {
       if (controller.signal.aborted) {
-        throw new AiValidatorError('AI_PROVIDER_TIMEOUT', 'AI provider request timed out');
+        throw {
+          error: new AiValidatorError('AI_PROVIDER_TIMEOUT', 'AI provider request timed out'),
+          retryable: true,
+          finalFailureClass: 'TIMEOUT',
+          ...(httpStatus === undefined ? {} : { httpStatus }),
+        } satisfies RetryableFailure;
       }
       throw error;
     } finally {
@@ -186,12 +226,16 @@ export class GeminiAiValidatorAdapter implements AiValidatorPort {
           'AI provider authentication failed',
         ),
         retryable: false,
+        finalFailureClass: 'AUTHENTICATION_FAILED',
+        httpStatus: status,
       };
     }
     if (status === 429 || status >= 500) {
       return {
         error: new AiValidatorError('AI_PROVIDER_UNAVAILABLE', 'AI provider is unavailable'),
         retryable: true,
+        finalFailureClass: status === 429 ? 'RATE_LIMITED' : 'SERVER_ERROR',
+        httpStatus: status,
       };
     }
     return {
@@ -200,6 +244,8 @@ export class GeminiAiValidatorAdapter implements AiValidatorPort {
         'AI provider rejected the request',
       ),
       retryable: false,
+      finalFailureClass: 'REQUEST_REJECTED',
+      httpStatus: status,
     };
   }
 
@@ -209,11 +255,18 @@ export class GeminiAiValidatorAdapter implements AiValidatorPort {
       return {
         error,
         retryable: error.code === 'AI_PROVIDER_TIMEOUT' || error.code === 'AI_PROVIDER_UNAVAILABLE',
+        finalFailureClass:
+          error.code === 'AI_PROVIDER_TIMEOUT'
+            ? 'TIMEOUT'
+            : error.code === 'AI_PROVIDER_RESPONSE_INVALID'
+              ? 'INVALID_OUTPUT'
+              : 'NETWORK_ERROR',
       };
     }
     return {
       error: new AiValidatorError('AI_PROVIDER_UNAVAILABLE', 'AI provider is unavailable'),
       retryable: true,
+      finalFailureClass: 'NETWORK_ERROR',
     };
   }
 

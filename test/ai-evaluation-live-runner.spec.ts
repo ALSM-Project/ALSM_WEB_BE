@@ -1,3 +1,6 @@
+import { AiProviderDiagnostics } from '../src/modules/validation/domain/ai-provider-diagnostics';
+import { validatePredictions } from '../evaluation/ai-validation/src/evaluation.validator';
+import { scoreEvaluation } from '../evaluation/ai-validation/src/evaluation.scorer';
 import { AiValidatorError } from '../src/modules/validation/domain/ai-validator.error';
 import {
   AiValidationInput,
@@ -150,5 +153,76 @@ describe('AI evaluation live runner safeguards', () => {
         },
       }),
     );
+  });
+  it('serializes only safe diagnostics and leaves legacy scoring identical', async () => {
+    const diagnostics = {
+      finalFailureClass: 'RATE_LIMITED' as const,
+      httpStatus: 429,
+      attempts: 3,
+      retriesExhausted: true,
+      totalLatencyMs: 150,
+      body: 'secret-body',
+      headers: { key: 'secret-key' },
+      prompt: 'secret-prompt',
+    };
+    const error = new AiValidatorError(
+      'AI_PROVIDER_UNAVAILABLE',
+      'AI provider is unavailable',
+      diagnostics,
+    );
+    const validator: AiValidatorPort = {
+      getMetadata: () => ({ provider: 'gemini', model: 'synthetic', promptVersion: 'v1' }),
+      validate: jest.fn().mockRejectedValue(error),
+    };
+    const result = await runLiveBenchmark({
+      dataset,
+      selectedCases: dataset.cases,
+      validator,
+      prepareContext,
+      failFast: false,
+    });
+    const serialized = JSON.stringify(result);
+    expect(serialized).not.toContain('secret');
+    expect(serialized).not.toContain('DISPLAY TOTAL');
+    expect(serialized).not.toContain('show(total)');
+    expect(result.cases[0].failure?.diagnostics).toEqual({
+      finalFailureClass: 'RATE_LIMITED',
+      httpStatus: 429,
+      attempts: 3,
+      retriesExhausted: true,
+      totalLatencyMs: 150,
+    });
+    const validated = validatePredictions(JSON.parse(serialized), dataset);
+    const legacy = structuredClone(validated);
+    legacy.cases.forEach((value) => {
+      delete value.failure?.diagnostics;
+    });
+    expect(scoreEvaluation(dataset, validated)).toEqual(
+      scoreEvaluation(dataset, validatePredictions(legacy, dataset)),
+    );
+    expect(validated.cases.every((value) => value.status === 'PROVIDER_FAILED')).toBe(true);
+    for (const unsafe of [
+      { httpStatus: '429' },
+      { headers: 'private' },
+      { body: 'private' },
+      { attempts: 7 },
+      { totalLatencyMs: -1 },
+      { finalFailureClass: 'private' },
+    ]) {
+      const malformed = structuredClone(validated);
+      Object.assign(malformed.cases[0].failure!.diagnostics!, unsafe);
+      expect(() => validatePredictions(malformed, dataset)).toThrow();
+    }
+  });
+
+  it('drops invalid diagnostic primitives at the error boundary', () => {
+    const error = new AiValidatorError('AI_PROVIDER_UNAVAILABLE', 'AI provider is unavailable', {
+      finalFailureClass: 'RATE_LIMITED',
+      httpStatus: '429 secret',
+      attempts: 1,
+      retriesExhausted: true,
+      totalLatencyMs: 0,
+    } as unknown as AiProviderDiagnostics);
+    expect(error.diagnostics).toBeUndefined();
   });
 });
