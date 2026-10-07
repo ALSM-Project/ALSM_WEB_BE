@@ -46,6 +46,12 @@ export class BillingPresenter {
     return {
       id: req.id,
       status: req.status,
+      statusReason: req.statusReason,
+      appealMessage: req.appealMessage,
+      appealStatus: req.appealStatus,
+      appealResponse: req.appealResponse,
+      appealedAt: req.appealedAt,
+      appealResolvedAt: req.appealResolvedAt,
       fullName: req.fullName,
       companyName: req.companyName,
       email: req.email,
