@@ -18,6 +18,22 @@ The new mode reuses runLiveBenchmark for each case, the existing context prepara
 Gemini adapter, runtime validation, safe diagnostics and final prediction schema. It is
 restricted to Gemini and a full 40-case dataset. OpenAI and the ordinary runner are unchanged.
 Only the reserved multiday output namespace is forbidden to ordinary non-checkpoint runs.
+Both output and checkpoint inputs reject Windows device/namespaced forms (`\\?\`,
+`\\.\`, `\??\`, including slash-normalized variants) on Windows. Ordinary paths are
+resolved with runtime platform semantics before component-based containment checks;
+Windows comparisons are case-insensitive. Siblings such as `multiday-old` and `multiday2`
+remain valid legacy destinations. Ambiguous Windows trailing-dot/space components,
+DOS device names and alternate data stream spellings are also rejected.
+
+Legacy output checks run before provider construction and again before writing. They
+resolve existing targets and their nearest existing ancestors, including the reserved
+root and an existing predictions file, to reject symlink/junction aliases into multiday
+results even when a child directory does not yet exist. Unresolvable/dangling aliases
+fail closed with a generic error. These are preflight filesystem checks, not protection
+against another actor replacing links/directories between checking and opening a file.
+Use a stable, trusted directory tree; hostile concurrent filesystem mutation and deliberate
+hard links to evidence are outside this local cooperative-tool contract. No automatic
+repair, filesystem enumeration or new recovery policy is introduced.
 
 Existing .gitignore already excludes evaluation/ai-validation/results/. No new ignore rule,
 package script, dependency, schema, prompt, model, label, matcher, scorer, Human Review,
@@ -199,3 +215,23 @@ Validation results:
 
 Recommended next step only: separately approved controlled Day-1 execution after this phase
 is reviewed and merged. No such execution is part of this implementation.
+
+## Windows reserved-path follow-up
+
+After merging develop `588c3742f640bba4cd32cefc6ccef4f8d804cc24` in
+`f6ad75642060d899cec8f598811b4bf9bd45d389`, review found that lexical comparison
+accepted a Windows namespaced alias of the reserved directory. The follow-up rejects
+unsafe input forms before normalization and uses path-relative component containment.
+Pure tests exercise explicit `path.win32` semantics on any CI platform, while mocked
+filesystem tests cover existing directory/file aliases and missing descendants.
+CLI tests prove invalid paths stop before provider construction, validation or writes.
+Checkpoint state, identity, locking, persistence and quota semantics are unchanged.
+
+Fresh follow-up validation: npm ci passed (the same 12 audit findings; no audit fix),
+focused multiday/path tests passed (2 suites / 110 tests), full tests passed
+(75 suites / 703 tests), lint and build passed. E2E exited 0 with no tests found.
+Dataset validation remained 40 valid cases; imports remained 143 + 12 valid candidates.
+Phase 6.3B regressions passed in the full suite. The seven frozen evidence/document files
+and both manifest/historical-prediction hashes above remained unchanged. Read-only Windows
+probes confirmed rejection of the original legacy bypass and namespaced checkpoint/output
+inputs. No live provider or benchmark execution occurred.

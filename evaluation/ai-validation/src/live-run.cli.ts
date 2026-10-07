@@ -7,7 +7,7 @@ import { assertLiveProviderOptIn, runLiveBenchmark, selectLiveCases } from './li
 import { createLiveValidator } from './live-validator.factory';
 import { validateDataset } from './evaluation.validator';
 import { runMultidayBenchmark } from './multiday-runner';
-import { assertLegacyOutputOutsideMultiday } from './multiday-store';
+import { assertLegacyOutputOutsideMultiday, checkpointLocation } from './multiday-store';
 
 interface LiveCliArguments {
   dataset?: string;
@@ -23,18 +23,22 @@ interface LiveCliArguments {
   maxNewCases?: number;
 }
 
-async function main(): Promise<void> {
-  const args = parseLiveArguments(process.argv.slice(2));
-  assertLiveProviderOptIn(process.env, args.allowLiveProvider);
+export async function main(
+  values = process.argv.slice(2),
+  environment: NodeJS.ProcessEnv = process.env,
+): Promise<void> {
+  const args = parseLiveArguments(values);
+  assertLiveProviderOptIn(environment, args.allowLiveProvider);
   if (!args.dataset || !args.output) throw new Error('Live run requires --dataset and --output');
   if (!args.checkpoint) assertLegacyOutputOutsideMultiday(args.output);
+  else checkpointLocation(args.checkpoint, args.output);
   const dataset = validateDataset(readJson(args.dataset));
   const selectedCases = selectLiveCases(dataset, {
     caseId: args.caseId,
     limit: args.limit,
     all: args.all,
   });
-  const { config, validator } = createLiveValidator(process.env);
+  const { config, validator } = createLiveValidator(environment);
   const prepareContext = new PrepareAiValidationContextService(
     new ValidationSecretRedactorService(),
     config,
@@ -66,6 +70,7 @@ async function main(): Promise<void> {
     failFast: args.failFast,
   });
   const output = resolve(args.output);
+  assertLegacyOutputOutsideMultiday(output);
   mkdirSync(output, { recursive: true });
   writeFileSync(
     resolve(output, 'predictions.json'),

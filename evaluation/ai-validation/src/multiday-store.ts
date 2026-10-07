@@ -1,6 +1,11 @@
 import * as fs from 'fs';
 import { dirname, join, relative, resolve, sep } from 'path';
 import { randomUUID } from 'crypto';
+import {
+  isPathWithin,
+  resolveEvaluationPath,
+  resolveExistingEvaluationPath,
+} from './evaluation-path-safety';
 import { AiEvaluationDataset } from './evaluation.types';
 import {
   sameJson,
@@ -18,13 +23,14 @@ export function checkpointLocation(
   projectRoot = process.cwd(),
 ) {
   const root = resolve(projectRoot, 'evaluation/ai-validation/results/multiday');
-  const path = resolve(checkpoint);
+  const path = resolveEvaluationPath(checkpoint);
+  const outputPath = resolveEvaluationPath(output);
   const suffix = relative(root, path).split(sep);
   if (
     suffix.length !== 2 ||
     !/^[a-z0-9][a-z0-9-]{0,63}$/.test(suffix[0]) ||
     suffix[1] !== 'checkpoint.json' ||
-    resolve(output) !== dirname(path)
+    outputPath !== dirname(path)
   )
     throw new Error(
       'Checkpoint must be results/multiday/<run-id>/checkpoint.json; output must be its directory',
@@ -76,12 +82,19 @@ export function assertLegacyOutputOutsideMultiday(
   projectRoot = process.cwd(),
 ): void {
   const root = resolve(projectRoot, 'evaluation/ai-validation/results/multiday');
-  const canonical = (path: string) => (process.platform === 'win32' ? path.toLowerCase() : path);
-  const candidate = canonical(resolve(output));
-  if (candidate === canonical(root) || candidate.startsWith(canonical(root) + sep))
+  const candidate = resolveEvaluationPath(output);
+  const reject = () => {
     throw new Error(
       'Multiday output directories require --checkpoint; legacy runs cannot overwrite them',
     );
+  };
+  if (isPathWithin(root, candidate)) reject();
+  const realRoot = resolveExistingEvaluationPath(root);
+  if (
+    isPathWithin(realRoot, resolveExistingEvaluationPath(candidate)) ||
+    isPathWithin(realRoot, resolveExistingEvaluationPath(join(candidate, 'predictions.json')))
+  )
+    reject();
 }
 
 export class CheckpointStore {
