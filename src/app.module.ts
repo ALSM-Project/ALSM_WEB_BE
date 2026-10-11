@@ -193,6 +193,13 @@ import { MenuModule } from './modules/menus/menu.module';
 import { VALIDATION_REPOSITORY } from './modules/conversions/domain/validation.types';
 import { MongoValidationRepository } from './modules/conversions/infrastructure/mongo-validation.repository';
 import { RuleValidatorService } from './modules/conversions/application/rule-validator.service';
+import { LegacyValidationService } from './modules/conversions/application/legacy-validation.service';
+import {
+  LegacyValidationRun,
+  LegacyValidationFinding,
+  ValidationRunSchema as LegacyValidationRunSchema,
+  ValidationFindingSchema as LegacyValidationFindingSchema,
+} from './modules/conversions/infrastructure/validation.schema';
 import { ValidationController as RuleValidationController } from './modules/conversions/presentation/validation.controller';
 import {
   ConversionQualityReview,
@@ -231,6 +238,8 @@ import { QualityReviewController } from './modules/conversions/presentation/qual
       { name: Screen.name, schema: ScreenSchema },
       { name: ValidationRun.name, schema: ValidationRunSchema },
       { name: ValidationFinding.name, schema: ValidationFindingSchema },
+      { name: LegacyValidationRun.name, schema: LegacyValidationRunSchema },
+      { name: LegacyValidationFinding.name, schema: LegacyValidationFindingSchema },
       { name: QuoteRequest.name, schema: QuoteRequestSchema },
       { name: ConversionQualityReview.name, schema: ConversionQualityReviewSchema },
     ]),
@@ -293,6 +302,7 @@ import { QualityReviewController } from './modules/conversions/presentation/qual
     OnboardUserService,
     UpdateUserStatusService,
     RuleValidatorService,
+    LegacyValidationService,
     ExportCodeService,
     ErrorLogService,
     BuildValidationContextService,

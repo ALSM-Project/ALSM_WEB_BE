@@ -2,11 +2,11 @@ import { Prop, Schema, SchemaFactory } from '@nestjs/mongoose';
 import { HydratedDocument, Schema as MongooseSchema, Types } from 'mongoose';
 import { FindingSeverity, FindingStatus, ValidatorType } from '../domain/validation.types';
 
-export type ValidationRunDocument = HydratedDocument<ValidationRun>;
-export type ValidationFindingDocument = HydratedDocument<ValidationFinding>;
+export type ValidationRunDocument = HydratedDocument<LegacyValidationRun>;
+export type ValidationFindingDocument = HydratedDocument<LegacyValidationFinding>;
 
-@Schema({ collection: 'validation_runs', timestamps: true })
-export class ValidationRun {
+@Schema({ collection: 'validation_runs', timestamps: true, strictQuery: false })
+export class LegacyValidationRun {
   @Prop({ type: MongooseSchema.Types.ObjectId, required: true, index: true })
   conversionJobId!: Types.ObjectId;
 
@@ -50,10 +50,14 @@ export class ValidationRun {
   updatedAt!: Date;
 }
 
-export const ValidationRunSchema = SchemaFactory.createForClass(ValidationRun);
+export const ValidationRunSchema = SchemaFactory.createForClass(LegacyValidationRun);
 
-@Schema({ collection: 'validation_findings', timestamps: true })
-export class ValidationFinding {
+@Schema({ collection: 'validation_findings', timestamps: true, strictQuery: false })
+export class LegacyValidationFinding {
+  // Older rule findings inherit organization ownership from their run.
+  @Prop({ type: MongooseSchema.Types.ObjectId })
+  organizationId?: Types.ObjectId;
+
   @Prop({ type: MongooseSchema.Types.ObjectId, required: true, index: true })
   conversionJobId!: Types.ObjectId;
 
@@ -115,4 +119,4 @@ export class ValidationFinding {
   updatedAt!: Date;
 }
 
-export const ValidationFindingSchema = SchemaFactory.createForClass(ValidationFinding);
+export const ValidationFindingSchema = SchemaFactory.createForClass(LegacyValidationFinding);

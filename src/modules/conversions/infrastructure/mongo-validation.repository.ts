@@ -6,11 +6,13 @@ import {
   ValidationRepository,
   ValidationRunRecord,
   FindingStatus,
+  LegacyValidationScope,
+  ValidatorType,
 } from '../domain/validation.types';
 import {
-  ValidationFinding,
+  LegacyValidationFinding,
   ValidationFindingDocument,
-  ValidationRun,
+  LegacyValidationRun,
   ValidationRunDocument,
 } from './validation.schema';
 import { toValidObjectId } from '../../../shared/utils/object-id.util';
@@ -18,8 +20,9 @@ import { toValidObjectId } from '../../../shared/utils/object-id.util';
 @Injectable()
 export class MongoValidationRepository implements ValidationRepository {
   constructor(
-    @InjectModel(ValidationRun.name) private readonly runModel: Model<ValidationRun>,
-    @InjectModel(ValidationFinding.name) private readonly findingModel: Model<ValidationFinding>,
+    @InjectModel(LegacyValidationRun.name) private readonly runModel: Model<LegacyValidationRun>,
+    @InjectModel(LegacyValidationFinding.name)
+    private readonly findingModel: Model<LegacyValidationFinding>,
   ) {}
 
   async createRun(
@@ -34,11 +37,26 @@ export class MongoValidationRepository implements ValidationRepository {
     return this.mapRun(doc);
   }
 
-  async findRunByJob(conversionJobId: string): Promise<ValidationRunRecord | null> {
+  async findRunByJob(scope: LegacyValidationScope): Promise<ValidationRunRecord | null> {
+    const doc = await this.runModel.findOne(this.runFilter(scope)).exec();
+    return doc ? this.mapRun(doc) : null;
+  }
+
+  async findRunById(id: string, scope: LegacyValidationScope): Promise<ValidationRunRecord | null> {
     const doc = await this.runModel
-      .findOne({ conversionJobId: toValidObjectId(conversionJobId) })
+      .findOne({ _id: toValidObjectId(id), ...this.runFilter(scope) })
       .exec();
     return doc ? this.mapRun(doc) : null;
+  }
+
+  async findFindingById(
+    id: string,
+    organizationId: string,
+  ): Promise<ValidationFindingRecord | null> {
+    const doc = await this.findingModel
+      .findOne({ _id: toValidObjectId(id), ...this.findingFilter(organizationId) })
+      .exec();
+    return doc ? this.mapFinding(doc) : null;
   }
 
   async createFindings(
@@ -51,22 +69,22 @@ export class MongoValidationRepository implements ValidationRepository {
         conversionJobId: toValidObjectId(f.conversionJobId),
         validationRunId: toValidObjectId(f.validationRunId),
         projectId: toValidObjectId(f.projectId),
+        ...(f.organizationId ? { organizationId: toValidObjectId(f.organizationId) } : {}),
       })),
     );
     return docs.map((doc) => this.mapFinding(doc as ValidationFindingDocument));
   }
 
-  async listFindingsByRun(validationRunId: string): Promise<ValidationFindingRecord[]> {
+  async listFindingsByRun(
+    validationRunId: string,
+    scope: LegacyValidationScope,
+  ): Promise<ValidationFindingRecord[]> {
     const docs = await this.findingModel
-      .find({ validationRunId: toValidObjectId(validationRunId) })
-      .sort({ createdAt: 1 })
-      .exec();
-    return docs.map((doc) => this.mapFinding(doc));
-  }
-
-  async listFindingsByJob(conversionJobId: string): Promise<ValidationFindingRecord[]> {
-    const docs = await this.findingModel
-      .find({ conversionJobId: toValidObjectId(conversionJobId) })
+      .find({
+        validationRunId: toValidObjectId(validationRunId),
+        ...this.scopeFilter(scope),
+        ...this.findingFilter(scope.organizationId),
+      })
       .sort({ createdAt: 1 })
       .exec();
     return docs.map((doc) => this.mapFinding(doc));
@@ -75,12 +93,18 @@ export class MongoValidationRepository implements ValidationRepository {
   async updateFindingStatus(
     id: string,
     status: FindingStatus,
+    scope: LegacyValidationScope & { validationRunId: string },
     reviewedBy?: string,
     decision?: string,
   ): Promise<ValidationFindingRecord | null> {
     const doc = await this.findingModel
       .findOneAndUpdate(
-        { _id: toValidObjectId(id) },
+        {
+          _id: toValidObjectId(id),
+          validationRunId: toValidObjectId(scope.validationRunId),
+          ...this.scopeFilter(scope),
+          ...this.findingFilter(scope.organizationId),
+        },
         {
           $set: {
             status,
@@ -93,6 +117,42 @@ export class MongoValidationRepository implements ValidationRepository {
       )
       .exec();
     return doc ? this.mapFinding(doc) : null;
+  }
+
+  private scopeFilter(scope: LegacyValidationScope) {
+    return {
+      conversionJobId: toValidObjectId(scope.conversionJobId),
+      projectId: toValidObjectId(scope.projectId),
+      screenId: scope.screenId,
+    };
+  }
+
+  private runFilter(scope: LegacyValidationScope) {
+    return {
+      ...this.scopeFilter(scope),
+      organizationId: toValidObjectId(scope.organizationId),
+      aiValidationEnabled: false,
+      ruleValidationEnabled: true,
+      provider: { $exists: false },
+      model: { $exists: false },
+      promptVersion: { $exists: false },
+    };
+  }
+
+  private findingFilter(organizationId: string) {
+    // Collections are shared: model names alone do not isolate persisted records.
+    return {
+      $or: [
+        { organizationId: toValidObjectId(organizationId) },
+        { organizationId: { $exists: false } },
+      ],
+      validatorType: ValidatorType.RULE_VALIDATOR,
+      source: { $in: ['Rule Validator', 'Rule Validator Engine'] },
+      status: { $in: Object.values(FindingStatus) },
+      category: { $exists: false },
+      modelProvider: { $exists: false },
+      fingerprint: { $exists: false },
+    };
   }
 
   private mapRun(doc: ValidationRunDocument): ValidationRunRecord {
@@ -121,6 +181,7 @@ export class MongoValidationRepository implements ValidationRepository {
       id: doc.id,
       conversionJobId: doc.conversionJobId.toString(),
       validationRunId: doc.validationRunId.toString(),
+      organizationId: doc.organizationId?.toString(),
       projectId: doc.projectId.toString(),
       screenId: doc.screenId,
       source: doc.source,
