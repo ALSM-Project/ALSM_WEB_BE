@@ -1,5 +1,6 @@
 import { ValidationFindingSeverity } from '../../../src/modules/validation/domain/validation-finding.types';
 import { FindingMatch, matchFindings } from './evaluation.matcher';
+import { summarizeProvenance } from './model-provenance';
 import {
   AiEvaluationCase,
   AiEvaluationDataset,
@@ -56,6 +57,7 @@ export interface EvaluationCaseScore {
 }
 
 export interface EvaluationScore {
+  provenance: ReturnType<typeof summarizeProvenance>;
   metadata: {
     datasetId: string;
     datasetVersion: string;
@@ -247,6 +249,7 @@ export function scoreEvaluation(
       locationToleranceLines: predictions.locationToleranceLines,
       matchingPolicyVersion: predictions.matchingPolicyVersion,
     },
+    provenance: summarizeProvenance(dataset, predictions),
     execution: {
       totalCases: dataset.cases.length,
       successfulCases,

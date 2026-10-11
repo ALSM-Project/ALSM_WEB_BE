@@ -8,8 +8,10 @@ import { createLiveValidator } from './live-validator.factory';
 import { validateDataset } from './evaluation.validator';
 import { runMultidayBenchmark } from './multiday-runner';
 import { assertLegacyOutputOutsideMultiday, checkpointLocation } from './multiday-store';
+import { provenancePolicySchema } from './model-provenance';
 
 interface LiveCliArguments {
+  expectedModelVersion?: string;
   dataset?: string;
   output?: string;
   caseId?: string;
@@ -56,10 +58,30 @@ export async function main(
       resume: args.resume,
       confirmNewQuotaWindow: args.confirmNewQuotaWindow,
       maxNewCases: args.maxNewCases,
+      ...(args.expectedModelVersion
+        ? {
+            provenancePolicy: {
+              version: 1,
+              expectedModelVersion: args.expectedModelVersion,
+            } as const,
+          }
+        : {}),
     });
     process.stdout.write(
       `Resumable benchmark: ${checkpoint.state}; ${checkpoint.nextIndex}/40 terminal cases; ${checkpoint.quotaEvents.length} quota pauses\n`,
     );
+    if (checkpoint.identity.provenancePolicy) {
+      const confirmed = checkpoint.results.filter(
+        (r) => r.modelProvenance?.status === 'CONFIRMED',
+      ).length;
+      process.stdout.write(
+        `Model provenance: ${confirmed}/${checkpoint.nextIndex} confirmed; completion is not model verification\n`,
+      );
+      if (confirmed !== checkpoint.nextIndex)
+        throw new Error(
+          'PROVENANCE_REVIEW: evidence saved; unverified model identity blocks continuation and final output',
+        );
+    }
     return;
   }
   const predictions = await runLiveBenchmark({
@@ -98,6 +120,8 @@ export function parseLiveArguments(values: string[]): LiveCliArguments {
     else if (value === '--resume') result.resume = true;
     else if (value === '--confirm-new-quota-window') result.confirmNewQuotaWindow = true;
     else if (value === '--checkpoint') result.checkpoint = nextValue(values, ++index, value);
+    else if (value === '--expected-model-version')
+      result.expectedModelVersion = nextValue(values, ++index, value);
     else if (value === '--max-new-cases')
       result.maxNewCases = Number(nextValue(values, ++index, value));
     else if (value === '--dataset') result.dataset = nextValue(values, ++index, value);
@@ -107,6 +131,14 @@ export function parseLiveArguments(values: string[]): LiveCliArguments {
     else throw new Error(`Unknown live-run argument ${value}`);
   }
   if (result.checkpoint) {
+    if (
+      result.expectedModelVersion &&
+      provenancePolicySchema.validate(
+        { version: 1, expectedModelVersion: result.expectedModelVersion },
+        { convert: false },
+      ).error
+    )
+      throw new Error('Invalid expected model version');
     if (!result.all || result.caseId !== undefined || result.limit !== undefined)
       throw new Error('Resumable mode requires --all and forbids --case/--limit');
     if (result.confirmNewQuotaWindow && !result.resume)
@@ -116,7 +148,12 @@ export function parseLiveArguments(values: string[]): LiveCliArguments {
       (!Number.isInteger(result.maxNewCases) || result.maxNewCases < 1 || result.maxNewCases > 40)
     )
       throw new Error('--max-new-cases must be an integer from 1 to 40');
-  } else if (result.resume || result.confirmNewQuotaWindow || result.maxNewCases !== undefined)
+  } else if (
+    result.resume ||
+    result.confirmNewQuotaWindow ||
+    result.maxNewCases !== undefined ||
+    result.expectedModelVersion !== undefined
+  )
     throw new Error('Resume/session options require --checkpoint');
   return result;
 }
