@@ -22,6 +22,7 @@ export enum ValidatorType {
 
 export interface ValidationFindingRecord {
   id: string;
+  organizationId?: string;
   conversionJobId: string;
   validationRunId: string;
   projectId: string;
@@ -64,19 +65,31 @@ export interface ValidationRunRecord {
   updatedAt: Date;
 }
 
+export interface LegacyValidationScope {
+  organizationId: string;
+  projectId: string;
+  conversionJobId: string;
+  screenId: string;
+}
+
 export interface ValidationRepository {
   createRun(
     input: Omit<ValidationRunRecord, 'id' | 'createdAt' | 'updatedAt'>,
   ): Promise<ValidationRunRecord>;
-  findRunByJob(conversionJobId: string): Promise<ValidationRunRecord | null>;
+  findRunByJob(scope: LegacyValidationScope): Promise<ValidationRunRecord | null>;
+  findRunById(id: string, scope: LegacyValidationScope): Promise<ValidationRunRecord | null>;
+  findFindingById(id: string, organizationId: string): Promise<ValidationFindingRecord | null>;
   createFindings(
     findings: Omit<ValidationFindingRecord, 'id' | 'createdAt' | 'updatedAt'>[],
   ): Promise<ValidationFindingRecord[]>;
-  listFindingsByRun(validationRunId: string): Promise<ValidationFindingRecord[]>;
-  listFindingsByJob(conversionJobId: string): Promise<ValidationFindingRecord[]>;
+  listFindingsByRun(
+    validationRunId: string,
+    scope: LegacyValidationScope,
+  ): Promise<ValidationFindingRecord[]>;
   updateFindingStatus(
     id: string,
     status: FindingStatus,
+    scope: LegacyValidationScope & { validationRunId: string },
     reviewedBy?: string,
     decision?: string,
   ): Promise<ValidationFindingRecord | null>;

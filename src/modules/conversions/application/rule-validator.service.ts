@@ -136,6 +136,7 @@ export class RuleValidatorService {
     const findings = await this.validationRepo.createFindings(
       rawFindings.map((f) => ({
         ...f,
+        organizationId,
         validationRunId: run.id,
       })),
     );

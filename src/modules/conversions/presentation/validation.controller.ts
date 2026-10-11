@@ -4,11 +4,8 @@ import { JwtAuthGuard } from '../../../shared/security/jwt-auth.guard';
 import { CurrentUser } from '../../../shared/security/current-user.decorator';
 import { AuthenticatedUser } from '../../../shared/logging/request-id.middleware';
 import { Inject } from '@nestjs/common';
-import {
-  VALIDATION_REPOSITORY,
-  ValidationRepository,
-  FindingStatus,
-} from '../domain/validation.types';
+import { FindingStatus } from '../domain/validation.types';
+import { LegacyValidationService } from '../application/legacy-validation.service';
 import { RuleValidatorService } from '../application/rule-validator.service';
 import { ConversionJobService } from '../application/conversion-job.service';
 import { SaveFieldMappingService } from '../application/save-field-mapping.service';
@@ -26,7 +23,7 @@ import { FieldMappingEntry } from '../domain/field-mapping.types';
 @Controller()
 export class ValidationController {
   constructor(
-    @Inject(VALIDATION_REPOSITORY) private readonly validationRepo: ValidationRepository,
+    private readonly legacyValidation: LegacyValidationService,
     private readonly ruleValidator: RuleValidatorService,
     private readonly conversions: ConversionJobService,
     private readonly saveMapping: SaveFieldMappingService,
@@ -45,17 +42,7 @@ export class ValidationController {
     @Param('screenId') screenId: string,
     @Param('jobId') jobId: string,
   ) {
-    let run = await this.validationRepo.findRunByJob(jobId);
-    let findings = run ? await this.validationRepo.listFindingsByRun(run.id) : [];
-
-    if (!run) {
-      const job = await this.conversions.get(user.userId, organizationId, jobId);
-      const res = await this.ruleValidator.runValidation(job, organizationId || 'org-default');
-      run = res.run;
-      findings = res.findings;
-    }
-
-    return { run, findings };
+    return this.legacyValidation.get(user.userId, organizationId, projectId, screenId, jobId);
   }
 
   @Post('validation-findings/:id/accept')
@@ -66,20 +53,7 @@ export class ValidationController {
     @Headers('x-organization-id') organizationId: string | undefined,
     @Param('id') id: string,
   ) {
-    const updated = await this.validationRepo.updateFindingStatus(
-      id,
-      FindingStatus.CONFIRMED,
-      user.userId,
-      'ACCEPTED_BY_HUMAN_REVIEWER',
-    );
-    await this.auditRepo.append({
-      actorUserId: user.userId,
-      organizationId: organizationId || 'org-default',
-      action: 'FINDING_ACCEPTED',
-      resourceType: 'VALIDATION_FINDING',
-      resourceId: id,
-    });
-    return updated;
+    return this.legacyValidation.review(user.userId, organizationId, id, FindingStatus.CONFIRMED);
   }
 
   @Post('validation-findings/:id/reject')
@@ -90,20 +64,7 @@ export class ValidationController {
     @Headers('x-organization-id') organizationId: string | undefined,
     @Param('id') id: string,
   ) {
-    const updated = await this.validationRepo.updateFindingStatus(
-      id,
-      FindingStatus.REJECTED,
-      user.userId,
-      'REJECTED_BY_HUMAN_REVIEWER',
-    );
-    await this.auditRepo.append({
-      actorUserId: user.userId,
-      organizationId: organizationId || 'org-default',
-      action: 'FINDING_REJECTED',
-      resourceType: 'VALIDATION_FINDING',
-      resourceId: id,
-    });
-    return updated;
+    return this.legacyValidation.review(user.userId, organizationId, id, FindingStatus.REJECTED);
   }
 
   @Post('projects/:projectId/screens/:screenId/reconvert')
@@ -119,29 +80,32 @@ export class ValidationController {
     @Param('screenId') screenId: string,
     @Body() dto: { mappings: FieldMappingEntry[] },
   ) {
+    const resolvedOrganizationId = await this.legacyValidation.authorizeReconvert(
+      user.userId,
+      organizationId,
+      projectId,
+      screenId,
+    );
     // 1. Save updated field mapping
     await this.saveMapping.execute({
       userId: user.userId,
-      organizationHeader: organizationId,
+      organizationHeader: resolvedOrganizationId,
       projectId,
       screenId,
       mappings: dto.mappings,
     });
 
     // 2. Trigger new conversion version execution via existing Conversion Algorithm
-    const newJob = await this.conversions.create(user.userId, organizationId, projectId, {
+    const newJob = await this.conversions.create(user.userId, resolvedOrganizationId, projectId, {
       screenId,
     });
 
     // 3. Automatically run validation on the new conversion version
-    const validationResult = await this.ruleValidator.runValidation(
-      newJob,
-      organizationId || 'org-default',
-    );
+    const validationResult = await this.ruleValidator.runValidation(newJob, resolvedOrganizationId);
 
     await this.auditRepo.append({
       actorUserId: user.userId,
-      organizationId: organizationId || 'org-default',
+      organizationId: resolvedOrganizationId,
       action: 'MAPPING_SAVED_AND_RECONVERTED',
       resourceType: 'CONVERSION_JOB',
       resourceId: newJob.id,
