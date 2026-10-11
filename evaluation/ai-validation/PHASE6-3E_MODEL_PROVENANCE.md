@@ -22,7 +22,8 @@ settings before creating the directory or acquiring a lock.
 | Expected response modelVersion | gemini-3.6-flash |
 | AI_PROMPT_VERSION | semantic-cobol-java-v1 |
 | Dataset | datasets/cobol-java-semantic-v1/manifest.json |
-| Dataset SHA256 | bf51ea1f968a877c2b6393103c2a558d704d6e998f73d23de5086eab703c513e |
+| Dataset SHA256 (CRLF) | bf51ea1f968a877c2b6393103c2a558d704d6e998f73d23de5086eab703c513e |
+| Dataset SHA256 (LF) | 9fc4e66e83fd87c1f932b97eb5c5c5520f85dab0d1774b38dcc36820a4196a7a |
 | AI_MAX_RETRIES | 2 |
 | AI_TIMEOUT_MS | 60000 |
 | AI_MAX_FINDINGS | 50 |
@@ -31,6 +32,10 @@ settings before creating the directory or acquiring a lock.
 | AI_MAX_FILE_CHARS | 200000 |
 | AI_MAX_TOTAL_CHARS | 500000 |
 | failFast | false |
+
+Only these two verified checkout encodings pass the campaign guard. Each run
+retains the SHA256 of its exact dataset bytes; changing line endings when resuming
+still fails checkpoint identity validation. No runtime normalization is performed.
 
 Production environment defaults, dataset/labels, prompt text, matcher, scoring
 equations, retry policy, pacing implementation, safety handling and HTTP request

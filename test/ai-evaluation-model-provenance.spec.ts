@@ -19,6 +19,7 @@ import {
   materializePredictions,
   predictionEnvelope,
   validateCheckpoint,
+  assertTransition,
 } from '../evaluation/ai-validation/src/multiday-checkpoint';
 import {
   checkpointLocation,
@@ -41,6 +42,64 @@ const bytes = fs.readFileSync(
 );
 const dataset = validateDataset(JSON.parse(bytes.toString('utf8')));
 const model = PHASE6_3E.model;
+const lfManifest = bytes.toString('utf8').replace(/\r\n/g, '\n');
+const manifestEncodings = [
+  ['CRLF', '\r\n', 'bf51ea1f968a877c2b6393103c2a558d704d6e998f73d23de5086eab703c513e'],
+  ['LF', '\n', '9fc4e66e83fd87c1f932b97eb5c5c5520f85dab0d1774b38dcc36820a4196a7a'],
+] as const;
+
+describe('Phase 6.3E verified manifest encodings (identity checks only)', () => {
+  function identityFor(manifest: string) {
+    return createRunIdentity(
+      validateDataset(JSON.parse(manifest)),
+      Buffer.from(manifest, 'utf8'),
+      { provider: 'gemini', model, promptVersion: PHASE6_3E.promptVersion },
+      new ConfigService(PHASE6_3E.settings),
+      'a'.repeat(64),
+      false,
+      { version: 1, expectedModelVersion: model },
+    );
+  }
+
+  it.each(manifestEncodings)(
+    'accepts verified %s bytes and preserves their exact identity',
+    (_, eol, hash) => {
+      const identity = identityFor(lfManifest.replace(/\n/g, eol));
+      expect(identity.datasetSha256).toBe(hash);
+      expect(() => assertPhase63eIdentity(PHASE6_3E.runId, identity)).not.toThrow();
+      const checkpoint = initialCheckpoint(identity, '2026-10-11T00:00:00.000Z');
+      expect(validateCheckpoint(checkpoint, dataset, identity)).toEqual(checkpoint);
+
+      const other = identityFor(lfManifest.replace(/\n/g, eol === '\n' ? '\r\n' : '\n'));
+      expect(other.datasetContentSha256).toBe(identity.datasetContentSha256);
+      expect(() => validateCheckpoint(checkpoint, dataset, other)).toThrow(
+        'Resume mismatch: datasetSha256',
+      );
+      expect(() => assertTransition(checkpoint, { ...checkpoint, identity: other })).toThrow(
+        'immutable identity',
+      );
+    },
+  );
+
+  it.each(manifestEncodings)(
+    'rejects modified %s datasets, including equivalent JSON',
+    (_, eol) => {
+      const manifest = lfManifest.replace(/\n/g, eol);
+      const changed = JSON.parse(manifest);
+      changed.cases[0].sourceFiles[0].content += ' modified';
+      for (const modified of [
+        manifest + ' ',
+        JSON.stringify(changed),
+        lfManifest.replace('\n', '\r\n'),
+      ]) {
+        expect(() => assertPhase63eIdentity(PHASE6_3E.runId, identityFor(modified))).toThrow(
+          'Phase 6.3E requires',
+        );
+      }
+    },
+  );
+});
+
 const input = {
   conversionJobId: 'offline-test',
   sourceFiles: [{ path: 'a.cob', content: '1 | STOP RUN.', lineCount: 1 }],

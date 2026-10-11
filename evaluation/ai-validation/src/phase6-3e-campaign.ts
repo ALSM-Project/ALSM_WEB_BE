@@ -6,7 +6,11 @@ export const PHASE6_3E = Object.freeze({
   runId: 'phase6-3e-gemini36-v1',
   model: 'gemini-3.6-flash',
   expectedModelVersion: 'gemini-3.6-flash',
-  datasetSha256: 'bf51ea1f968a877c2b6393103c2a558d704d6e998f73d23de5086eab703c513e',
+  // Verified checkout encodings only; each run still pins its exact byte hash.
+  datasetSha256: Object.freeze([
+    'bf51ea1f968a877c2b6393103c2a558d704d6e998f73d23de5086eab703c513e', // CRLF
+    '9fc4e66e83fd87c1f932b97eb5c5c5520f85dab0d1774b38dcc36820a4196a7a', // LF
+  ]),
   promptVersion: 'semantic-cobol-java-v1',
   settings: Object.freeze({
     AI_MAX_RETRIES: 2,
@@ -24,7 +28,7 @@ export function assertPhase63eIdentity(directory: string, identity: RunIdentity)
   if (
     identity.model !== PHASE6_3E.model ||
     identity.provenancePolicy?.expectedModelVersion !== PHASE6_3E.expectedModelVersion ||
-    identity.datasetSha256 !== PHASE6_3E.datasetSha256 ||
+    !PHASE6_3E.datasetSha256.includes(identity.datasetSha256) ||
     identity.promptVersion !== PHASE6_3E.promptVersion ||
     identity.failFast ||
     Object.entries(PHASE6_3E.settings).some(
