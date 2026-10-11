@@ -40,6 +40,8 @@ export class LegacyValidationService {
     const scope = { organizationId, projectId, screenId, conversionJobId: job.id };
     const run = await this.validation.findRunByJob(scope);
     if (run) return { run, findings: await this.validation.listFindingsByRun(run.id, scope) };
+    // Lazy creation is a write, even though existing results are readable by viewers.
+    await this.resolveOrganization(userId, organizationId, true);
     return this.rules.runValidation(job, organizationId);
   }
 

@@ -497,6 +497,23 @@ integration('legacy validation isolation (real AppModule, HTTP and MongoDB)', ()
     expect(await snapshot()).toEqual(before);
   });
 
+  it.each(['BMS', 'DSPF'])(
+    'denies viewer lazy %s validation creation through GET',
+    async (sourceType) => {
+      await connection.collection('screens').updateOne({ _id: screen }, { $set: { sourceType } });
+      await connection
+        .collection('organizations')
+        .updateOne({ _id: org }, { $set: { 'members.0.role': 'VIEWER' } });
+      const before = await snapshot();
+      const result = await request(getPath());
+      expect({ status: result.status, persisted: await snapshot() }).toEqual({
+        status: 403,
+        persisted: before,
+      });
+      expect(queue.enqueue).not.toHaveBeenCalled();
+    },
+  );
+
   it('honors an explicit organization and never falls back or provisions access', async () => {
     const before = await snapshot();
     expect((await request(getPath(), 'GET', { org: otherOrg.toString() })).status).toBe(403);
