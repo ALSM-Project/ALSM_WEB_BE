@@ -1,6 +1,7 @@
 import { ConfigService } from '@nestjs/config';
 import { LiveRunOptions, runLiveBenchmark } from './live-runner';
 import { CheckpointStore, checkpointLocation } from './multiday-store';
+import { assertPhase63eIdentity } from './phase6-3e-campaign';
 import {
   Checkpoint,
   createRunIdentity,
@@ -33,7 +34,9 @@ export async function runMultidayBenchmark(options: MultidayOptions): Promise<Ch
     options.config,
     location.storageFingerprint,
     options.failFast,
+    options.provenancePolicy,
   );
+  assertPhase63eIdentity(location.directory, identity);
   const store = CheckpointStore.acquire(
     options.checkpoint,
     options.output,
@@ -44,6 +47,13 @@ export async function runMultidayBenchmark(options: MultidayOptions): Promise<Ch
   const now = () => (options.now ?? (() => new Date()))().toISOString();
   try {
     let cp = store.load(options.resume);
+    if (
+      cp?.identity.provenancePolicy &&
+      cp.results.some((r) => r.modelProvenance?.status !== 'CONFIRMED')
+    )
+      throw new Error(
+        'PROVENANCE_REVIEW: unverified evidence is immutable; automatic continuation is forbidden',
+      );
     if (options.confirmNewQuotaWindow && cp?.state !== 'PAUSED_DAILY_QUOTA')
       throw new Error('Quota-window confirmation is only valid for PAUSED_DAILY_QUOTA');
     if (!cp) {
@@ -104,6 +114,8 @@ export async function runMultidayBenchmark(options: MultidayOptions): Promise<Ch
       cp.nextIndex++;
       cp.state = cp.nextIndex === 40 ? 'COMPLETE' : 'READY';
       if (cp.state === 'COMPLETE') finish('COMPLETE');
+      else if (options.provenancePolicy && result.modelProvenance?.status !== 'CONFIRMED')
+        finish('PROVENANCE_REVIEW');
       else if (options.failFast && result.status !== 'SUCCESS') finish('FAIL_FAST');
       else if (count + 1 === limit) finish('MAX_NEW_CASES');
       store.save(cp);

@@ -1,6 +1,8 @@
 import { createHash } from 'crypto';
 import { ConfigService } from '@nestjs/config';
 import * as Joi from 'joi';
+import { ProvenancePolicy, provenancePolicySchema } from './model-provenance';
+import { safeGeminiModelVersion } from '../../../src/modules/validation/domain/ai-response-metadata';
 import { AiValidatorMetadata } from '../../../src/modules/validation/domain/ai-validator.port';
 import {
   AiProviderDiagnostics,
@@ -41,6 +43,7 @@ export const SETTING_BOUNDS = {
 } as const;
 export type Settings = Record<keyof typeof SETTING_BOUNDS, number>;
 export interface RunIdentity {
+  provenancePolicy?: ProvenancePolicy;
   datasetId: string;
   datasetVersion: string;
   datasetSha256: string;
@@ -59,7 +62,12 @@ export interface RunIdentity {
 }
 export type CheckpointState = 'READY' | 'IN_PROGRESS' | 'PAUSED_DAILY_QUOTA' | 'COMPLETE';
 export type StopReason =
-  'MAX_NEW_CASES' | 'FAIL_FAST' | 'DAILY_QUOTA' | 'COMPLETE' | 'INTERRUPTED_BETWEEN_CASES';
+  | 'MAX_NEW_CASES'
+  | 'FAIL_FAST'
+  | 'DAILY_QUOTA'
+  | 'COMPLETE'
+  | 'INTERRUPTED_BETWEEN_CASES'
+  | 'PROVENANCE_REVIEW';
 export interface Session {
   sequence: number;
   startedAt: string;
@@ -77,7 +85,7 @@ export interface QuotaEvent {
   diagnostics: AiProviderDiagnostics;
 }
 export interface Checkpoint {
-  checkpointSchemaVersion: 1;
+  checkpointSchemaVersion: 1 | 2;
   identity: RunIdentity;
   state: CheckpointState;
   nextIndex: number;
@@ -98,10 +106,13 @@ export function createRunIdentity(
   config: ConfigService,
   storageFingerprint: string,
   failFast: boolean,
+  provenancePolicy?: ProvenancePolicy,
 ): RunIdentity {
   validateDataset(dataset);
   if (dataset.caseCount !== 40 || metadata.provider !== 'gemini')
     throw new Error('Resumable mode requires a full 40-case Gemini benchmark');
+  if (provenancePolicy && !safeGeminiModelVersion(metadata.model))
+    throw new Error('Provenance requires a safe Gemini requested model identifier');
   // Bind the parsed dataset to exactly the bytes fingerprinted; no external file references.
   let parsed: unknown;
   try {
@@ -114,6 +125,7 @@ export function createRunIdentity(
     Object.keys(SETTING_BOUNDS).map((key) => [key, config.getOrThrow<number>(key)]),
   ) as Settings;
   const identity: RunIdentity = {
+    ...(provenancePolicy ? { provenancePolicy: structuredClone(provenancePolicy) } : {}),
     datasetId: dataset.datasetId,
     datasetVersion: dataset.version,
     datasetSha256: sha256(datasetBytes),
@@ -143,6 +155,7 @@ const hash = () =>
 const date = () => Joi.string().isoDate().required();
 const index = () => Joi.number().integer().min(0).max(40).required();
 const identitySchema = Joi.object({
+  provenancePolicy: provenancePolicySchema,
   datasetId: text(),
   datasetVersion: text(),
   datasetSha256: hash(),
@@ -183,7 +196,7 @@ const diagnosticsSchema = Joi.object({
   .unknown(false)
   .required();
 const schema = Joi.object({
-  checkpointSchemaVersion: Joi.valid(CHECKPOINT_VERSION).required(),
+  checkpointSchemaVersion: Joi.valid(CHECKPOINT_VERSION, 2).required(),
   identity: identitySchema,
   state: Joi.valid('READY', 'IN_PROGRESS', 'PAUSED_DAILY_QUOTA', 'COMPLETE').required(),
   nextIndex: index(),
@@ -214,6 +227,7 @@ const schema = Joi.object({
           'DAILY_QUOTA',
           'COMPLETE',
           'INTERRUPTED_BETWEEN_CASES',
+          'PROVENANCE_REVIEW',
         ),
       })
         .and('endedAt', 'endIndex', 'stopReason')
@@ -234,6 +248,7 @@ export function isDailyQuota(result: EvaluationPredictionCase): boolean {
 export function predictionEnvelope(cp: Checkpoint): AiEvaluationPredictions {
   const i = cp.identity;
   return {
+    ...(i.provenancePolicy ? { provenancePolicy: structuredClone(i.provenancePolicy) } : {}),
     datasetId: i.datasetId,
     datasetVersion: i.datasetVersion,
     evaluatorVersion: i.evaluatorVersion,
@@ -258,6 +273,14 @@ export function validateCheckpoint(
   // Never echo untrusted values or Joi messages (which can include raw input).
   if (checked.error) throw new Error('Invalid checkpoint schema');
   const cp = checked.value as Checkpoint;
+  requireValid(
+    cp.checkpointSchemaVersion === (cp.identity.provenancePolicy ? 2 : 1),
+    'schema/policy version',
+  );
+  requireValid(
+    sameJson(cp.identity.provenancePolicy, expected.provenancePolicy),
+    'immutable provenance policy',
+  );
   for (const key of Object.keys(expected) as (keyof RunIdentity)[]) {
     if (key === 'settings') {
       for (const setting of Object.keys(SETTING_BOUNDS) as (keyof Settings)[]) {
@@ -330,6 +353,13 @@ export function validateCheckpoint(
         s.endIndex! > s.startIndex && cp.results[s.endIndex! - 1]?.status !== 'SUCCESS',
         'fail-fast result',
       );
+    if (s.stopReason === 'PROVENANCE_REVIEW')
+      requireValid(
+        !!cp.identity.provenancePolicy &&
+          s.endIndex! > s.startIndex &&
+          cp.results[s.endIndex! - 1]?.modelProvenance?.status !== 'CONFIRMED',
+        'provenance review',
+      );
     requireValid(
       s.confirmedNewQuotaWindow === (prior?.stopReason === 'DAILY_QUOTA'),
       'quota confirmation',
@@ -384,6 +414,7 @@ export function safeTerminal(result: EvaluationPredictionCase): EvaluationPredic
   const diagnostics = result.failure.diagnostics;
   return {
     caseId: result.caseId,
+    ...(result.modelProvenance ? { modelProvenance: structuredClone(result.modelProvenance) } : {}),
     status: result.status,
     latencyMs: result.latencyMs,
     failure: {
@@ -395,7 +426,7 @@ export function safeTerminal(result: EvaluationPredictionCase): EvaluationPredic
 }
 export function initialCheckpoint(identity: RunIdentity, timestamp: string): Checkpoint {
   return {
-    checkpointSchemaVersion: 1,
+    checkpointSchemaVersion: identity.provenancePolicy ? 2 : 1,
     identity: structuredClone(identity),
     state: 'READY',
     nextIndex: 0,
@@ -408,7 +439,9 @@ export function initialCheckpoint(identity: RunIdentity, timestamp: string): Che
 }
 export function assertTransition(old: Checkpoint, next: Checkpoint): void {
   requireValid(
-    sameJson(old.identity, next.identity) && old.createdAt === next.createdAt,
+    old.checkpointSchemaVersion === next.checkpointSchemaVersion &&
+      sameJson(old.identity, next.identity) &&
+      old.createdAt === next.createdAt,
     'immutable identity',
   );
   requireValid(Date.parse(next.updatedAt) >= Date.parse(old.updatedAt), 'backwards time');
@@ -468,5 +501,10 @@ export function materializePredictions(
   const valid = validateCheckpoint(cp, dataset, expected);
   if (valid.state !== 'COMPLETE')
     throw new Error('Partial checkpoint cannot be materialized or scored as final predictions');
+  if (
+    valid.identity.provenancePolicy &&
+    valid.results.some((r) => r.modelProvenance?.status !== 'CONFIRMED')
+  )
+    throw new Error('Unverified model provenance prevents final materialization');
   return validatePredictions(predictionEnvelope(valid), dataset);
 }

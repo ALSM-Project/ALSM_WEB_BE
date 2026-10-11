@@ -1,3 +1,4 @@
+import { WithAiResponseMetadata } from './ai-response-metadata';
 import {
   CodeLocation,
   ValidationFindingCategory,
@@ -36,7 +37,7 @@ export interface AiValidationFindingDraft {
   confidence?: number;
 }
 
-export interface AiValidationResult {
+export interface AiValidationResult extends WithAiResponseMetadata {
   findings: AiValidationFindingDraft[];
 }
 

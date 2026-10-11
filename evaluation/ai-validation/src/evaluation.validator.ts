@@ -3,6 +3,11 @@ import {
   RATE_LIMIT_SCOPES,
 } from '../../../src/modules/validation/domain/ai-provider-diagnostics';
 import * as Joi from 'joi';
+import {
+  modelProvenanceSchema,
+  provenancePolicySchema,
+  validateProvenance,
+} from './model-provenance';
 import { ValidationFindingSeverity } from '../../../src/modules/validation/domain/validation-finding.types';
 import {
   AiEvaluationDataset,
@@ -93,6 +98,7 @@ const predictedFindingSchema = Joi.object({
   confidence: Joi.number().min(0).max(1),
 }).unknown(false);
 const predictionCaseSchema = Joi.object({
+  modelProvenance: modelProvenanceSchema,
   caseId: Joi.string().trim().min(1).required(),
   status: Joi.string()
     .valid('SUCCESS', 'VALIDATION_FAILED', 'PROVIDER_FAILED', 'INVALID_OUTPUT')
@@ -125,6 +131,7 @@ const predictionCaseSchema = Joi.object({
   }),
 }).unknown(false);
 const predictionsSchema = Joi.object({
+  provenancePolicy: provenancePolicySchema,
   datasetId: Joi.string().trim().min(1).required(),
   datasetVersion: Joi.string().trim().min(1).required(),
   evaluatorVersion: Joi.string().trim().min(1).required(),
@@ -196,6 +203,7 @@ export function validatePredictions(
   dataset: AiEvaluationDataset,
 ): AiEvaluationPredictions {
   const predictions = validate<AiEvaluationPredictions>(predictionsSchema, value, 'predictions');
+  validateProvenance(predictions);
   if (predictions.datasetId !== dataset.datasetId) {
     throw new Error('Invalid predictions: datasetId does not match the dataset');
   }
