@@ -17,6 +17,7 @@ import {
   validateCheckpoint,
   materializePredictions,
   assertTransition,
+  predictionEnvelope,
 } from '../evaluation/ai-validation/src/multiday-checkpoint';
 import {
   CheckpointStore,
@@ -33,6 +34,7 @@ import {
 import {
   validateDataset,
   validatePredictions,
+  validateCheckpointEvidence,
 } from '../evaluation/ai-validation/src/evaluation.validator';
 import { scoreEvaluation } from '../evaluation/ai-validation/src/evaluation.scorer';
 import { renderEvaluationReport } from '../evaluation/ai-validation/src/evaluation.report';
@@ -42,6 +44,7 @@ import {
   parseLiveArguments,
 } from '../evaluation/ai-validation/src/live-run.cli';
 import * as factory from '../evaluation/ai-validation/src/live-validator.factory';
+import { validateProvenance } from '../evaluation/ai-validation/src/model-provenance';
 
 const bytes = fs.readFileSync(
   'evaluation/ai-validation/datasets/cobol-java-semantic-v1/manifest.json',
@@ -342,6 +345,154 @@ describe('Phase 6.3F offline resilience; mocked HTTP and isolated temporary camp
       runMultidayBenchmark({ ...options, providerFailurePolicy: undefined }),
     ).rejects.toThrow('Phase 6.3F requires');
     expect(fs.existsSync(options.output)).toBe(false);
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it('durably saves INVALID_OUTPUT + CONFIRMED at case 40 without claiming a verified final cohort', async () => {
+    await runMultidayBenchmark({ ...options, maxNewCases: 39 });
+    fetchMock.mockResolvedValue(response(200, generated(model, 'malformed')));
+    const cp = await resume();
+    expect(cp.nextIndex).toBe(40);
+    expect(cp.state).toBe('READY');
+    expect(cp.sessions.at(-1)?.stopReason).toBe('PROVENANCE_REVIEW');
+    expect(cp.results[39]).toMatchObject({
+      status: 'INVALID_OUTPUT',
+      modelProvenance: { status: 'CONFIRMED' },
+    });
+    expect(read()).toEqual(cp);
+    expect(validateCheckpoint(read(), dataset, cp.identity)).toEqual(cp);
+    expect(fs.existsSync(join(options.output, 'predictions.json'))).toBe(false);
+    expect(() => materializePredictions(cp, dataset, cp.identity)).toThrow();
+    expect(() => validatePredictions(predictionEnvelope(cp), dataset)).toThrow('PROVENANCE_REVIEW');
+    expect(formatCheckpointSummary(cp)).toContain('Verified single-model cohort: NO — UNVERIFIED');
+    expect(formatCheckpointSummary(cp)).not.toContain('Verified single-model cohort: YES');
+    const saved = fs.readFileSync(options.checkpoint);
+    await expect(resume()).rejects.toThrow('PROVENANCE_REVIEW');
+    expect(fs.readFileSync(options.checkpoint)).toEqual(saved);
+    expect(fetchMock).toHaveBeenCalledTimes(40);
+  });
+
+  it.each([
+    '429',
+    'unexhausted 503',
+    'wrong attempts',
+    'contradictory status',
+    'contradictory code',
+    'contradictory scope',
+    'missing diagnostics',
+    'auth',
+    'rejected',
+    'refused',
+    'invalid confirmed',
+    'success unknown',
+    'mismatch',
+  ])('rejects direct final v3 predictions with %s while preserving review evidence', (kind) => {
+    const identity = createRunIdentity(
+      dataset,
+      bytes,
+      options.validator.getMetadata(),
+      options.config,
+      'a'.repeat(64),
+      false,
+      options.provenancePolicy,
+      PROVIDER_FAILURE_POLICY,
+    );
+    const cp = initialCheckpoint(identity, '2026-10-12T00:00:00.000Z');
+    cp.results = dataset.cases.map(({ caseId }) => ({
+      caseId,
+      status: 'SUCCESS',
+      findings: [],
+      modelProvenance: {
+        version: 1,
+        requestedModel: model,
+        observedModelVersion: model,
+        status: 'CONFIRMED',
+      },
+    }));
+    const result = cp.results[39];
+    result.status = 'PROVIDER_FAILED';
+    delete result.findings;
+    result.modelProvenance = { version: 1, requestedModel: model, status: 'UNKNOWN' };
+    result.failure = {
+      code: 'AI_PROVIDER_UNAVAILABLE',
+      message: 'Benchmark validation failed',
+      diagnostics: {
+        finalFailureClass: 'SERVER_ERROR',
+        httpStatus: 503,
+        attempts: 3,
+        retriesExhausted: true,
+        totalLatencyMs: 10,
+      },
+    };
+    const d = result.failure.diagnostics!;
+    if (kind === '429')
+      Object.assign(d, {
+        finalFailureClass: 'RATE_LIMITED',
+        httpStatus: 429,
+        rateLimitScope: 'SHORT_WINDOW',
+      });
+    if (kind === 'unexhausted 503') d.retriesExhausted = false;
+    if (kind === 'wrong attempts') d.attempts = 2;
+    if (kind === 'contradictory status') d.httpStatus = 403;
+    if (kind === 'contradictory code') result.failure.code = 'AI_PROVIDER_TIMEOUT';
+    if (kind === 'contradictory scope') d.rateLimitScope = 'DAILY_QUOTA';
+    if (kind === 'missing diagnostics') delete result.failure.diagnostics;
+    if (kind === 'auth') {
+      d.finalFailureClass = 'AUTHENTICATION_FAILED';
+      d.httpStatus = 401;
+      result.failure.code = 'AI_PROVIDER_AUTHENTICATION_FAILED';
+    }
+    if (kind === 'rejected') {
+      d.finalFailureClass = 'REQUEST_REJECTED';
+      d.httpStatus = 400;
+      result.failure.code = 'AI_PROVIDER_REQUEST_REJECTED';
+    }
+    if (kind === 'refused') {
+      d.finalFailureClass = 'REFUSED';
+      d.httpStatus = 200;
+      result.failure.code = 'AI_PROVIDER_REFUSED';
+    }
+    if (kind === 'invalid confirmed') {
+      result.status = 'INVALID_OUTPUT';
+      result.failure.code = 'AI_PROVIDER_RESPONSE_INVALID';
+      Object.assign(d, {
+        finalFailureClass: 'INVALID_OUTPUT',
+        httpStatus: 200,
+        attempts: 1,
+        retriesExhausted: false,
+      });
+      Object.assign(result.modelProvenance, { observedModelVersion: model, status: 'CONFIRMED' });
+    }
+    if (kind === 'success unknown') {
+      result.status = 'SUCCESS';
+      result.findings = [];
+      delete result.failure;
+    }
+    if (kind === 'mismatch')
+      Object.assign(result.modelProvenance, {
+        observedModelVersion: 'gemini-other',
+        status: 'MISMATCH',
+      });
+    cp.nextIndex = 40;
+    cp.sessions = [
+      {
+        sequence: 1,
+        startIndex: 0,
+        endIndex: 40,
+        startedAt: cp.createdAt,
+        endedAt: cp.updatedAt,
+        confirmedNewQuotaWindow: false,
+        stopReason: 'PROVENANCE_REVIEW',
+      },
+    ];
+    const predictions = predictionEnvelope(cp);
+    const evidence = JSON.stringify(predictions);
+    expect(validateCheckpoint(cp, dataset, identity)).toEqual(cp);
+    expect(validateCheckpointEvidence(predictions, dataset)).toEqual(predictions);
+    expect(() => validateProvenance(predictions)).not.toThrow();
+    expect(() => validatePredictions(predictions, dataset)).toThrow('PROVENANCE_REVIEW');
+    expect(() => scoreEvaluation(dataset, predictions)).toThrow('PROVENANCE_REVIEW');
+    expect(JSON.stringify(predictions)).toBe(evidence);
     expect(fetchMock).not.toHaveBeenCalled();
   });
 

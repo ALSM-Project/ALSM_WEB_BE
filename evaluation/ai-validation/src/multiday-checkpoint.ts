@@ -17,7 +17,11 @@ import {
   MATCHING_POLICY_VERSION,
   DEFAULT_LOCATION_TOLERANCE_LINES,
 } from './evaluation.types';
-import { validateDataset, validatePredictions } from './evaluation.validator';
+import {
+  validateDataset,
+  validatePredictions,
+  validateCheckpointEvidence,
+} from './evaluation.validator';
 import {
   ProviderFailurePolicy,
   providerFailurePolicySchema,
@@ -338,7 +342,7 @@ export function validateCheckpoint(
   );
   if (cp.results.length) {
     try {
-      validatePredictions(predictionEnvelope(cp), dataset);
+      validateCheckpointEvidence(predictionEnvelope(cp), dataset);
     } catch {
       throw new Error('Invalid checkpoint terminal predictions');
     }

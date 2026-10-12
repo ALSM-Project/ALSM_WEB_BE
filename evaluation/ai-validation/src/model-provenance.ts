@@ -5,7 +5,7 @@ import {
   WithAiResponseMetadata,
 } from '../../../src/modules/validation/domain/ai-response-metadata';
 import type { AiEvaluationDataset, AiEvaluationPredictions } from './evaluation.types';
-import { providerFailurePolicySchema } from './provider-failure-policy';
+import { providerFailurePolicySchema, requiresProvenanceReview } from './provider-failure-policy';
 import { PHASE6_3F } from './phase6-3f-campaign';
 
 export interface ProvenancePolicy {
@@ -92,11 +92,27 @@ export function validateProvenance(predictions: AiEvaluationPredictions): void {
   }
 }
 
+/** Final reports must enforce the same policy as checkpoint materialization.
+ * Stored review evidence uses validateProvenance without this final-output gate.
+ */
+export function validateFinalProvenance(predictions: AiEvaluationPredictions): void {
+  validateProvenance(predictions);
+  if (!predictions.providerFailurePolicy) return;
+  const identity = {
+    model: predictions.model,
+    provenancePolicy: predictions.provenancePolicy,
+    providerFailurePolicy: predictions.providerFailurePolicy,
+    settings: PHASE6_3F.settings,
+  };
+  if (predictions.cases.some((result) => requiresProvenanceReview(identity, result)))
+    throw new Error('PROVENANCE_REVIEW: provider failure policy forbids final predictions');
+}
+
 export function summarizeProvenance(
   dataset: AiEvaluationDataset,
   predictions: AiEvaluationPredictions,
 ) {
-  validateProvenance(predictions);
+  validateFinalProvenance(predictions);
   const cases = dataset.cases.map(({ caseId }) => {
     const result = predictions.cases.find((c) => c.caseId === caseId);
     return {

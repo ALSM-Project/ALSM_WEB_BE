@@ -178,11 +178,15 @@ export function formatCheckpointSummary(cp: Checkpoint): string {
   const success = cp.results.filter((r) => r.status === 'SUCCESS').length;
   const continuable = cp.results.filter((r) => isContinuableProviderFailure(cp.identity, r)).length;
   const blocked = cp.results.some((r) => requiresProvenanceReview(cp.identity, r));
+  const verified =
+    confirmed === 40 &&
+    (!cp.identity.providerFailurePolicy ||
+      (cp.state === 'COMPLETE' && cp.sessions.at(-1)?.stopReason === 'COMPLETE' && !blocked));
   return (
     `Resumable benchmark: ${cp.state}; ${cp.nextIndex}/40 terminal cases; ${cp.quotaEvents.length} quota pauses\n` +
     `Execution: ${success} SUCCESS; ${cp.results.filter((r) => r.status === 'PROVIDER_FAILED').length} PROVIDER_FAILED\n` +
     `Model provenance: ${confirmed}/${cp.nextIndex} confirmed; ${confirmed} CONFIRMED; ${unknown} UNKNOWN; ${mismatch} MISMATCH; completion is not model verification\n` +
-    `Verified single-model cohort: ${confirmed === 40 ? 'YES' : 'NO — UNVERIFIED'}\n` +
+    `Verified single-model cohort: ${verified ? 'YES' : 'NO — UNVERIFIED'}\n` +
     (continuable
       ? `${continuable} PROVIDER_FAILED UNKNOWN: continuable under immutable Phase 6.3F policy; failures remain failures\n`
       : '') +

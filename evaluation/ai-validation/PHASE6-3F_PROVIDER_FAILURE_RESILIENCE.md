@@ -87,6 +87,15 @@ policy; legacy prediction payloads remain accepted. The strict model verifier is
 unchanged. Forty terminal cases including an eligible failure may materialize a
 reliability evaluation, but do not establish a verified 40-case model cohort.
 
+Final prediction validation and report provenance summarization also apply the
+shared policy classifier directly, using the frozen campaign retry settings.
+Manually supplied v3 predictions cannot bypass the allowlist. Checkpoint evidence
+validation remains separate: blocked terminal results still round-trip unchanged
+for review. In particular, case 40 with INVALID_OUTPUT + CONFIRMED is persisted
+as READY / PROVENANCE_REVIEW, cannot materialize predictions or resume, and cannot
+make the CLI print a verified final cohort. For v3 the CLI requires COMPLETE state,
+a COMPLETE session stop reason, no policy blocker, and all 40 confirmed cases.
+
 Reports distinguish terminal coverage, SUCCESS count, provider failure rate over
 terminal cases, failure counts by sanitized class and HTTP status, per-case
 attempts, and confirmed/unknown/mismatch counts. The cohort is verified only if
@@ -119,8 +128,8 @@ Validation commands: targeted Jest suites, full `npm test -- --runInBand`,
 `npm run lint`, `npx tsc --noEmit`, `npm run build`, and `git diff --check`.
 Validated on 2026-10-12:
 
-- Targeted four suites: 152 passed, zero skipped or failed.
-- Full offline Jest: 78 suites passed, one suite skipped; 789 tests passed,
+- Targeted four suites after final-validation review fixes: 166 passed, zero skipped or failed.
+- Full offline Jest after review fixes: 78 suites passed, one suite skipped; 803 tests passed,
   44 skipped, zero failed. The existing MongoDB integration suite is opt-in via
   `LEGACY_VALIDATION_TEST_MONGODB_URI` and was not enabled.
 - Lint, TypeScript `--noEmit`, Nest build and `git diff --check`: passed.

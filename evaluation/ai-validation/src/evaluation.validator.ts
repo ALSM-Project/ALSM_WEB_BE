@@ -8,6 +8,7 @@ import {
   modelProvenanceSchema,
   provenancePolicySchema,
   validateProvenance,
+  validateFinalProvenance,
 } from './model-provenance';
 import { ValidationFindingSeverity } from '../../../src/modules/validation/domain/validation-finding.types';
 import {
@@ -201,6 +202,16 @@ export function validateDataset(value: unknown): AiEvaluationDataset {
 }
 
 export function validatePredictions(
+  value: unknown,
+  dataset: AiEvaluationDataset,
+): AiEvaluationPredictions {
+  const predictions = validateCheckpointEvidence(value, dataset);
+  validateFinalProvenance(predictions);
+  return predictions;
+}
+
+/** Validate stored terminal evidence without authorizing it for a final report. */
+export function validateCheckpointEvidence(
   value: unknown,
   dataset: AiEvaluationDataset,
 ): AiEvaluationPredictions {

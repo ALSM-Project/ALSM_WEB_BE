@@ -10,6 +10,9 @@ export const PROVIDER_FAILURE_POLICY = Object.freeze({
   runId: PHASE6_3F_RUN_ID,
 });
 export type ProviderFailurePolicy = typeof PROVIDER_FAILURE_POLICY;
+type PolicyIdentity = Pick<RunIdentity, 'model' | 'provenancePolicy' | 'providerFailurePolicy'> & {
+  settings: Pick<RunIdentity['settings'], 'AI_MAX_RETRIES'>;
+};
 export const providerFailurePolicySchema = Joi.object({
   version: Joi.valid(1).required(),
   mode: Joi.valid(PROVIDER_FAILURE_POLICY.mode).required(),
@@ -20,7 +23,7 @@ export const providerFailurePolicySchema = Joi.object({
  * Short-window/unknown 429 are deliberately excluded in policy v1.
  */
 export function isContinuableProviderFailure(
-  identity: RunIdentity,
+  identity: PolicyIdentity,
   result: EvaluationPredictionCase,
 ): boolean {
   const p = result.modelProvenance;
@@ -56,7 +59,7 @@ export function isContinuableProviderFailure(
 
 /** Shared by append, resume, CLI and final materialization. Legacy rules stay strict. */
 export function requiresProvenanceReview(
-  identity: RunIdentity,
+  identity: PolicyIdentity,
   result: EvaluationPredictionCase,
 ): boolean {
   return (
