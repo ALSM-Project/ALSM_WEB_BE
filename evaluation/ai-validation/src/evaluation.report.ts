@@ -45,6 +45,26 @@ export function renderEvaluationReport(score: EvaluationScore): string {
     '',
     '## Operational and trust metrics',
     '',
+    `- Terminal execution coverage: ${score.execution.terminalCases}/${score.execution.totalCases}; this includes provider failures.`,
+    `- Provider failure rate over terminal cases: ${percent(score.execution.terminalCases ? score.execution.providerFailures.length / score.execution.terminalCases : 0)}. Availability is separate from model identity and semantic quality.`,
+    `- Provider failures by class: ${
+      Object.entries(score.execution.providerFailuresByClass)
+        .map(([key, count]) => `${key}: ${count}`)
+        .join(', ') || 'none'
+    }.`,
+    `- Provider failures by HTTP status: ${
+      Object.entries(score.execution.providerFailuresByHttpStatus)
+        .map(([key, count]) => `${key}: ${count}`)
+        .join(', ') || 'none'
+    }.`,
+    '',
+    '| Provider failure case | Failure class | HTTP status | Attempts |',
+    '| --- | --- | --- | ---: |',
+    ...score.execution.providerFailures.map(
+      (r) =>
+        `| ${r.caseId} | ${r.failureClass} | ${r.httpStatus ?? 'not available'} | ${r.attempts ?? 'not available'} |`,
+    ),
+    '',
     `- Execution: ${score.execution.successfulCases}/${score.execution.totalCases} successful, ${score.execution.failedCases} failed, ${score.execution.missingCases} missing.`,
     `- Clean-case false-positive rate: ${percent(score.cleanCases.cleanCaseFalsePositiveRate)} (${score.cleanCases.cleanCasesWithAnyPrediction}/${score.cleanCases.successfulCleanCases}); ${score.cleanCases.totalFindingsOnCleanCases} total findings on clean cases.`,
     `- Mutation detection rate (successful cases): ${percent(score.mutationDetection.successful.mutationDetectionRate)} (${score.mutationDetection.successful.mutatedCasesDetected}/${score.mutationDetection.successful.mutatedCases}).`,
