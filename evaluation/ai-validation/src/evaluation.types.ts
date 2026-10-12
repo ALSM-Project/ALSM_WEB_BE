@@ -1,5 +1,6 @@
 import { AiProviderDiagnostics } from '../../../src/modules/validation/domain/ai-provider-diagnostics';
 import { ModelProvenance, ProvenancePolicy } from './model-provenance';
+import type { ProviderFailurePolicy } from './provider-failure-policy';
 import {
   ValidationFindingCategory,
   ValidationFindingSeverity,
@@ -106,6 +107,7 @@ export interface EvaluationPredictionCase {
 }
 
 export interface AiEvaluationPredictions {
+  providerFailurePolicy?: ProviderFailurePolicy;
   provenancePolicy?: ProvenancePolicy;
   datasetId: string;
   datasetVersion: string;

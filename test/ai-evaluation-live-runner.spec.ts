@@ -199,9 +199,28 @@ describe('AI evaluation live runner safeguards', () => {
     legacy.cases.forEach((value) => {
       delete value.failure?.diagnostics;
     });
-    expect(scoreEvaluation(dataset, validated)).toEqual(
-      scoreEvaluation(dataset, validatePredictions(legacy, dataset)),
+    const scored = scoreEvaluation(dataset, validated);
+    const legacyScored = scoreEvaluation(dataset, validatePredictions(legacy, dataset));
+    // Reliability evidence is newly reported; every pre-existing metric remains identical.
+    expect(scored).toEqual({
+      ...legacyScored,
+      execution: {
+        ...legacyScored.execution,
+        providerFailures: scored.execution.providerFailures,
+        providerFailuresByClass: { RATE_LIMITED: 2 },
+        providerFailuresByHttpStatus: { '429': 2 },
+      },
+    });
+    expect(scored.execution.providerFailures).toEqual(
+      dataset.cases.map(({ caseId }) => ({
+        caseId,
+        failureClass: 'RATE_LIMITED',
+        httpStatus: 429,
+        attempts: 3,
+      })),
     );
+    expect(legacyScored.execution.providerFailuresByClass).toEqual({ UNKNOWN: 2 });
+    expect(legacyScored.execution.providerFailuresByHttpStatus).toEqual({ UNKNOWN: 2 });
     expect(validated.cases.every((value) => value.status === 'PROVIDER_FAILED')).toBe(true);
     for (const unsafe of [
       { rateLimitScope: 'arbitrary-provider-text' },

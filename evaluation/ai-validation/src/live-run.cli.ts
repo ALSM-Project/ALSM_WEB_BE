@@ -9,8 +9,15 @@ import { validateDataset } from './evaluation.validator';
 import { runMultidayBenchmark } from './multiday-runner';
 import { assertLegacyOutputOutsideMultiday, checkpointLocation } from './multiday-store';
 import { provenancePolicySchema } from './model-provenance';
+import {
+  PROVIDER_FAILURE_POLICY,
+  requiresProvenanceReview,
+  isContinuableProviderFailure,
+} from './provider-failure-policy';
+import { Checkpoint } from './multiday-checkpoint';
 
 interface LiveCliArguments {
+  continueOnTransientProviderFailure?: boolean;
   expectedModelVersion?: string;
   dataset?: string;
   output?: string;
@@ -58,6 +65,9 @@ export async function main(
       resume: args.resume,
       confirmNewQuotaWindow: args.confirmNewQuotaWindow,
       maxNewCases: args.maxNewCases,
+      ...(args.continueOnTransientProviderFailure
+        ? { providerFailurePolicy: PROVIDER_FAILURE_POLICY }
+        : {}),
       ...(args.expectedModelVersion
         ? {
             provenancePolicy: {
@@ -67,17 +77,9 @@ export async function main(
           }
         : {}),
     });
-    process.stdout.write(
-      `Resumable benchmark: ${checkpoint.state}; ${checkpoint.nextIndex}/40 terminal cases; ${checkpoint.quotaEvents.length} quota pauses\n`,
-    );
+    process.stdout.write(formatCheckpointSummary(checkpoint));
     if (checkpoint.identity.provenancePolicy) {
-      const confirmed = checkpoint.results.filter(
-        (r) => r.modelProvenance?.status === 'CONFIRMED',
-      ).length;
-      process.stdout.write(
-        `Model provenance: ${confirmed}/${checkpoint.nextIndex} confirmed; completion is not model verification\n`,
-      );
-      if (confirmed !== checkpoint.nextIndex)
+      if (checkpoint.results.some((r) => requiresProvenanceReview(checkpoint.identity, r)))
         throw new Error(
           'PROVENANCE_REVIEW: evidence saved; unverified model identity blocks continuation and final output',
         );
@@ -118,6 +120,8 @@ export function parseLiveArguments(values: string[]): LiveCliArguments {
     else if (value === '--allow-live-provider') result.allowLiveProvider = true;
     else if (value === '--fail-fast') result.failFast = true;
     else if (value === '--resume') result.resume = true;
+    else if (value === '--continue-on-transient-provider-failure')
+      result.continueOnTransientProviderFailure = true;
     else if (value === '--confirm-new-quota-window') result.confirmNewQuotaWindow = true;
     else if (value === '--checkpoint') result.checkpoint = nextValue(values, ++index, value);
     else if (value === '--expected-model-version')
@@ -131,6 +135,8 @@ export function parseLiveArguments(values: string[]): LiveCliArguments {
     else throw new Error(`Unknown live-run argument ${value}`);
   }
   if (result.checkpoint) {
+    if (result.continueOnTransientProviderFailure && !result.expectedModelVersion)
+      throw new Error('Provider failure policy requires --expected-model-version');
     if (
       result.expectedModelVersion &&
       provenancePolicySchema.validate(
@@ -152,7 +158,8 @@ export function parseLiveArguments(values: string[]): LiveCliArguments {
     result.resume ||
     result.confirmNewQuotaWindow ||
     result.maxNewCases !== undefined ||
-    result.expectedModelVersion !== undefined
+    result.expectedModelVersion !== undefined ||
+    result.continueOnTransientProviderFailure
   )
     throw new Error('Resume/session options require --checkpoint');
   return result;
@@ -162,6 +169,25 @@ function nextValue(values: string[], index: number, flag: string): string {
   const value = values[index];
   if (!value || value.startsWith('--')) throw new Error(`Missing value for ${flag}`);
   return value;
+}
+
+export function formatCheckpointSummary(cp: Checkpoint): string {
+  const confirmed = cp.results.filter((r) => r.modelProvenance?.status === 'CONFIRMED').length;
+  const mismatch = cp.results.filter((r) => r.modelProvenance?.status === 'MISMATCH').length;
+  const unknown = cp.results.length - confirmed - mismatch;
+  const success = cp.results.filter((r) => r.status === 'SUCCESS').length;
+  const continuable = cp.results.filter((r) => isContinuableProviderFailure(cp.identity, r)).length;
+  const blocked = cp.results.some((r) => requiresProvenanceReview(cp.identity, r));
+  return (
+    `Resumable benchmark: ${cp.state}; ${cp.nextIndex}/40 terminal cases; ${cp.quotaEvents.length} quota pauses\n` +
+    `Execution: ${success} SUCCESS; ${cp.results.filter((r) => r.status === 'PROVIDER_FAILED').length} PROVIDER_FAILED\n` +
+    `Model provenance: ${confirmed}/${cp.nextIndex} confirmed; ${confirmed} CONFIRMED; ${unknown} UNKNOWN; ${mismatch} MISMATCH; completion is not model verification\n` +
+    `Verified single-model cohort: ${confirmed === 40 ? 'YES' : 'NO — UNVERIFIED'}\n` +
+    (continuable
+      ? `${continuable} PROVIDER_FAILED UNKNOWN: continuable under immutable Phase 6.3F policy; failures remain failures\n`
+      : '') +
+    (blocked ? 'PROVENANCE_REVIEW: unapproved evidence blocks continuation and final output\n' : '')
+  );
 }
 
 if (require.main === module) {

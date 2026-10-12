@@ -5,6 +5,8 @@ import {
   WithAiResponseMetadata,
 } from '../../../src/modules/validation/domain/ai-response-metadata';
 import type { AiEvaluationDataset, AiEvaluationPredictions } from './evaluation.types';
+import { providerFailurePolicySchema } from './provider-failure-policy';
+import { PHASE6_3F } from './phase6-3f-campaign';
 
 export interface ProvenancePolicy {
   version: 1;
@@ -55,6 +57,17 @@ export function captureProvenance(
 /** Recompute claims rather than trusting stored status flags. No historic backfill. */
 export function validateProvenance(predictions: AiEvaluationPredictions): void {
   const policy = predictions.provenancePolicy;
+  if (
+    predictions.providerFailurePolicy &&
+    (providerFailurePolicySchema.validate(predictions.providerFailurePolicy, { convert: false })
+      .error ||
+      !policy ||
+      predictions.provider !== 'gemini' ||
+      predictions.model !== PHASE6_3F.model ||
+      policy.expectedModelVersion !== PHASE6_3F.expectedModelVersion ||
+      predictions.promptVersion !== PHASE6_3F.promptVersion)
+  )
+    throw new Error('Invalid provider failure policy provenance');
   if (!policy) {
     if (predictions.cases.some((c) => c.modelProvenance))
       throw new Error('Model provenance requires a versioned policy');

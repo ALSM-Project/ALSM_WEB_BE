@@ -3,6 +3,7 @@ import {
   RATE_LIMIT_SCOPES,
 } from '../../../src/modules/validation/domain/ai-provider-diagnostics';
 import * as Joi from 'joi';
+import { providerFailurePolicySchema } from './provider-failure-policy';
 import {
   modelProvenanceSchema,
   provenancePolicySchema,
@@ -131,6 +132,7 @@ const predictionCaseSchema = Joi.object({
   }),
 }).unknown(false);
 const predictionsSchema = Joi.object({
+  providerFailurePolicy: providerFailurePolicySchema,
   provenancePolicy: provenancePolicySchema,
   datasetId: Joi.string().trim().min(1).required(),
   datasetVersion: Joi.string().trim().min(1).required(),
