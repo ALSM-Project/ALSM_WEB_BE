@@ -52,35 +52,19 @@ export class UploadConversionSourceService {
     projectId: string,
     files: UploadedSourceFile[],
   ): Promise<UploadConversionSourceResult> {
-    const organization = await this.organizationContext.resolve(userId, organizationHeader);
-    this.authorization.require(organization, userId, [
-      OrganizationRole.OWNER,
-      OrganizationRole.ADMIN,
-      OrganizationRole.MEMBER,
-    ]);
-    return this.executeForOrganization(organization.id, userId, projectId, files);
-  }
-
-  /**
-   * The actual upload logic, independent of how the caller resolved/was authorized for
-   * organizationId - used directly by execute() above (customer self-service, authorized by
-   * organization membership) and by UploadPartnerProjectSourceService (Web 2 staff, authorized
-   * by the partners.manage RBAC permission instead - a Partner has no membership concept, so
-   * the membership-based resolve()/require() path above is never appropriate for that flow).
-   */
-  async executeForOrganization(
-    organizationId: string,
-    userId: string,
-    projectId: string,
-    files: UploadedSourceFile[],
-  ): Promise<UploadConversionSourceResult> {
     if (!files || files.length === 0) {
       throw new BadRequestException({
         code: 'NO_FILES_UPLOADED',
         message: 'At least one file is required',
       });
     }
-    const project = await this.projects.getForOrganization(projectId, organizationId);
+    const organization = await this.organizationContext.resolve(userId, organizationHeader);
+    this.authorization.require(organization, userId, [
+      OrganizationRole.OWNER,
+      OrganizationRole.ADMIN,
+      OrganizationRole.MEMBER,
+    ]);
+    const project = await this.projects.getForOrganization(projectId, organization.id);
     const allowedExtensions = ALLOWED_EXTENSIONS[project.conversionType];
     for (const file of files) {
       const ext = path.extname(file.originalname).toLowerCase();
@@ -123,7 +107,7 @@ export class UploadConversionSourceService {
       const sourceType = SCREEN_SOURCE_TYPE_BY_EXTENSION[ext];
       if (!sourceType) continue;
       screens.push(
-        await this.screenService.create(organizationId, project.id, userId, {
+        await this.screenService.create(organization.id, project.id, userId, {
           name: file.originalname,
           sourceType,
           inputReference,
@@ -143,7 +127,7 @@ export class UploadConversionSourceService {
       for (const screen of screens) {
         const programAnalysis = analysis.get(screen.name);
         if (!programAnalysis) continue;
-        await this.screenService.recordDependencyDiagnostics(organizationId, screen.id, {
+        await this.screenService.recordDependencyDiagnostics(organization.id, screen.id, {
           status: programAnalysis.status,
           dependencies: programAnalysis.dependencies,
           analyzedAt,
