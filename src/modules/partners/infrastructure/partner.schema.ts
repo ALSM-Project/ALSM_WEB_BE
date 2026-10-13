@@ -27,6 +27,9 @@ export class Partner {
   @Prop({ type: String, enum: PartnerStatus, default: PartnerStatus.ACTIVE })
   status!: PartnerStatus;
 
+  @Prop({ type: Types.ObjectId })
+  organizationId?: Types.ObjectId;
+
   @Prop({ type: Types.ObjectId, required: true })
   createdBy!: Types.ObjectId;
 

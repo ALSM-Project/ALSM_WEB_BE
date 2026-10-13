@@ -119,6 +119,9 @@ import { PARTNER_REPOSITORY } from './modules/partners/domain/partner.types';
 import { MongoPartnerRepository } from './modules/partners/infrastructure/mongo-partner.repository';
 import { CreatePartnerService } from './modules/partners/application/create-partner.service';
 import { ListPartnersService } from './modules/partners/application/list-partners.service';
+import { GetPartnerService } from './modules/partners/application/get-partner.service';
+import { CreatePartnerProjectService } from './modules/partners/application/create-partner-project.service';
+import { ListPartnerProjectsService } from './modules/partners/application/list-partner-projects.service';
 import { PartnerController } from './modules/partners/presentation/partner.controller';
 import { OnboardUserService } from './modules/users/application/onboard-user.service';
 import { UpdateUserStatusService } from './modules/users/application/update-user-status.service';
@@ -299,6 +302,9 @@ import { QualityReviewController } from './modules/conversions/presentation/qual
     SaveMethodMappingService,
     CreatePartnerService,
     ListPartnersService,
+    GetPartnerService,
+    CreatePartnerProjectService,
+    ListPartnerProjectsService,
     OnboardUserService,
     UpdateUserStatusService,
     RuleValidatorService,
