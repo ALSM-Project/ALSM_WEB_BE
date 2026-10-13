@@ -1,6 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
-import { Model, Types } from 'mongoose';
+import { Model } from 'mongoose';
 import { Partner, PartnerDocument } from './partner.schema';
 import {
   CreatePartnerInput,
@@ -17,16 +17,6 @@ export class MongoPartnerRepository implements PartnerRepository {
   async findByEmail(contactEmail: string): Promise<PartnerRecord | null> {
     const doc = await this.model.findOne({ contactEmail: contactEmail.toLowerCase() }).exec();
     return doc ? this.map(doc) : null;
-  }
-
-  async findById(id: string): Promise<PartnerRecord | null> {
-    if (!Types.ObjectId.isValid(id)) return null;
-    const doc = await this.model.findById(id).exec();
-    return doc ? this.map(doc) : null;
-  }
-
-  async setOrganizationId(id: string, organizationId: string): Promise<void> {
-    await this.model.updateOne({ _id: id }, { $set: { organizationId: toValidObjectId(organizationId) } }).exec();
   }
 
   async create(input: CreatePartnerInput): Promise<PartnerRecord> {
@@ -58,7 +48,6 @@ export class MongoPartnerRepository implements PartnerRepository {
       address: doc.address,
       notes: doc.notes,
       status: doc.status,
-      organizationId: doc.organizationId?.toString(),
       createdBy: doc.createdBy.toString(),
       createdAt: doc.createdAt,
       updatedAt: doc.updatedAt,

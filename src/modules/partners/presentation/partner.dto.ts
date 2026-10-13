@@ -1,5 +1,4 @@
-import { IsEmail, IsEnum, IsNotEmpty, IsOptional, IsString, MaxLength } from 'class-validator';
-import { ConversionType } from '../../projects/domain/project.types';
+import { IsEmail, IsNotEmpty, IsOptional, IsString, MaxLength } from 'class-validator';
 
 export class CreatePartnerDto {
   @IsNotEmpty()
@@ -30,20 +29,4 @@ export class CreatePartnerDto {
   @IsString()
   @MaxLength(2000)
   notes?: string;
-}
-
-export class CreatePartnerProjectDto {
-  @IsNotEmpty()
-  @IsString()
-  @MaxLength(200)
-  name!: string;
-
-  @IsOptional()
-  @IsString()
-  @MaxLength(2000)
-  description?: string;
-
-  @IsNotEmpty()
-  @IsEnum(ConversionType)
-  conversionType!: ConversionType;
 }
