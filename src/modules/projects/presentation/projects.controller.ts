@@ -44,7 +44,10 @@ export class ProjectsController {
   })
   @ApiResponse({ status: HttpStatus.CREATED, description: 'Project created successfully' })
   @ApiResponse({ status: HttpStatus.BAD_REQUEST, description: 'Invalid project payload' })
-  @ApiResponse({ status: HttpStatus.UNAUTHORIZED, description: 'Missing or invalid authentication token' })
+  @ApiResponse({
+    status: HttpStatus.UNAUTHORIZED,
+    description: 'Missing or invalid authentication token',
+  })
   async create(
     @CurrentUser() user: AuthenticatedUser,
     @Headers('x-organization-id') organizationId: string | undefined,
@@ -59,7 +62,10 @@ export class ProjectsController {
     description: 'Retrieve all modernization projects for the authenticated user and organization.',
   })
   @ApiResponse({ status: HttpStatus.OK, description: 'List of projects retrieved successfully' })
-  @ApiResponse({ status: HttpStatus.UNAUTHORIZED, description: 'Missing or invalid authentication token' })
+  @ApiResponse({
+    status: HttpStatus.UNAUTHORIZED,
+    description: 'Missing or invalid authentication token',
+  })
   async list(
     @CurrentUser() user: AuthenticatedUser,
     @Headers('x-organization-id') organizationId: string | undefined,
@@ -75,7 +81,10 @@ export class ProjectsController {
   @ApiParam({ name: 'id', description: 'Unique Project ID' })
   @ApiResponse({ status: HttpStatus.OK, description: 'Project details retrieved successfully' })
   @ApiResponse({ status: HttpStatus.NOT_FOUND, description: 'Project not found' })
-  @ApiResponse({ status: HttpStatus.UNAUTHORIZED, description: 'Missing or invalid authentication token' })
+  @ApiResponse({
+    status: HttpStatus.UNAUTHORIZED,
+    description: 'Missing or invalid authentication token',
+  })
   async get(
     @CurrentUser() user: AuthenticatedUser,
     @Headers('x-organization-id') organizationId: string | undefined,
@@ -92,7 +101,10 @@ export class ProjectsController {
   @ApiParam({ name: 'id', description: 'Unique Project ID' })
   @ApiResponse({ status: HttpStatus.OK, description: 'Project updated successfully' })
   @ApiResponse({ status: HttpStatus.NOT_FOUND, description: 'Project not found' })
-  @ApiResponse({ status: HttpStatus.UNAUTHORIZED, description: 'Missing or invalid authentication token' })
+  @ApiResponse({
+    status: HttpStatus.UNAUTHORIZED,
+    description: 'Missing or invalid authentication token',
+  })
   async update(
     @CurrentUser() user: AuthenticatedUser,
     @Headers('x-organization-id') organizationId: string | undefined,
@@ -111,7 +123,10 @@ export class ProjectsController {
   @ApiParam({ name: 'id', description: 'Unique Project ID' })
   @ApiResponse({ status: HttpStatus.NO_CONTENT, description: 'Project deleted successfully' })
   @ApiResponse({ status: HttpStatus.NOT_FOUND, description: 'Project not found' })
-  @ApiResponse({ status: HttpStatus.UNAUTHORIZED, description: 'Missing or invalid authentication token' })
+  @ApiResponse({
+    status: HttpStatus.UNAUTHORIZED,
+    description: 'Missing or invalid authentication token',
+  })
   async remove(
     @CurrentUser() user: AuthenticatedUser,
     @Headers('x-organization-id') organizationId: string | undefined,

@@ -1,7 +1,10 @@
 import { Prop, Schema, SchemaFactory } from '@nestjs/mongoose';
 import { HydratedDocument, Schema as MongooseSchema, Types } from 'mongoose';
 import { ScreenSourceType, ScreenStatus } from '../domain/screen.types';
-import type { DependencyEntry, ProgramDependencyStatus } from '../../conversions/domain/copybook-dependency.types';
+import type {
+  DependencyEntry,
+  ProgramDependencyStatus,
+} from '../../conversions/domain/copybook-dependency.types';
 
 export type ScreenDocument = HydratedDocument<Screen>;
 

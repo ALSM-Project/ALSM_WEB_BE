@@ -1,4 +1,9 @@
-import { BadRequestException, ConflictException, ForbiddenException, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  ConflictException,
+  ForbiddenException,
+  NotFoundException,
+} from '@nestjs/common';
 import { AuditRepository } from '../src/modules/audit/domain/audit.repository';
 import { OrganizationAuthorizationService } from '../src/modules/organizations/application/organization-authorization.service';
 import { OrganizationContextService } from '../src/modules/organizations/application/organization-context.service';
@@ -81,9 +86,11 @@ describe('Conversion Quality Review Services', () => {
       } as unknown as jest.Mocked<ConversionQualityReviewRepository>;
 
       storage = {
-        readFiles: jest.fn().mockResolvedValue([
-          { path: 'Screen.java', content: Buffer.from('public class Screen {\n  int a;\n}') },
-        ]),
+        readFiles: jest
+          .fn()
+          .mockResolvedValue([
+            { path: 'Screen.java', content: Buffer.from('public class Screen {\n  int a;\n}') },
+          ]),
         saveFiles: jest.fn(),
         deleteFiles: jest.fn(),
       } as unknown as jest.Mocked<StoragePort>;
@@ -92,12 +99,7 @@ describe('Conversion Quality Review Services', () => {
         resolve: jest.fn().mockResolvedValue(org),
       } as unknown as jest.Mocked<OrganizationContextService>;
 
-      service = new GetConversionQualityReviewService(
-        jobsRepo,
-        qualityRepo,
-        storage,
-        orgContext,
-      );
+      service = new GetConversionQualityReviewService(jobsRepo, qualityRepo, storage, orgContext);
     });
 
     it('Case 1: GET returns synthetic PENDING record when no review exists yet', async () => {

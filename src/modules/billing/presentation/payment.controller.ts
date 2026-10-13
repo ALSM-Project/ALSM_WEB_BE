@@ -41,7 +41,8 @@ export class PaymentController {
   @Get('bank-config')
   @ApiOperation({
     summary: 'Get active payment bank configuration',
-    description: 'Retrieves the active bank account details used for VietQR code generation from MongoDB.',
+    description:
+      'Retrieves the active bank account details used for VietQR code generation from MongoDB.',
   })
   async getBankConfig() {
     return this.paymentService.getBankConfig();
@@ -49,27 +50,29 @@ export class PaymentController {
 
   // ─── Create Payment Order + QR ───────────────────────────
 
-
   @ApiBearerAuth()
   @UseGuards(JwtAuthGuard)
   @Post('create')
   @ApiOperation({
     summary: 'Create payment order with VietQR code',
-    description: 'Generates a payment order and a VietQR transfer QR code image URL for bank scanning.',
+    description:
+      'Generates a payment order and a VietQR transfer QR code image URL for bank scanning.',
   })
   @ApiResponse({
     status: HttpStatus.CREATED,
     description: 'Payment order created with VietQR metadata',
     type: PaymentOrderResponseDto,
   })
-  @ApiResponse({ status: HttpStatus.BAD_REQUEST, description: 'Invalid plan tier or payment payload' })
-  @ApiResponse({ status: HttpStatus.UNAUTHORIZED, description: 'Missing or invalid authentication token' })
-  async createPayment(
-    @CurrentUser() user: AuthenticatedUser,
-    @Body() dto: CreatePaymentDto,
-  ) {
-    const amountVnd =
-      dto.amountVnd || (dto.billingCycle === 'ANNUAL' ? 14990000 : 1499000);
+  @ApiResponse({
+    status: HttpStatus.BAD_REQUEST,
+    description: 'Invalid plan tier or payment payload',
+  })
+  @ApiResponse({
+    status: HttpStatus.UNAUTHORIZED,
+    description: 'Missing or invalid authentication token',
+  })
+  async createPayment(@CurrentUser() user: AuthenticatedUser, @Body() dto: CreatePaymentDto) {
+    const amountVnd = dto.amountVnd || (dto.billingCycle === 'ANNUAL' ? 14990000 : 1499000);
     return this.paymentService.createQRPayment(
       user.userId,
       (user as AuthenticatedUser & { organizationId?: string }).organizationId || user.userId,
@@ -85,7 +88,8 @@ export class PaymentController {
   @Get(':paymentId/status')
   @ApiOperation({
     summary: 'Check payment status (for polling)',
-    description: 'Query status of a payment (PENDING, COMPLETED, EXPIRED, FAILED). Auto-expires pending payments after 15 minutes.',
+    description:
+      'Query status of a payment (PENDING, COMPLETED, EXPIRED, FAILED). Auto-expires pending payments after 15 minutes.',
   })
   @ApiParam({
     name: 'paymentId',
@@ -97,7 +101,10 @@ export class PaymentController {
     description: 'Current status of the payment',
     type: PaymentStatusResponseDto,
   })
-  @ApiResponse({ status: HttpStatus.UNAUTHORIZED, description: 'Missing or invalid authentication token' })
+  @ApiResponse({
+    status: HttpStatus.UNAUTHORIZED,
+    description: 'Missing or invalid authentication token',
+  })
   @ApiResponse({ status: HttpStatus.NOT_FOUND, description: 'Payment order not found' })
   async getPaymentStatus(@Param('paymentId') paymentId: string) {
     return this.paymentService.getPaymentStatus(paymentId);
@@ -109,7 +116,8 @@ export class PaymentController {
   @HttpCode(HttpStatus.OK)
   @ApiOperation({
     summary: 'Casso bank webhook receiver',
-    description: 'Webhook endpoint triggered by Casso.vn on incoming bank transfers to match reference codes and activate subscriptions.',
+    description:
+      'Webhook endpoint triggered by Casso.vn on incoming bank transfers to match reference codes and activate subscriptions.',
   })
   @ApiHeader({
     name: 'authorization',
@@ -121,7 +129,10 @@ export class PaymentController {
     description: 'Webhook transaction results',
     type: CassoWebhookResponseDto,
   })
-  @ApiResponse({ status: HttpStatus.UNAUTHORIZED, description: 'Invalid Casso webhook authorization header' })
+  @ApiResponse({
+    status: HttpStatus.UNAUTHORIZED,
+    description: 'Invalid Casso webhook authorization header',
+  })
   async handleCassoWebhook(
     @Headers('authorization') authHeader: string,
     @Body() payload: CassoWebhookPayload,

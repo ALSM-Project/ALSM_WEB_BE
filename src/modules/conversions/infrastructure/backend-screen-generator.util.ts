@@ -20,7 +20,8 @@ export interface GeneratedScreenBundle {
  */
 export function generateBackendScreenBundle(screenName: string): GeneratedScreenBundle {
   const cleanName = screenName.replace(/\.(bms|dspf|cob|cbl|dds)$/i, '');
-  const pascalName = cleanName.charAt(0).toUpperCase() + cleanName.slice(1).replace(/[^A-Za-z0-9]/g, '');
+  const pascalName =
+    cleanName.charAt(0).toUpperCase() + cleanName.slice(1).replace(/[^A-Za-z0-9]/g, '');
   const upper = cleanName.toUpperCase();
 
   const fields: ScreenField[] = [];

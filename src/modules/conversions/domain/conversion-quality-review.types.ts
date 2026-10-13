@@ -60,25 +60,26 @@ export const MAX_QUALITY_REVIEW_NOTE_LENGTH = 2000;
 export const QUALITY_SCORE_MIN = 1;
 export const QUALITY_SCORE_MAX = 5;
 
-const ALLOWED_TRANSITIONS: Record<ConversionQualityReviewStatus, HumanQualityReviewTargetStatus[]> = {
-  [ConversionQualityReviewStatus.PENDING]: [
-    ConversionQualityReviewStatus.ACCEPTED,
-    ConversionQualityReviewStatus.NEEDS_REWORK,
-    ConversionQualityReviewStatus.FLAGGED,
-  ],
-  [ConversionQualityReviewStatus.ACCEPTED]: [
-    ConversionQualityReviewStatus.NEEDS_REWORK,
-    ConversionQualityReviewStatus.FLAGGED,
-  ],
-  [ConversionQualityReviewStatus.NEEDS_REWORK]: [
-    ConversionQualityReviewStatus.ACCEPTED,
-    ConversionQualityReviewStatus.FLAGGED,
-  ],
-  [ConversionQualityReviewStatus.FLAGGED]: [
-    ConversionQualityReviewStatus.ACCEPTED,
-    ConversionQualityReviewStatus.NEEDS_REWORK,
-  ],
-};
+const ALLOWED_TRANSITIONS: Record<ConversionQualityReviewStatus, HumanQualityReviewTargetStatus[]> =
+  {
+    [ConversionQualityReviewStatus.PENDING]: [
+      ConversionQualityReviewStatus.ACCEPTED,
+      ConversionQualityReviewStatus.NEEDS_REWORK,
+      ConversionQualityReviewStatus.FLAGGED,
+    ],
+    [ConversionQualityReviewStatus.ACCEPTED]: [
+      ConversionQualityReviewStatus.NEEDS_REWORK,
+      ConversionQualityReviewStatus.FLAGGED,
+    ],
+    [ConversionQualityReviewStatus.NEEDS_REWORK]: [
+      ConversionQualityReviewStatus.ACCEPTED,
+      ConversionQualityReviewStatus.FLAGGED,
+    ],
+    [ConversionQualityReviewStatus.FLAGGED]: [
+      ConversionQualityReviewStatus.ACCEPTED,
+      ConversionQualityReviewStatus.NEEDS_REWORK,
+    ],
+  };
 
 export function isAllowedQualityReviewTransition(
   from: ConversionQualityReviewStatus,

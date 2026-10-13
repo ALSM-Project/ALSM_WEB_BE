@@ -1,6 +1,11 @@
 import { BadRequestException, ConflictException, Inject, Injectable } from '@nestjs/common';
 import { AUDIT_REPOSITORY, AuditRepository } from '../../audit/domain/audit.repository';
-import { CreatePartnerInput, PARTNER_REPOSITORY, PartnerRecord, PartnerRepository } from '../domain/partner.types';
+import {
+  CreatePartnerInput,
+  PARTNER_REPOSITORY,
+  PartnerRecord,
+  PartnerRepository,
+} from '../domain/partner.types';
 
 const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
@@ -16,12 +21,18 @@ export class CreatePartnerService {
   async execute(userId: string, input: CreatePartnerRequest): Promise<PartnerRecord> {
     const name = input.name?.trim();
     if (!name) {
-      throw new BadRequestException({ code: 'PARTNER_NAME_REQUIRED', message: 'Partner name is required' });
+      throw new BadRequestException({
+        code: 'PARTNER_NAME_REQUIRED',
+        message: 'Partner name is required',
+      });
     }
 
     const contactEmail = input.contactEmail?.trim().toLowerCase();
     if (!contactEmail || !EMAIL_PATTERN.test(contactEmail)) {
-      throw new BadRequestException({ code: 'INVALID_CONTACT_EMAIL', message: 'A valid contact email is required' });
+      throw new BadRequestException({
+        code: 'INVALID_CONTACT_EMAIL',
+        message: 'A valid contact email is required',
+      });
     }
 
     const existing = await this.partners.findByEmail(contactEmail);

@@ -47,7 +47,9 @@ export class BullMqConversionQueue implements ConversionQueuePort, OnModuleDestr
   // Redis). Let it propagate so the caller can fail the request instead.
   async enqueue(conversionJobId: string, priority: ConversionPriority): Promise<void> {
     if (!this.queue || !this.config.get<boolean>('CONVERSION_WORKER_ENABLED')) {
-      throw new Error('Conversion queue is not configured (CONVERSION_WORKER_ENABLED is not enabled)');
+      throw new Error(
+        'Conversion queue is not configured (CONVERSION_WORKER_ENABLED is not enabled)',
+      );
     }
     await this.queue.add(
       'execute-conversion',

@@ -11,7 +11,7 @@ import { QuoteRequestDocument } from '../quote-request.schema';
 
 export class SubscriptionMapper {
   static toDomain(doc: SubscriptionDocument): SubscriptionProps {
-    const raw = doc as unknown as { createdAt?: Date; updatedAt?: Date };
+    const raw = doc as unknown as { createdAt?: Date; updatedAt?: Date; appealedAt?: Date; appealResolvedAt?: Date };
     return {
       id: doc._id.toString(),
       userId: doc.userId.toString(),
@@ -27,6 +27,9 @@ export class SubscriptionMapper {
       cancelledAt: doc.cancelledAt,
       cancelReason: doc.cancelReason,
       cancelFeedback: doc.cancelFeedback,
+      suspensionReason: doc.suspensionReason,
+      suspendedAt: doc.suspendedAt,
+      suspendedBy: doc.suspendedBy?.toString(),
       createdAt: raw.createdAt,
       updatedAt: raw.updatedAt,
     };
@@ -82,7 +85,7 @@ export class PaymentMapper {
 
 export class QuoteRequestMapper {
   static toDomain(doc: QuoteRequestDocument): QuoteRequestProps {
-    const raw = doc as unknown as { createdAt?: Date; updatedAt?: Date };
+    const raw = doc as unknown as { createdAt?: Date; updatedAt?: Date; appealedAt?: Date; appealResolvedAt?: Date };
     return {
       id: doc._id.toString(),
       userId: doc.userId.toString(),
@@ -94,6 +97,12 @@ export class QuoteRequestMapper {
       message: doc.message,
       currentPlanTier: doc.currentPlanTier,
       status: doc.status,
+      statusReason: doc.statusReason,
+      appealMessage: doc.appealMessage,
+      appealStatus: doc.appealStatus,
+      appealResponse: doc.appealResponse,
+      appealedAt: raw.appealedAt,
+      appealResolvedAt: raw.appealResolvedAt,
       createdAt: raw.createdAt,
       updatedAt: raw.updatedAt,
     };

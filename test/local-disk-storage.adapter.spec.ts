@@ -27,7 +27,9 @@ describe('LocalDiskStorageAdapter', () => {
     expect(reference.startsWith('sources/proj-1/')).toBe(true);
 
     const files = await adapter.readFiles(reference);
-    const byPath = Object.fromEntries(files.map((f) => [f.relativePath, f.content.toString('utf8')]));
+    const byPath = Object.fromEntries(
+      files.map((f) => [f.relativePath, f.content.toString('utf8')]),
+    );
     expect(byPath['LOGIN.bms']).toBe('hello');
     expect(byPath['nested/COPY.CPY']).toBe('world');
   });
@@ -44,7 +46,9 @@ describe('LocalDiskStorageAdapter', () => {
 
   it('rejects an uploaded relativePath that tries to escape the target directory', async () => {
     await expect(
-      adapter.writeFiles('sources/proj-1', [{ relativePath: '../../evil.txt', content: Buffer.from('x') }]),
+      adapter.writeFiles('sources/proj-1', [
+        { relativePath: '../../evil.txt', content: Buffer.from('x') },
+      ]),
     ).rejects.toThrow(/traversal/i);
   });
 });

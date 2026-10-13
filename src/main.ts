@@ -20,7 +20,10 @@ async function bootstrap(): Promise<void> {
     .filter(Boolean);
 
   app.enableCors({
-    origin: (requestOrigin: string | undefined, callback: (err: Error | null, allow?: boolean) => void) => {
+    origin: (
+      requestOrigin: string | undefined,
+      callback: (err: Error | null, allow?: boolean) => void,
+    ) => {
       if (!requestOrigin) return callback(null, true);
       if (
         configuredOrigins.includes(requestOrigin) ||
@@ -35,7 +38,9 @@ async function bootstrap(): Promise<void> {
   });
 
   app.setGlobalPrefix('api/v1');
-  app.useGlobalPipes(new ValidationPipe({ whitelist: true, forbidNonWhitelisted: true, transform: true }));
+  app.useGlobalPipes(
+    new ValidationPipe({ whitelist: true, forbidNonWhitelisted: true, transform: true }),
+  );
   app.useGlobalFilters(new ApiExceptionFilter());
 
   const document = SwaggerModule.createDocument(

@@ -1,5 +1,12 @@
 import { Body, Controller, Get, Headers, Param, Post, UseGuards } from '@nestjs/common';
-import { ApiBearerAuth, ApiHeader, ApiOperation, ApiParam, ApiResponse, ApiTags } from '@nestjs/swagger';
+import {
+  ApiBearerAuth,
+  ApiHeader,
+  ApiOperation,
+  ApiParam,
+  ApiResponse,
+  ApiTags,
+} from '@nestjs/swagger';
 import { ConversionJobService } from '../application/conversion-job.service';
 import { GetConversionResultService } from '../application/get-conversion-result.service';
 import { BulkCreateConversionJobDto, CreateConversionJobDto } from './conversion.dto';
@@ -9,7 +16,11 @@ import { AuthenticatedUser } from '../../../shared/logging/request-id.middleware
 
 @ApiTags('Conversion Jobs')
 @ApiBearerAuth()
-@ApiHeader({ name: 'x-organization-id', required: false, description: 'Optional organization ID context' })
+@ApiHeader({
+  name: 'x-organization-id',
+  required: false,
+  description: 'Optional organization ID context',
+})
 @UseGuards(JwtAuthGuard)
 @Controller()
 export class ConversionsController {
@@ -19,7 +30,10 @@ export class ConversionsController {
   ) {}
 
   @Post('projects/:projectId/conversions')
-  @ApiOperation({ summary: 'Submit single screen conversion job', description: 'Enqueues legacy screen source code for conversion.' })
+  @ApiOperation({
+    summary: 'Submit single screen conversion job',
+    description: 'Enqueues legacy screen source code for conversion.',
+  })
   @ApiParam({ name: 'projectId', description: 'Project ID' })
   @ApiResponse({ status: 201, description: 'Conversion job created' })
   async create(
@@ -32,7 +46,10 @@ export class ConversionsController {
   }
 
   @Post('projects/:projectId/conversions/bulk')
-  @ApiOperation({ summary: 'Submit bulk screen conversion jobs', description: 'Enqueues multiple screens for batch processing.' })
+  @ApiOperation({
+    summary: 'Submit bulk screen conversion jobs',
+    description: 'Enqueues multiple screens for batch processing.',
+  })
   @ApiParam({ name: 'projectId', description: 'Project ID' })
   @ApiResponse({ status: 201, description: 'Bulk conversion jobs queued' })
   async createBulk(
@@ -45,7 +62,10 @@ export class ConversionsController {
   }
 
   @Get('projects/:projectId/conversions')
-  @ApiOperation({ summary: 'List all conversion jobs for a project', description: 'Retrieve history and progress of conversions.' })
+  @ApiOperation({
+    summary: 'List all conversion jobs for a project',
+    description: 'Retrieve history and progress of conversions.',
+  })
   @ApiParam({ name: 'projectId', description: 'Project ID' })
   @ApiResponse({ status: 200, description: 'List of conversion jobs' })
   async list(
@@ -57,7 +77,10 @@ export class ConversionsController {
   }
 
   @Get('projects/:projectId/screens/:screenId/conversions')
-  @ApiOperation({ summary: 'List conversion jobs for a specific screen', description: 'Filter jobs by screen ID.' })
+  @ApiOperation({
+    summary: 'List conversion jobs for a specific screen',
+    description: 'Filter jobs by screen ID.',
+  })
   @ApiParam({ name: 'projectId', description: 'Project ID' })
   @ApiParam({ name: 'screenId', description: 'Screen ID' })
   @ApiResponse({ status: 200, description: 'List of screen conversion jobs' })
@@ -71,7 +94,10 @@ export class ConversionsController {
   }
 
   @Get('conversions/:id')
-  @ApiOperation({ summary: 'Get conversion job details', description: 'Get status, converted code, and logs by job ID.' })
+  @ApiOperation({
+    summary: 'Get conversion job details',
+    description: 'Get status, converted code, and logs by job ID.',
+  })
   @ApiParam({ name: 'id', description: 'Conversion Job ID' })
   @ApiResponse({ status: 200, description: 'Conversion job details' })
   async get(
@@ -83,7 +109,10 @@ export class ConversionsController {
   }
 
   @Get('conversions/:id/result')
-  @ApiOperation({ summary: 'Get generated code for a completed conversion job', description: 'Returns the real files produced by the external conversion tool.' })
+  @ApiOperation({
+    summary: 'Get generated code for a completed conversion job',
+    description: 'Returns the real files produced by the external conversion tool.',
+  })
   @ApiParam({ name: 'id', description: 'Conversion Job ID' })
   @ApiResponse({ status: 200, description: 'Conversion result files' })
   async getResultFiles(
@@ -95,7 +124,10 @@ export class ConversionsController {
   }
 
   @Post('conversions/:id/retry')
-  @ApiOperation({ summary: 'Retry a failed conversion job', description: 'Re-enqueues failed conversion job.' })
+  @ApiOperation({
+    summary: 'Retry a failed conversion job',
+    description: 'Re-enqueues failed conversion job.',
+  })
   @ApiParam({ name: 'id', description: 'Conversion Job ID' })
   @ApiResponse({ status: 200, description: 'Conversion job re-queued' })
   async retry(

@@ -21,14 +21,23 @@ describe('CopybookDependencyResolver', () => {
     const analysis = results.get('CUSTLDT.cbl')!;
     expect(analysis.status).toBe('READY_FOR_CONVERSION');
     expect(analysis.dependencies).toEqual([
-      expect.objectContaining({ copyName: 'CUSTOMER-REC', status: 'RESOLVED', resolvedFile: 'CUSTOMER-REC.cpy' }),
+      expect.objectContaining({
+        copyName: 'CUSTOMER-REC',
+        status: 'RESOLVED',
+        resolvedFile: 'CUSTOMER-REC.cpy',
+      }),
     ]);
   });
 
   // TC02: missing copybook => MISSING
   it('TC02 reports MISSING when the referenced copybook does not exist in the bundle', () => {
     const files = bundle({ 'CUSTLDT.cbl': '       COPY CUSTOMER-REC.\n' });
-    const analysis = resolveProgram('CUSTLDT.cbl', new Map(files.map((f) => [f.name, f.content])), buildCopybookIndex(files), new Map());
+    const analysis = resolveProgram(
+      'CUSTLDT.cbl',
+      new Map(files.map((f) => [f.name, f.content])),
+      buildCopybookIndex(files),
+      new Map(),
+    );
     expect(analysis.status).toBe('BLOCKED');
     expect(analysis.dependencies[0]).toMatchObject({
       copyName: 'CUSTOMER-REC',
@@ -92,12 +101,15 @@ describe('CopybookDependencyResolver', () => {
   // TC06: COPY ... REPLACING => RESOLVED
   it('TC06 handles COPY ... REPLACING clauses', () => {
     const files = bundle({
-      'CUSTLDT.cbl': "       COPY CUSTOMER-REC REPLACING ==:PFX:== BY ==CUST==.\n",
+      'CUSTLDT.cbl': '       COPY CUSTOMER-REC REPLACING ==:PFX:== BY ==CUST==.\n',
       'CUSTOMER-REC.cpy': '       01 :PFX:-REC.\n',
     });
     const analysis = analyzeBundle(files).get('CUSTLDT.cbl')!;
     expect(analysis.status).toBe('READY_FOR_CONVERSION');
-    expect(analysis.dependencies[0]).toMatchObject({ copyName: 'CUSTOMER-REC', status: 'RESOLVED' });
+    expect(analysis.dependencies[0]).toMatchObject({
+      copyName: 'CUSTOMER-REC',
+      status: 'RESOLVED',
+    });
   });
 
   // TC07: COPY statement split across multiple lines => RESOLVED
@@ -149,7 +161,8 @@ describe('CopybookDependencyResolver', () => {
   // TC10: one .cbl with many .cpy, all must resolve correctly
   it('TC10 resolves every dependency correctly when a program copies several copybooks', () => {
     const files = bundle({
-      'CUSTLDT.cbl': '       COPY CUSTOMER-REC.\n       COPY COMMON-AREA.\n       COPY ERROR-CODE.\n',
+      'CUSTLDT.cbl':
+        '       COPY CUSTOMER-REC.\n       COPY COMMON-AREA.\n       COPY ERROR-CODE.\n',
       'CUSTOMER-REC.cpy': '',
       'COMMON-AREA.cpy': '',
       'ERROR-CODE.cpy': '',
@@ -162,7 +175,8 @@ describe('CopybookDependencyResolver', () => {
 
   describe('extractCopyStatements', () => {
     it('ignores COPY mentioned inside a fixed-format comment line', () => {
-      const source = '      * this COPY CUSTOMER-REC is just documentation\n       COPY REAL-ONE.\n';
+      const source =
+        '      * this COPY CUSTOMER-REC is just documentation\n       COPY REAL-ONE.\n';
       const statements = extractCopyStatements(source);
       expect(statements).toHaveLength(1);
       expect(statements[0].copyName).toBe('REAL-ONE');

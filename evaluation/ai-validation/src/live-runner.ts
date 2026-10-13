@@ -1,4 +1,7 @@
+import { sanitizeProviderDiagnostics } from '../../../src/modules/validation/domain/ai-provider-diagnostics';
 import { BadRequestException } from '@nestjs/common';
+import { WithAiResponseMetadata } from '../../../src/modules/validation/domain/ai-response-metadata';
+import { captureProvenance, ProvenancePolicy } from './model-provenance';
 import { AiValidatorError } from '../../../src/modules/validation/domain/ai-validator.error';
 import {
   AiValidatorPort,
@@ -25,6 +28,7 @@ export interface LiveRunSelection {
 }
 
 export interface LiveRunOptions {
+  provenancePolicy?: ProvenancePolicy;
   dataset: AiEvaluationDataset;
   selectedCases: AiEvaluationCase[];
   validator: AiValidatorPort;
@@ -95,6 +99,9 @@ export async function runLiveBenchmark(options: LiveRunOptions): Promise<AiEvalu
         status: 'SUCCESS',
         latencyMs: Date.now() - startedAt,
         findings: result.findings.map(toPredictionFinding),
+        ...(options.provenancePolicy
+          ? { modelProvenance: captureProvenance(metadata.model, options.provenancePolicy, result) }
+          : {}),
       });
     } catch (error) {
       results.push({
@@ -102,12 +109,22 @@ export async function runLiveBenchmark(options: LiveRunOptions): Promise<AiEvalu
         status: classifyFailure(error),
         latencyMs: Date.now() - startedAt,
         failure: sanitizeFailure(error),
+        ...(options.provenancePolicy
+          ? {
+              modelProvenance: captureProvenance(
+                metadata.model,
+                options.provenancePolicy,
+                error as WithAiResponseMetadata,
+              ),
+            }
+          : {}),
       });
       if (options.failFast) break;
     }
   }
 
   return {
+    ...(options.provenancePolicy ? { provenancePolicy: options.provenancePolicy } : {}),
     datasetId: options.dataset.datasetId,
     datasetVersion: options.dataset.version,
     evaluatorVersion: EVALUATOR_VERSION,
@@ -167,8 +184,11 @@ function classifyFailure(error: unknown): EvaluationPredictionCase['status'] {
   return 'PROVIDER_FAILED';
 }
 
-function sanitizeFailure(error: unknown): { code: string; message: string } {
-  if (error instanceof AiValidatorError) return { code: error.code, message: error.message };
+function sanitizeFailure(error: unknown): NonNullable<EvaluationPredictionCase['failure']> {
+  if (error instanceof AiValidatorError) {
+    const diagnostics = error.diagnostics && sanitizeProviderDiagnostics(error.diagnostics);
+    return { code: error.code, message: error.message, ...(diagnostics ? { diagnostics } : {}) };
+  }
   if (error instanceof BadRequestException) {
     const response = error.getResponse();
     if (typeof response === 'object' && response !== null) {

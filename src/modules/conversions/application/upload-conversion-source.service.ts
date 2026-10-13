@@ -53,7 +53,10 @@ export class UploadConversionSourceService {
     files: UploadedSourceFile[],
   ): Promise<UploadConversionSourceResult> {
     if (!files || files.length === 0) {
-      throw new BadRequestException({ code: 'NO_FILES_UPLOADED', message: 'At least one file is required' });
+      throw new BadRequestException({
+        code: 'NO_FILES_UPLOADED',
+        message: 'At least one file is required',
+      });
     }
     const organization = await this.organizationContext.resolve(userId, organizationHeader);
     this.authorization.require(organization, userId, [
@@ -117,7 +120,9 @@ export class UploadConversionSourceService {
     // its file index once), run only for COBOL projects, right after screens exist so each
     // program's analysis can be persisted onto its own screen immediately.
     if (project.conversionType === ConversionType.COBOL_TO_JAVA) {
-      const analysis = analyzeBundle(files.map((file) => ({ name: file.originalname, content: file.buffer.toString('utf8') })));
+      const analysis = analyzeBundle(
+        files.map((file) => ({ name: file.originalname, content: file.buffer.toString('utf8') })),
+      );
       const analyzedAt = new Date();
       for (const screen of screens) {
         const programAnalysis = analysis.get(screen.name);

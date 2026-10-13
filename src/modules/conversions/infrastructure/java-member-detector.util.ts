@@ -11,13 +11,16 @@ const CLASS_PATTERN = /\bpublic\s+(?:final\s+)?class\s+([A-Za-z_$][A-Za-z0-9_$]*
 // Intentionally simple (no generics/annotation edge cases) - this only needs to find the
 // real names tool2java's straightforward generated Tasklet classes actually contain, not
 // parse arbitrary Java.
-const METHOD_PATTERN = /\bpublic\s+(?:static\s+)?(?:final\s+)?[\w<>[\],.\s]+?\s+([A-Za-z_$][A-Za-z0-9_$]*)\s*\([^)]*\)\s*(?:throws\s+[\w.,\s]+)?\{/g;
+const METHOD_PATTERN =
+  /\bpublic\s+(?:static\s+)?(?:final\s+)?[\w<>[\],.\s]+?\s+([A-Za-z_$][A-Za-z0-9_$]*)\s*\([^)]*\)\s*(?:throws\s+[\w.,\s]+)?\{/g;
 
 /** Detects the real class name and public method names in each generated .java file — the
  * data a method-mapping override needs to show and let the user rename. tool2java produces
  * no structured metadata of its own, so this parses its literal output text. Never fabricates
  * a name: an unparseable file simply contributes no entries. */
-export function detectJavaMembers(files: { relativePath: string; content: string }[]): DetectedJavaMember[] {
+export function detectJavaMembers(
+  files: { relativePath: string; content: string }[],
+): DetectedJavaMember[] {
   const members: DetectedJavaMember[] = [];
   for (const file of files) {
     if (!file.relativePath.toLowerCase().endsWith('.java')) continue;

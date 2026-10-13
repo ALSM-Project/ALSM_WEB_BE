@@ -6,10 +6,7 @@ export const COBOL_JAVATRANS_PILOT_ID = 'cobol-javatrans-pilot-v1' as const;
 export type PilotSizeStratum = 'SMALL' | 'MEDIUM' | 'LARGE';
 export type EquivalenceDecision = 'CLEAN' | 'NOT_CLEAN_OR_UNCERTAIN';
 export type ReviewComparisonState =
-  | 'READY_CLEAN'
-  | 'DISAGREEMENT'
-  | 'NEEDS_REVIEW'
-  | 'NOT_CLEAN_OR_UNCERTAIN';
+  'READY_CLEAN' | 'DISAGREEMENT' | 'NEEDS_REVIEW' | 'NOT_CLEAN_OR_UNCERTAIN';
 
 export interface PilotCandidateProvenance {
   upstreamRepository: string;

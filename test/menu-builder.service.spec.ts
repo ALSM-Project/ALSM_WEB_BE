@@ -1,7 +1,11 @@
 import { BadRequestException } from '@nestjs/common';
 import { MenuBuilderService } from '../src/modules/menus/application/services/menu-builder.service';
 import { IMenuBuilderRepository } from '../src/modules/menus/domain/interfaces/menu-builder.repository.interface';
-import { ApplicationContext, MenuItemStatus, MenuItemType } from '../src/modules/menus/domain/enums/menu.enums';
+import {
+  ApplicationContext,
+  MenuItemStatus,
+  MenuItemType,
+} from '../src/modules/menus/domain/enums/menu.enums';
 
 describe('MenuBuilderService Hierarchy & Integrity Rules', () => {
   it('rejects deletion of a parent menu item that has children with exact error message', async () => {
@@ -52,8 +56,8 @@ describe('MenuBuilderService Hierarchy & Integrity Rules', () => {
 
     const service = new MenuBuilderService(mockRepo as IMenuBuilderRepository);
 
-    await expect(
-      service.updateMenuItem('item-1', { parentId: 'item-1' }),
-    ).rejects.toThrow(BadRequestException);
+    await expect(service.updateMenuItem('item-1', { parentId: 'item-1' })).rejects.toThrow(
+      BadRequestException,
+    );
   });
 });

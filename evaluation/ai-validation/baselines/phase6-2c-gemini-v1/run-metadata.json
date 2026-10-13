@@ -1,0 +1,28 @@
+{
+  "phase": "6.2C",
+  "baselineStatus": "PRELIMINARY_ENGINEERING_BASELINE",
+  "datasetId": "cobol-java-semantic-v1",
+  "datasetVersion": "1.0.0",
+  "datasetManifestSha256": "BF51EA1F968A877C2B6393103C2A558D704D6E998F73D23DE5086EAB703C513E",
+  "datasetCaseCount": 40,
+  "gitCommitSha": "aa03b334845af8891e8bb3f4eaa4f09903c1600f",
+  "provider": "gemini",
+  "model": "gemini-3.5-flash",
+  "promptVersion": "semantic-cobol-java-v1",
+  "evaluatorVersion": "1.0.0",
+  "matchingPolicyVersion": "1.0.0",
+  "locationToleranceLines": 2,
+  "generatedAt": "2026-10-06T10:54:05.304Z",
+  "totalCases": 40,
+  "executionStatusCounts": {
+    "SUCCESS": 18,
+    "VALIDATION_FAILED": 0,
+    "PROVIDER_FAILED": 22,
+    "INVALID_OUTPUT": 0
+  },
+  "smokeGateStatus": "PHASE_6_2C_SMOKE_PASS",
+  "fullRunExecutions": 1,
+  "rawResultsPath": "evaluation/ai-validation/results/phase6-2c-gemini-baseline-v1",
+  "scoringOutputPath": "evaluation/ai-validation/results/phase6-2c-gemini-baseline-v1",
+  "predictionsSha256": "d9cfaa3627c55c035814b4978e273dc2960255b39b71e33f6a1e9f10d937d02f"
+}

@@ -5,14 +5,8 @@ import {
   Injectable,
   UnauthorizedException,
 } from '@nestjs/common';
-import {
-  USER_REPOSITORY,
-  UserRepository,
-} from '../../users/domain/user.repository';
-import {
-  MFA_SECURITY,
-  MfaSecurityPort,
-} from './mfa-security.port';
+import { USER_REPOSITORY, UserRepository } from '../../users/domain/user.repository';
+import { MFA_SECURITY, MfaSecurityPort } from './mfa-security.port';
 
 export const MAX_MFA_SETUP_FAILURES = 5;
 
@@ -49,10 +43,7 @@ export class ConfirmMfaSetupService {
       });
     }
 
-    const verified = await this.security.verifyEncryptedSecret(
-      user.mfa.secret,
-      code,
-    );
+    const verified = await this.security.verifyEncryptedSecret(user.mfa.secret, code);
     if (!verified) {
       const failure = await this.users.recordMfaSetupFailure(
         user.id,

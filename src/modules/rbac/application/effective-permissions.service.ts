@@ -3,9 +3,7 @@ import { IRbacRepository, RBAC_REPOSITORY } from '../domain/rbac.repository.inte
 
 @Injectable()
 export class EffectivePermissionsService {
-  constructor(
-    @Inject(RBAC_REPOSITORY) private readonly rbacRepo: IRbacRepository,
-  ) {}
+  constructor(@Inject(RBAC_REPOSITORY) private readonly rbacRepo: IRbacRepository) {}
 
   async getUserRoles(userId: string): Promise<string[]> {
     const roleIds = await this.rbacRepo.findUserRoles(userId);

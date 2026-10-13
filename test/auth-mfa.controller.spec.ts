@@ -21,7 +21,6 @@ describe('AuthController MFA endpoints', () => {
     {} as never,
   );
 
-
   beforeEach(() => jest.clearAllMocks());
 
   it('protects setup and confirmation with JWT authentication', () => {

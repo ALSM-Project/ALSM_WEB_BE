@@ -13,7 +13,11 @@ export function loadAndScore(datasetPath: string, predictionsPath: string): Eval
 export function writeEvaluationResults(outputDirectory: string, score: EvaluationScore): void {
   const absoluteOutput = resolve(outputDirectory);
   mkdirSync(absoluteOutput, { recursive: true });
-  writeFileSync(resolve(absoluteOutput, 'metrics.json'), `${JSON.stringify(score, null, 2)}\n`, 'utf8');
+  writeFileSync(
+    resolve(absoluteOutput, 'metrics.json'),
+    `${JSON.stringify(score, null, 2)}\n`,
+    'utf8',
+  );
   writeFileSync(resolve(absoluteOutput, 'report.md'), renderEvaluationReport(score), 'utf8');
 }
 

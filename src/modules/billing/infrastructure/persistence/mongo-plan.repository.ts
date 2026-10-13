@@ -66,11 +66,7 @@ export class MongoPlanRepository implements IPlanRepository {
 
   async createOrUpdate(plan: Omit<PlanProps, 'id'>): Promise<PlanProps> {
     const doc = await this.model
-      .findOneAndUpdate(
-        { tier: plan.tier },
-        { $set: plan },
-        { new: true, upsert: true },
-      )
+      .findOneAndUpdate({ tier: plan.tier }, { $set: plan }, { new: true, upsert: true })
       .exec();
     return this.toDomain(doc);
   }

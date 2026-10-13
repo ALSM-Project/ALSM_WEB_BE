@@ -1,7 +1,22 @@
-import { Body, Controller, Delete, Get, Param, Patch, Post, Query, UseGuards } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  Delete,
+  Get,
+  Param,
+  Patch,
+  Post,
+  Query,
+  UseGuards,
+} from '@nestjs/common';
 import { ApiBearerAuth, ApiQuery, ApiTags } from '@nestjs/swagger';
 import { MenuBuilderService } from '../../application/services/menu-builder.service';
-import { CreateMenuItemDto, MoveMenuItemDto, ReorderMenuItemsDto, UpdateMenuItemDto } from '../dto/menu.dto';
+import {
+  CreateMenuItemDto,
+  MoveMenuItemDto,
+  ReorderMenuItemsDto,
+  UpdateMenuItemDto,
+} from '../dto/menu.dto';
 import { JwtAuthGuard } from '../../../../shared/security/jwt-auth.guard';
 import { PermissionsGuard } from '../../../../shared/security/permissions.guard';
 import { RequirePermissions } from '../../../../shared/security/require-permissions.decorator';

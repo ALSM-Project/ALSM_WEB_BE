@@ -28,9 +28,7 @@ describe('MongoUserRepository MFA query safety', () => {
   it('selects secret material only for the dedicated MFA read', async () => {
     await repository.findByIdForMfa('user-1');
 
-    expect(query.select).toHaveBeenCalledWith(
-      '+mfa.secret +mfa.backupCodeHashes',
-    );
+    expect(query.select).toHaveBeenCalledWith('+mfa.secret +mfa.backupCodeHashes');
   });
 
   it('uses a compare-and-set update that resets exactly at five failed attempts', async () => {

@@ -32,6 +32,14 @@ export class MongoUserRepository implements UserRepository {
     await this.model.updateOne({ _id: userId }, { $set: { isEmailVerified: true } }).exec();
   }
 
+  async updateStatus(id: string, isActive: boolean): Promise<void> {
+    await this.model.updateOne({ _id: id }, { $set: { isActive } }).exec();
+  }
+
+  async clearMustChangePassword(userId: string): Promise<void> {
+    await this.model.updateOne({ _id: userId }, { $set: { mustChangePassword: false } }).exec();
+  }
+
   async findByIdForMfa(id: string): Promise<UserRecord | null> {
     const doc = await this.model.findById(id).select('+mfa.secret +mfa.backupCodeHashes').exec();
     return doc ? this.map(doc) : null;
@@ -133,6 +141,7 @@ export class MongoUserRepository implements UserRepository {
       isPlatformAdmin: doc.isPlatformAdmin,
       isActive: doc.isActive,
       isEmailVerified: doc.isEmailVerified ?? true,
+      mustChangePassword: doc.mustChangePassword ?? false,
       mfa: {
         enabled: doc.mfa?.enabled ?? false,
         secret: doc.mfa?.secret ?? null,

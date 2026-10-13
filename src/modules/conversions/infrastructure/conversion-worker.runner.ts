@@ -8,7 +8,11 @@ import {
   ConversionJobRepository,
 } from '../domain/conversion-job.types';
 import { CONVERSION_QUEUE_NAME } from './bullmq-conversion.queue';
-import { SCREEN_REPOSITORY, ScreenRepository, ScreenStatus } from '../../screens/domain/screen.types';
+import {
+  SCREEN_REPOSITORY,
+  ScreenRepository,
+  ScreenStatus,
+} from '../../screens/domain/screen.types';
 import { CopybookDependencyBlockedError } from '../domain/copybook-dependency-blocked.error';
 
 @Injectable()
@@ -32,7 +36,9 @@ export class ConversionWorkerRunner implements OnModuleDestroy {
     try {
       await this.screens.updateStatus(job.screenId, job.organizationId, status);
     } catch (error) {
-      this.logger.warn(`Failed to sync screen ${job.screenId} status to ${status}: ${String(error)}`);
+      this.logger.warn(
+        `Failed to sync screen ${job.screenId} status to ${status}: ${String(error)}`,
+      );
     }
   }
 
@@ -61,7 +67,8 @@ export class ConversionWorkerRunner implements OnModuleDestroy {
           await this.jobs.markCompleted(job.id, output);
           await this.syncScreenStatus(job, ScreenStatus.COMPLETED);
         } catch (error) {
-          const message = error instanceof Error ? error.message : 'External conversion engine failed';
+          const message =
+            error instanceof Error ? error.message : 'External conversion engine failed';
           const code =
             error instanceof CopybookDependencyBlockedError
               ? 'COPYBOOK_DEPENDENCY_BLOCKED'

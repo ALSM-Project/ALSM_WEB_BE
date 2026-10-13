@@ -42,6 +42,6 @@ export class MongoMenuRepository implements IMenuRepository {
 
   async findAll(): Promise<MenuEntity[]> {
     const docs = await this.menuModel.find().exec();
-    return docs.map(d => MenuMapper.toDomain(d)!).filter(Boolean);
+    return docs.map((d) => MenuMapper.toDomain(d)!).filter(Boolean);
   }
 }

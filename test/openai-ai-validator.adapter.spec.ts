@@ -17,12 +17,8 @@ describe('OpenAiValidatorAdapter', () => {
   const adapter = new OpenAiValidatorAdapter(config as unknown as ConfigService);
   const input: AiValidationInput = {
     conversionJobId: 'job-1',
-    sourceFiles: [
-      { path: 'PROGRAM.cob', content: '1 | IDENTIFICATION DIVISION.', lineCount: 1 },
-    ],
-    targetFiles: [
-      { path: 'Program.java', content: '1 | public class Program {}', lineCount: 1 },
-    ],
+    sourceFiles: [{ path: 'PROGRAM.cob', content: '1 | IDENTIFICATION DIVISION.', lineCount: 1 }],
+    targetFiles: [{ path: 'Program.java', content: '1 | public class Program {}', lineCount: 1 }],
   };
   const validFinding = {
     category: 'LOGIC_MISMATCH',
@@ -45,9 +41,9 @@ describe('OpenAiValidatorAdapter', () => {
   });
 
   it('uses the stateless Responses API with strict structured output and no tools', async () => {
-    const fetchMock = jest.spyOn(globalThis, 'fetch').mockResolvedValue(
-      response(200, completed({ findings: [validFinding] })),
-    );
+    const fetchMock = jest
+      .spyOn(globalThis, 'fetch')
+      .mockResolvedValue(response(200, completed({ findings: [validFinding] })));
 
     await expect(adapter.validate(input)).resolves.toEqual({
       findings: [expect.objectContaining({ title: 'Conditional branch differs', confidence: 0.8 })],
@@ -116,9 +112,11 @@ describe('OpenAiValidatorAdapter', () => {
   });
 
   it('rejects excessive findings', async () => {
-    jest.spyOn(globalThis, 'fetch').mockResolvedValue(
-      response(200, completed({ findings: [validFinding, validFinding, validFinding] })),
-    );
+    jest
+      .spyOn(globalThis, 'fetch')
+      .mockResolvedValue(
+        response(200, completed({ findings: [validFinding, validFinding, validFinding] })),
+      );
 
     await expect(adapter.validate(input)).rejects.toMatchObject({
       code: 'AI_PROVIDER_RESPONSE_INVALID',
@@ -143,10 +141,11 @@ describe('OpenAiValidatorAdapter', () => {
   });
 
   it('returns a sanitized timeout error', async () => {
-    jest.spyOn(globalThis, 'fetch').mockImplementation((_url, init) =>
-      new Promise((_resolve, reject) => {
-        init?.signal?.addEventListener('abort', () => reject(new Error('request body leaked')));
-      }),
+    jest.spyOn(globalThis, 'fetch').mockImplementation(
+      (_url, init) =>
+        new Promise((_resolve, reject) => {
+          init?.signal?.addEventListener('abort', () => reject(new Error('request body leaked')));
+        }),
     );
 
     await expect(adapter.validate(input)).rejects.toMatchObject({
@@ -180,9 +179,11 @@ describe('OpenAiValidatorAdapter', () => {
   });
 
   it('rejects incomplete and refusal responses without exposing provider content', async () => {
-    jest.spyOn(globalThis, 'fetch').mockResolvedValueOnce(
-      response(200, { status: 'incomplete', output: [], raw: 'source body' }),
-    );
+    jest
+      .spyOn(globalThis, 'fetch')
+      .mockResolvedValueOnce(
+        response(200, { status: 'incomplete', output: [], raw: 'source body' }),
+      );
     await expect(adapter.validate(input)).rejects.toMatchObject({
       code: 'AI_PROVIDER_RESPONSE_INVALID',
     });

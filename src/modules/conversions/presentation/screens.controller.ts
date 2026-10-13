@@ -9,7 +9,14 @@ import {
   UseInterceptors,
 } from '@nestjs/common';
 import { FilesInterceptor } from '@nestjs/platform-express';
-import { ApiBearerAuth, ApiConsumes, ApiOperation, ApiParam, ApiResponse, ApiTags } from '@nestjs/swagger';
+import {
+  ApiBearerAuth,
+  ApiConsumes,
+  ApiOperation,
+  ApiParam,
+  ApiResponse,
+  ApiTags,
+} from '@nestjs/swagger';
 import { JwtAuthGuard } from '../../../shared/security/jwt-auth.guard';
 import { ScreenService, UploadedFileItem } from '../application/screen.service';
 
@@ -41,10 +48,7 @@ export class ScreensController {
   @ApiParam({ name: 'projectId', description: 'Project ID' })
   @ApiParam({ name: 'screenId', description: 'Screen ID' })
   @ApiResponse({ status: 200, description: 'Screen deleted successfully' })
-  async deleteScreen(
-    @Param('projectId') projectId: string,
-    @Param('screenId') screenId: string,
-  ) {
+  async deleteScreen(@Param('projectId') projectId: string, @Param('screenId') screenId: string) {
     return this.screenService.deleteScreen(projectId, screenId);
   }
 

@@ -1,3 +1,6 @@
+import { AiProviderDiagnostics } from '../../../src/modules/validation/domain/ai-provider-diagnostics';
+import { ModelProvenance, ProvenancePolicy } from './model-provenance';
+import type { ProviderFailurePolicy } from './provider-failure-policy';
 import {
   ValidationFindingCategory,
   ValidationFindingSeverity,
@@ -91,17 +94,21 @@ export interface PredictedEvaluationFinding {
 }
 
 export interface EvaluationPredictionCase {
+  modelProvenance?: ModelProvenance;
   caseId: string;
   status: EvaluationCaseStatus;
   latencyMs?: number;
   findings?: PredictedEvaluationFinding[];
   failure?: {
+    diagnostics?: AiProviderDiagnostics;
     code: string;
     message: string;
   };
 }
 
 export interface AiEvaluationPredictions {
+  providerFailurePolicy?: ProviderFailurePolicy;
+  provenancePolicy?: ProvenancePolicy;
   datasetId: string;
   datasetVersion: string;
   evaluatorVersion: string;

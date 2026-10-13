@@ -16,7 +16,8 @@ export class AiValidationRuntimeGuard {
         message: 'AI validation is disabled',
       });
     }
-    if (this.config.get<string>('AI_PROVIDER') !== 'openai') {
+    const provider = this.config.get<string>('AI_PROVIDER');
+    if (provider !== 'openai' && provider !== 'gemini') {
       throw new ServiceUnavailableException({
         code: 'VALIDATION_AI_PROVIDER_UNSUPPORTED',
         message: 'A supported AI validation provider is not configured',
@@ -24,7 +25,7 @@ export class AiValidationRuntimeGuard {
     }
 
     const metadata = this.validator.getMetadata();
-    if (metadata.provider !== 'openai') {
+    if (metadata.provider !== provider) {
       throw new ServiceUnavailableException({
         code: 'VALIDATION_AI_PROVIDER_UNSUPPORTED',
         message: 'A supported AI validation provider is not configured',

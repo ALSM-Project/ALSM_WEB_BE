@@ -27,7 +27,12 @@ export interface IRbacUser {
 export interface IRbacRepository {
   findRoles(): Promise<IRole[]>;
   findRoleById(id: string): Promise<IRole | null>;
-  createRole(data: { id: string; name: string; description: string; isSystem: boolean }): Promise<IRole>;
+  createRole(data: {
+    id: string;
+    name: string;
+    description: string;
+    isSystem: boolean;
+  }): Promise<IRole>;
   updateRole(id: string, data: { name?: string; description?: string }): Promise<IRole | null>;
   deleteRole(id: string): Promise<void>;
   countUsersWithRole(roleId: string): Promise<number>;
@@ -36,8 +41,16 @@ export interface IRbacRepository {
 
   findPermissions(): Promise<IPermission[]>;
   findPermissionByKey(key: string): Promise<IPermission | null>;
-  createPermission(data: { key: string; label: string; group: string; description: string }): Promise<IPermission>;
-  updatePermission(key: string, data: { label?: string; group?: string; description?: string }): Promise<IPermission | null>;
+  createPermission(data: {
+    key: string;
+    label: string;
+    group: string;
+    description: string;
+  }): Promise<IPermission>;
+  updatePermission(
+    key: string,
+    data: { label?: string; group?: string; description?: string },
+  ): Promise<IPermission | null>;
   deletePermission(key: string): Promise<void>;
   deleteRolePermissionsByPermissionKey(permissionKey: string): Promise<void>;
 

@@ -1,10 +1,7 @@
 import { BadRequestException, Injectable } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import * as path from 'path';
-import {
-  AiValidationCodeFile,
-  AiValidationInput,
-} from '../domain/ai-validator.port';
+import { AiValidationCodeFile, AiValidationInput } from '../domain/ai-validator.port';
 import { ValidationCodeFile, ValidationContext } from '../domain/validation-context.types';
 import { ValidationSecretRedactorService } from './validation-secret-redactor.service';
 

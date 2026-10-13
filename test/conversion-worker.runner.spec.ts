@@ -67,7 +67,10 @@ describe('ConversionWorkerRunner', () => {
       screenId: 'scr-1',
       conversionType: 'BMS_DSPF_TO_FRONTEND',
     });
-    engine.execute.mockResolvedValue({ resultReference: 'results/p1/job-1', toolVersion: 'convert2fe' });
+    engine.execute.mockResolvedValue({
+      resultReference: 'results/p1/job-1',
+      toolVersion: 'convert2fe',
+    });
 
     runner.start();
     expect(capturedProcessor).toBeDefined();
@@ -78,8 +81,18 @@ describe('ConversionWorkerRunner', () => {
       toolVersion: 'convert2fe',
     });
     expect(jobs.markFailed).not.toHaveBeenCalled();
-    expect(screens.updateStatus).toHaveBeenNthCalledWith(1, 'scr-1', 'org-1', ScreenStatus.PROCESSING);
-    expect(screens.updateStatus).toHaveBeenNthCalledWith(2, 'scr-1', 'org-1', ScreenStatus.COMPLETED);
+    expect(screens.updateStatus).toHaveBeenNthCalledWith(
+      1,
+      'scr-1',
+      'org-1',
+      ScreenStatus.PROCESSING,
+    );
+    expect(screens.updateStatus).toHaveBeenNthCalledWith(
+      2,
+      'scr-1',
+      'org-1',
+      ScreenStatus.COMPLETED,
+    );
   });
 
   it('marks the job failed and rethrows when the engine rejects on the final attempt', async () => {
@@ -99,10 +112,18 @@ describe('ConversionWorkerRunner', () => {
 
     runner.start();
     await expect(
-      capturedProcessor!({ data: { conversionJobId: 'job-1' }, attemptsMade: 2, opts: { attempts: 3 } }),
+      capturedProcessor!({
+        data: { conversionJobId: 'job-1' },
+        attemptsMade: 2,
+        opts: { attempts: 3 },
+      }),
     ).rejects.toThrow('tool crashed');
 
-    expect(jobs.markFailed).toHaveBeenCalledWith('job-1', 'CONVERSION_ENGINE_UNAVAILABLE', 'tool crashed');
+    expect(jobs.markFailed).toHaveBeenCalledWith(
+      'job-1',
+      'CONVERSION_ENGINE_UNAVAILABLE',
+      'tool crashed',
+    );
     expect(jobs.markCompleted).not.toHaveBeenCalled();
     // No screenId on this job — status sync must be skipped entirely, not called with undefined.
     expect(screens.updateStatus).not.toHaveBeenCalled();
@@ -135,7 +156,11 @@ describe('ConversionWorkerRunner', () => {
     // attemptsMade: 0 with attempts: 3 means this is the FIRST of 3 attempts — BullMQ will
     // redeliver this same job twice more, so the Mongo record must stay processable.
     await expect(
-      capturedProcessor!({ data: { conversionJobId: 'job-1' }, attemptsMade: 0, opts: { attempts: 3 } }),
+      capturedProcessor!({
+        data: { conversionJobId: 'job-1' },
+        attemptsMade: 0,
+        opts: { attempts: 3 },
+      }),
     ).rejects.toThrow('tool crashed');
 
     expect(jobs.markFailed).not.toHaveBeenCalled();
@@ -161,9 +186,13 @@ describe('ConversionWorkerRunner', () => {
     screens.updateStatus.mockRejectedValue(new Error('screens collection unavailable'));
 
     runner.start();
-    await expect(capturedProcessor!({ data: { conversionJobId: 'job-1' } })).resolves.toBeUndefined();
+    await expect(
+      capturedProcessor!({ data: { conversionJobId: 'job-1' } }),
+    ).resolves.toBeUndefined();
 
-    expect(jobs.markCompleted).toHaveBeenCalledWith('job-1', { resultReference: 'results/p1/job-1' });
+    expect(jobs.markCompleted).toHaveBeenCalledWith('job-1', {
+      resultReference: 'results/p1/job-1',
+    });
   });
 
   it('skips processing when the job could not be marked processing (already consumed/cancelled)', async () => {

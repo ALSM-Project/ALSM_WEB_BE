@@ -18,7 +18,11 @@ export class ConversionQualityReview {
   @Prop({ index: true })
   screenId?: string;
 
-  @Prop({ enum: ConversionQualityReviewStatus, required: true, default: ConversionQualityReviewStatus.PENDING })
+  @Prop({
+    enum: ConversionQualityReviewStatus,
+    required: true,
+    default: ConversionQualityReviewStatus.PENDING,
+  })
   status!: ConversionQualityReviewStatus;
 
   @Prop({ type: String })

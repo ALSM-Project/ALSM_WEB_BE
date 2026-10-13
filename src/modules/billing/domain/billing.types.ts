@@ -17,6 +17,7 @@ export enum BillingCycle {
 export enum SubscriptionStatus {
   TRIAL = 'TRIAL',
   ACTIVE = 'ACTIVE',
+  SUSPENDED = 'SUSPENDED',
   CANCELLED = 'CANCELLED',
   EXPIRED = 'EXPIRED',
   PENDING_PAYMENT = 'PENDING_PAYMENT',
@@ -46,9 +47,9 @@ export interface SubscriptionPlanDefinition {
   monthlyPriceVnd: number;
   annualPriceVnd: number;
   isPopular: boolean;
-  maxProjects: number;       // -1 = unlimited
+  maxProjects: number; // -1 = unlimited
   maxScreensPerMonth: number; // -1 = unlimited
-  storageGb: number;         // -1 = unlimited
+  storageGb: number; // -1 = unlimited
   features: string[];
 }
 
@@ -135,6 +136,10 @@ export const VIETQR_BANK_CONFIG = DEFAULT_BANK_CONFIG;
 export enum QuoteRequestStatus {
   PENDING = 'PENDING',
   CONTACTED = 'CONTACTED',
+  APPROVED = 'APPROVED',
+  SUSPENDED = 'SUSPENDED',
+  REJECTED = 'REJECTED',
+  // Retained for older quote requests. New requests should use APPROVED or REJECTED.
   CLOSED = 'CLOSED',
 }
 
@@ -143,4 +148,3 @@ export const SUBSCRIPTION_REPOSITORY = Symbol('SUBSCRIPTION_REPOSITORY');
 export const INVOICE_REPOSITORY = Symbol('INVOICE_REPOSITORY');
 export const PAYMENT_REPOSITORY = Symbol('PAYMENT_REPOSITORY');
 export const QUOTE_REQUEST_REPOSITORY = Symbol('QUOTE_REQUEST_REPOSITORY');
-

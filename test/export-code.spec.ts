@@ -133,7 +133,12 @@ describe('ExportCodeService & ExportController', () => {
       selectedScreenIds: ['scr-login'],
     };
 
-    const { buffer, filename } = await service.generateZipBuffer('user-1', undefined, 'proj-acme', config);
+    const { buffer, filename } = await service.generateZipBuffer(
+      'user-1',
+      undefined,
+      'proj-acme',
+      config,
+    );
     expect(buffer).toBeInstanceOf(Buffer);
     expect(filename).toContain('.zip');
   });

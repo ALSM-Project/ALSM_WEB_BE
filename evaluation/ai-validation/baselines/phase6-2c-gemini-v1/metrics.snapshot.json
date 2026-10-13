@@ -1,0 +1,385 @@
+{
+  "execution": {
+    "totalCases": 40,
+    "successfulCases": 18,
+    "failedCases": 22,
+    "missingCases": 0,
+    "failuresByStatus": {
+      "PROVIDER_FAILED": 22
+    }
+  },
+  "successfulCases": {
+    "micro": {
+      "truePositives": 5,
+      "falsePositives": 16,
+      "falseNegatives": 4,
+      "precision": 0.23809523809523808,
+      "recall": 0.5555555555555556,
+      "f1": 0.33333333333333326
+    },
+    "categories": [
+      {
+        "category": "DATA_TYPE_MISMATCH",
+        "truePositives": 2,
+        "falsePositives": 2,
+        "falseNegatives": 1,
+        "expectedCount": 3,
+        "predictedCount": 4,
+        "precision": 0.5,
+        "recall": 0.6666666666666666,
+        "f1": 0.5714285714285715
+      },
+      {
+        "category": "VARIABLE_MAPPING_MISMATCH",
+        "truePositives": 0,
+        "falsePositives": 1,
+        "falseNegatives": 2,
+        "expectedCount": 2,
+        "predictedCount": 1,
+        "precision": 0,
+        "recall": 0,
+        "f1": 0
+      },
+      {
+        "category": "LOGIC_MISMATCH",
+        "truePositives": 0,
+        "falsePositives": 6,
+        "falseNegatives": 0,
+        "expectedCount": 0,
+        "predictedCount": 6,
+        "precision": 0,
+        "recall": 0,
+        "f1": 0
+      },
+      {
+        "category": "CONTROL_FLOW_MISMATCH",
+        "truePositives": 0,
+        "falsePositives": 1,
+        "falseNegatives": 0,
+        "expectedCount": 0,
+        "predictedCount": 1,
+        "precision": 0,
+        "recall": 0,
+        "f1": 0
+      },
+      {
+        "category": "FILE_IO_MISMATCH",
+        "truePositives": 2,
+        "falsePositives": 1,
+        "falseNegatives": 0,
+        "expectedCount": 2,
+        "predictedCount": 3,
+        "precision": 0.6666666666666666,
+        "recall": 1,
+        "f1": 0.8
+      },
+      {
+        "category": "DATABASE_MISMATCH",
+        "truePositives": 0,
+        "falsePositives": 0,
+        "falseNegatives": 0,
+        "expectedCount": 0,
+        "predictedCount": 0,
+        "precision": 0,
+        "recall": 0,
+        "f1": 0
+      },
+      {
+        "category": "ENCODING_MISMATCH",
+        "truePositives": 0,
+        "falsePositives": 0,
+        "falseNegatives": 0,
+        "expectedCount": 0,
+        "predictedCount": 0,
+        "precision": 0,
+        "recall": 0,
+        "f1": 0
+      },
+      {
+        "category": "MISSING_OPERATION",
+        "truePositives": 1,
+        "falsePositives": 0,
+        "falseNegatives": 1,
+        "expectedCount": 2,
+        "predictedCount": 1,
+        "precision": 1,
+        "recall": 0.5,
+        "f1": 0.6666666666666666
+      },
+      {
+        "category": "UNSUPPORTED_CONSTRUCT",
+        "truePositives": 0,
+        "falsePositives": 0,
+        "falseNegatives": 0,
+        "expectedCount": 0,
+        "predictedCount": 0,
+        "precision": 0,
+        "recall": 0,
+        "f1": 0
+      },
+      {
+        "category": "POTENTIAL_BEHAVIOR_CHANGE",
+        "truePositives": 0,
+        "falsePositives": 5,
+        "falseNegatives": 0,
+        "expectedCount": 0,
+        "predictedCount": 5,
+        "precision": 0,
+        "recall": 0,
+        "f1": 0
+      }
+    ],
+    "macro": {
+      "includedCategories": [
+        "DATA_TYPE_MISMATCH",
+        "VARIABLE_MAPPING_MISMATCH",
+        "FILE_IO_MISMATCH",
+        "MISSING_OPERATION"
+      ],
+      "precision": 0.5416666666666666,
+      "recall": 0.5416666666666666,
+      "f1": 0.5095238095238095
+    }
+  },
+  "conservative": {
+    "micro": {
+      "truePositives": 5,
+      "falsePositives": 16,
+      "falseNegatives": 25,
+      "precision": 0.23809523809523808,
+      "recall": 0.16666666666666666,
+      "f1": 0.19607843137254902
+    },
+    "categories": [
+      {
+        "category": "DATA_TYPE_MISMATCH",
+        "truePositives": 2,
+        "falsePositives": 2,
+        "falseNegatives": 1,
+        "expectedCount": 3,
+        "predictedCount": 4,
+        "precision": 0.5,
+        "recall": 0.6666666666666666,
+        "f1": 0.5714285714285715
+      },
+      {
+        "category": "VARIABLE_MAPPING_MISMATCH",
+        "truePositives": 0,
+        "falsePositives": 1,
+        "falseNegatives": 3,
+        "expectedCount": 3,
+        "predictedCount": 1,
+        "precision": 0,
+        "recall": 0,
+        "f1": 0
+      },
+      {
+        "category": "LOGIC_MISMATCH",
+        "truePositives": 0,
+        "falsePositives": 6,
+        "falseNegatives": 3,
+        "expectedCount": 3,
+        "predictedCount": 6,
+        "precision": 0,
+        "recall": 0,
+        "f1": 0
+      },
+      {
+        "category": "CONTROL_FLOW_MISMATCH",
+        "truePositives": 0,
+        "falsePositives": 1,
+        "falseNegatives": 3,
+        "expectedCount": 3,
+        "predictedCount": 1,
+        "precision": 0,
+        "recall": 0,
+        "f1": 0
+      },
+      {
+        "category": "FILE_IO_MISMATCH",
+        "truePositives": 2,
+        "falsePositives": 1,
+        "falseNegatives": 1,
+        "expectedCount": 3,
+        "predictedCount": 3,
+        "precision": 0.6666666666666666,
+        "recall": 0.6666666666666666,
+        "f1": 0.6666666666666666
+      },
+      {
+        "category": "DATABASE_MISMATCH",
+        "truePositives": 0,
+        "falsePositives": 0,
+        "falseNegatives": 3,
+        "expectedCount": 3,
+        "predictedCount": 0,
+        "precision": 0,
+        "recall": 0,
+        "f1": 0
+      },
+      {
+        "category": "ENCODING_MISMATCH",
+        "truePositives": 0,
+        "falsePositives": 0,
+        "falseNegatives": 3,
+        "expectedCount": 3,
+        "predictedCount": 0,
+        "precision": 0,
+        "recall": 0,
+        "f1": 0
+      },
+      {
+        "category": "MISSING_OPERATION",
+        "truePositives": 1,
+        "falsePositives": 0,
+        "falseNegatives": 2,
+        "expectedCount": 3,
+        "predictedCount": 1,
+        "precision": 1,
+        "recall": 0.3333333333333333,
+        "f1": 0.5
+      },
+      {
+        "category": "UNSUPPORTED_CONSTRUCT",
+        "truePositives": 0,
+        "falsePositives": 0,
+        "falseNegatives": 3,
+        "expectedCount": 3,
+        "predictedCount": 0,
+        "precision": 0,
+        "recall": 0,
+        "f1": 0
+      },
+      {
+        "category": "POTENTIAL_BEHAVIOR_CHANGE",
+        "truePositives": 0,
+        "falsePositives": 5,
+        "falseNegatives": 3,
+        "expectedCount": 3,
+        "predictedCount": 5,
+        "precision": 0,
+        "recall": 0,
+        "f1": 0
+      }
+    ],
+    "macro": {
+      "includedCategories": [
+        "DATA_TYPE_MISMATCH",
+        "VARIABLE_MAPPING_MISMATCH",
+        "LOGIC_MISMATCH",
+        "CONTROL_FLOW_MISMATCH",
+        "FILE_IO_MISMATCH",
+        "DATABASE_MISMATCH",
+        "ENCODING_MISMATCH",
+        "MISSING_OPERATION",
+        "UNSUPPORTED_CONSTRUCT",
+        "POTENTIAL_BEHAVIOR_CHANGE"
+      ],
+      "precision": 0.21666666666666665,
+      "recall": 0.16666666666666666,
+      "f1": 0.1738095238095238
+    }
+  },
+  "cleanCases": {
+    "successfulCleanCases": 9,
+    "cleanCasesWithAnyPrediction": 8,
+    "cleanCaseFalsePositiveRate": 0.8888888888888888,
+    "totalFindingsOnCleanCases": 10
+  },
+  "mutationDetection": {
+    "successful": {
+      "mutatedCases": 9,
+      "mutatedCasesDetected": 5,
+      "mutationDetectionRate": 0.5555555555555556
+    },
+    "conservative": {
+      "mutatedCases": 30,
+      "mutatedCasesDetected": 5,
+      "mutationDetectionRate": 0.16666666666666666
+    },
+    "mutations": {
+      "total": 30,
+      "detected": 5,
+      "detectionRate": 0.16666666666666666
+    }
+  },
+  "severityAgreement": {
+    "exactMatches": 5,
+    "totalMatchedFindings": 5,
+    "severityAgreementRate": 1,
+    "confusionMatrix": {
+      "LOW": {
+        "LOW": 0,
+        "MEDIUM": 0,
+        "HIGH": 0,
+        "CRITICAL": 0
+      },
+      "MEDIUM": {
+        "LOW": 0,
+        "MEDIUM": 0,
+        "HIGH": 0,
+        "CRITICAL": 0
+      },
+      "HIGH": {
+        "LOW": 0,
+        "MEDIUM": 0,
+        "HIGH": 4,
+        "CRITICAL": 0
+      },
+      "CRITICAL": {
+        "LOW": 0,
+        "MEDIUM": 0,
+        "HIGH": 0,
+        "CRITICAL": 1
+      }
+    }
+  },
+  "categoryAgreement": {
+    "primaryCategoryExactMatches": 5,
+    "acceptedCategoryMatches": 0,
+    "totalMatchedFindings": 5,
+    "primaryCategoryExactRate": 1
+  },
+  "locationAgreement": {
+    "source": {
+      "comparable": 5,
+      "exact": 0,
+      "tolerant": 5,
+      "exactRate": 0,
+      "tolerantRate": 1
+    },
+    "target": {
+      "comparable": 5,
+      "exact": 3,
+      "tolerant": 5,
+      "exactRate": 0.6,
+      "tolerantRate": 1
+    }
+  },
+  "executionStatusCounts": {
+    "SUCCESS": 18,
+    "VALIDATION_FAILED": 0,
+    "PROVIDER_FAILED": 22,
+    "INVALID_OUTPUT": 0
+  },
+  "latency": {
+    "successfulCases": {
+      "recordedCases": 18,
+      "minMs": 4387,
+      "maxMs": 13365,
+      "meanMs": 7405.111111111111,
+      "medianMs": 7306.5,
+      "p95Ms": 13365,
+      "p95Method": "nearest-rank: sorted[ceil(0.95*n)-1]"
+    },
+    "allRecordedCases": {
+      "recordedCases": 40,
+      "minMs": 767,
+      "maxMs": 13365,
+      "meanMs": 3781.675,
+      "medianMs": 868.5,
+      "p95Ms": 9837,
+      "p95Method": "nearest-rank: sorted[ceil(0.95*n)-1]"
+    }
+  }
+}

@@ -1,6 +1,9 @@
 import { ConfigService } from '@nestjs/config';
 import { Queue } from 'bullmq';
-import { BullMqConversionQueue, CONVERSION_QUEUE_NAME } from '../src/modules/conversions/infrastructure/bullmq-conversion.queue';
+import {
+  BullMqConversionQueue,
+  CONVERSION_QUEUE_NAME,
+} from '../src/modules/conversions/infrastructure/bullmq-conversion.queue';
 import { ConversionPriority } from '../src/modules/conversions/domain/conversion-job.types';
 
 const add = jest.fn();
@@ -41,7 +44,9 @@ describe('BullMqConversionQueue', () => {
 
     expect(Queue).toHaveBeenCalledWith(
       CONVERSION_QUEUE_NAME,
-      expect.objectContaining({ connection: expect.objectContaining({ host: 'localhost', port: 6379 }) }),
+      expect.objectContaining({
+        connection: expect.objectContaining({ host: 'localhost', port: 6379 }),
+      }),
     );
     expect(add).toHaveBeenCalledWith(
       'execute-conversion',
@@ -57,7 +62,9 @@ describe('BullMqConversionQueue', () => {
     add.mockRejectedValue(new Error('Redis connection lost'));
     const queue = new BullMqConversionQueue(config);
 
-    await expect(queue.enqueue('job-1', ConversionPriority.NORMAL)).rejects.toThrow('Redis connection lost');
+    await expect(queue.enqueue('job-1', ConversionPriority.NORMAL)).rejects.toThrow(
+      'Redis connection lost',
+    );
   });
 
   it('throws instead of silently no-op-ing when the worker/queue is disabled', async () => {

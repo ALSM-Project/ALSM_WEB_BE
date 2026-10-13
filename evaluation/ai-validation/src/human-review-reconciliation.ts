@@ -65,7 +65,9 @@ export function validatePilotReview(
       decision.sourceSha256 !== candidate.sourceSha256 ||
       decision.targetSha256 !== candidate.targetSha256
     ) {
-      throw new Error(`Invalid pilot review: source/target hash mismatch for ${decision.candidateId}`);
+      throw new Error(
+        `Invalid pilot review: source/target hash mismatch for ${decision.candidateId}`,
+      );
     }
     assertNullableString(decision.reviewerId, 'reviewerId', decision.candidateId);
     assertNullableString(decision.reviewedAt, 'reviewedAt', decision.candidateId);
@@ -91,7 +93,9 @@ export function validatePilotReview(
       throw new Error('Invalid pilot review: every selected candidate requires a decision');
     }
     const incomplete = selection.selectedCandidates.find((candidate) => {
-      const decision = review.decisions.find((entry) => entry.candidateId === candidate.candidateId);
+      const decision = review.decisions.find(
+        (entry) => entry.candidateId === candidate.candidateId,
+      );
       return !decision || !isCompleteDecision(decision);
     });
     if (incomplete) {
@@ -156,11 +160,7 @@ export function finalizeCleanReviewManifest(
   finalizationValue: unknown,
 ): ImportedReviewManifest | null {
   const candidates = validateImportedCandidateManifest(candidateValue);
-  const selection = validatePilotSelection(
-    selectionValue,
-    candidates,
-    sourceCandidateManifestHash,
-  );
+  const selection = validatePilotSelection(selectionValue, candidates, sourceCandidateManifestHash);
   if (candidates.licenseStatus !== 'RECORDED') {
     throw new Error('Clean finalization requires licenseStatus RECORDED');
   }
@@ -248,18 +248,19 @@ function comparisonState(
   reviewerA: PilotReviewDecision | null,
   reviewerB: PilotReviewDecision | null,
 ): ReviewComparisonState {
-  if (!reviewerA || !reviewerB || !isCompleteDecision(reviewerA) || !isCompleteDecision(reviewerB)) {
+  if (
+    !reviewerA ||
+    !reviewerB ||
+    !isCompleteDecision(reviewerA) ||
+    !isCompleteDecision(reviewerB)
+  ) {
     return 'NEEDS_REVIEW';
   }
   if (reviewerA.equivalenceDecision !== reviewerB.equivalenceDecision) return 'DISAGREEMENT';
-  return reviewerA.equivalenceDecision === 'CLEAN'
-    ? 'READY_CLEAN'
-    : 'NOT_CLEAN_OR_UNCERTAIN';
+  return reviewerA.equivalenceDecision === 'CLEAN' ? 'READY_CLEAN' : 'NOT_CLEAN_OR_UNCERTAIN';
 }
 
-function isCompleteDecision(
-  decision: PilotReviewDecision,
-): decision is PilotReviewDecision & {
+function isCompleteDecision(decision: PilotReviewDecision): decision is PilotReviewDecision & {
   reviewerId: string;
   reviewedAt: string;
   equivalenceDecision: EquivalenceDecision;

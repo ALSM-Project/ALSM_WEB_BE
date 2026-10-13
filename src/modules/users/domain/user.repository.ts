@@ -13,6 +13,7 @@ export interface UserRecord {
   isPlatformAdmin: boolean;
   isActive: boolean;
   isEmailVerified: boolean;
+  mustChangePassword: boolean;
   mfa: MfaState;
   createdAt: Date;
   updatedAt: Date;
@@ -23,11 +24,19 @@ export interface MfaSetupFailureResult {
 }
 
 export interface UserRepository {
-  create(input: Pick<UserRecord, 'email' | 'passwordHash' | 'fullName'> & { isEmailVerified?: boolean }): Promise<UserRecord>;
+  create(
+    input: Pick<UserRecord, 'email' | 'passwordHash' | 'fullName'> & {
+      isEmailVerified?: boolean;
+      isActive?: boolean;
+      mustChangePassword?: boolean;
+    },
+  ): Promise<UserRecord>;
   findByEmail(email: string): Promise<UserRecord | null>;
   findById(id: string): Promise<UserRecord | null>;
   updatePassword(id: string, passwordHash: string): Promise<void>;
   markEmailVerified(userId: string): Promise<void>;
+  updateStatus(id: string, isActive: boolean): Promise<void>;
+  clearMustChangePassword(userId: string): Promise<void>;
   findByIdForMfa(id: string): Promise<UserRecord | null>;
   beginMfaSetup(userId: string, encryptedSecret: string): Promise<UserRecord | null>;
   completeMfaSetup(

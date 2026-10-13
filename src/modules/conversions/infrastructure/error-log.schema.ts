@@ -18,7 +18,8 @@ export class ErrorLog {
   @Prop({ required: true }) screenName!: string;
   @Prop({ required: true }) errorCode!: string;
   @Prop({ enum: ErrorLogSeverity, required: true, index: true }) severity!: ErrorLogSeverity;
-  @Prop({ enum: ErrorLogStatus, required: true, default: ErrorLogStatus.UNRESOLVED, index: true }) status!: ErrorLogStatus;
+  @Prop({ enum: ErrorLogStatus, required: true, default: ErrorLogStatus.UNRESOLVED, index: true })
+  status!: ErrorLogStatus;
   @Prop({ required: true }) lineNumber!: number;
   @Prop({ required: true }) offendingCode!: string;
   @Prop({ type: SuggestedPatchSchema, required: true }) suggestedPatch!: SuggestedPatchSchema;

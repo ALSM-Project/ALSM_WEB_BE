@@ -1,7 +1,10 @@
 import { loadAndScore, parseNamedArguments, writeEvaluationResults } from './evaluation.io';
 
 function main(): void {
-  const args = parseNamedArguments(process.argv.slice(2), new Set(['dataset', 'predictions', 'output']));
+  const args = parseNamedArguments(
+    process.argv.slice(2),
+    new Set(['dataset', 'predictions', 'output']),
+  );
   const dataset = required(args, 'dataset');
   const predictions = required(args, 'predictions');
   const output = required(args, 'output');

@@ -105,6 +105,9 @@ export class ErrorLogService {
   }
 
   private notFound(): NotFoundException {
-    return new NotFoundException({ code: 'ERROR_LOG_NOT_FOUND', message: 'Error log was not found' });
+    return new NotFoundException({
+      code: 'ERROR_LOG_NOT_FOUND',
+      message: 'Error log was not found',
+    });
   }
 }

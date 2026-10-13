@@ -24,7 +24,12 @@ export class ScreenService {
     organizationId: string,
     projectId: string,
     userId: string,
-    input: { name: string; sourceType: ScreenSourceType; inputReference: string; sizeBytes?: number },
+    input: {
+      name: string;
+      sourceType: ScreenSourceType;
+      inputReference: string;
+      sizeBytes?: number;
+    },
   ): Promise<ScreenRecord> {
     return this.screens.create({
       organizationId,

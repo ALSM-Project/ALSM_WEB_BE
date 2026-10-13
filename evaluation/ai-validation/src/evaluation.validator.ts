@@ -1,4 +1,15 @@
+import {
+  PROVIDER_FAILURE_CLASSES,
+  RATE_LIMIT_SCOPES,
+} from '../../../src/modules/validation/domain/ai-provider-diagnostics';
 import * as Joi from 'joi';
+import { providerFailurePolicySchema } from './provider-failure-policy';
+import {
+  modelProvenanceSchema,
+  provenancePolicySchema,
+  validateProvenance,
+  validateFinalProvenance,
+} from './model-provenance';
 import { ValidationFindingSeverity } from '../../../src/modules/validation/domain/validation-finding.types';
 import {
   AiEvaluationDataset,
@@ -89,6 +100,7 @@ const predictedFindingSchema = Joi.object({
   confidence: Joi.number().min(0).max(1),
 }).unknown(false);
 const predictionCaseSchema = Joi.object({
+  modelProvenance: modelProvenanceSchema,
   caseId: Joi.string().trim().min(1).required(),
   status: Joi.string()
     .valid('SUCCESS', 'VALIDATION_FAILED', 'PROVIDER_FAILED', 'INVALID_OUTPUT')
@@ -103,6 +115,16 @@ const predictionCaseSchema = Joi.object({
     is: 'SUCCESS',
     then: Joi.forbidden(),
     otherwise: Joi.object({
+      diagnostics: Joi.object({
+        rateLimitScope: Joi.string().valid(...RATE_LIMIT_SCOPES),
+        finalFailureClass: Joi.string()
+          .valid(...PROVIDER_FAILURE_CLASSES)
+          .required(),
+        httpStatus: Joi.number().integer().min(100).max(599).strict(),
+        attempts: Joi.number().integer().min(1).max(6).strict().required(),
+        retriesExhausted: Joi.boolean().strict().required(),
+        totalLatencyMs: Joi.number().integer().min(0).strict().required(),
+      }).unknown(false),
       code: Joi.string().trim().min(1).required(),
       message: Joi.string().trim().min(1).required(),
     })
@@ -111,6 +133,8 @@ const predictionCaseSchema = Joi.object({
   }),
 }).unknown(false);
 const predictionsSchema = Joi.object({
+  providerFailurePolicy: providerFailurePolicySchema,
+  provenancePolicy: provenancePolicySchema,
   datasetId: Joi.string().trim().min(1).required(),
   datasetVersion: Joi.string().trim().min(1).required(),
   evaluatorVersion: Joi.string().trim().min(1).required(),
@@ -181,7 +205,18 @@ export function validatePredictions(
   value: unknown,
   dataset: AiEvaluationDataset,
 ): AiEvaluationPredictions {
+  const predictions = validateCheckpointEvidence(value, dataset);
+  validateFinalProvenance(predictions);
+  return predictions;
+}
+
+/** Validate stored terminal evidence without authorizing it for a final report. */
+export function validateCheckpointEvidence(
+  value: unknown,
+  dataset: AiEvaluationDataset,
+): AiEvaluationPredictions {
   const predictions = validate<AiEvaluationPredictions>(predictionsSchema, value, 'predictions');
+  validateProvenance(predictions);
   if (predictions.datasetId !== dataset.datasetId) {
     throw new Error('Invalid predictions: datasetId does not match the dataset');
   }

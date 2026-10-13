@@ -20,7 +20,11 @@ export interface IMenuBuilderRepository {
   findMenuItemPermissionsByItemIds(itemIds: string[]): Promise<Map<string, string[]>>;
   findMenuItemPermissions(menuItemId: string): Promise<string[]>;
   createMenuItem(data: Partial<IMenuItemData>, permissions?: string[]): Promise<IMenuItemData>;
-  updateMenuItem(id: string, data: Partial<IMenuItemData>, permissions?: string[]): Promise<IMenuItemData | null>;
+  updateMenuItem(
+    id: string,
+    data: Partial<IMenuItemData>,
+    permissions?: string[],
+  ): Promise<IMenuItemData | null>;
   deleteMenuItem(id: string): Promise<void>;
   countChildren(parentId: string): Promise<number>;
   getDescendantIds(nodeId: string): Promise<string[]>;
@@ -40,7 +44,10 @@ export interface IMenuAnalyticsRepository {
     metadata?: Record<string, unknown>;
   }): Promise<void>;
 
-  getMenuStats(menuItemId: string, timeRange?: { start: Date; end: Date }): Promise<Array<{ action: string; count: number; uniqueUserCount: number }>>;
+  getMenuStats(
+    menuItemId: string,
+    timeRange?: { start: Date; end: Date },
+  ): Promise<Array<{ action: string; count: number; uniqueUserCount: number }>>;
   getPopularItems(limit?: number): Promise<string[]>;
   getUnderperformingItems(limit?: number): Promise<string[]>;
 }

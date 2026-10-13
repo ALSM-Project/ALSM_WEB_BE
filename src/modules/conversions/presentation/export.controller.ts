@@ -1,4 +1,14 @@
-import { Body, Controller, Headers, HttpCode, HttpStatus, Param, Post, Res, UseGuards } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  Headers,
+  HttpCode,
+  HttpStatus,
+  Param,
+  Post,
+  Res,
+  UseGuards,
+} from '@nestjs/common';
 import { ApiBearerAuth, ApiHeader, ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagger';
 import type { Response } from 'express';
 import { CurrentUser } from '../../../shared/security/current-user.decorator';
@@ -9,7 +19,11 @@ import { ExportConfigurationDto } from './export.dto';
 
 @ApiTags('Export Code (UC-16)')
 @ApiBearerAuth()
-@ApiHeader({ name: 'x-organization-id', required: false, description: 'Optional organization ID context' })
+@ApiHeader({
+  name: 'x-organization-id',
+  required: false,
+  description: 'Optional organization ID context',
+})
 @UseGuards(JwtAuthGuard)
 @Controller('projects/:projectId/export')
 export class ExportController {
@@ -18,7 +32,10 @@ export class ExportController {
   @Post('preview')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Generate Virtual File Tree & Metrics Preview for Export Code' })
-  @ApiResponse({ status: 200, description: 'File tree preview and bundle metrics generated successfully' })
+  @ApiResponse({
+    status: 200,
+    description: 'File tree preview and bundle metrics generated successfully',
+  })
   async previewExport(
     @CurrentUser() user: AuthenticatedUser,
     @Headers('x-organization-id') organizationId: string | undefined,

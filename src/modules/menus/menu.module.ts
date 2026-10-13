@@ -1,9 +1,15 @@
 import { Module } from '@nestjs/common';
 import { MongooseModule } from '@nestjs/mongoose';
 import { MenuItem, MenuItemSchema } from './infrastructure/schemas/menu-item.schema';
-import { MenuItemPermission, MenuItemPermissionSchema } from './infrastructure/schemas/menu-item-permission.schema';
+import {
+  MenuItemPermission,
+  MenuItemPermissionSchema,
+} from './infrastructure/schemas/menu-item-permission.schema';
 import { Menu, MenuSchema } from './infrastructure/schemas/menu.schema';
-import { UserPreferences, UserPreferencesSchema } from './infrastructure/schemas/user-preferences.schema';
+import {
+  UserPreferences,
+  UserPreferencesSchema,
+} from './infrastructure/schemas/user-preferences.schema';
 import { MenuAnalytics, MenuAnalyticsSchema } from './infrastructure/schemas/menu-analytics.schema';
 import { NavigationService } from './application/services/navigation.service';
 import { MenuBuilderService } from './application/services/menu-builder.service';

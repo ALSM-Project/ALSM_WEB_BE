@@ -69,7 +69,12 @@ export class SaveMethodMappingService {
     });
 
     try {
-      await this.applyRenamesToGeneratedCode(project.id, input.screenId, organization.id, input.entries);
+      await this.applyRenamesToGeneratedCode(
+        project.id,
+        input.screenId,
+        organization.id,
+        input.entries,
+      );
     } catch (error) {
       // The mapping itself is already saved and valid for the next conversion run - a
       // storage hiccup while amending the *existing* output must not undo that or block
@@ -125,7 +130,10 @@ export class SaveMethodMappingService {
     );
     const newResultReference = await this.storage.writeFiles(
       `results/${projectId}/${latestCompleted.id}`,
-      updated.map((file) => ({ relativePath: file.relativePath, content: Buffer.from(file.content, 'utf8') })),
+      updated.map((file) => ({
+        relativePath: file.relativePath,
+        content: Buffer.from(file.content, 'utf8'),
+      })),
     );
     await this.jobs.updateResultReference(latestCompleted.id, newResultReference);
   }

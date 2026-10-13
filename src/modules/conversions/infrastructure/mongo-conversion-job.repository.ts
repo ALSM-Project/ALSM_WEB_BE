@@ -42,7 +42,10 @@ export class MongoConversionJobRepository implements ConversionJobRepository {
   async listByProject(projectId: string, organizationId: string): Promise<ConversionJobRecord[]> {
     const projObjId = toValidObjectId(projectId);
     const orgObjId = toValidObjectId(organizationId);
-    const docs = await this.model.find({ projectId: projObjId, organizationId: orgObjId }).sort({ createdAt: -1 }).exec();
+    const docs = await this.model
+      .find({ projectId: projObjId, organizationId: orgObjId })
+      .sort({ createdAt: -1 })
+      .exec();
     return docs.map((doc) => this.map(doc));
   }
 

@@ -1,5 +1,12 @@
 import { Body, Controller, Get, Headers, Param, Put, UseGuards } from '@nestjs/common';
-import { ApiBearerAuth, ApiHeader, ApiOperation, ApiParam, ApiResponse, ApiTags } from '@nestjs/swagger';
+import {
+  ApiBearerAuth,
+  ApiHeader,
+  ApiOperation,
+  ApiParam,
+  ApiResponse,
+  ApiTags,
+} from '@nestjs/swagger';
 import { GetMethodMappingService } from '../application/get-method-mapping.service';
 import { SaveMethodMappingService } from '../application/save-method-mapping.service';
 import { SaveMethodMappingDto } from './method-mapping.dto';
@@ -9,7 +16,11 @@ import { AuthenticatedUser } from '../../../shared/logging/request-id.middleware
 
 @ApiTags('Method Mapping')
 @ApiBearerAuth()
-@ApiHeader({ name: 'x-organization-id', required: false, description: 'Optional organization ID context' })
+@ApiHeader({
+  name: 'x-organization-id',
+  required: false,
+  description: 'Optional organization ID context',
+})
 @UseGuards(JwtAuthGuard)
 @Controller()
 export class MethodMappingController {
@@ -21,7 +32,8 @@ export class MethodMappingController {
   @Get('projects/:projectId/screens/:screenId/method-mapping')
   @ApiOperation({
     summary: 'Get COBOL→Java method mapping (UC-28)',
-    description: 'Real class/method names detected in the screen\'s latest generated Java code, plus any saved user overrides.',
+    description:
+      "Real class/method names detected in the screen's latest generated Java code, plus any saved user overrides.",
   })
   @ApiParam({ name: 'projectId', description: 'Project ID' })
   @ApiParam({ name: 'screenId', description: 'Screen ID' })
@@ -43,7 +55,8 @@ export class MethodMappingController {
   @Put('projects/:projectId/screens/:screenId/method-mapping')
   @ApiOperation({
     summary: 'Save COBOL→Java method mapping overrides (UC-28)',
-    description: 'Persists the user\'s class/method renames and applies them to the screen\'s latest generated Java code.',
+    description:
+      "Persists the user's class/method renames and applies them to the screen's latest generated Java code.",
   })
   @ApiParam({ name: 'projectId', description: 'Project ID' })
   @ApiParam({ name: 'screenId', description: 'Screen ID' })

@@ -1,10 +1,4 @@
-import {
-  Inject,
-  Injectable,
-  Logger,
-  NotFoundException,
-  OnModuleInit,
-} from '@nestjs/common';
+import { Inject, Injectable, Logger, NotFoundException, OnModuleInit } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import {
   CassoTransaction,
@@ -95,7 +89,9 @@ export class PaymentService implements OnModuleInit {
       expiresAt,
     });
 
-    this.logger.log(`Created QR Payment ${payment.id}, Ref=${referenceCode}, STK=${bank.accountNumber}, Amount=${amountVnd} VND`);
+    this.logger.log(
+      `Created QR Payment ${payment.id}, Ref=${referenceCode}, STK=${bank.accountNumber}, Amount=${amountVnd} VND`,
+    );
 
     return {
       paymentId: payment.id,
@@ -163,17 +159,16 @@ export class PaymentService implements OnModuleInit {
           }
 
           if (payment.invoiceId) {
-            await this.billingService.markInvoicePaid(
-              payment.invoiceId,
-              'QR Bank Transfer',
-            );
+            await this.billingService.markInvoicePaid(payment.invoiceId, 'QR Bank Transfer');
           }
 
           this.logger.log(`✅ Payment matched! Ref=${payment.referenceCode}, TxID=${tx.id}`);
           matchedCount++;
           break;
         } else if (isMatched && tx.amount < payment.amountVnd) {
-          this.logger.warn(`⚠️ Partial payment detected! Ref=${payment.referenceCode}, Required=${payment.amountVnd}, Received=${tx.amount}`);
+          this.logger.warn(
+            `⚠️ Partial payment detected! Ref=${payment.referenceCode}, Required=${payment.amountVnd}, Received=${tx.amount}`,
+          );
         }
       }
     }

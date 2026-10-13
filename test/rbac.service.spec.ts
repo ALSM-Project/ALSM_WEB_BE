@@ -7,13 +7,23 @@ describe('RBAC & Effective Permissions', () => {
   it('calculates effective permissions as union of assigned roles', async () => {
     const mockRepo: Partial<IRbacRepository> = {
       findUserRoles: jest.fn().mockResolvedValue(['CONVERSION_OPERATOR', 'REVIEWER']),
-      findUserById: jest.fn().mockResolvedValue({ id: 'user-1', isPlatformAdmin: false, email: 'u@test.com', fullName: 'User 1', isActive: true }),
-      findRolePermissionsByRoleIds: jest.fn().mockResolvedValue([
-        'conversion.view',
-        'conversion.execute',
-        'diagnostics.view',
-        'diagnostics.review',
-      ]),
+      findUserById: jest
+        .fn()
+        .mockResolvedValue({
+          id: 'user-1',
+          isPlatformAdmin: false,
+          email: 'u@test.com',
+          fullName: 'User 1',
+          isActive: true,
+        }),
+      findRolePermissionsByRoleIds: jest
+        .fn()
+        .mockResolvedValue([
+          'conversion.view',
+          'conversion.execute',
+          'diagnostics.view',
+          'diagnostics.review',
+        ]),
     };
 
     const service = new EffectivePermissionsService(mockRepo as IRbacRepository);
@@ -30,7 +40,15 @@ describe('RBAC & Effective Permissions', () => {
   it('automatically attaches ADMIN role for platform admin users', async () => {
     const mockRepo: Partial<IRbacRepository> = {
       findUserRoles: jest.fn().mockResolvedValue([]),
-      findUserById: jest.fn().mockResolvedValue({ id: 'admin-1', isPlatformAdmin: true, email: 'admin@test.com', fullName: 'Admin', isActive: true }),
+      findUserById: jest
+        .fn()
+        .mockResolvedValue({
+          id: 'admin-1',
+          isPlatformAdmin: true,
+          email: 'admin@test.com',
+          fullName: 'Admin',
+          isActive: true,
+        }),
     };
 
     const service = new EffectivePermissionsService(mockRepo as IRbacRepository);
@@ -42,7 +60,9 @@ describe('RBAC & Effective Permissions', () => {
   describe('RbacService Business Logic & Error Validation', () => {
     it('prevents deleting system roles with 403 Forbidden', async () => {
       const mockRepo: Partial<IRbacRepository> = {
-        findRoleById: jest.fn().mockResolvedValue({ id: 'ADMIN', name: 'Admin', description: '', isSystem: true }),
+        findRoleById: jest
+          .fn()
+          .mockResolvedValue({ id: 'ADMIN', name: 'Admin', description: '', isSystem: true }),
       };
       const rbacService = new RbacService(mockRepo as IRbacRepository);
 
@@ -51,7 +71,14 @@ describe('RBAC & Effective Permissions', () => {
 
     it('prevents deleting custom roles assigned to users with 409 Conflict', async () => {
       const mockRepo: Partial<IRbacRepository> = {
-        findRoleById: jest.fn().mockResolvedValue({ id: 'OPERATOR', name: 'Operator', description: '', isSystem: false }),
+        findRoleById: jest
+          .fn()
+          .mockResolvedValue({
+            id: 'OPERATOR',
+            name: 'Operator',
+            description: '',
+            isSystem: false,
+          }),
         countUsersWithRole: jest.fn().mockResolvedValue(2),
       };
       const rbacService = new RbacService(mockRepo as IRbacRepository);
@@ -61,7 +88,14 @@ describe('RBAC & Effective Permissions', () => {
 
     it('rejects updateRolePermissions if any permission key is invalid (400 Bad Request)', async () => {
       const mockRepo: Partial<IRbacRepository> = {
-        findRoleById: jest.fn().mockResolvedValue({ id: 'OPERATOR', name: 'Operator', description: '', isSystem: false }),
+        findRoleById: jest
+          .fn()
+          .mockResolvedValue({
+            id: 'OPERATOR',
+            name: 'Operator',
+            description: '',
+            isSystem: false,
+          }),
         findValidPermissions: jest.fn().mockResolvedValue(['projects.view']),
         deleteRolePermissionsByRoleId: jest.fn(),
         updateRolePermissions: jest.fn(),
@@ -89,7 +123,12 @@ describe('RBAC & Effective Permissions', () => {
 
       const rbacService = new RbacService(mockRepo as IRbacRepository);
 
-      const created = await rbacService.createPermission('reports export', 'Export Reports', 'Reports', 'Desc');
+      const created = await rbacService.createPermission(
+        'reports export',
+        'Export Reports',
+        'Reports',
+        'Desc',
+      );
       expect(created.key).toBe('reports.export');
       expect(created.label).toBe('Export Reports');
     });
@@ -113,7 +152,12 @@ describe('RBAC & Effective Permissions', () => {
 
       const rbacService = new RbacService(mockRepo as IRbacRepository);
 
-      const updated = await rbacService.updatePermission('reports.export', 'New Label', 'New Group', 'New Desc');
+      const updated = await rbacService.updatePermission(
+        'reports.export',
+        'New Label',
+        'New Group',
+        'New Desc',
+      );
       expect(updated.label).toBe('New Label');
       expect(updated.group).toBe('New Group');
       expect(updated.description).toBe('New Desc');

@@ -71,6 +71,7 @@ import { PrepareAiValidationContextService } from './modules/validation/applicat
 import { ValidationSecretRedactorService } from './modules/validation/application/validation-secret-redactor.service';
 import { FakeAiValidatorAdapter } from './modules/validation/infrastructure/fake-ai-validator.adapter';
 import { OpenAiValidatorAdapter } from './modules/validation/infrastructure/openai-ai-validator.adapter';
+import { GeminiAiValidatorAdapter } from './modules/validation/infrastructure/gemini-ai-validator.adapter';
 import { aiValidatorProvider } from './modules/validation/infrastructure/ai-validator.provider';
 import { AiValidationRuntimeGuard } from './modules/validation/application/ai-validation-runtime.guard';
 import { TriggerAiValidationService } from './modules/validation/application/trigger-ai-validation.service';
@@ -119,6 +120,9 @@ import { MongoPartnerRepository } from './modules/partners/infrastructure/mongo-
 import { CreatePartnerService } from './modules/partners/application/create-partner.service';
 import { ListPartnersService } from './modules/partners/application/list-partners.service';
 import { PartnerController } from './modules/partners/presentation/partner.controller';
+import { OnboardUserService } from './modules/users/application/onboard-user.service';
+import { UpdateUserStatusService } from './modules/users/application/update-user-status.service';
+import { UsersController } from './modules/users/presentation/users.controller';
 import { AuthService } from './modules/auth/application/auth.service';
 import { ListActiveSessionsService } from './modules/auth/application/list-active-sessions.service';
 import { RevokeSessionService } from './modules/auth/application/revoke-session.service';
@@ -178,7 +182,10 @@ import { MongoPlanRepository } from './modules/billing/infrastructure/persistenc
 import { MongoBankConfigRepository } from './modules/billing/infrastructure/persistence/mongo-bank-config.repository';
 import { MongoBillingUsageRepository } from './modules/billing/infrastructure/persistence/mongo-billing-usage.repository';
 import { MongoQuoteRequestRepository } from './modules/billing/infrastructure/persistence/mongo-quote-request.repository';
-import { QuoteRequest, QuoteRequestSchema } from './modules/billing/infrastructure/quote-request.schema';
+import {
+  QuoteRequest,
+  QuoteRequestSchema,
+} from './modules/billing/infrastructure/quote-request.schema';
 
 import { RbacModule } from './modules/rbac/rbac.module';
 import { MenuModule } from './modules/menus/menu.module';
@@ -186,6 +193,13 @@ import { MenuModule } from './modules/menus/menu.module';
 import { VALIDATION_REPOSITORY } from './modules/conversions/domain/validation.types';
 import { MongoValidationRepository } from './modules/conversions/infrastructure/mongo-validation.repository';
 import { RuleValidatorService } from './modules/conversions/application/rule-validator.service';
+import { LegacyValidationService } from './modules/conversions/application/legacy-validation.service';
+import {
+  LegacyValidationRun,
+  LegacyValidationFinding,
+  ValidationRunSchema as LegacyValidationRunSchema,
+  ValidationFindingSchema as LegacyValidationFindingSchema,
+} from './modules/conversions/infrastructure/validation.schema';
 import { ValidationController as RuleValidationController } from './modules/conversions/presentation/validation.controller';
 import {
   ConversionQualityReview,
@@ -224,6 +238,8 @@ import { QualityReviewController } from './modules/conversions/presentation/qual
       { name: Screen.name, schema: ScreenSchema },
       { name: ValidationRun.name, schema: ValidationRunSchema },
       { name: ValidationFinding.name, schema: ValidationFindingSchema },
+      { name: LegacyValidationRun.name, schema: LegacyValidationRunSchema },
+      { name: LegacyValidationFinding.name, schema: LegacyValidationFindingSchema },
       { name: QuoteRequest.name, schema: QuoteRequestSchema },
       { name: ConversionQualityReview.name, schema: ConversionQualityReviewSchema },
     ]),
@@ -241,6 +257,7 @@ import { QualityReviewController } from './modules/conversions/presentation/qual
     FieldMappingController,
     MethodMappingController,
     PartnerController,
+    UsersController,
     ExportController,
     ErrorLogController,
     ValidationController,
@@ -282,7 +299,10 @@ import { QualityReviewController } from './modules/conversions/presentation/qual
     SaveMethodMappingService,
     CreatePartnerService,
     ListPartnersService,
+    OnboardUserService,
+    UpdateUserStatusService,
     RuleValidatorService,
+    LegacyValidationService,
     ExportCodeService,
     ErrorLogService,
     BuildValidationContextService,
@@ -297,6 +317,7 @@ import { QualityReviewController } from './modules/conversions/presentation/qual
     ValidationWorkerRunner,
     FakeAiValidatorAdapter,
     OpenAiValidatorAdapter,
+    GeminiAiValidatorAdapter,
     aiValidatorProvider,
     MongoErrorLogRepository,
     ConversionWorkerRunner,
@@ -318,7 +339,10 @@ import { QualityReviewController } from './modules/conversions/presentation/qual
     { provide: AUDIT_REPOSITORY, useClass: MongoAuditRepository },
     { provide: PROJECT_REPOSITORY, useClass: MongoProjectRepository },
     { provide: CONVERSION_JOB_REPOSITORY, useClass: MongoConversionJobRepository },
-    { provide: CONVERSION_QUALITY_REVIEW_REPOSITORY, useClass: MongoConversionQualityReviewRepository },
+    {
+      provide: CONVERSION_QUALITY_REVIEW_REPOSITORY,
+      useClass: MongoConversionQualityReviewRepository,
+    },
     { provide: VALIDATION_REPOSITORY, useClass: MongoValidationRepository },
     { provide: SUBSCRIPTION_REPOSITORY, useClass: MongoSubscriptionRepository },
     { provide: INVOICE_REPOSITORY, useClass: MongoInvoiceRepository },

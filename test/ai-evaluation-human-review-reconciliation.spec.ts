@@ -15,9 +15,7 @@ import {
 } from '../evaluation/ai-validation/src/human-review-selection';
 import { PilotReviewFile } from '../evaluation/ai-validation/src/human-review.types';
 
-const candidatePath = resolve(
-  'evaluation/ai-validation/imports/cobol-javatrans/candidates.json',
-);
+const candidatePath = resolve('evaluation/ai-validation/imports/cobol-javatrans/candidates.json');
 const rawCandidates = readFileSync(candidatePath, 'utf8');
 const candidates = JSON.parse(rawCandidates) as ImportedCandidateManifest;
 const sourcePath = 'evaluation/ai-validation/imports/cobol-javatrans/candidates.json';
@@ -58,9 +56,7 @@ describe('COBOL-JavaTrans independent review reconciliation', () => {
     const comparison = comparePilotReviews(selected, reviewA, reviewB);
     expect(comparison.cases[0].state).toBe('NEEDS_REVIEW');
     expect(comparison.counts.NEEDS_REVIEW).toBe(1);
-    expect(() => validatePilotReview(reviewB, selected, 'B', true)).toThrow(
-      'missing reviewer ID',
-    );
+    expect(() => validatePilotReview(reviewB, selected, 'B', true)).toThrow('missing reviewer ID');
   });
 
   it('rejects the same reviewer in both independent roles', () => {
@@ -114,21 +110,13 @@ describe('COBOL-JavaTrans independent review reconciliation', () => {
     const stale = completedReview('A', 'reviewer-a@example.test');
     stale.decisions[0].sourceSha256 = '0'.repeat(64);
     expect(() =>
-      comparePilotReviews(
-        selected,
-        stale,
-        completedReview('B', 'reviewer-b@example.test'),
-      ),
+      comparePilotReviews(selected, stale, completedReview('B', 'reviewer-b@example.test')),
     ).toThrow('hash mismatch');
 
     const unknown = completedReview('A', 'reviewer-a@example.test');
     unknown.decisions[0].candidateId = 'external-cjt-unknown';
     expect(() =>
-      comparePilotReviews(
-        selected,
-        unknown,
-        completedReview('B', 'reviewer-b@example.test'),
-      ),
+      comparePilotReviews(selected, unknown, completedReview('B', 'reviewer-b@example.test')),
     ).toThrow('unknown candidate');
   });
 

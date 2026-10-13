@@ -26,7 +26,8 @@ export class ApiExceptionFilter implements ExceptionFilter {
     }
     const statusCode = http?.getStatus() ?? HttpStatus.INTERNAL_SERVER_ERROR;
     const body = http?.getResponse();
-    const values = typeof body === 'object' && body !== null ? (body as Record<string, unknown>) : {};
+    const values =
+      typeof body === 'object' && body !== null ? (body as Record<string, unknown>) : {};
     const messages = values.message;
     response.status(statusCode).json({
       statusCode,
@@ -35,9 +36,9 @@ export class ApiExceptionFilter implements ExceptionFilter {
         typeof messages === 'string'
           ? messages
           : statusCode === 400
-          ? 'Request validation failed'
-          : 'An unexpected error occurred',
-      details: Array.isArray(messages) ? messages : values.details ?? [],
+            ? 'Request validation failed'
+            : 'An unexpected error occurred',
+      details: Array.isArray(messages) ? messages : (values.details ?? []),
       requestId: request.requestId,
     });
   }

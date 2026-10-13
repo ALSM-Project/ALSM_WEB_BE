@@ -133,11 +133,11 @@ export class CommandPaletteService {
 
     const searchTerm = query.toLowerCase().trim();
     const results = commands
-      .map(cmd => ({
+      .map((cmd) => ({
         ...cmd,
         score: this.calculateScore(cmd, searchTerm),
       }))
-      .filter(cmd => cmd.score > 0)
+      .filter((cmd) => cmd.score > 0)
       .sort((a, b) => b.score - a.score)
       .slice(0, 15);
 
@@ -151,10 +151,10 @@ export class CommandPaletteService {
     let score = 0;
     const searchParts = searchTerm.split(' ');
 
-    searchParts.forEach(term => {
+    searchParts.forEach((term) => {
       if (cmd.label.toLowerCase().includes(term)) score += 10;
       if (cmd.description?.toLowerCase().includes(term)) score += 5;
-      if (cmd.keywords.some(k => k.toLowerCase().includes(term))) score += 3;
+      if (cmd.keywords.some((k) => k.toLowerCase().includes(term))) score += 3;
       if (cmd.label.toLowerCase() === term) score += 20;
     });
 
@@ -165,7 +165,7 @@ export class CommandPaletteService {
    * Extract commands từ menu tree
    */
   private extractCommands(items: IMenuItem[], result: CommandItem[], category: string): void {
-    items.forEach(item => {
+    items.forEach((item) => {
       if (item.isVisible && item.path) {
         result.push({
           id: item.id,
@@ -185,11 +185,7 @@ export class CommandPaletteService {
       }
 
       if (item.children) {
-        this.extractCommands(
-          item.children,
-          result,
-          item.isMegaMenu ? category : item.label,
-        );
+        this.extractCommands(item.children, result, item.isMegaMenu ? category : item.label);
       }
     });
   }

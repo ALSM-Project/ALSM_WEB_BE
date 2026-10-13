@@ -32,16 +32,27 @@ describe('UploadConversionSourceService', () => {
     organizationContext.resolve.mockResolvedValue({ id: 'org-1' });
     storage.writeFiles.mockResolvedValue('sources/p1/uuid-1');
     screenService.create.mockImplementation((organizationId, projectId, userId, input) =>
-      Promise.resolve({ id: `scr-${input.name}`, organizationId, projectId, createdBy: userId, ...input }),
+      Promise.resolve({
+        id: `scr-${input.name}`,
+        organizationId,
+        projectId,
+        createdBy: userId,
+        ...input,
+      }),
     );
   });
 
   it('rejects a request with no files', async () => {
-    await expect(service.execute('u1', 'org-1', 'p1', [])).rejects.toBeInstanceOf(BadRequestException);
+    await expect(service.execute('u1', 'org-1', 'p1', [])).rejects.toBeInstanceOf(
+      BadRequestException,
+    );
   });
 
   it('stores BMS/DSPF files for a BMS_DSPF_TO_FRONTEND project', async () => {
-    projects.getForOrganization.mockResolvedValue({ id: 'p1', conversionType: ConversionType.BMS_DSPF_TO_FRONTEND });
+    projects.getForOrganization.mockResolvedValue({
+      id: 'p1',
+      conversionType: ConversionType.BMS_DSPF_TO_FRONTEND,
+    });
 
     const result = await service.execute('u1', 'org-1', 'p1', [
       { originalname: 'LOGIN.bms', buffer: Buffer.from('bms'), size: 3 },
@@ -61,16 +72,24 @@ describe('UploadConversionSourceService', () => {
   });
 
   it('rejects a .cob file for a BMS_DSPF_TO_FRONTEND project', async () => {
-    projects.getForOrganization.mockResolvedValue({ id: 'p1', conversionType: ConversionType.BMS_DSPF_TO_FRONTEND });
+    projects.getForOrganization.mockResolvedValue({
+      id: 'p1',
+      conversionType: ConversionType.BMS_DSPF_TO_FRONTEND,
+    });
 
     await expect(
-      service.execute('u1', 'org-1', 'p1', [{ originalname: 'PROGRAM.cob', buffer: Buffer.from('x'), size: 1 }]),
+      service.execute('u1', 'org-1', 'p1', [
+        { originalname: 'PROGRAM.cob', buffer: Buffer.from('x'), size: 1 },
+      ]),
     ).rejects.toBeInstanceOf(BadRequestException);
     expect(storage.writeFiles).not.toHaveBeenCalled();
   });
 
   it('stores COBOL programs together with their copybooks for a COBOL_TO_JAVA project', async () => {
-    projects.getForOrganization.mockResolvedValue({ id: 'p1', conversionType: ConversionType.COBOL_TO_JAVA });
+    projects.getForOrganization.mockResolvedValue({
+      id: 'p1',
+      conversionType: ConversionType.COBOL_TO_JAVA,
+    });
 
     const result = await service.execute('u1', 'org-1', 'p1', [
       { originalname: 'PROGRAM.cob', buffer: Buffer.from('cob'), size: 3 },
@@ -93,7 +112,10 @@ describe('UploadConversionSourceService', () => {
   });
 
   it('analyzes copybook dependencies once for a COBOL_TO_JAVA upload and persists per screen', async () => {
-    projects.getForOrganization.mockResolvedValue({ id: 'p1', conversionType: ConversionType.COBOL_TO_JAVA });
+    projects.getForOrganization.mockResolvedValue({
+      id: 'p1',
+      conversionType: ConversionType.COBOL_TO_JAVA,
+    });
 
     const result = await service.execute('u1', 'org-1', 'p1', [
       { originalname: 'PROGRAM.cob', buffer: Buffer.from('       COPY SHARED.\n'), size: 20 },
@@ -106,22 +128,36 @@ describe('UploadConversionSourceService', () => {
       'scr-PROGRAM.cob',
       expect.objectContaining({
         status: 'READY_FOR_CONVERSION',
-        dependencies: [expect.objectContaining({ copyName: 'SHARED', status: 'RESOLVED', resolvedFile: 'SHARED.cpy' })],
+        dependencies: [
+          expect.objectContaining({
+            copyName: 'SHARED',
+            status: 'RESOLVED',
+            resolvedFile: 'SHARED.cpy',
+          }),
+        ],
       }),
     );
     expect(result.screens[0].dependencyStatus).toBe('READY_FOR_CONVERSION');
   });
 
   it('does not run copybook dependency analysis for a BMS_DSPF_TO_FRONTEND upload', async () => {
-    projects.getForOrganization.mockResolvedValue({ id: 'p1', conversionType: ConversionType.BMS_DSPF_TO_FRONTEND });
+    projects.getForOrganization.mockResolvedValue({
+      id: 'p1',
+      conversionType: ConversionType.BMS_DSPF_TO_FRONTEND,
+    });
 
-    await service.execute('u1', 'org-1', 'p1', [{ originalname: 'LOGIN.bms', buffer: Buffer.from('bms'), size: 3 }]);
+    await service.execute('u1', 'org-1', 'p1', [
+      { originalname: 'LOGIN.bms', buffer: Buffer.from('bms'), size: 3 },
+    ]);
 
     expect(screenService.recordDependencyDiagnostics).not.toHaveBeenCalled();
   });
 
   it('rejects an upload containing two different files with the same name (case-insensitive)', async () => {
-    projects.getForOrganization.mockResolvedValue({ id: 'p1', conversionType: ConversionType.COBOL_TO_JAVA });
+    projects.getForOrganization.mockResolvedValue({
+      id: 'p1',
+      conversionType: ConversionType.COBOL_TO_JAVA,
+    });
 
     await expect(
       service.execute('u1', 'org-1', 'p1', [

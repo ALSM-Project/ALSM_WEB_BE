@@ -20,6 +20,20 @@ export function renderEvaluationReport(score: EvaluationScore): string {
     `- Generated at: ${score.metadata.generatedAt}`,
     `- Location tolerance: ±${score.metadata.locationToleranceLines} lines`,
     '',
+    '## Model provenance',
+    '',
+    `- Verified single-model cohort: ${score.provenance.verifiedSingleModelCohort ? 'YES' : 'NO — UNVERIFIED; do not attribute these metrics to a verified single-model cohort'}.`,
+    `- Confirmed: ${score.provenance.confirmed}; unknown or missing: ${score.provenance.unknown}; mismatched: ${score.provenance.mismatch}.`,
+    `- Expected provider version: ${score.provenance.expectedModelVersion ?? 'not recorded (legacy)'}.`,
+    '- SUCCESS denotes validated findings only. COMPLETE denotes execution coverage only. Neither establishes model identity; provider self-report is not cryptographic attestation.',
+    '',
+    '| Case | Requested model | Observed model version | Provenance |',
+    '| --- | --- | --- | --- |',
+    ...score.provenance.cases.map(
+      (c) =>
+        `| ${c.caseId} | ${c.requestedModel} | ${c.observedModelVersion ?? 'not reported'} | ${c.status} |`,
+    ),
+    '',
     '## Detection metrics',
     '',
     '| Population | TP | FP | FN | Precision | Recall | F1 |',
@@ -30,6 +44,26 @@ export function renderEvaluationReport(score: EvaluationScore): string {
     `Successful cases exclude ${score.execution.failedCases + score.execution.missingCases} failed or missing case results. Conservative metrics count every expected finding in those cases as missed.`,
     '',
     '## Operational and trust metrics',
+    '',
+    `- Terminal execution coverage: ${score.execution.terminalCases}/${score.execution.totalCases}; this includes provider failures.`,
+    `- Provider failure rate over terminal cases: ${percent(score.execution.terminalCases ? score.execution.providerFailures.length / score.execution.terminalCases : 0)}. Availability is separate from model identity and semantic quality.`,
+    `- Provider failures by class: ${
+      Object.entries(score.execution.providerFailuresByClass)
+        .map(([key, count]) => `${key}: ${count}`)
+        .join(', ') || 'none'
+    }.`,
+    `- Provider failures by HTTP status: ${
+      Object.entries(score.execution.providerFailuresByHttpStatus)
+        .map(([key, count]) => `${key}: ${count}`)
+        .join(', ') || 'none'
+    }.`,
+    '',
+    '| Provider failure case | Failure class | HTTP status | Attempts |',
+    '| --- | --- | --- | ---: |',
+    ...score.execution.providerFailures.map(
+      (r) =>
+        `| ${r.caseId} | ${r.failureClass} | ${r.httpStatus ?? 'not available'} | ${r.attempts ?? 'not available'} |`,
+    ),
     '',
     `- Execution: ${score.execution.successfulCases}/${score.execution.totalCases} successful, ${score.execution.failedCases} failed, ${score.execution.missingCases} missing.`,
     `- Clean-case false-positive rate: ${percent(score.cleanCases.cleanCaseFalsePositiveRate)} (${score.cleanCases.cleanCasesWithAnyPrediction}/${score.cleanCases.successfulCleanCases}); ${score.cleanCases.totalFindingsOnCleanCases} total findings on clean cases.`,
@@ -73,7 +107,14 @@ export function renderEvaluationReport(score: EvaluationScore): string {
 
 function metricRow(
   label: string,
-  metric: { truePositives: number; falsePositives: number; falseNegatives: number; precision: number; recall: number; f1: number },
+  metric: {
+    truePositives: number;
+    falsePositives: number;
+    falseNegatives: number;
+    precision: number;
+    recall: number;
+    f1: number;
+  },
 ): string {
   return `| ${label} | ${metric.truePositives} | ${metric.falsePositives} | ${metric.falseNegatives} | ${percent(metric.precision)} | ${percent(metric.recall)} | ${percent(metric.f1)} |`;
 }

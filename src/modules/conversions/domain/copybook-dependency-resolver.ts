@@ -9,9 +9,18 @@
  * outside that scope would be a false positive the real conversion could never back up.
  */
 
-import type { DependencyEntry, DependencyStatus, ProgramAnalysis } from './copybook-dependency.types';
+import type {
+  DependencyEntry,
+  DependencyStatus,
+  ProgramAnalysis,
+} from './copybook-dependency.types';
 
-export type { DependencyStatus, ProgramDependencyStatus, DependencyEntry, ProgramAnalysis } from './copybook-dependency.types';
+export type {
+  DependencyStatus,
+  ProgramDependencyStatus,
+  DependencyEntry,
+  ProgramAnalysis,
+} from './copybook-dependency.types';
 
 export interface BundleFile {
   name: string;
@@ -149,7 +158,12 @@ function resolveDependenciesOf(
 
     const resolved = resolveCopyName(copyName, index);
     if (resolved.status === 'MISSING') {
-      return { copyName, status: 'MISSING', lineNumber, message: buildMissingMessage(copyName, fileName) };
+      return {
+        copyName,
+        status: 'MISSING',
+        lineNumber,
+        message: buildMissingMessage(copyName, fileName),
+      };
     }
     if (resolved.status === 'AMBIGUOUS') {
       return {
@@ -162,7 +176,13 @@ function resolveDependenciesOf(
     }
 
     const resolvedFile = resolved.resolvedFile as string;
-    const nested = resolveDependenciesOf(resolvedFile, contentByName, index, [...visitingPath, normalized], cache);
+    const nested = resolveDependenciesOf(
+      resolvedFile,
+      contentByName,
+      index,
+      [...visitingPath, normalized],
+      cache,
+    );
     return {
       copyName,
       status: 'RESOLVED',
@@ -177,11 +197,25 @@ function resolveDependenciesOf(
 }
 
 function isFullyResolved(entries: DependencyEntry[]): boolean {
-  return entries.every((entry) => entry.status === 'RESOLVED' && (!entry.dependencies || isFullyResolved(entry.dependencies)));
+  return entries.every(
+    (entry) =>
+      entry.status === 'RESOLVED' && (!entry.dependencies || isFullyResolved(entry.dependencies)),
+  );
 }
 
-export function resolveProgram(programFile: string, contentByName: Map<string, string>, index: Map<string, string[]>, cache: Map<string, DependencyEntry[]>): ProgramAnalysis {
-  const dependencies = resolveDependenciesOf(programFile, contentByName, index, [normalizeCopyName(programFile)], cache);
+export function resolveProgram(
+  programFile: string,
+  contentByName: Map<string, string>,
+  index: Map<string, string[]>,
+  cache: Map<string, DependencyEntry[]>,
+): ProgramAnalysis {
+  const dependencies = resolveDependenciesOf(
+    programFile,
+    contentByName,
+    index,
+    [normalizeCopyName(programFile)],
+    cache,
+  );
   return {
     program: programFile,
     status: isFullyResolved(dependencies) ? 'READY_FOR_CONVERSION' : 'BLOCKED',
