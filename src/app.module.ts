@@ -122,6 +122,7 @@ import { ListPartnersService } from './modules/partners/application/list-partner
 import { GetPartnerService } from './modules/partners/application/get-partner.service';
 import { CreatePartnerProjectService } from './modules/partners/application/create-partner-project.service';
 import { ListPartnerProjectsService } from './modules/partners/application/list-partner-projects.service';
+import { UploadPartnerProjectSourceService } from './modules/partners/application/upload-partner-project-source.service';
 import { PartnerController } from './modules/partners/presentation/partner.controller';
 import { OnboardUserService } from './modules/users/application/onboard-user.service';
 import { UpdateUserStatusService } from './modules/users/application/update-user-status.service';
@@ -305,6 +306,7 @@ import { QualityReviewController } from './modules/conversions/presentation/qual
     GetPartnerService,
     CreatePartnerProjectService,
     ListPartnerProjectsService,
+    UploadPartnerProjectSourceService,
     OnboardUserService,
     UpdateUserStatusService,
     RuleValidatorService,
