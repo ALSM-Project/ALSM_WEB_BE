@@ -34,7 +34,6 @@ import {
   MethodMapping,
   MethodMappingSchema,
 } from './modules/conversions/infrastructure/method-mapping.schema';
-import { Partner, PartnerSchema } from './modules/partners/infrastructure/partner.schema';
 import { ErrorLog, ErrorLogSchema } from './modules/conversions/infrastructure/error-log.schema';
 import {
   ValidationRun,
@@ -115,11 +114,6 @@ import { MongoMethodMappingRepository } from './modules/conversions/infrastructu
 import { GetMethodMappingService } from './modules/conversions/application/get-method-mapping.service';
 import { SaveMethodMappingService } from './modules/conversions/application/save-method-mapping.service';
 import { MethodMappingController } from './modules/conversions/presentation/method-mapping.controller';
-import { PARTNER_REPOSITORY } from './modules/partners/domain/partner.types';
-import { MongoPartnerRepository } from './modules/partners/infrastructure/mongo-partner.repository';
-import { CreatePartnerService } from './modules/partners/application/create-partner.service';
-import { ListPartnersService } from './modules/partners/application/list-partners.service';
-import { PartnerController } from './modules/partners/presentation/partner.controller';
 import { OnboardUserService } from './modules/users/application/onboard-user.service';
 import { UpdateUserStatusService } from './modules/users/application/update-user-status.service';
 import { UsersController } from './modules/users/presentation/users.controller';
@@ -232,7 +226,6 @@ import { QualityReviewController } from './modules/conversions/presentation/qual
       { name: EmailVerification.name, schema: EmailVerificationSchema },
       { name: FieldMapping.name, schema: FieldMappingSchema },
       { name: MethodMapping.name, schema: MethodMappingSchema },
-      { name: Partner.name, schema: PartnerSchema },
       { name: ErrorLog.name, schema: ErrorLogSchema },
       { name: ScreenDocument.name, schema: ConversionScreenSchema },
       { name: Screen.name, schema: ScreenSchema },
@@ -256,7 +249,6 @@ import { QualityReviewController } from './modules/conversions/presentation/qual
     ConversionScreensController,
     FieldMappingController,
     MethodMappingController,
-    PartnerController,
     UsersController,
     ExportController,
     ErrorLogController,
@@ -297,8 +289,6 @@ import { QualityReviewController } from './modules/conversions/presentation/qual
     SaveFieldMappingService,
     GetMethodMappingService,
     SaveMethodMappingService,
-    CreatePartnerService,
-    ListPartnersService,
     OnboardUserService,
     UpdateUserStatusService,
     RuleValidatorService,
@@ -351,7 +341,6 @@ import { QualityReviewController } from './modules/conversions/presentation/qual
     { provide: BANK_CONFIG_REPOSITORY, useClass: MongoBankConfigRepository },
     { provide: FIELD_MAPPING_REPOSITORY, useClass: MongoFieldMappingRepository },
     { provide: METHOD_MAPPING_REPOSITORY, useClass: MongoMethodMappingRepository },
-    { provide: PARTNER_REPOSITORY, useClass: MongoPartnerRepository },
     { provide: ERROR_LOG_REPOSITORY, useExisting: MongoErrorLogRepository },
     { provide: VALIDATION_RUN_REPOSITORY, useClass: MongoValidationRunRepository },
     { provide: VALIDATION_FINDING_REPOSITORY, useClass: MongoValidationFindingRepository },
