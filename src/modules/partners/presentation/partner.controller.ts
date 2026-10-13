@@ -1,18 +1,34 @@
-import { Body, Controller, Get, Param, Post, UseGuards } from '@nestjs/common';
-import { ApiBearerAuth, ApiOperation, ApiParam, ApiResponse, ApiTags } from '@nestjs/swagger';
+import 'multer';
+import {
+  Body,
+  Controller,
+  Get,
+  Param,
+  Post,
+  UploadedFiles,
+  UseGuards,
+  UseInterceptors,
+} from '@nestjs/common';
+import { FilesInterceptor } from '@nestjs/platform-express';
+import { ApiBearerAuth, ApiConsumes, ApiOperation, ApiParam, ApiResponse, ApiTags } from '@nestjs/swagger';
 import { CurrentUser } from '../../../shared/security/current-user.decorator';
 import { JwtAuthGuard } from '../../../shared/security/jwt-auth.guard';
 import { PermissionsGuard } from '../../../shared/security/permissions.guard';
 import { RequirePermissions } from '../../../shared/security/require-permissions.decorator';
 import { AuthenticatedUser } from '../../../shared/logging/request-id.middleware';
+import { UploadedSourceFile } from '../../conversions/application/upload-conversion-source.service';
 import { CreatePartnerService } from '../application/create-partner.service';
 import { ListPartnersService } from '../application/list-partners.service';
 import { GetPartnerService } from '../application/get-partner.service';
 import { CreatePartnerProjectService } from '../application/create-partner-project.service';
 import { ListPartnerProjectsService } from '../application/list-partner-projects.service';
+import { UploadPartnerProjectSourceService } from '../application/upload-partner-project-source.service';
 import { CreatePartnerDto, CreatePartnerProjectDto } from './partner.dto';
 
-@ApiTags('Partners (UC-44 / UC-45)')
+const maxUploadSizeBytes = Number(process.env.MAX_UPLOAD_FILE_SIZE_MB || 50) * 1024 * 1024;
+const maxUploadFilesPerRequest = Number(process.env.MAX_UPLOAD_FILES_PER_REQUEST || 300);
+
+@ApiTags('Partners (UC-44 / UC-45 / UC-46)')
 @ApiBearerAuth()
 @UseGuards(JwtAuthGuard, PermissionsGuard)
 @Controller('partners')
@@ -23,6 +39,7 @@ export class PartnerController {
     private readonly getPartnerService: GetPartnerService,
     private readonly createPartnerProjectService: CreatePartnerProjectService,
     private readonly listPartnerProjectsService: ListPartnerProjectsService,
+    private readonly uploadPartnerProjectSourceService: UploadPartnerProjectSourceService,
   ) {}
 
   @Get()
@@ -90,5 +107,31 @@ export class PartnerController {
     @Body() dto: CreatePartnerProjectDto,
   ) {
     return this.createPartnerProjectService.execute(user.userId, id, dto);
+  }
+
+  @Post(':id/projects/:projectId/source')
+  @RequirePermissions('partners.manage')
+  @ApiConsumes('multipart/form-data')
+  @ApiOperation({
+    summary: 'Upload source files for a partner project on their behalf (UC-46)',
+    description:
+      "Requires partners.manage permission. Accepts BMS/DSPF screen files or COBOL programs together with their copybooks, same as the customer-facing upload - just authorized for staff acting on behalf of the partner instead of organization membership.",
+  })
+  @ApiParam({ name: 'id', description: 'Partner id' })
+  @ApiParam({ name: 'projectId', description: 'Project id (must belong to this partner)' })
+  @ApiResponse({ status: 201, description: 'Source files stored' })
+  @ApiResponse({ status: 404, description: 'Partner or project not found' })
+  @UseInterceptors(
+    FilesInterceptor('files', maxUploadFilesPerRequest, {
+      limits: { fileSize: maxUploadSizeBytes },
+    }),
+  )
+  async uploadProjectSource(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('id') id: string,
+    @Param('projectId') projectId: string,
+    @UploadedFiles() files: UploadedSourceFile[],
+  ) {
+    return this.uploadPartnerProjectSourceService.execute(user.userId, id, projectId, files ?? []);
   }
 }
