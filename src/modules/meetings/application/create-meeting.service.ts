@@ -1,7 +1,6 @@
 import { BadRequestException, ConflictException, Inject, Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { AUDIT_REPOSITORY, AuditRepository } from '../../audit/domain/audit.repository';
 import {
-  CreateMeetingInput,
   MEETING_REPOSITORY,
   MeetingRecord,
   MeetingRepository,

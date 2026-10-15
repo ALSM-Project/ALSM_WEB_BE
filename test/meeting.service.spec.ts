@@ -3,7 +3,9 @@ import { CreateMeetingService } from '../src/modules/meetings/application/create
 import { ListMeetingsService } from '../src/modules/meetings/application/list-meetings.service';
 import { MeetingRepository, MeetingStatus } from '../src/modules/meetings/domain/meeting.types';
 import { AuditRepository } from '../src/modules/audit/domain/audit.repository';
-import { ProjectRepository } from '../src/modules/projects/domain/project.types';
+import { ProjectRepository, ProjectRecord } from '../src/modules/projects/domain/project.types';
+import { MailService } from '../src/shared/mail/mail.service';
+import { GoogleCalendarService } from '../src/shared/google/google-calendar.service';
 
 function getFutureDates() {
   const now = Date.now();
@@ -36,7 +38,7 @@ function makeMeeting(overrides: Partial<ReturnType<typeof baseMeeting>> = {}) {
   return { ...baseMeeting(), ...overrides };
 }
 
-function validMeetingInput(overrides: Record<string, any> = {}) {
+function validMeetingInput(overrides: Record<string, unknown> = {}) {
   const { start, end } = getFutureDates();
   return {
     title: 'Sprint Review — Project Phoenix',
@@ -68,7 +70,7 @@ describe('CreateMeetingService (UC-43 Strict Validations)', () => {
 
     projects = {
       create: jest.fn(),
-      findById: jest.fn().mockResolvedValue({ id: 'proj-1', name: 'Project 1' } as any),
+      findById: jest.fn().mockResolvedValue({ id: 'proj-1', name: 'Project 1' } as unknown as ProjectRecord),
       findAll: jest.fn(),
       findByName: jest.fn(),
       update: jest.fn(),
@@ -81,12 +83,12 @@ describe('CreateMeetingService (UC-43 Strict Validations)', () => {
 
     const mailService = {
       sendMeetingInvite: jest.fn().mockResolvedValue(undefined),
-    } as any;
+    } as unknown as MailService;
 
     const googleCalendarService = {
       isEnabled: false,
       createMeetingEvent: jest.fn(),
-    } as any;
+    } as unknown as GoogleCalendarService;
 
     service = new CreateMeetingService(meetings, audit, projects, mailService, googleCalendarService);
   });
