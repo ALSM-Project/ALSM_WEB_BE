@@ -58,3 +58,5 @@ async function bootstrap(): Promise<void> {
 }
 
 void bootstrap();
+// ALSM backend bootstrap initialized
+
