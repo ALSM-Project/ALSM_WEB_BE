@@ -34,6 +34,14 @@ import {
   MethodMapping,
   MethodMappingSchema,
 } from './modules/conversions/infrastructure/method-mapping.schema';
+import { Meeting, MeetingSchema } from './modules/meetings/infrastructure/meeting.schema';
+import { MEETING_REPOSITORY } from './modules/meetings/domain/meeting.types';
+import { MongoMeetingRepository } from './modules/meetings/infrastructure/mongo-meeting.repository';
+import { CreateMeetingService } from './modules/meetings/application/create-meeting.service';
+import { ListMeetingsService } from './modules/meetings/application/list-meetings.service';
+import { MeetingController } from './modules/meetings/presentation/meeting.controller';
+import { MailService } from './shared/mail/mail.service';
+import { GoogleCalendarService } from './shared/google/google-calendar.service';
 import { ErrorLog, ErrorLogSchema } from './modules/conversions/infrastructure/error-log.schema';
 import {
   ValidationRun,
@@ -226,6 +234,7 @@ import { QualityReviewController } from './modules/conversions/presentation/qual
       { name: EmailVerification.name, schema: EmailVerificationSchema },
       { name: FieldMapping.name, schema: FieldMappingSchema },
       { name: MethodMapping.name, schema: MethodMappingSchema },
+      { name: Meeting.name, schema: MeetingSchema },
       { name: ErrorLog.name, schema: ErrorLogSchema },
       { name: ScreenDocument.name, schema: ConversionScreenSchema },
       { name: Screen.name, schema: ScreenSchema },
@@ -249,6 +258,7 @@ import { QualityReviewController } from './modules/conversions/presentation/qual
     ConversionScreensController,
     FieldMappingController,
     MethodMappingController,
+    MeetingController,
     UsersController,
     ExportController,
     ErrorLogController,
@@ -341,6 +351,11 @@ import { QualityReviewController } from './modules/conversions/presentation/qual
     { provide: BANK_CONFIG_REPOSITORY, useClass: MongoBankConfigRepository },
     { provide: FIELD_MAPPING_REPOSITORY, useClass: MongoFieldMappingRepository },
     { provide: METHOD_MAPPING_REPOSITORY, useClass: MongoMethodMappingRepository },
+    { provide: MEETING_REPOSITORY, useClass: MongoMeetingRepository },
+    CreateMeetingService,
+    ListMeetingsService,
+    MailService,
+    GoogleCalendarService,
     { provide: ERROR_LOG_REPOSITORY, useExisting: MongoErrorLogRepository },
     { provide: VALIDATION_RUN_REPOSITORY, useClass: MongoValidationRunRepository },
     { provide: VALIDATION_FINDING_REPOSITORY, useClass: MongoValidationFindingRepository },

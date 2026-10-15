@@ -40,6 +40,8 @@ export const environmentValidationSchema = Joi.object({
   SMTP_USER: Joi.string().allow('').default(''),
   SMTP_PASS: Joi.string().allow('').default(''),
   SMTP_FROM: Joi.string().allow('').default(''),
+  GOOGLE_SERVICE_ACCOUNT_JSON: Joi.string().allow('').default(''),
+  GOOGLE_CALENDAR_USER_EMAIL: Joi.string().allow('').default(''),
   APP_BASE_URL: Joi.string()
     .uri({ scheme: ['http', 'https'] })
     .default('http://localhost:5173'),
