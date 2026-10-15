@@ -1,6 +1,9 @@
 import { ConfigService } from '@nestjs/config';
 import { LiveRunOptions, runLiveBenchmark } from './live-runner';
 import { CheckpointStore, checkpointLocation } from './multiday-store';
+import { assertPhase63eIdentity } from './phase6-3e-campaign';
+import { assertPhase63fIdentity } from './phase6-3f-campaign';
+import { ProviderFailurePolicy, requiresProvenanceReview } from './provider-failure-policy';
 import {
   Checkpoint,
   createRunIdentity,
@@ -11,6 +14,7 @@ import {
 } from './multiday-checkpoint';
 
 export interface MultidayOptions extends Omit<LiveRunOptions, 'selectedCases'> {
+  providerFailurePolicy?: ProviderFailurePolicy;
   config: ConfigService;
   datasetBytes: Buffer;
   checkpoint: string;
@@ -33,7 +37,11 @@ export async function runMultidayBenchmark(options: MultidayOptions): Promise<Ch
     options.config,
     location.storageFingerprint,
     options.failFast,
+    options.provenancePolicy,
+    options.providerFailurePolicy,
   );
+  assertPhase63eIdentity(location.directory, identity);
+  assertPhase63fIdentity(location.directory, identity);
   const store = CheckpointStore.acquire(
     options.checkpoint,
     options.output,
@@ -44,6 +52,10 @@ export async function runMultidayBenchmark(options: MultidayOptions): Promise<Ch
   const now = () => (options.now ?? (() => new Date()))().toISOString();
   try {
     let cp = store.load(options.resume);
+    if (cp && cp.results.some((r) => requiresProvenanceReview(identity, r)))
+      throw new Error(
+        'PROVENANCE_REVIEW: unverified evidence is immutable; automatic continuation is forbidden',
+      );
     if (options.confirmNewQuotaWindow && cp?.state !== 'PAUSED_DAILY_QUOTA')
       throw new Error('Quota-window confirmation is only valid for PAUSED_DAILY_QUOTA');
     if (!cp) {
@@ -102,8 +114,13 @@ export async function runMultidayBenchmark(options: MultidayOptions): Promise<Ch
       }
       cp.results.push(safeTerminal(result));
       cp.nextIndex++;
-      cp.state = cp.nextIndex === 40 ? 'COMPLETE' : 'READY';
+      const review = requiresProvenanceReview(cp.identity, cp.results.at(-1)!);
+      cp.state =
+        cp.nextIndex === 40 && !(cp.identity.providerFailurePolicy && review)
+          ? 'COMPLETE'
+          : 'READY';
       if (cp.state === 'COMPLETE') finish('COMPLETE');
+      else if (review) finish('PROVENANCE_REVIEW');
       else if (options.failFast && result.status !== 'SUCCESS') finish('FAIL_FAST');
       else if (count + 1 === limit) finish('MAX_NEW_CASES');
       store.save(cp);

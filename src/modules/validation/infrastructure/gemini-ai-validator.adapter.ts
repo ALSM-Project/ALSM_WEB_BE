@@ -1,5 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
+import { withAiResponseMetadata } from '../domain/ai-response-metadata';
 import { AiProviderDiagnostics } from '../domain/ai-provider-diagnostics';
 import { AiValidatorError } from '../domain/ai-validator.error';
 import {
@@ -30,6 +31,7 @@ interface GeminiCandidate {
 }
 
 interface GeminiResponseBody {
+  modelVersion?: unknown;
   promptFeedback?: unknown;
   candidates?: unknown;
 }
@@ -90,16 +92,24 @@ export class GeminiAiValidatorAdapter implements AiValidatorPort {
       } catch {
         throw this.invalidResponse();
       }
-      return { findings: validateAiValidationOutput(parsed, input, maxFindings) };
+      return withAiResponseMetadata(
+        { findings: validateAiValidationOutput(parsed, input, maxFindings) },
+        metadata.model,
+        response.body.modelVersion,
+      );
     } catch (error) {
       if (!(error instanceof AiValidatorError)) throw error;
-      throw new AiValidatorError(error.code, error.message, {
-        finalFailureClass: error.code === 'AI_PROVIDER_REFUSED' ? 'REFUSED' : 'INVALID_OUTPUT',
-        httpStatus: response.httpStatus,
-        attempts: response.attempts,
-        retriesExhausted: false,
-        totalLatencyMs: Math.max(0, Date.now() - startedAt),
-      });
+      throw withAiResponseMetadata(
+        new AiValidatorError(error.code, error.message, {
+          finalFailureClass: error.code === 'AI_PROVIDER_REFUSED' ? 'REFUSED' : 'INVALID_OUTPUT',
+          httpStatus: response.httpStatus,
+          attempts: response.attempts,
+          retriesExhausted: false,
+          totalLatencyMs: Math.max(0, Date.now() - startedAt),
+        }),
+        metadata.model,
+        response.body?.modelVersion,
+      );
     }
   }
 
@@ -243,6 +253,8 @@ export class GeminiAiValidatorAdapter implements AiValidatorPort {
   }
 
   private extractOutputText(body: GeminiResponseBody): string {
+    if (typeof body !== 'object' || body === null || Array.isArray(body))
+      throw this.invalidResponse();
     if (this.isPromptBlocked(body.promptFeedback)) throw this.refused();
     if (!Array.isArray(body.candidates) || body.candidates.length === 0)
       throw this.invalidResponse();

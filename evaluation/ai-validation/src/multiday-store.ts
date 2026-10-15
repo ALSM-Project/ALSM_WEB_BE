@@ -1,6 +1,8 @@
 import * as fs from 'fs';
 import { dirname, join, relative, resolve, sep } from 'path';
 import { randomUUID } from 'crypto';
+import { assertPhase63eIdentity } from './phase6-3e-campaign';
+import { assertPhase63fIdentity } from './phase6-3f-campaign';
 import {
   isPathWithin,
   resolveEvaluationPath,
@@ -113,6 +115,16 @@ export class CheckpointStore {
     projectRoot = process.cwd(),
   ): CheckpointStore {
     const location = checkpointLocation(path, output, projectRoot);
+    const runId = relative(
+      resolve(projectRoot, 'evaluation/ai-validation/results/multiday'),
+      location.directory,
+    ).toLowerCase();
+    if (runId === 'phase6-3d-gemini-v1')
+      throw new Error('Protected Phase 6.3D campaign is read-only');
+    if (runId === 'phase6-3e-gemini36-v1')
+      throw new Error('Protected Phase 6.3E campaign is read-only');
+    assertPhase63eIdentity(location.directory, identity);
+    assertPhase63fIdentity(location.directory, identity);
     if (location.storageFingerprint !== identity.storageFingerprint)
       throw new Error('Resume mismatch: storageFingerprint');
     fs.mkdirSync(location.directory, { recursive: true });

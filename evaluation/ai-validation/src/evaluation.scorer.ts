@@ -1,5 +1,7 @@
 import { ValidationFindingSeverity } from '../../../src/modules/validation/domain/validation-finding.types';
 import { FindingMatch, matchFindings } from './evaluation.matcher';
+import { summarizeProvenance } from './model-provenance';
+import { sanitizeProviderDiagnostics } from '../../../src/modules/validation/domain/ai-provider-diagnostics';
 import {
   AiEvaluationCase,
   AiEvaluationDataset,
@@ -56,6 +58,7 @@ export interface EvaluationCaseScore {
 }
 
 export interface EvaluationScore {
+  provenance: ReturnType<typeof summarizeProvenance>;
   metadata: {
     datasetId: string;
     datasetVersion: string;
@@ -73,6 +76,15 @@ export interface EvaluationScore {
     failedCases: number;
     missingCases: number;
     failuresByStatus: Record<string, number>;
+    terminalCases: number;
+    providerFailuresByClass: Record<string, number>;
+    providerFailuresByHttpStatus: Record<string, number>;
+    providerFailures: Array<{
+      caseId: string;
+      failureClass: string;
+      httpStatus?: number;
+      attempts?: number;
+    }>;
   };
   successfulCases: MetricSet;
   conservative: MetricSet;
@@ -234,6 +246,25 @@ export function scoreEvaluation(
   const successfulMetrics = finalizeMetricSet(successfulCounts);
   const conservativeMetrics = finalizeMetricSet(conservativeCounts);
   const totalMutatedCases = dataset.cases.filter((benchmarkCase) => !benchmarkCase.isClean).length;
+  const providerFailures = predictions.cases
+    .filter((r) => r.status === 'PROVIDER_FAILED')
+    .map((r) => {
+      const d = r.failure?.diagnostics && sanitizeProviderDiagnostics(r.failure.diagnostics);
+      return {
+        caseId: r.caseId,
+        failureClass: d?.finalFailureClass ?? 'UNKNOWN',
+        ...(d?.httpStatus === undefined ? {} : { httpStatus: d.httpStatus }),
+        ...(d ? { attempts: d.attempts } : {}),
+      };
+    });
+  const providerFailuresByClass: Record<string, number> = {};
+  const providerFailuresByHttpStatus: Record<string, number> = {};
+  for (const failure of providerFailures) {
+    providerFailuresByClass[failure.failureClass] =
+      (providerFailuresByClass[failure.failureClass] ?? 0) + 1;
+    const status = String(failure.httpStatus ?? 'UNKNOWN');
+    providerFailuresByHttpStatus[status] = (providerFailuresByHttpStatus[status] ?? 0) + 1;
+  }
 
   return {
     metadata: {
@@ -247,12 +278,17 @@ export function scoreEvaluation(
       locationToleranceLines: predictions.locationToleranceLines,
       matchingPolicyVersion: predictions.matchingPolicyVersion,
     },
+    provenance: summarizeProvenance(dataset, predictions),
     execution: {
       totalCases: dataset.cases.length,
       successfulCases,
       failedCases,
       missingCases,
       failuresByStatus: failureCounts,
+      terminalCases: successfulCases + failedCases,
+      providerFailures,
+      providerFailuresByClass,
+      providerFailuresByHttpStatus,
     },
     successfulCases: successfulMetrics,
     conservative: conservativeMetrics,

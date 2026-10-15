@@ -34,7 +34,6 @@ import {
   MethodMapping,
   MethodMappingSchema,
 } from './modules/conversions/infrastructure/method-mapping.schema';
-import { Partner, PartnerSchema } from './modules/partners/infrastructure/partner.schema';
 import { Meeting, MeetingSchema } from './modules/meetings/infrastructure/meeting.schema';
 import { MEETING_REPOSITORY } from './modules/meetings/domain/meeting.types';
 import { MongoMeetingRepository } from './modules/meetings/infrastructure/mongo-meeting.repository';
@@ -123,11 +122,6 @@ import { MongoMethodMappingRepository } from './modules/conversions/infrastructu
 import { GetMethodMappingService } from './modules/conversions/application/get-method-mapping.service';
 import { SaveMethodMappingService } from './modules/conversions/application/save-method-mapping.service';
 import { MethodMappingController } from './modules/conversions/presentation/method-mapping.controller';
-import { PARTNER_REPOSITORY } from './modules/partners/domain/partner.types';
-import { MongoPartnerRepository } from './modules/partners/infrastructure/mongo-partner.repository';
-import { CreatePartnerService } from './modules/partners/application/create-partner.service';
-import { ListPartnersService } from './modules/partners/application/list-partners.service';
-import { PartnerController } from './modules/partners/presentation/partner.controller';
 import { OnboardUserService } from './modules/users/application/onboard-user.service';
 import { UpdateUserStatusService } from './modules/users/application/update-user-status.service';
 import { UsersController } from './modules/users/presentation/users.controller';
@@ -201,6 +195,13 @@ import { MenuModule } from './modules/menus/menu.module';
 import { VALIDATION_REPOSITORY } from './modules/conversions/domain/validation.types';
 import { MongoValidationRepository } from './modules/conversions/infrastructure/mongo-validation.repository';
 import { RuleValidatorService } from './modules/conversions/application/rule-validator.service';
+import { LegacyValidationService } from './modules/conversions/application/legacy-validation.service';
+import {
+  LegacyValidationRun,
+  LegacyValidationFinding,
+  ValidationRunSchema as LegacyValidationRunSchema,
+  ValidationFindingSchema as LegacyValidationFindingSchema,
+} from './modules/conversions/infrastructure/validation.schema';
 import { ValidationController as RuleValidationController } from './modules/conversions/presentation/validation.controller';
 import {
   ConversionQualityReview,
@@ -233,13 +234,14 @@ import { QualityReviewController } from './modules/conversions/presentation/qual
       { name: EmailVerification.name, schema: EmailVerificationSchema },
       { name: FieldMapping.name, schema: FieldMappingSchema },
       { name: MethodMapping.name, schema: MethodMappingSchema },
-      { name: Partner.name, schema: PartnerSchema },
       { name: Meeting.name, schema: MeetingSchema },
       { name: ErrorLog.name, schema: ErrorLogSchema },
       { name: ScreenDocument.name, schema: ConversionScreenSchema },
       { name: Screen.name, schema: ScreenSchema },
       { name: ValidationRun.name, schema: ValidationRunSchema },
       { name: ValidationFinding.name, schema: ValidationFindingSchema },
+      { name: LegacyValidationRun.name, schema: LegacyValidationRunSchema },
+      { name: LegacyValidationFinding.name, schema: LegacyValidationFindingSchema },
       { name: QuoteRequest.name, schema: QuoteRequestSchema },
       { name: ConversionQualityReview.name, schema: ConversionQualityReviewSchema },
     ]),
@@ -256,7 +258,6 @@ import { QualityReviewController } from './modules/conversions/presentation/qual
     ConversionScreensController,
     FieldMappingController,
     MethodMappingController,
-    PartnerController,
     MeetingController,
     UsersController,
     ExportController,
@@ -298,11 +299,10 @@ import { QualityReviewController } from './modules/conversions/presentation/qual
     SaveFieldMappingService,
     GetMethodMappingService,
     SaveMethodMappingService,
-    CreatePartnerService,
-    ListPartnersService,
     OnboardUserService,
     UpdateUserStatusService,
     RuleValidatorService,
+    LegacyValidationService,
     ExportCodeService,
     ErrorLogService,
     BuildValidationContextService,
@@ -351,7 +351,6 @@ import { QualityReviewController } from './modules/conversions/presentation/qual
     { provide: BANK_CONFIG_REPOSITORY, useClass: MongoBankConfigRepository },
     { provide: FIELD_MAPPING_REPOSITORY, useClass: MongoFieldMappingRepository },
     { provide: METHOD_MAPPING_REPOSITORY, useClass: MongoMethodMappingRepository },
-    { provide: PARTNER_REPOSITORY, useClass: MongoPartnerRepository },
     { provide: MEETING_REPOSITORY, useClass: MongoMeetingRepository },
     CreateMeetingService,
     ListMeetingsService,
