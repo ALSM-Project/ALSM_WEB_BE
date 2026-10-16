@@ -5,11 +5,13 @@ import { ValidationPipe } from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 import helmet from 'helmet';
+import { json, urlencoded } from 'express';
 import { AppModule } from './app.module';
 import { ApiExceptionFilter } from './shared/errors/api-exception.filter';
 import { ConversionWorkerRunner } from './modules/conversions/infrastructure/conversion-worker.runner';
 import { ValidationWorkerRunner } from './modules/validation/infrastructure/validation-worker.runner';
 import { ContractNotificationEmailOutboxWorker } from './modules/crm/infrastructure/contract-notification-email-outbox.worker';
+import { CrmChatWebSocketService } from './modules/crm/infrastructure/crm-chat.websocket';
 import { createCorsOptions } from './config/cors-policy';
 
 async function bootstrap(): Promise<void> {
@@ -17,10 +19,17 @@ async function bootstrap(): Promise<void> {
   // Controllers must still pass rawBody directly to the configured adapter and never log it.
   const app = await NestFactory.create(AppModule, { rawBody: true });
   app.enableShutdownHooks();
+
+  // Allow up to 10MB payloads for digital signature canvas and official seal uploads
+  app.use(json({ limit: '10mb' }));
+  app.use(urlencoded({ extended: true, limit: '10mb' }));
+
   app.use(
     helmet({
       crossOriginOpenerPolicy: false,
       crossOriginResourcePolicy: { policy: 'cross-origin' },
+      frameguard: false,
+      contentSecurityPolicy: false,
     }),
   );
 
@@ -44,6 +53,14 @@ async function bootstrap(): Promise<void> {
   SwaggerModule.setup('api/docs', app, document);
 
   await app.listen(process.env.PORT ?? 3000);
+
+  // Initialize CRM Chat WebSocket gateway
+  try {
+    const wsChatService = app.get(CrmChatWebSocketService);
+    wsChatService.initialize(app.getHttpServer());
+  } catch (wsErr) {
+    console.error('Failed to initialize CRM Chat WebSocket server:', wsErr);
+  }
 
   // Automatically start conversion and AI validation BullMQ worker runners
   try {
