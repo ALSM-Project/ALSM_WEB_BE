@@ -19,6 +19,14 @@ import { AuditLog, AuditLogSchema } from '../audit/infrastructure/audit-log.sche
 import { PasswordReset, PasswordResetSchema } from '../auth/infrastructure/password-reset.schema';
 import { Role, RoleSchema } from '../rbac/infrastructure/schemas/role.schema';
 import { UserRole, UserRoleSchema } from '../rbac/infrastructure/schemas/user-role.schema';
+import { Invoice, InvoiceSchema } from '../billing/infrastructure/invoice.schema';
+import { Payment, PaymentSchema } from '../billing/infrastructure/payment.schema';
+import {
+  ProviderCompanyProfile,
+  ProviderCompanyProfileSchema,
+} from './infrastructure/provider-company-profile.schema';
+import { ProviderCompanyProfileService } from './application/provider-company-profile.service';
+import { ProviderCompanyProfileController } from './presentation/provider-company-profile.controller';
 import { EMAIL_PORT } from '../auth/domain/email.port';
 import { SmtpEmailAdapter } from '../auth/infrastructure/smtp-email.adapter';
 import { PlatformAdminService } from './application/platform-admin.service';
@@ -43,17 +51,28 @@ import { PlatformAdminAuthorizationGuard } from './presentation/platform-admin-a
       { name: PasswordReset.name, schema: PasswordResetSchema },
       { name: Role.name, schema: RoleSchema },
       { name: UserRole.name, schema: UserRoleSchema },
+      { name: Invoice.name, schema: InvoiceSchema },
+      { name: Payment.name, schema: PaymentSchema },
+      { name: ProviderCompanyProfile.name, schema: ProviderCompanyProfileSchema },
     ]),
   ],
-  controllers: [PlatformAdminController],
+  controllers: [PlatformAdminController, ProviderCompanyProfileController],
   providers: [
     PlatformAdminAccessService,
     PlatformAdminAuthorizationGuard,
     PlatformAdminService,
     LockUserService,
     AuditLogService,
+    ProviderCompanyProfileService,
     { provide: EMAIL_PORT, useClass: SmtpEmailAdapter },
   ],
-  exports: [PlatformAdminService, LockUserService, AuditLogService, PlatformAdminAccessService, PlatformAdminAuthorizationGuard],
+  exports: [
+    PlatformAdminService,
+    LockUserService,
+    AuditLogService,
+    PlatformAdminAccessService,
+    PlatformAdminAuthorizationGuard,
+    ProviderCompanyProfileService,
+  ],
 })
 export class AdminModule {}
