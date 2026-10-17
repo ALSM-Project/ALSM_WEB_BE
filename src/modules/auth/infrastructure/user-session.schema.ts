@@ -7,6 +7,10 @@ export class UserSession {
   @Prop({ type: MongooseSchema.Types.ObjectId, required: true, index: true })
   userId!: Types.ObjectId;
   @Prop({ required: true, select: false }) refreshTokenHash!: string;
+  @Prop() familyId?: string;
+  @Prop() accessVersion?: string;
+  @Prop() legacyTokenId?: string;
+  @Prop({ select: false }) legacyTokenHash?: string;
   @Prop({ required: true, index: { expires: 0 } }) expiresAt!: Date;
   @Prop() revokedAt?: Date;
   @Prop() deviceType?: string;
