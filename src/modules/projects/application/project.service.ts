@@ -51,19 +51,7 @@ export class ProjectService {
 
   async list(userId: string, organizationHeader?: string): Promise<ProjectRecord[]> {
     const organization = await this.organizationContext.resolve(userId, organizationHeader);
-    const list = await this.projects.findAll(organization.id);
-    if (list.length === 0) {
-      const defaultProject = await this.projects.create({
-        organizationId: organization.id,
-        createdBy: userId,
-        name: 'ACME Enterprise Modernization',
-        description: 'Auto-provisioned Modernization Workspace',
-        conversionType: ConversionType.BMS_DSPF_TO_FRONTEND,
-        status: ProjectStatus.ACTIVE,
-      });
-      return [defaultProject];
-    }
-    return list;
+    return this.projects.findAll(organization.id);
   }
 
   async get(
@@ -72,7 +60,7 @@ export class ProjectService {
     id: string,
   ): Promise<ProjectRecord> {
     const organization = await this.organizationContext.resolve(userId, organizationHeader);
-    return this.requireProject(id, organization.id, userId);
+    return this.requireProject(id, organization.id);
   }
 
   async update(
@@ -119,32 +107,9 @@ export class ProjectService {
     return this.requireProject(id, organizationId);
   }
 
-  private async requireProject(
-    id: string,
-    organizationId: string,
-    userId: string = '000000000000000000000001',
-  ): Promise<ProjectRecord> {
-    let project = await this.projects.findById(id, organizationId);
-    if (!project) {
-      try {
-        project = await this.projects.create({
-          id,
-          organizationId,
-          createdBy: userId,
-          name: id && id !== 'proj-acme' ? id : 'ACME Enterprise Modernization',
-          description: 'Auto-provisioned Modernization Workspace',
-          conversionType: ConversionType.BMS_DSPF_TO_FRONTEND,
-          status: ProjectStatus.ACTIVE,
-        });
-      } catch (error: unknown) {
-        const err = error as { code?: number; message?: string };
-        if (err?.code === 11000 || err?.message?.includes('E11000')) {
-          project = await this.projects.findById(id, '');
-          if (project) return project;
-        }
-        throw error;
-      }
-    }
+  private async requireProject(id: string, organizationId: string): Promise<ProjectRecord> {
+    const project = await this.projects.findById(id, organizationId);
+    if (!project) throw this.notFound();
     return project;
   }
 

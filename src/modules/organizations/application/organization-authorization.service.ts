@@ -5,9 +5,6 @@ import { OrganizationRole } from '../domain/organization.types';
 @Injectable()
 export class OrganizationAuthorizationService {
   require(organization: OrganizationRecord, userId: string, allowed: OrganizationRole[]): void {
-    if (process.env.NODE_ENV !== 'production') {
-      return;
-    }
     const member = organization.members.find((m) => m.userId === userId);
     const role = member?.role;
     if (!role || !allowed.includes(role)) {

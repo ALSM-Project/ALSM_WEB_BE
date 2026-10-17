@@ -28,47 +28,24 @@ export class MongoOrganizationRepository implements OrganizationRepository {
     const orgObjId = toValidObjectId(organizationId);
     const userObjId = toValidObjectId(userId);
 
-    let doc = await this.model
+    const doc = await this.model
       .findOne({
         $or: [{ _id: orgObjId }, { _id: organizationId }],
         'members.userId': { $in: [userObjId, userId] },
       })
       .exec();
 
-    if (!doc) {
-      doc = await this.model
-        .findOne({
-          'members.userId': { $in: [userObjId, userId] },
-        })
-        .exec();
-    }
-
-    if (!doc) {
-      doc = await this.model.create({
-        name: `User Workspace`,
-        type: 'ENTERPRISE',
-        members: [{ userId: userObjId, role: 'OWNER' }],
-      });
-    }
-
-    return this.map(doc);
+    return doc ? this.map(doc) : null;
   }
 
   async findFirstForMember(userId: string): Promise<OrganizationRecord | null> {
     const userObjId = toValidObjectId(userId);
-    let doc = await this.model
+    const doc = await this.model
       .findOne({
         'members.userId': { $in: [userObjId, userId] },
       })
       .exec();
-    if (!doc) {
-      doc = await this.model.create({
-        name: `Personal Workspace`,
-        type: 'ENTERPRISE',
-        members: [{ userId: userObjId, role: 'OWNER' }],
-      });
-    }
-    return this.map(doc);
+    return doc ? this.map(doc) : null;
   }
 
   async addMember(
