@@ -64,7 +64,13 @@ export class GetTeamWorkloadService {
       counted = new Set<string>();
     for (const assignment of team.projectAssignments) {
       const project = await this.projects.findById(assignment.projectId, organization.id);
-      if (!project || project.deletedAt) continue;
+      if (
+        !project ||
+        project.id !== assignment.projectId ||
+        project.organizationId !== organization.id ||
+        project.deletedAt
+      )
+        continue;
       const scoped = assignments.filter(
         (a) =>
           a.projectId === project.id &&

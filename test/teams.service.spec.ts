@@ -44,7 +44,7 @@ function setup() {
     permissions as unknown as EffectivePermissionsService,
     teams as unknown as TeamRepository,
   );
-  const projects = { findById: jest.fn().mockResolvedValue({ organizationId }) };
+  const projects = { findById: jest.fn().mockResolvedValue({ id, organizationId }) };
   const audit = { append: jest.fn().mockResolvedValue(undefined) };
   const save = new SaveTeamService(
     access,
@@ -201,6 +201,18 @@ describe('explicit organization-owned teams', () => {
     await expect(f.save.execute(owner, organizationId, f.input)).rejects.toThrow(
       'audit unavailable',
     );
+    expect(f.teams.save).not.toHaveBeenCalled();
+  });
+  it('rejects legacy project name-alias matches instead of accepting a different project ID', async () => {
+    const f = setup();
+    f.projects.findById.mockResolvedValue({ id: 'cccccccccccccccccccccccc', organizationId });
+    await expect(
+      f.save.execute(owner, organizationId, {
+        ...f.input,
+        kind: TeamKind.CONVERSION,
+        projectAssignments: [{ projectId: id, memberIds: [member] }],
+      }),
+    ).rejects.toBeInstanceOf(BadRequestException);
     expect(f.teams.save).not.toHaveBeenCalled();
   });
   it('surfaces compare-and-set conflicts without reporting a saved outcome', async () => {

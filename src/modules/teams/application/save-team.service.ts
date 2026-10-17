@@ -83,7 +83,13 @@ export class SaveTeamService {
       const projectId = teamId(assignment.projectId);
       const project = await this.projects.findById(projectId, organization.id);
       const assignedMembers = uniqueIds(assignment.memberIds);
-      if (!project || project.deletedAt || assignedMembers.some((m) => !memberIds.includes(m)))
+      if (
+        !project ||
+        project.id !== projectId ||
+        project.organizationId !== organization.id ||
+        project.deletedAt ||
+        assignedMembers.some((m) => !memberIds.includes(m))
+      )
         throw new BadRequestException({
           code: 'INVALID_TEAM_PROJECT',
           message: 'Projects must belong to this organization and assignees must be team members',

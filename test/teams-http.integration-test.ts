@@ -619,4 +619,27 @@ owned('Teams actual HTTP + Mongo + persisted RBAC', () => {
       await model.createIndexes();
     }
   });
+  it('does not authorize project assignments through the legacy project-name lookup fallback', async () => {
+    const missingId = new Types.ObjectId().toHexString();
+    await projects.create({
+      organizationId,
+      name: missingId,
+      conversionType: ConversionType.COBOL_TO_JAVA,
+      status: ProjectStatus.ACTIVE,
+      createdBy: owner,
+    });
+    expect((await projects.findById(missingId, organizationId))?.id).not.toBe(missingId);
+    const result = await request('POST', '/teams', owner, {
+      name: 'Alias forbidden',
+      kind: TeamKind.CONVERSION,
+      memberIds: [member],
+      managerIds: [manager],
+      projectAssignments: [{ projectId: missingId, memberIds: [member] }],
+      expectedRevision: 0,
+    });
+    expect(result.status).toBe(400);
+    expect(await connection.collection('teams').countDocuments({ name: 'Alias forbidden' })).toBe(
+      0,
+    );
+  });
 });

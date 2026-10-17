@@ -50,7 +50,10 @@ export class AssignTeamJobService {
     const project = job ? await this.projects.findById(job.projectId, organization.id) : null;
     if (
       !job ||
+      job.organizationId !== organization.id ||
       !project ||
+      project.id !== job.projectId ||
+      project.organizationId !== organization.id ||
       project.deletedAt ||
       !team.memberIds.includes(memberId) ||
       !organization.members.some((m) => m.userId === memberId) ||

@@ -39,7 +39,9 @@ function setup() {
       { id: 'not-assigned', status: ConversionJobStatus.COMPLETED },
     ]),
   };
-  const projects = { findById: jest.fn().mockResolvedValue({ id: 'project' }) };
+  const projects = {
+    findById: jest.fn().mockResolvedValue({ id: 'project', organizationId: 'org' }),
+  };
   const users = {
     findById: jest
       .fn()
