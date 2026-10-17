@@ -81,8 +81,17 @@ export class PlatformAdminController {
   @ApiOperation({
     summary: 'View platform total revenue derived from contracts & payments (3.13.6)',
   })
-  async getRevenueSummary() {
-    return this.adminService.getTotalRevenue();
+  async getRevenueSummary(@Query('dateRange') dateRange?: string) {
+    return this.adminService.getTotalRevenue({ dateRange });
+  }
+
+  @Get('revenue/transactions')
+  @RequirePermissions('revenue.view')
+  @ApiOperation({
+    summary: 'View confirmed enterprise contracts and payment ledger (3.13.6)',
+  })
+  async getRevenueTransactions(@Query('dateRange') dateRange?: string) {
+    return this.adminService.getRevenueTransactions({ dateRange });
   }
 
   @Get('engagement-types')
