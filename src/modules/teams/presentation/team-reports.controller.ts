@@ -5,6 +5,7 @@ import { JwtAuthGuard } from '../../../shared/security/jwt-auth.guard';
 import { AuthenticatedUser } from '../../../shared/logging/request-id.middleware';
 import { GetSalesTeamPerformanceService } from '../application/get-sales-team-performance.service';
 import { TeamPeriodQuery } from './team.dto';
+import { GetTeamWorkloadService } from '../application/get-team-workload.service';
 
 @ApiTags('Team reports')
 @ApiBearerAuth()
@@ -12,7 +13,23 @@ import { TeamPeriodQuery } from './team.dto';
 @UseGuards(JwtAuthGuard)
 @Controller('teams/:teamId')
 export class TeamReportsController {
-  constructor(private readonly sales: GetSalesTeamPerformanceService) {}
+  constructor(
+    private readonly sales: GetSalesTeamPerformanceService,
+    private readonly workload: GetTeamWorkloadService,
+  ) {}
+  @Get('workload')
+  @ApiOperation({
+    summary:
+      'Team Lead: current statuses of explicitly assigned jobs created in the last 7/30 rolling days; no historical attribution inferred',
+  })
+  monitor(
+    @CurrentUser() user: AuthenticatedUser,
+    @Headers('x-organization-id') organizationId: string | undefined,
+    @Param('teamId') teamId: string,
+    @Query() query: TeamPeriodQuery,
+  ) {
+    return this.workload.execute(user.userId, organizationId, teamId, query.days);
+  }
   @Get('performance')
   @ApiOperation({
     summary:

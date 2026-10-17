@@ -9,6 +9,16 @@ import { TeamsController } from './modules/teams/presentation/teams.controller';
 import { GetTeamAdministrationService } from './modules/teams/application/get-team-administration.service';
 import { GetSalesTeamPerformanceService } from './modules/teams/application/get-sales-team-performance.service';
 import { TeamReportsController } from './modules/teams/presentation/team-reports.controller';
+import { TeamJobAssignment, TeamJobAssignmentSchema } from './modules/teams/infrastructure/team-job-assignment.schema';
+import { MongoTeamJobAssignmentRepository } from './modules/teams/infrastructure/mongo-team-job-assignment.repository';
+import { TEAM_JOB_ASSIGNMENTS } from './modules/teams/domain/team-job-assignment.types';
+import { AssignTeamJobService } from './modules/teams/application/assign-team-job.service';
+import { RevokeTeamJobService } from './modules/teams/application/revoke-team-job.service';
+import { ListTeamJobAssignmentsService } from './modules/teams/application/list-team-job-assignments.service';
+import { GetTeamWorkloadService } from './modules/teams/application/get-team-workload.service';
+import { TeamJobAssignmentsController } from './modules/teams/presentation/team-job-assignments.controller';
+import { CONVERSION_WORKLOAD } from './modules/conversions/domain/conversion-workload.port';
+import { MongoConversionWorkloadReader } from './modules/conversions/infrastructure/mongo-conversion-workload.reader';
 import { ConfigModule } from '@nestjs/config';
 import { JwtModule } from '@nestjs/jwt';
 import { MongooseModule } from '@nestjs/mongoose';
@@ -235,6 +245,7 @@ import { QualityReviewController } from './modules/conversions/presentation/qual
       { name: AuditLog.name, schema: AuditLogSchema },
       { name: Project.name, schema: ProjectSchema },
       { name: Team.name, schema: TeamSchema },
+      { name: TeamJobAssignment.name, schema: TeamJobAssignmentSchema },
       { name: ConversionJob.name, schema: ConversionJobSchema },
       { name: Subscription.name, schema: SubscriptionSchema },
       { name: Invoice.name, schema: InvoiceSchema },
@@ -262,6 +273,7 @@ import { QualityReviewController } from './modules/conversions/presentation/qual
   controllers: [
     TeamsController,
     TeamReportsController,
+    TeamJobAssignmentsController,
     AuthController,
     ProjectsController,
     ConversionsController,
@@ -285,6 +297,12 @@ import { QualityReviewController } from './modules/conversions/presentation/qual
     TeamAccessService,
     GetTeamAdministrationService,
     GetSalesTeamPerformanceService,
+    AssignTeamJobService,
+    RevokeTeamJobService,
+    ListTeamJobAssignmentsService,
+    GetTeamWorkloadService,
+    { provide: TEAM_JOB_ASSIGNMENTS, useClass: MongoTeamJobAssignmentRepository },
+    { provide: CONVERSION_WORKLOAD, useClass: MongoConversionWorkloadReader },
     SaveTeamService,
     ListManagedTeamsService,
     { provide: TEAM_REPOSITORY, useClass: MongoTeamRepository },

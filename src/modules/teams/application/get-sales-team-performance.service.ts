@@ -44,7 +44,10 @@ export class GetSalesTeamPerformanceService {
         });
     }
     const current = await this.access.managed(userId, organization.id, team.id, TeamKind.SALES);
-    if (current.team.revision !== team.revision)
+    if (
+      current.team.revision !== team.revision ||
+      JSON.stringify(current.organization.members) !== JSON.stringify(organization.members)
+    )
       throw new ConflictException({
         code: 'TEAM_REPORT_CHANGED',
         message: 'Team changed while reporting; refresh',

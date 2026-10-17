@@ -1,0 +1,48 @@
+import { Inject, Injectable, NotFoundException } from '@nestjs/common';
+import {
+  TEAM_JOB_ASSIGNMENTS,
+  TeamJobAssignmentRepository,
+} from '../domain/team-job-assignment.types';
+import { TeamAccessService, teamId } from './team-access.service';
+import { AUDIT_REPOSITORY, AuditRepository } from '../../audit/domain/audit.repository';
+
+@Injectable()
+export class RevokeTeamJobService {
+  constructor(
+    private readonly access: TeamAccessService,
+    @Inject(TEAM_JOB_ASSIGNMENTS) private readonly assignments: TeamJobAssignmentRepository,
+    @Inject(AUDIT_REPOSITORY) private readonly audit: AuditRepository,
+  ) {}
+  async execute(
+    userId: string,
+    organizationHeader: string | undefined,
+    id: string,
+    jobSelector: string,
+  ) {
+    const organization = await this.access.administer(userId, organizationHeader);
+    const jobId = teamId(jobSelector),
+      selectedTeamId = teamId(id);
+    await this.audit.append({
+      actorUserId: userId,
+      organizationId: organization.id,
+      action: 'TEAM_JOB_REVOCATION_REQUESTED',
+      resourceType: 'team',
+      resourceId: selectedTeamId,
+      metadata: { jobId },
+    });
+    if (!(await this.assignments.revoke(organization.id, selectedTeamId, jobId, userId)))
+      throw new NotFoundException({
+        code: 'TEAM_JOB_ASSIGNMENT_NOT_FOUND',
+        message: 'Active assignment is unavailable in this team and organization',
+      });
+    await this.audit.append({
+      actorUserId: userId,
+      organizationId: organization.id,
+      action: 'TEAM_JOB_REVOKED',
+      resourceType: 'team',
+      resourceId: selectedTeamId,
+      metadata: { jobId },
+    });
+    return { revoked: true };
+  }
+}

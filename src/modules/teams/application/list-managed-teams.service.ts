@@ -9,7 +9,7 @@ export class ListManagedTeamsService {
     @Inject(TEAM_REPOSITORY) private readonly teams: TeamRepository,
   ) {}
   async execute(userId: string, organizationHeader: string | undefined, kind: TeamKind) {
-    const organization = await this.access.organization(userId, organizationHeader);
+    const organization = await this.access.reportingOrganization(userId, organizationHeader);
     const teams = await this.teams.listManaged(organization.id, userId, kind);
     return teams.map((team) => ({
       id: team.id,

@@ -57,3 +57,7 @@ export class SaveTeamDto {
 export class TeamPeriodQuery {
   @ApiProperty({ enum: [7, 30] }) @Type(() => Number) @IsInt() @IsIn([7, 30]) days!: 7 | 30;
 }
+export class AssignTeamJobDto {
+  @ApiProperty() @IsMongoId() jobId!: string;
+  @ApiProperty() @IsMongoId() memberId!: string;
+}

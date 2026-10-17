@@ -51,6 +51,24 @@ import { JwtAuthGuard } from '../src/shared/security/jwt-auth.guard';
 import { GetTeamAdministrationService } from '../src/modules/teams/application/get-team-administration.service';
 import { GetSalesTeamPerformanceService } from '../src/modules/teams/application/get-sales-team-performance.service';
 import { TeamReportsController } from '../src/modules/teams/presentation/team-reports.controller';
+import {
+  TeamJobAssignment,
+  TeamJobAssignmentSchema,
+} from '../src/modules/teams/infrastructure/team-job-assignment.schema';
+import { MongoTeamJobAssignmentRepository } from '../src/modules/teams/infrastructure/mongo-team-job-assignment.repository';
+import { AssignTeamJobService } from '../src/modules/teams/application/assign-team-job.service';
+import { RevokeTeamJobService } from '../src/modules/teams/application/revoke-team-job.service';
+import { ListTeamJobAssignmentsService } from '../src/modules/teams/application/list-team-job-assignments.service';
+import { GetTeamWorkloadService } from '../src/modules/teams/application/get-team-workload.service';
+import { TeamJobAssignmentsController } from '../src/modules/teams/presentation/team-job-assignments.controller';
+import {
+  ConversionJob,
+  ConversionJobSchema,
+} from '../src/modules/conversions/infrastructure/conversion-job.schema';
+import { MongoConversionJobRepository } from '../src/modules/conversions/infrastructure/mongo-conversion-job.repository';
+import { MongoConversionWorkloadReader } from '../src/modules/conversions/infrastructure/mongo-conversion-workload.reader';
+import { ConversionType, ProjectStatus } from '../src/modules/projects/domain/project.types';
+import { ConversionJobStatus } from '../src/modules/conversions/domain/conversion-job.types';
 
 jest.setTimeout(30000);
 const owned = process.env.ALSM_TEAM_HTTP_TEST === 'owned-local-only' ? describe : describe.skip;
@@ -87,6 +105,12 @@ owned('Teams actual HTTP + Mongo + persisted RBAC', () => {
   let projects: MongoProjectRepository;
   let users: MongoUserRepository;
   let audit: MongoAuditRepository;
+  let assignments: MongoTeamJobAssignmentRepository;
+  let jobs: MongoConversionJobRepository;
+  let reader: MongoConversionWorkloadReader;
+  let conversionTeam: TeamRecord;
+  let projectId: string;
+  const jobIds: string[] = [];
   async function request(
     method: string,
     route: string,
@@ -184,6 +208,13 @@ owned('Teams actual HTTP + Mongo + persisted RBAC', () => {
     await connection.model(Team.name).init();
     projects = new MongoProjectRepository(connection.model(Project.name, ProjectSchema));
     audit = new MongoAuditRepository(connection.model(AuditLog.name, AuditLogSchema));
+    assignments = new MongoTeamJobAssignmentRepository(
+      connection.model(TeamJobAssignment.name, TeamJobAssignmentSchema),
+    );
+    await connection.model(TeamJobAssignment.name).init();
+    const jobModel = connection.model(ConversionJob.name, ConversionJobSchema);
+    jobs = new MongoConversionJobRepository(jobModel);
+    reader = new MongoConversionWorkloadReader(jobModel);
     access = new TeamAccessService(
       new OrganizationContextService(organizations),
       new OrganizationAuthorizationService(),
@@ -195,8 +226,32 @@ owned('Teams actual HTTP + Mongo + persisted RBAC', () => {
     const list = new ListManagedTeamsService(access, teams);
     const module = await Test.createTestingModule({
       imports: [JwtModule.register({ secret: 'owned-team-http-test-key' })],
-      controllers: [TeamsController, TeamReportsController],
+      controllers: [TeamsController, TeamReportsController, TeamJobAssignmentsController],
       providers: [
+        {
+          provide: GetTeamWorkloadService,
+          useValue: new GetTeamWorkloadService(access, assignments, reader, projects, users),
+        },
+        {
+          provide: AssignTeamJobService,
+          useValue: new AssignTeamJobService(
+            access,
+            teams,
+            assignments,
+            jobs,
+            projects,
+            users,
+            audit,
+          ),
+        },
+        {
+          provide: RevokeTeamJobService,
+          useValue: new RevokeTeamJobService(access, assignments, audit),
+        },
+        {
+          provide: ListTeamJobAssignmentsService,
+          useValue: new ListTeamJobAssignmentsService(access, teams, assignments),
+        },
         {
           provide: GetSalesTeamPerformanceService,
           useValue: new GetSalesTeamPerformanceService(access, users),
@@ -330,5 +385,238 @@ owned('Teams actual HTTP + Mongo + persisted RBAC', () => {
     expect((await request('GET', `/teams/${team.id}/performance?days=7`, foreign)).status).toBe(
       403,
     );
+  });
+  it('requires real project/job/staff assignments and unique active ownership, including concurrent requests', async () => {
+    projectId = (
+      await projects.create({
+        organizationId,
+        name: 'Workload fixture project',
+        conversionType: ConversionType.COBOL_TO_JAVA,
+        status: ProjectStatus.ACTIVE,
+        createdBy: owner,
+      })
+    ).id;
+    const created = await request('POST', '/teams', owner, {
+      name: 'Conversion fixture',
+      kind: TeamKind.CONVERSION,
+      memberIds: [member, other],
+      managerIds: [manager],
+      projectAssignments: [{ projectId, memberIds: [member, other] }],
+      expectedRevision: 0,
+    });
+    expect(created.status).toBe(201);
+    conversionTeam = created.body as unknown as TeamRecord;
+    // Persisted operational-state fixtures for aggregation only, not successful converter evidence.
+    const statuses = [
+      ConversionJobStatus.QUEUED,
+      ConversionJobStatus.PROCESSING,
+      ConversionJobStatus.COMPLETED,
+      ConversionJobStatus.FAILED,
+      ConversionJobStatus.COMPLETED,
+      ConversionJobStatus.COMPLETED,
+    ];
+    for (let i = 0; i < statuses.length; i++) {
+      const job = await connection.model<ConversionJob>(ConversionJob.name).create({
+        organizationId,
+        projectId,
+        conversionType: ConversionType.COBOL_TO_JAVA,
+        status: statuses[i],
+        priority: 'NORMAL',
+        createdBy: member,
+        attemptCount: 3,
+        maxAttempts: 3,
+        createdAt: new Date(Date.now() - (i === 4 ? 10 : 1) * 86400000),
+      });
+      jobIds.push(String(job._id));
+    }
+    const endpoint = `/teams/${conversionTeam.id}/job-assignments`;
+    expect(
+      (await request('POST', endpoint, member, { jobId: jobIds[0], memberId: member })).status,
+    ).toBe(403);
+    expect(
+      (await request('POST', endpoint, owner, { jobId: jobIds[0], memberId: foreign })).status,
+    ).toBe(400);
+    const race = await Promise.all([
+      request('POST', endpoint, owner, { jobId: jobIds[0], memberId: member }),
+      request('POST', endpoint, owner, { jobId: jobIds[0], memberId: member }),
+    ]);
+    expect(race.map((r) => r.status).sort()).toEqual([201, 409]);
+    for (let i = 1; i < 5; i++)
+      expect(
+        (
+          await request('POST', endpoint, owner, {
+            jobId: jobIds[i],
+            memberId: i < 2 ? member : other,
+          })
+        ).status,
+      ).toBe(201);
+    expect((await request('GET', endpoint)).status).toBe(200);
+    expect((await request('GET', endpoint, member)).status).toBe(403);
+    const foreignProject = await projects.create({
+      organizationId: foreignOrganizationId,
+      name: 'Foreign',
+      conversionType: ConversionType.COBOL_TO_JAVA,
+      status: ProjectStatus.ACTIVE,
+      createdBy: foreign,
+    });
+    const foreignJob = await connection.model<ConversionJob>(ConversionJob.name).create({
+      organizationId: foreignOrganizationId,
+      projectId: foreignProject.id,
+      conversionType: ConversionType.COBOL_TO_JAVA,
+      status: ConversionJobStatus.QUEUED,
+      priority: 'NORMAL',
+      createdBy: foreign,
+    });
+    expect(
+      (await request('POST', endpoint, owner, { jobId: String(foreignJob._id), memberId: member }))
+        .status,
+    ).toBe(400);
+  });
+  it('computes 7/30-day totals and member breakdowns from real assigned records without attempts, creators or generation duplication', async () => {
+    const endpoint = `/teams/${conversionTeam.id}/workload`;
+    const result = await request('GET', `${endpoint}?days=7`, manager);
+    expect(result.status).toBe(200);
+    expect(result.body.totals).toEqual({
+      assignedJobs: 4,
+      processingJobs: 1,
+      completedJobs: 1,
+      failedJobs: 1,
+    });
+    expect(result.body.members).toEqual([
+      expect.objectContaining({
+        userId: member,
+        metrics: { assignedJobs: 2, processingJobs: 1, completedJobs: 0, failedJobs: 0 },
+      }),
+      expect.objectContaining({
+        userId: other,
+        metrics: { assignedJobs: 2, processingJobs: 0, completedJobs: 1, failedJobs: 1 },
+      }),
+    ]);
+    expect(result.body.coverage).toBe('EXPLICIT_ASSIGNMENTS_ONLY');
+    expect((await request('GET', `${endpoint}?days=30`, manager)).body.totals).toEqual({
+      assignedJobs: 5,
+      processingJobs: 1,
+      completedJobs: 2,
+      failedJobs: 1,
+    });
+    expect((await request('GET', `${endpoint}?days=7`, member)).status).toBe(404);
+    expect((await request('GET', `${endpoint}?days=7`, other)).status).toBe(404);
+    expect((await request('GET', `${endpoint}?days=7`, foreign)).status).toBe(403);
+    expect((await request('GET', `${endpoint}?days=7&userId=${manager}`, member)).status).toBe(400);
+    expect((await request('GET', `/teams/${team.id}/workload?days=7`, other)).status).toBe(404);
+    await jobs.retry(jobIds[3], organizationId);
+    expect((await request('GET', `${endpoint}?days=7`, manager)).body.totals).toEqual({
+      assignedJobs: 4,
+      processingJobs: 1,
+      completedJobs: 1,
+      failedJobs: 0,
+    });
+  });
+  it('enforces half-open date boundaries and exact project/organization predicates in Mongo', async () => {
+    const start = new Date('2026-10-01T00:00:00Z'),
+      end = new Date('2026-10-08T00:00:00Z');
+    const ids: string[] = [];
+    for (const createdAt of [
+      start,
+      new Date(start.getTime() - 1),
+      new Date(end.getTime() - 1),
+      end,
+    ]) {
+      const job = await connection.model<ConversionJob>(ConversionJob.name).create({
+        organizationId,
+        projectId,
+        conversionType: ConversionType.COBOL_TO_JAVA,
+        status: ConversionJobStatus.QUEUED,
+        priority: 'NORMAL',
+        createdBy: member,
+        createdAt,
+      });
+      ids.push(String(job._id));
+    }
+    expect(
+      (await reader.listAssignedJobs({ organizationId, projectId, jobIds: ids, start, end }))
+        .map((j) => j.id)
+        .sort(),
+    ).toEqual([ids[0], ids[2]].sort());
+    expect(
+      await reader.listAssignedJobs({
+        organizationId: foreignOrganizationId,
+        projectId,
+        jobIds: ids,
+        start,
+        end,
+      }),
+    ).toEqual([]);
+    expect(
+      await reader.listAssignedJobs({
+        organizationId,
+        projectId: new Types.ObjectId().toHexString(),
+        jobIds: ids,
+        start,
+        end,
+      }),
+    ).toEqual([]);
+  });
+  it('revokes assignments durably, prevents another team claiming an already assigned job, and excludes deleted projects', async () => {
+    const second = await request('POST', '/teams', owner, {
+      name: 'Other Conversion',
+      kind: TeamKind.CONVERSION,
+      memberIds: [member],
+      managerIds: [other],
+      projectAssignments: [{ projectId, memberIds: [member] }],
+      expectedRevision: 0,
+    });
+    const secondId = String(second.body.id);
+    expect(
+      (
+        await request('POST', `/teams/${secondId}/job-assignments`, owner, {
+          jobId: jobIds[0],
+          memberId: member,
+        })
+      ).status,
+    ).toBe(409);
+    expect((await request('GET', `/teams/${secondId}/workload?days=7`, other)).body.totals).toEqual(
+      { assignedJobs: 0, processingJobs: 0, completedJobs: 0, failedJobs: 0 },
+    );
+    expect(
+      (await request('DELETE', `/teams/${conversionTeam.id}/job-assignments/${jobIds[1]}`, manager))
+        .status,
+    ).toBe(403);
+    expect(
+      (await request('DELETE', `/teams/${conversionTeam.id}/job-assignments/${jobIds[1]}`)).status,
+    ).toBe(200);
+    expect(
+      (await request('GET', `/teams/${conversionTeam.id}/workload?days=7`, manager)).body.totals,
+    ).toEqual({ assignedJobs: 3, processingJobs: 0, completedJobs: 1, failedJobs: 0 });
+    const retained = await connection
+      .model<TeamJobAssignment>(TeamJobAssignment.name)
+      .findOne({ jobId: new Types.ObjectId(jobIds[1]) })
+      .lean();
+    expect(retained?.revokedBy).toBe(owner);
+    expect(retained?.revokedAt).toBeInstanceOf(Date);
+    await projects.softDelete(projectId, organizationId);
+    expect(
+      (await request('GET', `/teams/${conversionTeam.id}/workload?days=7`, manager)).body.totals,
+    ).toEqual({ assignedJobs: 0, processingJobs: 0, completedJobs: 0, failedJobs: 0 });
+  });
+  it('fails closed when the uniqueness index is missing, without admitting duplicate assignment records', async () => {
+    verifyOwnedMongo();
+    const model = connection.model<TeamJobAssignment>(TeamJobAssignment.name);
+    await model.collection.dropIndex('one_active_team_job_assignment');
+    try {
+      await expect(
+        assignments.assign({
+          organizationId,
+          teamId: conversionTeam.id,
+          projectId,
+          jobId: jobIds[5],
+          memberId: member,
+          assignedBy: owner,
+        }),
+      ).rejects.toThrow('The scoped active-assignment uniqueness index');
+      expect(await model.countDocuments({ jobId: new Types.ObjectId(jobIds[5]) })).toBe(0);
+    } finally {
+      await model.createIndexes();
+    }
   });
 });

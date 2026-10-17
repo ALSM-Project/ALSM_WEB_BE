@@ -152,6 +152,22 @@ describe('explicit organization-owned teams', () => {
     );
     expect(f.teams.save).not.toHaveBeenCalled();
   });
+  it('denies a former manager downgraded to an organization viewer', async () => {
+    const f = setup();
+    f.organization.members[1].role = OrganizationRole.VIEWER;
+    await expect(
+      f.access.managed(manager, organizationId, id, TeamKind.SALES),
+    ).rejects.toBeInstanceOf(ForbiddenException);
+    await expect(
+      new ListManagedTeamsService(f.access, f.teams as unknown as TeamRepository).execute(
+        manager,
+        organizationId,
+        TeamKind.SALES,
+      ),
+    ).rejects.toBeInstanceOf(ForbiddenException);
+    expect(f.teams.findManaged).not.toHaveBeenCalled();
+    expect(f.teams.listManaged).not.toHaveBeenCalled();
+  });
   it('rejects duplicate memberships, malformed identifiers and nonzero creation revisions', async () => {
     const f = setup();
     for (const input of [

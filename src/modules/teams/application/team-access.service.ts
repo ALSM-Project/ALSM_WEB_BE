@@ -67,7 +67,7 @@ export class TeamAccessService {
     id: string,
     kind: TeamKind,
   ) {
-    const organization = await this.organization(userId, organizationHeader);
+    const organization = await this.reportingOrganization(userId, organizationHeader);
     const team = await this.teams.findManaged(teamId(id), organization.id, userId, kind);
     if (!team)
       throw new NotFoundException({
@@ -75,5 +75,18 @@ export class TeamAccessService {
         message: 'Team is unavailable in your management scope',
       });
     return { organization, team };
+  }
+
+  async reportingOrganization(
+    userId: string,
+    organizationHeader?: string,
+  ): Promise<OrganizationRecord> {
+    const organization = await this.organization(userId, organizationHeader);
+    this.authorization.require(organization, userId, [
+      OrganizationRole.OWNER,
+      OrganizationRole.ADMIN,
+      OrganizationRole.MEMBER,
+    ]);
+    return organization;
   }
 }
