@@ -196,7 +196,7 @@ export class AuthController {
   @HttpCode(HttpStatus.NO_CONTENT)
   @Post('sessions/revoke-others')
   async revokeAllOtherSessions(@CurrentUser() user: AuthenticatedUser): Promise<void> {
-    await this.auth.revokeAllOtherSessions(user.userId);
+    await this.auth.revokeAllOtherSessions(user.userId, user.sessionId);
   }
 
   @ApiBearerAuth()

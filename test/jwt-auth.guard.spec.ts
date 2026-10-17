@@ -16,6 +16,7 @@ describe('JwtAuthGuard', () => {
   const contextFor = (request: RequestWithContext) =>
     ({
       switchToHttp: () => ({ getRequest: () => request }),
+      getHandler: () => contextFor,
     }) as never;
 
   describe.each(['test', 'development', 'production'])('in %s', (environment) => {
@@ -60,12 +61,13 @@ describe('JwtAuthGuard', () => {
       const request = { headers: { authorization: 'Bearer valid' } } as RequestWithContext;
       await expect(guard.canActivate(contextFor(request))).resolves.toBe(true);
       expect(jwt.verifyAsync).toHaveBeenCalledWith('valid', { secret: 'access-secret' });
-      expect(sessions.execute).toHaveBeenCalledWith('user-1', 'session-1');
+      expect(sessions.execute).toHaveBeenCalledWith('user-1', 'session-1', undefined);
       expect(request.user).toEqual({
         userId: 'user-1',
         email: 'user@example.com',
         isPlatformAdmin: false,
         sessionId: 'session-1',
+        sessionVersion: undefined,
       });
     });
   });
@@ -86,6 +88,7 @@ describe('JwtAuthGuard', () => {
       email: 'customer@example.com',
       isPlatformAdmin: false,
       sessionId: 'session-1',
+      sessionVersion: undefined,
     });
   });
 
@@ -106,7 +109,7 @@ describe('JwtAuthGuard', () => {
       status: 401,
       response: { code: 'CURRENT_SESSION_REQUIRED' },
     });
-    expect(sessions.execute).toHaveBeenCalledWith('user-1', undefined);
+    expect(sessions.execute).toHaveBeenCalledWith('user-1', undefined, undefined);
     expect(request.user).toBeUndefined();
   });
 

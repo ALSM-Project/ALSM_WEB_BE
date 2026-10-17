@@ -23,6 +23,9 @@ describe('AuthService', () => {
     updateTokenHash: jest.fn(),
     findActive: jest.fn(),
     revoke: jest.fn(),
+    rotateRefresh: jest.fn(),
+    revokeBrowserSession: jest.fn(),
+    findForLogout: jest.fn(),
   };
   const audit = { append: jest.fn() };
   const effectivePermissions = {
@@ -134,27 +137,36 @@ describe('AuthService', () => {
     );
   });
 
-  it('rotates refresh sessions and signs the replacement access token with the new session ID', async () => {
+  it('atomically rotates the generation in the same browser session', async () => {
     const refreshToken = 'valid-refresh-token';
-    jwt.verifyAsync.mockResolvedValue({ sub: 'u1', tid: 'old-token-id' });
+    jwt.verifyAsync.mockResolvedValue({ sub: '507f1f77bcf86cd799439011', tid: 'old-token-id' });
     sessions.findActive.mockResolvedValue({
-      id: 'old-session',
-      userId: 'u1',
+      id: '507f1f77bcf86cd799439012',
+      userId: '507f1f77bcf86cd799439011',
+      tokenId: 'old-token-id',
+      expiresAt: new Date(Date.now() + 60000),
       refreshTokenHash: await bcrypt.hash(refreshToken, 4),
     });
     users.findById.mockResolvedValue({
-      id: 'u1',
+      id: '507f1f77bcf86cd799439011',
       email: 'a@example.com',
       isPlatformAdmin: false,
       isActive: true,
     });
-    sessions.create.mockResolvedValue({ id: 'new-session' });
+    sessions.rotateRefresh.mockResolvedValue(true);
 
     await service.refresh(refreshToken);
 
-    expect(sessions.revoke).toHaveBeenCalledWith('old-session');
+    expect(sessions.revoke).not.toHaveBeenCalled();
+    expect(sessions.create).not.toHaveBeenCalled();
+    expect(sessions.rotateRefresh).toHaveBeenCalledWith(
+      expect.objectContaining({
+        sessionId: '507f1f77bcf86cd799439012',
+        expectedTokenId: 'old-token-id',
+      }),
+    );
     expect(jwt.signAsync).toHaveBeenCalledWith(
-      expect.objectContaining({ sid: 'new-session' }),
+      expect.objectContaining({ sid: '507f1f77bcf86cd799439012', sv: expect.any(String) }),
       expect.objectContaining({ secret: 'a' }),
     );
   });

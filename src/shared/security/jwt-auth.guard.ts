@@ -23,7 +23,13 @@ export class JwtAuthGuard implements CanActivate {
       });
     }
 
-    let payload: { sub: string; email: string; isPlatformAdmin: boolean; sid?: string };
+    let payload: {
+      sub: string;
+      email: string;
+      isPlatformAdmin: boolean;
+      sid?: string;
+      sv?: string;
+    };
     try {
       payload = await this.jwt.verifyAsync<typeof payload>(token, {
         secret: this.config.getOrThrow('JWT_ACCESS_SECRET'),
@@ -36,12 +42,13 @@ export class JwtAuthGuard implements CanActivate {
     }
     // A signed user token is not proof of a live session. Keep authoritative
     // assurance outside the JWT catch so storage outages retain their safe 503.
-    await this.sessions.execute(payload.sub, payload.sid);
+    await this.sessions.execute(payload.sub, payload.sid, payload.sv);
     request.user = {
       userId: payload.sub,
       email: payload.email,
       isPlatformAdmin: payload.isPlatformAdmin,
       sessionId: payload.sid,
+      sessionVersion: payload.sv,
     };
     return true;
   }

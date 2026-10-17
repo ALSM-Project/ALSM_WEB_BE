@@ -14,7 +14,7 @@ export class RequireCurrentSessionService {
     @Inject(SESSION_REPOSITORY) private readonly sessions: SessionRepository,
     @Inject(USER_REPOSITORY) private readonly users: UserRepository,
   ) {}
-  async execute(userId: string, sessionId?: string): Promise<void> {
+  async execute(userId: string, sessionId?: string, version?: string): Promise<void> {
     const denied = () =>
       new UnauthorizedException({
         code: 'CURRENT_SESSION_REQUIRED',
@@ -31,6 +31,7 @@ export class RequireCurrentSessionService {
       if (
         !matching ||
         matching.userId !== userId ||
+        matching.accessVersion !== version ||
         matching.revokedAt ||
         !Number.isFinite(matching.expiresAt.getTime()) ||
         matching.expiresAt.getTime() <= Date.now()

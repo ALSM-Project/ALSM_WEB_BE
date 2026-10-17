@@ -10,6 +10,7 @@ function fixture() {
     userId,
     expiresAt: new Date(Date.now() + 60000),
     revokedAt: undefined as Date | undefined,
+    accessVersion: undefined as string | undefined,
   };
   const users = { findById: jest.fn().mockResolvedValue(account) };
   const sessions = { findActiveByUserId: jest.fn().mockResolvedValue([session]) };
@@ -20,6 +21,15 @@ function fixture() {
   return { account, session, users, sessions, service };
 }
 describe('ordinary current-session prerequisite, without impersonation admission', () => {
+  it('rejects stale and missing generations after rotation', async () => {
+    const f = fixture();
+    f.session.accessVersion = 'current';
+    await expect(f.service.execute(userId, sessionId)).rejects.toMatchObject({ status: 401 });
+    await expect(f.service.execute(userId, sessionId, 'old')).rejects.toMatchObject({
+      status: 401,
+    });
+    await expect(f.service.execute(userId, sessionId, 'current')).resolves.toBeUndefined();
+  });
   it('accepts a current persisted session bound to the active account and exposes no session secrets', async () => {
     const f = fixture();
     await expect(f.service.execute(userId, sessionId)).resolves.toBeUndefined();

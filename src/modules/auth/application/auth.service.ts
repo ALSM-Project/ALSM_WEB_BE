@@ -1,4 +1,10 @@
-import { ConflictException, Inject, Injectable, UnauthorizedException } from '@nestjs/common';
+import {
+  ConflictException,
+  Inject,
+  Injectable,
+  ServiceUnavailableException,
+  UnauthorizedException,
+} from '@nestjs/common';
 import { randomUUID } from 'crypto';
 import { ConfigService } from '@nestjs/config';
 import { JwtService } from '@nestjs/jwt';
@@ -21,6 +27,7 @@ export interface AuthTokens {
   accessToken: string;
   refreshToken: string;
   mustChangePassword?: boolean;
+  hasPassword?: boolean;
 }
 
 export interface RegisterResult {
@@ -164,36 +171,97 @@ export class AuthService {
   }
 
   async refresh(refreshToken: string, userAgent?: string): Promise<AuthTokens> {
-    const payload = await this.verifyRefresh(refreshToken);
-    const session = await this.sessions.findActive(payload.tid);
-    if (
-      !session ||
-      session.userId !== payload.sub ||
-      !(await bcrypt.compare(refreshToken, session.refreshTokenHash))
-    ) {
-      throw new UnauthorizedException({
-        code: 'INVALID_REFRESH_TOKEN',
-        message: 'Refresh token is invalid or revoked',
-      });
-    }
-    const user = await this.users.findById(payload.sub);
-    if (!user || !user.isActive) {
-      throw new UnauthorizedException({
-        code: 'INVALID_REFRESH_TOKEN',
-        message: 'Refresh token is invalid or revoked',
-      });
-    }
-    await this.sessions.revoke(session.id);
-    return this.createSessionTokens(user, userAgent);
-  }
-
-  async logout(refreshToken: string): Promise<void> {
     try {
       const payload = await this.verifyRefresh(refreshToken);
       const session = await this.sessions.findActive(payload.tid);
-      if (session) await this.sessions.revoke(session.id);
+      if (
+        !session ||
+        !isSessionId(session.id) ||
+        session.userId !== payload.sub ||
+        session.tokenId !== payload.tid ||
+        session.revokedAt ||
+        !Number.isFinite(session.expiresAt?.getTime()) ||
+        session.expiresAt.getTime() <= Date.now() ||
+        typeof session.refreshTokenHash !== 'string' ||
+        (payload.sid !== undefined &&
+          (payload.sid !== session.id || payload.fid !== session.familyId))
+      )
+        throw invalidRefresh();
+      let matches = false;
+      try {
+        matches = await bcrypt.compare(refreshToken, session.refreshTokenHash);
+      } catch {
+        /* Invalid stored proof is not authority. */
+      }
+      if (!matches) throw invalidRefresh();
+      const user = await this.users.findById(payload.sub);
+      if (!user || user.id !== payload.sub || !user.isActive) throw invalidRefresh();
+      const tokenId = randomUUID();
+      const familyId = session.familyId ?? randomUUID();
+      const tokens = await this.signSessionTokens(user, session.id, tokenId, familyId);
+      const rotated = await this.sessions.rotateRefresh({
+        sessionId: session.id,
+        userId: user.id,
+        expectedTokenId: session.tokenId,
+        expectedTokenHash: session.refreshTokenHash,
+        successorTokenId: tokenId,
+        successorTokenHash: await bcrypt.hash(tokens.refreshToken, 12),
+        familyId,
+        legacyProof: session.accessVersion === undefined,
+        expiresAt: new Date(Date.now() + this.durationMs('JWT_REFRESH_EXPIRES_IN')),
+        lastActiveAt: new Date(),
+        ...getSessionClientMetadata(userAgent),
+      });
+      if (!rotated) throw invalidRefresh();
+      // Only a confirmed single-document winner may publish its prepared credentials.
+      return tokens;
+    } catch (error) {
+      if (error instanceof UnauthorizedException) throw error;
+      throw new ServiceUnavailableException({
+        code: 'REFRESH_UNAVAILABLE',
+        message: 'Refresh could not be confirmed. Sign in again if necessary.',
+      });
+    }
+  }
+
+  async logout(refreshToken: string): Promise<void> {
+    let proof: RefreshClaims;
+    try {
+      // Expired signed proof may ONLY terminate its own lineage, never refresh or authenticate.
+      proof = await this.verifyRefresh(refreshToken, true);
     } catch {
-      // Logout is idempotent and never reveals token validity.
+      return;
+    }
+    try {
+      if (proof.sid && proof.fid) {
+        await this.sessions.revokeBrowserSession({
+          userId: proof.sub,
+          sessionId: proof.sid,
+          familyId: proof.fid,
+        });
+        return;
+      }
+      const session = await this.sessions.findForLogout(proof.sub, proof.tid);
+      if (!session) return;
+      const hash =
+        session.legacyTokenId === proof.tid ? session.legacyTokenHash : session.refreshTokenHash;
+      let matches = false;
+      try {
+        matches = !!hash && (await bcrypt.compare(refreshToken, hash));
+      } catch {
+        /* Invalid proof remains idempotent. */
+      }
+      if (matches)
+        await this.sessions.revokeBrowserSession({
+          userId: proof.sub,
+          sessionId: session.id,
+          legacyTokenId: proof.tid,
+        });
+    } catch {
+      throw new ServiceUnavailableException({
+        code: 'SESSION_REVOCATION_UNAVAILABLE',
+        message: 'Session revocation could not be confirmed. Please try again.',
+      });
     }
   }
 
@@ -229,14 +297,30 @@ export class AuthService {
     };
   }
 
-  async revokeAllOtherSessions(userId: string, currentTokenId?: string): Promise<void> {
-    if (currentTokenId) {
-      await this.sessions.revokeAllOther(userId, currentTokenId);
+  async revokeAllOtherSessions(userId: string, currentSessionId?: string): Promise<void> {
+    if (!isSessionId(userId) || !isSessionId(currentSessionId))
+      throw new UnauthorizedException({
+        code: 'CURRENT_SESSION_REQUIRED',
+        message: 'A current session is required',
+      });
+    try {
+      if (!(await this.sessions.revokeAllOther(userId, currentSessionId)))
+        throw new UnauthorizedException({
+          code: 'CURRENT_SESSION_REQUIRED',
+          message: 'A current session is required',
+        });
+    } catch (error) {
+      if (error instanceof UnauthorizedException) throw error;
+      throw new ServiceUnavailableException({
+        code: 'SESSION_REVOCATION_UNAVAILABLE',
+        message: 'Session revocation could not be confirmed. Please try again.',
+      });
     }
   }
 
   private async createSessionTokens(user: UserRecord, userAgent?: string): Promise<AuthTokens> {
     const tokenId = randomUUID();
+    const familyId = randomUUID();
     const sessionMetadata = getSessionClientMetadata(userAgent);
     const lastActiveAt = new Date();
     const expiresAt = new Date(Date.now() + this.durationMs('JWT_REFRESH_EXPIRES_IN'));
@@ -244,16 +328,30 @@ export class AuthService {
       tokenId,
       userId: user.id,
       refreshTokenHash: 'pending',
+      familyId,
+      accessVersion: tokenId,
       expiresAt,
       ...sessionMetadata,
       lastActiveAt,
     });
+    const tokens = await this.signSessionTokens(user, session.id, tokenId, familyId);
+    await this.sessions.updateTokenHash(session.id, await bcrypt.hash(tokens.refreshToken, 12));
+    return tokens;
+  }
+
+  private async signSessionTokens(
+    user: UserRecord,
+    sessionId: string,
+    tokenId: string,
+    familyId: string,
+  ): Promise<AuthTokens> {
     const accessToken = await this.jwt.signAsync(
       {
         sub: user.id,
         email: user.email,
         isPlatformAdmin: user.isPlatformAdmin,
-        sid: session.id,
+        sid: sessionId,
+        sv: tokenId,
       },
       {
         secret: this.config.getOrThrow('JWT_ACCESS_SECRET'),
@@ -261,25 +359,40 @@ export class AuthService {
       },
     );
     const refreshToken = await this.jwt.signAsync(
-      { sub: user.id, tid: tokenId },
+      { sub: user.id, tid: tokenId, sid: sessionId, fid: familyId },
       {
         secret: this.config.getOrThrow('JWT_REFRESH_SECRET'),
         expiresIn: this.durationSeconds('JWT_REFRESH_EXPIRES_IN'),
       },
     );
-    await this.sessions.updateTokenHash(session.id, await bcrypt.hash(refreshToken, 12));
     return {
       accessToken,
       refreshToken,
       mustChangePassword: user.mustChangePassword,
+      hasPassword: Boolean(user.passwordHash),
     };
   }
 
-  private async verifyRefresh(token: string): Promise<{ sub: string; tid: string }> {
+  private async verifyRefresh(token: string, logoutOnly = false): Promise<RefreshClaims> {
     try {
-      return await this.jwt.verifyAsync<{ sub: string; tid: string }>(token, {
+      const payload = await this.jwt.verifyAsync<RefreshClaims>(token, {
         secret: this.config.getOrThrow('JWT_REFRESH_SECRET'),
+        ignoreExpiration: logoutOnly,
       });
+      if (
+        !payload ||
+        !isSessionId(payload.sub) ||
+        typeof payload.tid !== 'string' ||
+        !payload.tid ||
+        payload.tid.length > 200 ||
+        ((payload.sid !== undefined || payload.fid !== undefined) &&
+          (!isSessionId(payload.sid) ||
+            typeof payload.fid !== 'string' ||
+            !payload.fid ||
+            payload.fid.length > 200))
+      )
+        throw invalidRefresh();
+      return payload;
     } catch {
       throw new UnauthorizedException({
         code: 'INVALID_REFRESH_TOKEN',
@@ -346,6 +459,24 @@ export class AuthService {
       throw err;
     }
   }
+}
+
+interface RefreshClaims {
+  sub: string;
+  tid: string;
+  sid?: string;
+  fid?: string;
+}
+
+function isSessionId(value: unknown): value is string {
+  return typeof value === 'string' && /^[a-f0-9]{24}$/.test(value);
+}
+
+function invalidRefresh(): UnauthorizedException {
+  return new UnauthorizedException({
+    code: 'INVALID_REFRESH_TOKEN',
+    message: 'Refresh token is invalid or revoked',
+  });
 }
 
 function isDuplicateKeyError(err: unknown): boolean {
