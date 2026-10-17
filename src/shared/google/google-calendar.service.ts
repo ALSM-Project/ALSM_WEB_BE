@@ -1,6 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { google, calendar_v3 } from 'googleapis';
+import { auth as calendarAuth, calendar, calendar_v3 } from 'googleapis/build/src/apis/calendar';
 
 export interface GoogleMeetResult {
   meetingUrl: string;
@@ -33,14 +33,14 @@ export class GoogleCalendarService {
       };
 
       // Domain-wide delegation: impersonate the user who will host the calendar event
-      const auth = new google.auth.JWT({
+      const auth = new calendarAuth.JWT({
         email: credentials.client_email,
         key: credentials.private_key,
         scopes: ['https://www.googleapis.com/auth/calendar'],
         subject: userEmail || undefined, // impersonate this user
       });
 
-      this.calendar = google.calendar({ version: 'v3', auth });
+      this.calendar = calendar({ version: 'v3', auth });
       this.calendarId = userEmail || 'primary';
       this.logger.log(
         `GoogleCalendarService initialized — service account: ${credentials.client_email}` +
@@ -73,7 +73,8 @@ export class GoogleCalendarService {
       throw new Error('Google Calendar integration is not configured');
     }
 
-    const { title, description, attendeeEmails, hostEmail, scheduledStartTime, scheduledEndTime } = params;
+    const { title, description, attendeeEmails, hostEmail, scheduledStartTime, scheduledEndTime } =
+      params;
 
     const allAttendees = [
       { email: hostEmail, responseStatus: 'accepted' as const },
