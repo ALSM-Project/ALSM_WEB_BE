@@ -1,0 +1,9 @@
+# Teams and performance (ALSMV2-1102 / ALSMV2-1186)
+
+Organization-owned SALES and CONVERSION teams have explicitly persisted members, managers and project/staff assignments. No membership or management scope is inferred from organization membership, global roles or job creators. No existing data is backfilled.
+
+`POST /api/v1/teams` creates a team with `expectedRevision: 0`; `PUT /api/v1/teams/:teamId` replaces its explicit memberships/assignments using the exact current revision. Both require an active organization OWNER/ADMIN **and** the existing `users.manage` RBAC permission. No permissions or grants are seeded. Only active members of that exact organization can be appointed; viewers cannot manage. Team kind is immutable. Lists return only teams explicitly managed by the caller, selected by `?kind=SALES|CONVERSION` and optional existing `x-organization-id` context.
+
+Schema: `teams` owns organization, kind, name, member IDs, manager IDs, project assignments, revision and retained change attribution. Project assignees must be team members and projects must be active in that organization. Changes use compare-and-set revision checks; complete actor-attributed snapshots are retained atomically in the team document. Central audit has a pre-mutation request event and a post-mutation outcome event. Central audit and the business mutation are separate writes: a post-write audit outage can yield an error after persistence; reload the revision before retrying. No transaction/rollback guarantee is claimed.
+
+State ownership and Mongoose queries stay in infrastructure; application orchestration uses repository/public domain ports. Root AppModule composes the feature with existing organizations/users/RBAC/audit/project dependencies. The active demo branch is not the full protected AUTH-H1 security branch and does not enable support impersonation.

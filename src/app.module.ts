@@ -1,4 +1,12 @@
 import { MiddlewareConsumer, Module, NestModule } from '@nestjs/common';
+import { Team, TeamSchema } from './modules/teams/infrastructure/team.schema';
+import { MongoTeamRepository } from './modules/teams/infrastructure/mongo-team.repository';
+import { TEAM_REPOSITORY } from './modules/teams/domain/team.types';
+import { TeamAccessService } from './modules/teams/application/team-access.service';
+import { SaveTeamService } from './modules/teams/application/save-team.service';
+import { ListManagedTeamsService } from './modules/teams/application/list-managed-teams.service';
+import { TeamsController } from './modules/teams/presentation/teams.controller';
+import { GetTeamAdministrationService } from './modules/teams/application/get-team-administration.service';
 import { ConfigModule } from '@nestjs/config';
 import { JwtModule } from '@nestjs/jwt';
 import { MongooseModule } from '@nestjs/mongoose';
@@ -224,6 +232,7 @@ import { QualityReviewController } from './modules/conversions/presentation/qual
       { name: UserSession.name, schema: UserSessionSchema },
       { name: AuditLog.name, schema: AuditLogSchema },
       { name: Project.name, schema: ProjectSchema },
+      { name: Team.name, schema: TeamSchema },
       { name: ConversionJob.name, schema: ConversionJobSchema },
       { name: Subscription.name, schema: SubscriptionSchema },
       { name: Invoice.name, schema: InvoiceSchema },
@@ -249,6 +258,7 @@ import { QualityReviewController } from './modules/conversions/presentation/qual
     MenuModule,
   ],
   controllers: [
+    TeamsController,
     AuthController,
     ProjectsController,
     ConversionsController,
@@ -269,6 +279,11 @@ import { QualityReviewController } from './modules/conversions/presentation/qual
     PaymentController,
   ],
   providers: [
+    TeamAccessService,
+    GetTeamAdministrationService,
+    SaveTeamService,
+    ListManagedTeamsService,
+    { provide: TEAM_REPOSITORY, useClass: MongoTeamRepository },
     ScreenService,
     JwtAuthGuard,
     PermissionsGuard,
