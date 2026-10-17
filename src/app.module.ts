@@ -7,6 +7,8 @@ import { SaveTeamService } from './modules/teams/application/save-team.service';
 import { ListManagedTeamsService } from './modules/teams/application/list-managed-teams.service';
 import { TeamsController } from './modules/teams/presentation/teams.controller';
 import { GetTeamAdministrationService } from './modules/teams/application/get-team-administration.service';
+import { GetSalesTeamPerformanceService } from './modules/teams/application/get-sales-team-performance.service';
+import { TeamReportsController } from './modules/teams/presentation/team-reports.controller';
 import { ConfigModule } from '@nestjs/config';
 import { JwtModule } from '@nestjs/jwt';
 import { MongooseModule } from '@nestjs/mongoose';
@@ -259,6 +261,7 @@ import { QualityReviewController } from './modules/conversions/presentation/qual
   ],
   controllers: [
     TeamsController,
+    TeamReportsController,
     AuthController,
     ProjectsController,
     ConversionsController,
@@ -281,6 +284,7 @@ import { QualityReviewController } from './modules/conversions/presentation/qual
   providers: [
     TeamAccessService,
     GetTeamAdministrationService,
+    GetSalesTeamPerformanceService,
     SaveTeamService,
     ListManagedTeamsService,
     { provide: TEAM_REPOSITORY, useClass: MongoTeamRepository },

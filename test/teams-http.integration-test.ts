@@ -49,6 +49,8 @@ import { MongoRbacRepository } from '../src/modules/rbac/infrastructure/persiste
 import { EffectivePermissionsService } from '../src/modules/rbac/application/effective-permissions.service';
 import { JwtAuthGuard } from '../src/shared/security/jwt-auth.guard';
 import { GetTeamAdministrationService } from '../src/modules/teams/application/get-team-administration.service';
+import { GetSalesTeamPerformanceService } from '../src/modules/teams/application/get-sales-team-performance.service';
+import { TeamReportsController } from '../src/modules/teams/presentation/team-reports.controller';
 
 jest.setTimeout(30000);
 const owned = process.env.ALSM_TEAM_HTTP_TEST === 'owned-local-only' ? describe : describe.skip;
@@ -193,8 +195,12 @@ owned('Teams actual HTTP + Mongo + persisted RBAC', () => {
     const list = new ListManagedTeamsService(access, teams);
     const module = await Test.createTestingModule({
       imports: [JwtModule.register({ secret: 'owned-team-http-test-key' })],
-      controllers: [TeamsController],
+      controllers: [TeamsController, TeamReportsController],
       providers: [
+        {
+          provide: GetSalesTeamPerformanceService,
+          useValue: new GetSalesTeamPerformanceService(access, users),
+        },
         {
           provide: GetTeamAdministrationService,
           useValue: new GetTeamAdministrationService(access, teams),
@@ -299,5 +305,30 @@ owned('Teams actual HTTP + Mongo + persisted RBAC', () => {
     expect((await request('GET', '/teams?kind=SALES', other)).body).toEqual([
       expect.objectContaining({ revision: 2 }),
     ]);
+  });
+  it('serves a persisted salesperson roster but never invents sales values or converted statuses', async () => {
+    const result = await request('GET', `/teams/${team.id}/performance?days=7`, other);
+    expect(result.status).toBe(200);
+    expect(result.body).toEqual(
+      expect.objectContaining({
+        team: expect.objectContaining({ id: team.id }),
+        metrics: expect.objectContaining({
+          leadCount: expect.objectContaining({ available: false }),
+          conversionRate: expect.objectContaining({ available: false }),
+          revenueGenerated: expect.objectContaining({ available: false }),
+        }),
+        members: [expect.objectContaining({ userId: member })],
+      }),
+    );
+    expect(JSON.stringify(result.body)).not.toContain('"value":');
+    expect((await request('GET', `/teams/${team.id}/performance?days=30`, other)).status).toBe(200);
+    expect((await request('GET', `/teams/${team.id}/performance?days=8`, other)).status).toBe(400);
+    expect((await request('GET', `/teams/${team.id}/performance?days=7`, manager)).status).toBe(
+      404,
+    );
+    expect((await request('GET', `/teams/${team.id}/performance?days=7`, member)).status).toBe(404);
+    expect((await request('GET', `/teams/${team.id}/performance?days=7`, foreign)).status).toBe(
+      403,
+    );
   });
 });
