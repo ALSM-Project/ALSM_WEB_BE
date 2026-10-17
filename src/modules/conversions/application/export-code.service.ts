@@ -466,18 +466,176 @@ export class ExportCodeService {
     return `import axios from 'axios';\n\n// Converted screens currently call the backend directly with this same base URL\n// (see each component's VITE_API_BASE_URL usage). This client is provided as a\n// shared starting point for any new code added to this app; it is not yet wired\n// into the generated screen components themselves.\nexport const apiClient = axios.create({\n  baseURL: import.meta.env.VITE_API_BASE_URL || '',\n});\n\napiClient.interceptors.response.use(\n  (response) => response,\n  (error) => {\n    const message = error?.response?.data?.message || error?.message || 'Request failed';\n    return Promise.reject(new Error(message));\n  },\n);\n`;
   }
 
+  /**
+   * App.tsx for the 'scaffold'/'storybook' React project: a persistent vertical
+   * sidebar (every real converted screen, searchable) + a top info bar showing the
+   * current screen + a work area rendering it - not a separate "pick a screen"
+   * index page you have to leave before reaching one. The screen list comes
+   * entirely from reactScreens (the real completed conversions for this export),
+   * never a hardcoded sample list, and the default route (`/`) opens the first
+   * real screen directly instead of a blank landing page.
+   */
   private getAppTsxContent(reactScreens: ScreenExport[]): string {
     const imports = reactScreens
       .map((s) => `import { ${s.componentName} } from './components/${s.componentName}';`)
       .join('\n');
+    const screenEntries = reactScreens.map((s) => `  { id: '${s.componentName}', Component: ${s.componentName} },`).join('\n');
     const routes = reactScreens
-      .map((s) => `        <Route path="/${s.componentName}" element={<${s.componentName} />} />`)
+      .map(
+        (s) =>
+          `        <Route path="/${s.componentName}" element={<ScreenRoute id="${s.componentName}" Component={${s.componentName}} />} />`,
+      )
       .join('\n');
-    const navLinks = reactScreens
-      .map((s) => `          <li><Link to="/${s.componentName}">${s.componentName}</Link></li>`)
-      .join('\n');
+    const hasScreens = reactScreens.length > 0;
+    const defaultRoute = hasScreens
+      ? `<Navigate to="/${reactScreens[0].componentName}" replace />`
+      : '<EmptyState />';
+    // Only declared when actually reachable - with real screens present, '/' always
+    // redirects to the first one, so an unconditionally-declared EmptyState would be
+    // a real `tsc -b` "declared but never read" error on every non-empty export.
+    const emptyStateFn = hasScreens
+      ? ''
+      : `
+function EmptyState() {
+  return (
+    <div style={{ padding: 24, fontFamily: 'system-ui, sans-serif', color: '#475569' }}>
+      <h2>No converted screens in this export</h2>
+      <p>This package was exported with no completed screens selected.</p>
+    </div>
+  );
+}
+`;
 
-    return `import { BrowserRouter, Routes, Route, Link } from 'react-router-dom';\n${imports}\n\nfunction Home() {\n  return (\n    <div style={{ padding: 24 }}>\n      <h1>Converted Screens</h1>\n      <ul>\n${navLinks}\n      </ul>\n    </div>\n  );\n}\n\nfunction NotFound() {\n  return (\n    <div style={{ padding: 24 }}>\n      <h2>Page not found</h2>\n      <p>This screen does not exist in the converted application.</p>\n      <Link to="/">Back to home</Link>\n    </div>\n  );\n}\n\nexport function App() {\n  return (\n    <BrowserRouter>\n      <Routes>\n        <Route path="/" element={<Home />} />\n${routes}\n        <Route path="*" element={<NotFound />} />\n      </Routes>\n    </BrowserRouter>\n  );\n}\n\nexport default App;\n`;
+    return `import { useState } from 'react';
+import { BrowserRouter, Routes, Route, Navigate, useNavigate } from 'react-router-dom';
+${imports}
+
+const SCREENS: { id: string; Component: React.ComponentType }[] = [
+${screenEntries}
+];
+
+function Sidebar({ currentId }: { currentId: string }) {
+  const navigate = useNavigate();
+  const [query, setQuery] = useState('');
+  const filtered = SCREENS.filter((s) => s.id.toLowerCase().includes(query.trim().toLowerCase()));
+  return (
+    <aside
+      style={{
+        width: 240,
+        flexShrink: 0,
+        height: '100vh',
+        display: 'flex',
+        flexDirection: 'column',
+        background: '#0b1120',
+        color: '#e2e8f0',
+        borderRight: '1px solid #1e293b',
+        fontFamily: 'system-ui, sans-serif',
+      }}
+    >
+      <div style={{ padding: '16px', fontWeight: 700, fontSize: 16, borderBottom: '1px solid #1e293b' }}>ALSM</div>
+      <div style={{ padding: '12px 16px' }}>
+        <input
+          value={query}
+          onChange={(e) => setQuery(e.target.value)}
+          placeholder="Tìm màn hình"
+          style={{
+            width: '100%',
+            boxSizing: 'border-box',
+            padding: '6px 10px',
+            fontSize: 13,
+            background: '#111827',
+            border: '1px solid #334155',
+            borderRadius: 6,
+            color: '#e2e8f0',
+          }}
+        />
+      </div>
+      <nav style={{ flex: 1, overflowY: 'auto', padding: '0 8px 16px' }}>
+        {filtered.map((s) => (
+          <div
+            key={s.id}
+            role="button"
+            onClick={() => navigate(\`/\${s.id}\`)}
+            style={{
+              padding: '8px 12px',
+              marginBottom: 2,
+              borderRadius: 6,
+              fontSize: 13,
+              fontFamily: 'monospace',
+              cursor: 'pointer',
+              background: s.id === currentId ? '#1d4ed8' : 'transparent',
+              color: s.id === currentId ? '#ffffff' : '#cbd5e1',
+            }}
+          >
+            {s.id}
+          </div>
+        ))}
+        {filtered.length === 0 && (
+          <div style={{ padding: '8px 12px', fontSize: 12, color: '#64748b' }}>Không tìm thấy màn hình phù hợp.</div>
+        )}
+      </nav>
+    </aside>
+  );
+}
+
+function Shell({ currentId, children }: { currentId: string; children: React.ReactNode }) {
+  return (
+    <div style={{ display: 'flex', height: '100vh', width: '100%', background: '#f1f5f9' }}>
+      <Sidebar currentId={currentId} />
+      <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column' }}>
+        <header
+          style={{
+            padding: '12px 20px',
+            background: '#ffffff',
+            borderBottom: '1px solid #e2e8f0',
+            fontFamily: 'system-ui, sans-serif',
+            fontSize: 14,
+            fontWeight: 600,
+            color: '#0f172a',
+          }}
+        >
+          {currentId}
+        </header>
+        <main style={{ flex: 1, overflow: 'auto' }}>{children}</main>
+      </div>
+    </div>
+  );
+}
+
+function ScreenRoute({ id, Component }: { id: string; Component: React.ComponentType }) {
+  return (
+    <Shell currentId={id}>
+      <Component />
+    </Shell>
+  );
+}
+
+${emptyStateFn}
+function NotFound() {
+  return (
+    <Shell currentId="404">
+      <div style={{ padding: 24, fontFamily: 'system-ui, sans-serif' }}>
+        <h2>Page not found</h2>
+        <p>This screen does not exist in the converted application.</p>
+      </div>
+    </Shell>
+  );
+}
+
+export function App() {
+  return (
+    <BrowserRouter>
+      <Routes>
+        <Route path="/" element={${defaultRoute}} />
+${routes}
+        <Route path="*" element={<NotFound />} />
+      </Routes>
+    </BrowserRouter>
+  );
+}
+
+export default App;
+`;
   }
 
   private getPackageJsonContent(config: ExportConfiguration, safeProjectName: string): string {
