@@ -19,10 +19,19 @@ const {
 } = require('@nestjs/common/constants');
 const { declaredIndexes } = require('./team-dev-indexes.cjs');
 
-const mongo = 'alsm-auth-revocation-20261017-mongo';
+const raceMode = process.env.ALSM_AUTH_RACE_HTTP_TEST === 'owned-local-only';
+const mongo = raceMode ? 'alsm-auth-race-20261017-mongo' : 'alsm-auth-revocation-20261017-mongo';
+const mongoPort = raceMode ? '27147' : '27137';
+const replicaSet = raceMode ? 'alsmAuthRace' : 'alsmAuthRevocation';
 function verifyServices(running = true) {
   for (const [name, owner, inside, outside, expectedRunning] of [
-    [mongo, 'auth-revocation-20261017', '27017/tcp', '27137', running],
+    [
+      mongo,
+      raceMode ? 'auth-race-20261017' : 'auth-revocation-20261017',
+      '27017/tcp',
+      mongoPort,
+      running,
+    ],
     ['alsm-emergency-20261017-browser-redis', 'emergency-20261017', '6379/tcp', '6398', true],
   ]) {
     const [info] = JSON.parse(
@@ -51,7 +60,7 @@ test(
   'compiled protected APIs enforce persisted user-session lifecycle',
   {
     skip: process.env.ALSM_AUTH_REVOCATION_HTTP_TEST !== 'owned-local-only',
-    timeout: 120000,
+    timeout: 600000,
   },
   async (t) => {
     verifyServices();
@@ -64,13 +73,18 @@ test(
     const runId = randomUUID().replaceAll('-', '');
     const database = `alsm_auth_revocation_${runId}`;
     assert.match(database, /^alsm_auth_revocation_[a-f0-9]{32}$/);
-    const evidence = path.resolve(__dirname, '../coverage/auth-revocation');
+    const evidence = path.resolve(
+      __dirname,
+      '../coverage/auth-revocation',
+      ...(raceMode ? ['race-fix'] : []),
+    );
     fs.mkdirSync(evidence, { recursive: true });
-    const uri = `mongodb://127.0.0.1:27137/${database}?replicaSet=alsmAuthRevocation&directConnection=true`;
+    const uri = `mongodb://127.0.0.1:${mongoPort}/${database}?replicaSet=${replicaSet}&directConnection=true`;
     const connection = await mongoose
       .createConnection(uri, { serverSelectionTimeoutMS: 5000, autoIndex: false })
       .asPromise();
     let child,
+      secondChild,
       ownsDatabase = false,
       mongoStopped = false;
     const proofs = [];
@@ -86,7 +100,7 @@ test(
       ...process.env,
       NODE_ENV: 'test',
       PORT: '3119',
-      MONGODB_URI: uri,
+      MONGODB_URI: uri + '&appName=alsm-auth-race-app&serverSelectionTimeoutMS=2000',
       REDIS_HOST: '127.0.0.1',
       REDIS_PORT: '6398',
       REDIS_PASSWORD: '',
@@ -112,8 +126,8 @@ test(
       CONVERSION_WORKER_ENABLED: 'false',
       VALIDATION_WORKER_ENABLED: 'false',
     };
-    async function request(method, route, token, body, tenant = String(organization)) {
-      const response = await fetch('http://127.0.0.1:3119/api/v1' + route, {
+    async function request(method, route, token, body, tenant = String(organization), port = 3119) {
+      const response = await fetch(`http://127.0.0.1:${port}/api/v1` + route, {
         method,
         signal: AbortSignal.timeout(45000),
         headers: {
@@ -146,10 +160,7 @@ test(
     }
     try {
       assert.equal((await connection.db.listCollections().toArray()).length, 0);
-      assert.equal(
-        (await connection.db.admin().command({ hello: 1 })).setName,
-        'alsmAuthRevocation',
-      );
+      assert.equal((await connection.db.admin().command({ hello: 1 })).setName, replicaSet);
       await connection.collection('_auth_revocation_owner').insertOne({ runId, database });
       ownsDatabase = true;
       for (const [collection, indexes] of declaredIndexes()) {
@@ -168,6 +179,27 @@ test(
       await until(async () => {
         assert.equal((await request('GET', '/health')).status, 200);
       });
+      if (raceMode) {
+        await new Promise((resolve, reject) => {
+          const probe = require('node:net').createServer();
+          probe.once('error', reject);
+          probe.listen(3120, '127.0.0.1', () => probe.close(resolve));
+        });
+        const secondLog = fs.openSync(path.join(evidence, 'second-api-startup.txt'), 'w');
+        secondChild = spawn(process.execPath, ['dist/main'], {
+          cwd: path.resolve(__dirname, '..'),
+          env: { ...env, PORT: '3120' },
+          windowsHide: true,
+          stdio: ['ignore', secondLog, secondLog],
+        });
+        fs.closeSync(secondLog);
+        await until(async () =>
+          assert.equal(
+            (await request('GET', '/health', undefined, undefined, undefined, 3120)).status,
+            200,
+          ),
+        );
+      }
       const hash = await bcrypt.hash(password, 10);
       await connection.collection('users').insertMany([
         {
@@ -426,7 +458,8 @@ test(
           active = await expectStatus('POST', '/auth/refresh', undefined, 200, {
             refreshToken: old.refreshToken,
           });
-          assert.ok(claims(active).sid !== claims(old).sid);
+          assert.equal(claims(active).sid, claims(old).sid);
+          assert.notEqual(claims(active).sv, claims(old).sv);
           await expectStatus('GET', '/auth/me', old.accessToken, 401);
           await expectStatus('GET', queue, old.accessToken, 401);
           await expectStatus('POST', '/auth/refresh', undefined, 401, {
@@ -465,6 +498,298 @@ test(
         },
       );
       await t.test(
+        'forced-password login admits only credential remediation and then recovers',
+        async () => {
+          await connection
+            .collection('users')
+            .updateOne({ _id: user }, { $set: { mustChangePassword: true } });
+          const forced = await login();
+          assert.equal(forced.mustChangePassword, true);
+          for (const route of ['/auth/me', '/auth/sessions', '/projects', '/navigation', queue])
+            await expectStatus('GET', route, forced.accessToken, 401);
+          await expectStatus('POST', '/auth/change-password', forced.accessToken, 401, {
+            currentPassword: 'wrong-password-fixture',
+            newPassword: password + 'new',
+          });
+          await expectStatus('POST', '/auth/change-password', forced.accessToken, 200, {
+            currentPassword: password,
+            newPassword: password + 'new',
+          });
+          await expectStatus('GET', '/auth/me', forced.accessToken, 200);
+          assert.equal(
+            (await connection.collection('users').findOne({ _id: user })).mustChangePassword,
+            false,
+          );
+          await connection.collection('users').updateOne(
+            { _id: user },
+            {
+              $unset: { passwordHash: '' },
+              $set: { mustChangePassword: true },
+            },
+          );
+          await expectStatus('GET', '/auth/me', forced.accessToken, 401);
+          await expectStatus('POST', '/auth/set-password', forced.accessToken, 200, {
+            newPassword: password,
+          });
+          await expectStatus('GET', '/auth/me', forced.accessToken, 200);
+          await expectStatus('POST', '/auth/logout', undefined, 204, {
+            refreshToken: forced.refreshToken,
+          });
+          await expectStatus('POST', '/auth/change-password', forced.accessToken, 401, {
+            currentPassword: password,
+            newPassword: password + 'new',
+          });
+        },
+      );
+      if (raceMode) {
+        const collection = connection.collection('user_sessions');
+        const raceEvidence = { rotations: [], logout: [], failures: [] };
+        const root = (tokens) => ({ _id: new mongoose.Types.ObjectId(claims(tokens).sid) });
+        const activeCount = (tokens) =>
+          collection.countDocuments({
+            ...root(tokens),
+            revokedAt: { $exists: false },
+            expiresAt: { $gt: new Date() },
+          });
+        const refresh = (tokens, port = 3119) =>
+          request(
+            'POST',
+            '/auth/refresh',
+            undefined,
+            { refreshToken: tokens.refreshToken },
+            undefined,
+            port,
+          );
+        const logout = (tokens, port = 3119) =>
+          request(
+            'POST',
+            '/auth/logout',
+            undefined,
+            { refreshToken: tokens.refreshToken },
+            undefined,
+            port,
+          );
+        await t.test(
+          '2, 5 and 10 refreshes have exactly one winner across two compiled processes',
+          async () => {
+            for (let repeat = 0; repeat < 3; repeat++)
+              for (const concurrency of [2, 5, 10]) {
+                const original = await login();
+                const results = await Promise.all(
+                  Array.from({ length: concurrency }, async (_, i) => {
+                    if (repeat) await delay((i % 3) * repeat * 7);
+                    return refresh(original, i % 2 ? 3120 : 3119);
+                  }),
+                );
+                assert.equal(results.filter((r) => r.status === 200).length, 1);
+                assert.equal(results.filter((r) => r.status === 401).length, concurrency - 1);
+                const winner = results.find((r) => r.status === 200).body;
+                assert.equal(await activeCount(original), 1);
+                assert.equal(await collection.countDocuments(root(original)), 1);
+                assert.equal(claims(original).sid, claims(winner).sid);
+                assert.notEqual(claims(original).sv, claims(winner).sv);
+                await expectStatus('GET', '/auth/me', original.accessToken, 401);
+                await expectStatus('GET', '/auth/me', winner.accessToken, 200);
+                assert.equal((await refresh(original)).status, 401);
+                assert.equal((await logout(original, 3120)).status, 204); // Stale proof terminates the winner.
+                assert.equal(await activeCount(winner), 0);
+                await expectStatus('GET', '/auth/me', winner.accessToken, 401);
+                assert.equal((await refresh(winner)).status, 401);
+                raceEvidence.rotations.push({
+                  repeat,
+                  concurrency,
+                  successes: 1,
+                  rejections: concurrency - 1,
+                  activeReplacementsBeforeLogout: 1,
+                  afterLogout: 0,
+                  processes: 2,
+                });
+              }
+          },
+        );
+        await t.test(
+          'logout-first, refresh-first and simultaneous interleavings terminate only their browser lineage',
+          async () => {
+            for (const order of ['logout-first', 'refresh-first', 'simultaneous'])
+              for (let repeat = 0; repeat < 4; repeat++) {
+                const deviceA = await login(),
+                  deviceB = await login();
+                let rotated, ended;
+                if (order === 'logout-first') {
+                  ended = await logout(deviceA);
+                  rotated = await refresh(deviceA, 3120);
+                } else if (order === 'refresh-first') {
+                  rotated = await refresh(deviceA, 3120);
+                  ended = await logout(deviceA);
+                } else
+                  [rotated, ended] = await Promise.all([refresh(deviceA, 3120), logout(deviceA)]);
+                assert.equal(ended.status, 204);
+                assert.ok([200, 401].includes(rotated.status));
+                assert.equal(await activeCount(deviceA), 0);
+                assert.equal(await collection.countDocuments(root(deviceA)), 1);
+                await expectStatus('GET', '/auth/me', deviceA.accessToken, 401);
+                assert.equal((await refresh(deviceA)).status, 401);
+                if (rotated.status === 200) {
+                  await expectStatus('GET', '/auth/me', rotated.body.accessToken, 401);
+                  assert.equal((await refresh(rotated.body)).status, 401);
+                }
+                await expectStatus('GET', '/auth/me', deviceB.accessToken, 200);
+                const b = await refresh(deviceB);
+                assert.equal(b.status, 200);
+                assert.equal((await logout(b.body)).status, 204);
+                raceEvidence.logout.push({
+                  order,
+                  repeat,
+                  refreshStatus: rotated.status,
+                  logoutStatus: ended.status,
+                  survivingLineage: 0,
+                  independentDeviceRefreshed: true,
+                });
+              }
+          },
+        );
+        await t.test(
+          'legacy sessions upgrade once and stale legacy proof still terminates the upgraded lineage',
+          async () => {
+            const sid = oid(),
+              tid = randomUUID();
+            const refreshToken = jwt.sign(
+              { sub: String(user), tid },
+              { secret: env.JWT_REFRESH_SECRET, expiresIn: '5m' },
+            );
+            const accessToken = jwt.sign(
+              { sub: String(user), sid: String(sid) },
+              { secret, expiresIn: '5m' },
+            );
+            await collection.insertOne({
+              _id: sid,
+              userId: user,
+              tokenId: tid,
+              refreshTokenHash: await bcrypt.hash(refreshToken, 4),
+              expiresAt: new Date(Date.now() + 60000),
+            });
+            await expectStatus('GET', '/auth/me', accessToken, 200);
+            const rotated = await refresh({ refreshToken });
+            assert.equal(rotated.status, 200);
+            await expectStatus('GET', '/auth/me', accessToken, 401);
+            assert.equal((await logout({ refreshToken })).status, 204);
+            await expectStatus('GET', '/auth/me', rotated.body.accessToken, 401);
+            assert.equal((await refresh(rotated.body)).status, 401);
+          },
+        );
+        await t.test(
+          'invalid proof cannot revoke another login and expired proof can only revoke its own lineage',
+          async () => {
+            const device = await login();
+            const proof = jwt.decode(device.refreshToken);
+            const invalid = jwt.sign(
+              { sub: String(user), tid: proof.tid, sid: proof.sid, fid: proof.fid },
+              { secret: 'wrong-fixture-secret' },
+            );
+            assert.equal((await logout({ refreshToken: invalid })).status, 204);
+            await expectStatus('GET', '/auth/me', device.accessToken, 200);
+            const expired = jwt.sign(
+              { sub: String(user), tid: proof.tid, sid: proof.sid, fid: proof.fid },
+              { secret: env.JWT_REFRESH_SECRET, expiresIn: -1 },
+            );
+            assert.equal((await refresh({ refreshToken: expired })).status, 401);
+            assert.equal((await logout({ refreshToken: expired })).status, 204);
+            await expectStatus('GET', '/auth/me', device.accessToken, 401);
+          },
+        );
+        const failCommand = (commands, data) =>
+          connection.db.admin().command({
+            configureFailPoint: 'failCommand',
+            mode: { times: 2 },
+            data: { failCommands: commands, appName: 'alsm-auth-race-app', ...data },
+          });
+        const resetFailure = () =>
+          connection.db.admin().command({ configureFailPoint: 'failCommand', mode: 'off' });
+        await t.test(
+          'failed CAS, failed logout and unknown commit never report confirmed success or create descendants',
+          async () => {
+            const original = await login();
+            try {
+              await failCommand(['update'], { errorCode: 112 });
+              const failed = await refresh(original);
+              assert.equal(failed.status, 503);
+              assert.equal(failed.body.code, 'REFRESH_UNAVAILABLE');
+              assert.ok(!failed.body.accessToken);
+              await resetFailure();
+              assert.equal(await activeCount(original), 1);
+              assert.equal(await collection.countDocuments(root(original)), 1);
+              await expectStatus('GET', '/auth/me', original.accessToken, 200);
+              await failCommand(['update'], { errorCode: 112 });
+              const deniedLogout = await logout(original);
+              assert.equal(deniedLogout.status, 503);
+              assert.equal(deniedLogout.body.code, 'SESSION_REVOCATION_UNAVAILABLE');
+              await resetFailure();
+              await expectStatus('GET', '/auth/me', original.accessToken, 200);
+              // The command executes but its acknowledgement is uncertain. The
+              // prepared successor must not escape, and stale logout must recover.
+              await failCommand(['update'], {
+                writeConcernError: {
+                  code: 64,
+                  errmsg: 'owned fixture acknowledgement uncertainty',
+                },
+              });
+              const uncertainRotation = await refresh(original);
+              assert.equal(uncertainRotation.status, 503);
+              assert.equal(uncertainRotation.body.code, 'REFRESH_UNAVAILABLE');
+              assert.ok(!uncertainRotation.body.accessToken);
+              await resetFailure();
+              assert.equal(await collection.countDocuments(root(original)), 1);
+              await expectStatus('GET', '/auth/me', original.accessToken, 401);
+              assert.equal((await refresh(original)).status, 401);
+              assert.equal((await logout(original)).status, 204);
+              assert.equal(await activeCount(original), 0);
+              const current = await login(),
+                other = await login();
+              await failCommand(['commitTransaction'], {
+                errorCode: 1,
+                errorLabels: ['UnknownTransactionCommitResult'],
+              });
+              const unknown = await request(
+                'POST',
+                '/auth/sessions/revoke-others',
+                current.accessToken,
+                {},
+              );
+              assert.equal(unknown.status, 503);
+              assert.equal(unknown.body.code, 'SESSION_REVOCATION_UNAVAILABLE');
+              await resetFailure();
+              assert.equal(await collection.countDocuments(root(current)), 1);
+              assert.equal(await collection.countDocuments(root(other)), 1);
+              raceEvidence.failures.push({
+                casWriteConflict: failed.status,
+                logoutWriteConflict: deniedLogout.status,
+                unknownCommit: unknown.status,
+                appliedButUnconfirmedRotation: uncertainRotation.status,
+                successorRowsCreated: 0,
+                credentialsPublished: false,
+              });
+              // Reconciliation is an explicit new request; no business callback replay.
+              await expectStatus(
+                'POST',
+                '/auth/sessions/revoke-others',
+                current.accessToken,
+                204,
+                {},
+              );
+              await expectStatus('GET', '/auth/me', current.accessToken, 200);
+              await expectStatus('GET', '/auth/me', other.accessToken, 401);
+              active = current;
+            } finally {
+              await resetFailure();
+            }
+          },
+        );
+        fs.writeFileSync(
+          path.join(evidence, 'race-results.json'),
+          JSON.stringify(raceEvidence, null, 2),
+        );
+      }
+      await t.test(
         'authoritative database outage fails closed with safe 503 and recovers',
         async () => {
           verifyServices();
@@ -473,6 +798,14 @@ test(
           const body = await expectStatus('GET', '/auth/me', active.accessToken, 503);
           assert.equal(body.code, 'SESSION_ASSURANCE_UNAVAILABLE');
           assert.ok(!/mongodb|27137|password|stack|MongoServer/i.test(JSON.stringify(body)));
+          const refreshFailure = await request('POST', '/auth/refresh', undefined, {
+            refreshToken: active.refreshToken,
+          });
+          const logoutFailure = await request('POST', '/auth/logout', undefined, {
+            refreshToken: active.refreshToken,
+          });
+          assert.equal(refreshFailure.status, 503);
+          assert.equal(logoutFailure.status, 503);
           execFileSync('docker', ['start', mongo], { windowsHide: true });
           mongoStopped = false;
           await until(async () => {
@@ -482,6 +815,9 @@ test(
       );
     } finally {
       if (mongoStopped) execFileSync('docker', ['start', mongo], { windowsHide: true });
+      secondChild?.kill();
+      if (secondChild && secondChild.exitCode === null)
+        await new Promise((resolve) => secondChild.once('exit', resolve));
       child?.kill();
       if (child && child.exitCode === null)
         await new Promise((resolve) => child.once('exit', resolve));

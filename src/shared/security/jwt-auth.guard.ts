@@ -3,6 +3,7 @@ import { JwtService } from '@nestjs/jwt';
 import { ConfigService } from '@nestjs/config';
 import { RequestWithContext } from '../logging/request-id.middleware';
 import { RequireCurrentSessionService } from '../../modules/auth/application/require-current-session.service';
+import { PASSWORD_REMEDIATION } from './password-remediation.decorator';
 
 @Injectable()
 export class JwtAuthGuard implements CanActivate {
@@ -42,7 +43,8 @@ export class JwtAuthGuard implements CanActivate {
     }
     // A signed user token is not proof of a live session. Keep authoritative
     // assurance outside the JWT catch so storage outages retain their safe 503.
-    await this.sessions.execute(payload.sub, payload.sid, payload.sv);
+    const remediation = Reflect.getMetadata(PASSWORD_REMEDIATION, context.getHandler()) === true;
+    await this.sessions.execute(payload.sub, payload.sid, payload.sv, remediation);
     request.user = {
       userId: payload.sub,
       email: payload.email,

@@ -61,7 +61,7 @@ describe('JwtAuthGuard', () => {
       const request = { headers: { authorization: 'Bearer valid' } } as RequestWithContext;
       await expect(guard.canActivate(contextFor(request))).resolves.toBe(true);
       expect(jwt.verifyAsync).toHaveBeenCalledWith('valid', { secret: 'access-secret' });
-      expect(sessions.execute).toHaveBeenCalledWith('user-1', 'session-1', undefined);
+      expect(sessions.execute).toHaveBeenCalledWith('user-1', 'session-1', undefined, false);
       expect(request.user).toEqual({
         userId: 'user-1',
         email: 'user@example.com',
@@ -109,7 +109,7 @@ describe('JwtAuthGuard', () => {
       status: 401,
       response: { code: 'CURRENT_SESSION_REQUIRED' },
     });
-    expect(sessions.execute).toHaveBeenCalledWith('user-1', undefined, undefined);
+    expect(sessions.execute).toHaveBeenCalledWith('user-1', undefined, undefined, false);
     expect(request.user).toBeUndefined();
   });
 

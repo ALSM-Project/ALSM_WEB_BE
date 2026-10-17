@@ -14,7 +14,12 @@ export class RequireCurrentSessionService {
     @Inject(SESSION_REPOSITORY) private readonly sessions: SessionRepository,
     @Inject(USER_REPOSITORY) private readonly users: UserRepository,
   ) {}
-  async execute(userId: string, sessionId?: string, version?: string): Promise<void> {
+  async execute(
+    userId: string,
+    sessionId?: string,
+    version?: string,
+    passwordRemediation = false,
+  ): Promise<void> {
     const denied = () =>
       new UnauthorizedException({
         code: 'CURRENT_SESSION_REQUIRED',
@@ -24,7 +29,8 @@ export class RequireCurrentSessionService {
       throw denied();
     try {
       const account = await this.users.findById(userId);
-      if (!account?.isActive || account.mustChangePassword) throw denied();
+      if (!account?.isActive || (account.mustChangePassword && !passwordRemediation))
+        throw denied();
       const matching = (await this.sessions.findActiveByUserId(userId)).find(
         (session) => session.id === sessionId,
       );

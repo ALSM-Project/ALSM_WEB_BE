@@ -1,6 +1,8 @@
 import { ServiceUnavailableException, UnauthorizedException } from '@nestjs/common';
 import * as bcrypt from 'bcrypt';
 import { AuthService } from '../src/modules/auth/application/auth.service';
+import { AuthController } from '../src/modules/auth/presentation/auth.controller';
+import { PASSWORD_REMEDIATION } from '../src/shared/security/password-remediation.decorator';
 
 const userId = '507f1f77bcf86cd799439011';
 const sessionId = '507f1f77bcf86cd799439012';
@@ -94,5 +96,15 @@ describe('atomic refresh and browser lineage authority', () => {
     f.jwt.verifyAsync.mockRejectedValueOnce(new Error('signature'));
     await f.service.logout('proof');
     expect(f.sessions.revokeBrowserSession).not.toHaveBeenCalled();
+  });
+  it('marks only the two password handlers for restricted remediation', () => {
+    const marked = Object.getOwnPropertyNames(AuthController.prototype).filter(
+      (name) =>
+        Reflect.getMetadata(
+          PASSWORD_REMEDIATION,
+          AuthController.prototype[name as keyof AuthController],
+        ) === true,
+    );
+    expect(marked.sort()).toEqual(['changePassword', 'setPassword']);
   });
 });

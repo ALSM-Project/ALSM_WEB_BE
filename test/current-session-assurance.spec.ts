@@ -30,6 +30,27 @@ describe('ordinary current-session prerequisite, without impersonation admission
     });
     await expect(f.service.execute(userId, sessionId, 'current')).resolves.toBeUndefined();
   });
+  it('admits forced password remediation only with a live current generation', async () => {
+    const f = fixture();
+    f.account.mustChangePassword = true;
+    f.session.accessVersion = 'current';
+    await expect(f.service.execute(userId, sessionId, 'current')).rejects.toMatchObject({
+      status: 401,
+    });
+    await expect(f.service.execute(userId, sessionId, 'current', true)).resolves.toBeUndefined();
+    await expect(f.service.execute(userId, sessionId, 'stale', true)).rejects.toMatchObject({
+      status: 401,
+    });
+    f.session.revokedAt = new Date();
+    await expect(f.service.execute(userId, sessionId, 'current', true)).rejects.toMatchObject({
+      status: 401,
+    });
+    f.session.revokedAt = undefined;
+    f.account.isActive = false;
+    await expect(f.service.execute(userId, sessionId, 'current', true)).rejects.toMatchObject({
+      status: 401,
+    });
+  });
   it('accepts a current persisted session bound to the active account and exposes no session secrets', async () => {
     const f = fixture();
     await expect(f.service.execute(userId, sessionId)).resolves.toBeUndefined();
