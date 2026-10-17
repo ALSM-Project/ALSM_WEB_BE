@@ -1,3 +1,4 @@
+import { MongoTeamUnitOfWork } from '../src/modules/teams/infrastructure/mongo-team-unit-of-work';
 /** Opt-in real HTTP/Mongo tests. No .env load, production DB, AI or converter execution. */
 import 'reflect-metadata';
 import { execFileSync } from 'node:child_process';
@@ -75,7 +76,7 @@ jest.setTimeout(30000);
 const owned = process.env.ALSM_TEAM_HTTP_TEST === 'owned-local-only' ? describe : describe.skip;
 function verifyOwnedMongo() {
   const info = JSON.parse(
-    execFileSync('docker', ['inspect', 'alsm-emergency-20261017-mongo'], {
+    execFileSync('docker', ['inspect', 'alsm-priorities-20261017-mongo-rs'], {
       encoding: 'utf8',
       windowsHide: true,
     }),
@@ -84,10 +85,10 @@ function verifyOwnedMongo() {
     State: { Running: boolean };
     NetworkSettings: { Ports: Record<string, { HostIp: string; HostPort: string }[]> };
   }[];
-  expect(info[0].Config.Labels['alsm.owner']).toBe('emergency-20261017');
+  expect(info[0].Config.Labels['alsm.owner']).toBe('priorities-20261017');
   expect(info[0].State.Running).toBe(true);
   expect(info[0].NetworkSettings.Ports['27017/tcp']).toEqual([
-    { HostIp: '127.0.0.1', HostPort: '27117' },
+    { HostIp: '127.0.0.1', HostPort: '27127' },
   ]);
 }
 
@@ -148,7 +149,9 @@ owned('Teams actual HTTP + Mongo + persisted RBAC', () => {
 
   beforeAll(async () => {
     verifyOwnedMongo();
-    connection = await createConnection(`mongodb://127.0.0.1:27117/${database}`).asPromise();
+    connection = await createConnection(
+      `mongodb://127.0.0.1:27127/${database}?replicaSet=alsmPriorities&directConnection=true`,
+    ).asPromise();
     expect((await connection.db!.listCollections().toArray()).length).toBe(0);
     await connection.collection('_team_test_owner').insertOne({ runId });
     const userModel = connection.model(User.name, UserSchema);
@@ -230,7 +233,13 @@ owned('Teams actual HTTP + Mongo + persisted RBAC', () => {
       permissions,
       teams,
     );
-    const save = new SaveTeamService(access, teams, users, projects, audit);
+    const atomic = new MongoTeamUnitOfWork(
+      connection,
+      teams,
+      assignments,
+      (session, selectedConnection) => audit.inTransaction(session, selectedConnection),
+    );
+    const save = new SaveTeamService(access, teams, users, projects, atomic);
     const list = new ListManagedTeamsService(access, teams);
     const module = await Test.createTestingModule({
       imports: [JwtModule.register({ secret: 'owned-team-http-test-key' })],
@@ -242,19 +251,11 @@ owned('Teams actual HTTP + Mongo + persisted RBAC', () => {
         },
         {
           provide: AssignTeamJobService,
-          useValue: new AssignTeamJobService(
-            access,
-            teams,
-            assignments,
-            jobs,
-            projects,
-            users,
-            audit,
-          ),
+          useValue: new AssignTeamJobService(access, teams, jobs, projects, users, atomic),
         },
         {
           provide: RevokeTeamJobService,
-          useValue: new RevokeTeamJobService(access, assignments, audit),
+          useValue: new RevokeTeamJobService(access, atomic),
         },
         {
           provide: ListTeamJobAssignmentsService,
@@ -292,7 +293,7 @@ owned('Teams actual HTTP + Mongo + persisted RBAC', () => {
     if (connection) {
       verifyOwnedMongo();
       expect(connection.host).toBe('127.0.0.1');
-      expect(connection.port).toBe(27117);
+      expect(connection.port).toBe(27127);
       expect(connection.name).toBe(database);
       expect(await connection.collection('_team_test_owner').findOne({ runId })).toBeTruthy();
       await connection.dropDatabase();
@@ -319,6 +320,21 @@ owned('Teams actual HTTP + Mongo + persisted RBAC', () => {
         actorUserId: new Types.ObjectId(owner),
       }),
     ).toBe(1);
+  });
+  it('rejects captured transaction participants after their transaction ends', async () => {
+    const atomic = new MongoTeamUnitOfWork(
+      connection,
+      teams,
+      assignments,
+      (session, selectedConnection) => audit.inTransaction(session, selectedConnection),
+    );
+    const captured = await atomic.run(
+      async (repositories) => repositories.teams,
+      new Types.ObjectId().toHexString(),
+    );
+    await expect(captured.findById(team.id, organizationId)).rejects.toThrow(
+      'active explicit transaction',
+    );
   });
   it('denies ordinary-member administration, forged DTO fields and cross-organization writes', async () => {
     expect((await request('POST', '/teams', member, input())).status).toBe(403);
@@ -566,23 +582,30 @@ owned('Teams actual HTTP + Mongo + persisted RBAC', () => {
       }),
     ).toEqual([]);
   });
-  it('reconciles committed creation after audit failure without duplicate teams or overwriting later edits', async () => {
+  it('rolls back creation and audit on failure, then safely reconciles stable creation IDs without overwriting later edits', async () => {
     const payload = { ...input(), creationId: new Types.ObjectId().toHexString() };
-    const realAppend = audit.append.bind(audit);
-    const failing = jest.spyOn(audit, 'append').mockImplementation(async (event) => {
-      if (event.action === 'TEAM_SAVED') throw new Error('completion audit outage');
-      return realAppend(event);
-    });
+    const realAppend = MongoAuditRepository.prototype.append;
+    const failing = jest
+      .spyOn(MongoAuditRepository.prototype, 'append')
+      .mockImplementation(async function (this: MongoAuditRepository, event) {
+        if (event.action === 'TEAM_SAVED') throw new Error('completion audit outage');
+        return realAppend.call(this, event);
+      });
     try {
       const response = await request('POST', '/teams', owner, payload);
       expect(response.status).toBe(503);
       expect(response.body).toMatchObject({
-        code: 'TEAM_MUTATION_COMMITTED_AUDIT_PENDING',
-        details: [{ resourceId: payload.creationId, mutationCommitted: true, retrySafe: false }],
+        code: 'ATOMIC_MUTATION_ABORTED',
+        details: [{ resourceId: payload.creationId, mutationCommitted: false, retrySafe: false }],
       });
+      expect((await request('GET', `/teams/${payload.creationId}/administration`)).status).toBe(
+        404,
+      );
       expect(
-        (await request('GET', `/teams/${payload.creationId}/administration`)).body.revision,
-      ).toBe(1);
+        await connection
+          .collection('audit_logs')
+          .countDocuments({ resourceId: payload.creationId }),
+      ).toBe(0);
     } finally {
       failing.mockRestore();
     }
@@ -618,6 +641,31 @@ owned('Teams actual HTTP + Mongo + persisted RBAC', () => {
       revision: 2,
       replayedCreation: true,
     });
+    const updateAuditFailure = jest
+      .spyOn(MongoAuditRepository.prototype, 'append')
+      .mockImplementation(async function (this: MongoAuditRepository, event) {
+        if (event.action === 'TEAM_SAVED') throw new Error('update completion audit outage');
+        return realAppend.call(this, event);
+      });
+    try {
+      expect(
+        (
+          await request('PUT', `/teams/${payload.creationId}`, owner, {
+            ...replacement,
+            name: 'Must roll back',
+            expectedRevision: 2,
+          })
+        ).status,
+      ).toBe(503);
+      expect(
+        (await request('GET', `/teams/${payload.creationId}/administration`)).body,
+      ).toMatchObject({ name: 'Edited later', revision: 2 });
+      expect(
+        (await connection.model<Team>(Team.name).findById(payload.creationId).lean())?.changes,
+      ).toHaveLength(2);
+    } finally {
+      updateAuditFailure.mockRestore();
+    }
   });
   it('fences revoked assignment replays and delayed DELETE retries while retaining the original record', async () => {
     const endpoint = `/teams/${conversionTeam.id}/job-assignments`;
@@ -629,47 +677,55 @@ owned('Teams actual HTTP + Mongo + persisted RBAC', () => {
       jobId: original.jobId,
       memberId: original.memberId,
     };
-    const realAppend = audit.append.bind(audit);
-    const failing = jest.spyOn(audit, 'append').mockImplementation(async (event) => {
-      if (event.action === 'TEAM_JOB_REVOKED') throw new Error('completion audit outage');
-      return realAppend(event);
-    });
+    const realAppend = MongoAuditRepository.prototype.append;
+    const failing = jest
+      .spyOn(MongoAuditRepository.prototype, 'append')
+      .mockImplementation(async function (this: MongoAuditRepository, event) {
+        if (event.action === 'TEAM_JOB_REVOKED') throw new Error('completion audit outage');
+        return realAppend.call(this, event);
+      });
     try {
       expect(
         (await request('DELETE', `${endpoint}/${original.jobId}?assignmentId=${original.id}`)).body,
       ).toMatchObject({
-        code: 'TEAM_MUTATION_COMMITTED_AUDIT_PENDING',
-        details: [{ mutationCommitted: true, resourceId: original.id }],
+        code: 'ATOMIC_MUTATION_ABORTED',
+        details: [{ mutationCommitted: false, resourceId: original.id }],
       });
     } finally {
       failing.mockRestore();
     }
+    expect((await request('GET', `${endpoint}/${original.id}`)).body.revokedAt).toBeNull();
+    expect(
+      (await request('DELETE', `${endpoint}/${original.jobId}?assignmentId=${original.id}`)).status,
+    ).toBe(200);
     const replacementInput = {
       ...payload,
       assignmentId: new Types.ObjectId().toHexString(),
     };
-    const assignmentAuditFailure = jest.spyOn(audit, 'append').mockImplementation(async (event) => {
-      if (event.action === 'TEAM_JOB_ASSIGNED') throw new Error('completion audit outage');
-      return realAppend(event);
-    });
+    const assignmentAuditFailure = jest
+      .spyOn(MongoAuditRepository.prototype, 'append')
+      .mockImplementation(async function (this: MongoAuditRepository, event) {
+        if (event.action === 'TEAM_JOB_ASSIGNED') throw new Error('completion audit outage');
+        return realAppend.call(this, event);
+      });
     try {
       const uncertain = await request('POST', endpoint, owner, replacementInput);
       expect(uncertain.status).toBe(503);
       expect(uncertain.body).toMatchObject({
-        code: 'TEAM_MUTATION_COMMITTED_AUDIT_PENDING',
+        code: 'ATOMIC_MUTATION_ABORTED',
         details: [
-          { resourceId: replacementInput.assignmentId, mutationCommitted: true, retrySafe: false },
+          { resourceId: replacementInput.assignmentId, mutationCommitted: false, retrySafe: false },
         ],
       });
-      expect(
-        (await request('GET', `${endpoint}/${replacementInput.assignmentId}`)).body.revokedAt,
-      ).toBeNull();
+      expect((await request('GET', `${endpoint}/${replacementInput.assignmentId}`)).status).toBe(
+        404,
+      );
     } finally {
       assignmentAuditFailure.mockRestore();
     }
     const replacement = await request('POST', endpoint, owner, replacementInput);
     expect(replacement.status).toBe(201);
-    expect(replacement.body.replayed).toBe(true);
+    expect(replacement.body.replayed).toBeUndefined();
     const replay = await request('POST', endpoint, owner, payload);
     expect(replay.body).toMatchObject({ id: original.id, replayed: true });
     expect(replay.body.revokedAt).toBeTruthy();

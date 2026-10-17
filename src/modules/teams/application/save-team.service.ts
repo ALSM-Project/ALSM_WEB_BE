@@ -8,9 +8,8 @@ import {
 import { TeamAccessService, teamId } from './team-access.service';
 import { USER_REPOSITORY, UserRepository } from '../../users/domain/user.repository';
 import { PROJECT_REPOSITORY, ProjectRepository } from '../../projects/domain/project.types';
-import { AUDIT_REPOSITORY, AuditRepository } from '../../audit/domain/audit.repository';
 import { OrganizationRole } from '../../organizations/domain/organization.types';
-import { businessMutation, completedAudit, requestedAudit } from './team-mutation-outcome';
+import { TEAM_UNIT_OF_WORK, TeamUnitOfWork } from './team-unit-of-work.port';
 
 export interface SaveTeamCommand {
   creationId?: string;
@@ -29,7 +28,7 @@ export class SaveTeamService {
     @Inject(TEAM_REPOSITORY) private readonly teams: TeamRepository,
     @Inject(USER_REPOSITORY) private readonly users: UserRepository,
     @Inject(PROJECT_REPOSITORY) private readonly projects: ProjectRepository,
-    @Inject(AUDIT_REPOSITORY) private readonly audit: AuditRepository,
+    @Inject(TEAM_UNIT_OF_WORK) private readonly atomic: TeamUnitOfWork,
   ) {}
 
   async execute(
@@ -100,48 +99,39 @@ export class SaveTeamService {
         });
       projectAssignments.push({ projectId, memberIds: assignedMembers });
     }
-    await requestedAudit(() =>
-      this.audit.append({
+    return this.atomic.run(async (repositories) => {
+      await repositories.audit.append({
         actorUserId: userId,
         organizationId: organization.id,
         action: 'TEAM_SAVE_REQUESTED',
         resourceType: 'team',
         resourceId: id ?? input.creationId,
         metadata: { expectedRevision: String(input.expectedRevision) },
-      }),
-    );
-    const result = await businessMutation(
-      () =>
-        this.teams.save({
-          ...input,
-          id: id ? teamId(id) : undefined,
-          name: input.name.trim(),
-          organizationId: organization.id,
-          actorUserId: userId,
-          memberIds,
-          managerIds,
-          projectAssignments,
-        }),
-      id ?? input.creationId!,
-    );
-    if (!result)
-      throw new ConflictException({
-        code: 'TEAM_REVISION_CONFLICT',
-        message: 'Team changed, has a different type, or is unavailable; reload before retrying',
       });
-    await completedAudit(
-      () =>
-        this.audit.append({
-          actorUserId: userId,
-          organizationId: organization.id,
-          action: result.replayedCreation ? 'TEAM_CREATE_RECONCILED' : 'TEAM_SAVED',
-          resourceType: 'team',
-          resourceId: result.id,
-          metadata: { revision: String(result.revision) },
-        }),
-      result.id,
-      result.revision,
-    );
-    return result;
+      const result = await repositories.teams.save({
+        ...input,
+        id: id ? teamId(id) : undefined,
+        name: input.name.trim(),
+        organizationId: organization.id,
+        actorUserId: userId,
+        memberIds,
+        managerIds,
+        projectAssignments,
+      });
+      if (!result)
+        throw new ConflictException({
+          code: 'TEAM_REVISION_CONFLICT',
+          message: 'Team changed, has a different type, or is unavailable; reload before retrying',
+        });
+      await repositories.audit.append({
+        actorUserId: userId,
+        organizationId: organization.id,
+        action: result.replayedCreation ? 'TEAM_CREATE_RECONCILED' : 'TEAM_SAVED',
+        resourceType: 'team',
+        resourceId: result.id,
+        metadata: { revision: String(result.revision) },
+      });
+      return result;
+    }, id ?? input.creationId!);
   }
 }

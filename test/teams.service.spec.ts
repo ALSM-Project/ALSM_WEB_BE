@@ -14,7 +14,7 @@ import { OrganizationRole } from '../src/modules/organizations/domain/organizati
 import { UserRepository } from '../src/modules/users/domain/user.repository';
 import { EffectivePermissionsService } from '../src/modules/rbac/application/effective-permissions.service';
 import { ProjectRepository } from '../src/modules/projects/domain/project.types';
-import { AuditRepository } from '../src/modules/audit/domain/audit.repository';
+import { TeamUnitOfWork } from '../src/modules/teams/application/team-unit-of-work.port';
 
 const owner = '111111111111111111111111';
 const manager = '222222222222222222222222';
@@ -51,7 +51,10 @@ function setup() {
     teams as unknown as TeamRepository,
     users as unknown as UserRepository,
     projects as unknown as ProjectRepository,
-    audit as AuditRepository,
+    {
+      run: (work: Parameters<TeamUnitOfWork['run']>[0]) =>
+        work({ teams, audit } as unknown as Parameters<Parameters<TeamUnitOfWork['run']>[0]>[0]),
+    } as unknown as TeamUnitOfWork,
   );
   const input = {
     creationId: id,
@@ -200,7 +203,7 @@ describe('explicit organization-owned teams', () => {
     const f = setup();
     f.audit.append.mockRejectedValue(new Error('audit unavailable'));
     await expect(f.save.execute(owner, organizationId, f.input)).rejects.toThrow(
-      'Requested-action audit failed',
+      'audit unavailable',
     );
     expect(f.teams.save).not.toHaveBeenCalled();
   });

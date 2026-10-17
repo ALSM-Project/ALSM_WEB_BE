@@ -1,3 +1,6 @@
+import { Connection, Model } from 'mongoose';
+import { TEAM_UNIT_OF_WORK } from './modules/teams/application/team-unit-of-work.port';
+import { MongoTeamUnitOfWork } from './modules/teams/infrastructure/mongo-team-unit-of-work';
 import { MiddlewareConsumer, Module, NestModule } from '@nestjs/common';
 import { Team, TeamSchema } from './modules/teams/infrastructure/team.schema';
 import { MongoTeamRepository } from './modules/teams/infrastructure/mongo-team.repository';
@@ -21,7 +24,7 @@ import { CONVERSION_WORKLOAD } from './modules/conversions/domain/conversion-wor
 import { MongoConversionWorkloadReader } from './modules/conversions/infrastructure/mongo-conversion-workload.reader';
 import { ConfigModule } from '@nestjs/config';
 import { JwtModule } from '@nestjs/jwt';
-import { MongooseModule } from '@nestjs/mongoose';
+import { getConnectionToken, getModelToken, MongooseModule } from '@nestjs/mongoose';
 import { environmentValidationSchema } from './config/environment.validation';
 import { RequestIdMiddleware } from './shared/logging/request-id.middleware';
 import { JwtAuthGuard } from './shared/security/jwt-auth.guard';
@@ -294,6 +297,28 @@ import { QualityReviewController } from './modules/conversions/presentation/qual
     PaymentController,
   ],
   providers: [
+    {
+      provide: TEAM_UNIT_OF_WORK,
+      inject: [
+        getConnectionToken(),
+        getModelToken(Team.name),
+        getModelToken(TeamJobAssignment.name),
+        getModelToken(AuditLog.name),
+      ],
+      useFactory: (
+        connection: Connection,
+        teams: Model<Team>,
+        assignments: Model<TeamJobAssignment>,
+        audits: Model<AuditLog>,
+      ) =>
+        new MongoTeamUnitOfWork(
+          connection,
+          new MongoTeamRepository(teams),
+          new MongoTeamJobAssignmentRepository(assignments),
+          (session, selectedConnection) =>
+            new MongoAuditRepository(audits).inTransaction(session, selectedConnection),
+        ),
+    },
     TeamAccessService,
     GetTeamAdministrationService,
     GetSalesTeamPerformanceService,

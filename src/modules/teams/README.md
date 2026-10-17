@@ -1,5 +1,7 @@
 # Teams and performance (ALSMV2-1102 / ALSMV2-1186)
 
+Updated priorities: team mutations now use an exact shared MongoDB transaction for business state and central audit. Transaction-capable MongoDB is required; standalone writes fail closed. This supersedes the separate-write descriptions retained below from the first implementation. See [current atomic mutation contract](../../../docs/operations/TEAM_ATOMIC_MUTATIONS_20261017.md). Stable IDs, revision checks and exact-assignment revocation preconditions remain mandatory.
+
 Organization-owned SALES and CONVERSION teams have explicitly persisted members, managers and project/staff assignments. No membership or management scope is inferred from organization membership, global roles or job creators. No existing data is backfilled.
 
 `POST /api/v1/teams` creates a team with `expectedRevision: 0` and a client-generated, stable 24-hex `creationId`; `PUT /api/v1/teams/:teamId` replaces its explicit memberships/assignments using the exact current revision. Both require an active organization OWNER/ADMIN **and** the existing `users.manage` RBAC permission. No permissions or grants are seeded. Only active members of that exact organization can be appointed; viewers cannot manage. Team kind is immutable. Lists return only teams explicitly managed by the caller, selected by `?kind=SALES|CONVERSION` and optional existing `x-organization-id` context.
