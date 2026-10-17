@@ -35,3 +35,14 @@ The Dockerfile's production stage contains the built Node application and produc
 Supply the complete verified tool bundle and license/provenance first. Configure absolute worker-visible paths and a verified runtime. Run an owned disposable database/queue/storage environment with non-sensitive COBOL, BMS and DSPF sources; record exact executable/tool hashes, commands, stdout/stderr, exit status and output hashes. Independently parse/compile nonempty Java/TSX output using the actual generated-code dependencies, confirm persisted COMPLETED output and authorized review/reload, then test invalid source, no output, malformed/header-only output, nonzero exit, timeout and retries. Any integration fix found then should be a separate narrow commit. Do not replace missing engines with fixtures, AI output or synthetic success.
 
 Implementation stopped at the missing artifact boundary as requested. Queue, worker, engine selection, runtime configuration and persisted results were not rewritten. Regression tests are not evidence of real successful conversion.
+
+## Operational readiness recheck: exact preserved failures
+
+The 17 October operational-readiness probe instantiated both actual configured adapter classes with no path overrides and a storage port that throws if accessed. Both rejected at dependency validation, before tool execution or artifact writes, with these unchanged messages:
+
+```text
+TOOL2JAVA_JAR_PATH is not configured and ../ALSM_TOOL/tool2java/target/akaBatch-1.0.jar was not found
+TOOL_CONVERT_DIR is not configured and ../ALSM_TOOL/py/convert2fe was not found
+```
+
+Local evidence: `E:\ALSM\ALSM_WEB_BE\coverage\team-readiness\converter-errors.jsonl`. The required supply remains the genuine `tool2java/target/akaBatch-1.0.jar` and the complete `py/convert2fe` distribution containing both `bms2react.py` and `dspf2react.py`, their imported local modules/assets, tool version/checksums/provenance/license, verified Java/Python versions and generated-code runtime dependencies. Default absolute locations remain `E:\ALSM\ALSM_TOOL\tool2java\target\akaBatch-1.0.jar` and `E:\ALSM\ALSM_TOOL\py\convert2fe`; overrides must be absolute paths visible **inside the worker's execution environment**. A Python runtime bundled for Codex tooling does not configure or certify the conversion worker. No converter, fallback, schema, worker runtime or environment configuration was changed in this recheck. Risk B remains blocked; no real successful conversion is claimed.
