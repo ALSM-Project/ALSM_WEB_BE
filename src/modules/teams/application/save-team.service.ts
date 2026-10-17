@@ -10,8 +10,10 @@ import { USER_REPOSITORY, UserRepository } from '../../users/domain/user.reposit
 import { PROJECT_REPOSITORY, ProjectRepository } from '../../projects/domain/project.types';
 import { AUDIT_REPOSITORY, AuditRepository } from '../../audit/domain/audit.repository';
 import { OrganizationRole } from '../../organizations/domain/organization.types';
+import { businessMutation, completedAudit, requestedAudit } from './team-mutation-outcome';
 
 export interface SaveTeamCommand {
+  creationId?: string;
   name: string;
   kind: TeamKind;
   memberIds: string[];
@@ -47,6 +49,8 @@ export class SaveTeamService {
     ) {
       throw new BadRequestException({ code: 'INVALID_TEAM', message: 'Invalid team or revision' });
     }
+    if (!id) teamId(input.creationId ?? '');
+    else if (input.creationId) throw new BadRequestException('creationId is only accepted on POST');
     const uniqueIds = (values: string[]) => {
       const normalized = values.map(teamId);
       if (values.length > 100 || new Set(normalized).size !== values.length)
@@ -96,37 +100,48 @@ export class SaveTeamService {
         });
       projectAssignments.push({ projectId, memberIds: assignedMembers });
     }
-    await this.audit.append({
-      actorUserId: userId,
-      organizationId: organization.id,
-      action: 'TEAM_SAVE_REQUESTED',
-      resourceType: 'team',
-      resourceId: id,
-      metadata: { expectedRevision: String(input.expectedRevision) },
-    });
-    const result = await this.teams.save({
-      ...input,
-      id: id ? teamId(id) : undefined,
-      name: input.name.trim(),
-      organizationId: organization.id,
-      actorUserId: userId,
-      memberIds,
-      managerIds,
-      projectAssignments,
-    });
+    await requestedAudit(() =>
+      this.audit.append({
+        actorUserId: userId,
+        organizationId: organization.id,
+        action: 'TEAM_SAVE_REQUESTED',
+        resourceType: 'team',
+        resourceId: id ?? input.creationId,
+        metadata: { expectedRevision: String(input.expectedRevision) },
+      }),
+    );
+    const result = await businessMutation(
+      () =>
+        this.teams.save({
+          ...input,
+          id: id ? teamId(id) : undefined,
+          name: input.name.trim(),
+          organizationId: organization.id,
+          actorUserId: userId,
+          memberIds,
+          managerIds,
+          projectAssignments,
+        }),
+      id ?? input.creationId!,
+    );
     if (!result)
       throw new ConflictException({
         code: 'TEAM_REVISION_CONFLICT',
         message: 'Team changed, has a different type, or is unavailable; reload before retrying',
       });
-    await this.audit.append({
-      actorUserId: userId,
-      organizationId: organization.id,
-      action: 'TEAM_SAVED',
-      resourceType: 'team',
-      resourceId: result.id,
-      metadata: { revision: String(result.revision) },
-    });
+    await completedAudit(
+      () =>
+        this.audit.append({
+          actorUserId: userId,
+          organizationId: organization.id,
+          action: result.replayedCreation ? 'TEAM_CREATE_RECONCILED' : 'TEAM_SAVED',
+          resourceType: 'team',
+          resourceId: result.id,
+          metadata: { revision: String(result.revision) },
+        }),
+      result.id,
+      result.revision,
+    );
     return result;
   }
 }

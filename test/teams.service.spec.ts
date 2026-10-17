@@ -54,6 +54,7 @@ function setup() {
     audit as AuditRepository,
   );
   const input = {
+    creationId: id,
     name: 'Sales',
     kind: TeamKind.SALES,
     memberIds: [member],
@@ -199,7 +200,7 @@ describe('explicit organization-owned teams', () => {
     const f = setup();
     f.audit.append.mockRejectedValue(new Error('audit unavailable'));
     await expect(f.save.execute(owner, organizationId, f.input)).rejects.toThrow(
-      'audit unavailable',
+      'Requested-action audit failed',
     );
     expect(f.teams.save).not.toHaveBeenCalled();
   });
@@ -219,7 +220,12 @@ describe('explicit organization-owned teams', () => {
     const f = setup();
     f.teams.save.mockResolvedValue(null);
     await expect(
-      f.save.execute(owner, organizationId, { ...f.input, expectedRevision: 3 }, id),
+      f.save.execute(
+        owner,
+        organizationId,
+        { ...f.input, creationId: undefined, expectedRevision: 3 },
+        id,
+      ),
     ).rejects.toBeInstanceOf(ConflictException);
     expect(f.audit.append).toHaveBeenCalledTimes(1);
   });

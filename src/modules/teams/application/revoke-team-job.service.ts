@@ -5,6 +5,7 @@ import {
 } from '../domain/team-job-assignment.types';
 import { TeamAccessService, teamId } from './team-access.service';
 import { AUDIT_REPOSITORY, AuditRepository } from '../../audit/domain/audit.repository';
+import { businessMutation, completedAudit, requestedAudit } from './team-mutation-outcome';
 
 @Injectable()
 export class RevokeTeamJobService {
@@ -18,31 +19,44 @@ export class RevokeTeamJobService {
     organizationHeader: string | undefined,
     id: string,
     jobSelector: string,
+    assignmentSelector: string,
   ) {
     const organization = await this.access.administer(userId, organizationHeader);
+    const assignmentId = teamId(assignmentSelector);
     const jobId = teamId(jobSelector),
       selectedTeamId = teamId(id);
-    await this.audit.append({
-      actorUserId: userId,
-      organizationId: organization.id,
-      action: 'TEAM_JOB_REVOCATION_REQUESTED',
-      resourceType: 'team',
-      resourceId: selectedTeamId,
-      metadata: { jobId },
-    });
-    if (!(await this.assignments.revoke(organization.id, selectedTeamId, jobId, userId)))
+    await requestedAudit(() =>
+      this.audit.append({
+        actorUserId: userId,
+        organizationId: organization.id,
+        action: 'TEAM_JOB_REVOCATION_REQUESTED',
+        resourceType: 'team',
+        resourceId: selectedTeamId,
+        metadata: { jobId, assignmentId },
+      }),
+    );
+    if (
+      !(await businessMutation(
+        () => this.assignments.revoke(organization.id, selectedTeamId, jobId, userId, assignmentId),
+        assignmentId,
+      ))
+    )
       throw new NotFoundException({
         code: 'TEAM_JOB_ASSIGNMENT_NOT_FOUND',
         message: 'Active assignment is unavailable in this team and organization',
       });
-    await this.audit.append({
-      actorUserId: userId,
-      organizationId: organization.id,
-      action: 'TEAM_JOB_REVOKED',
-      resourceType: 'team',
-      resourceId: selectedTeamId,
-      metadata: { jobId },
-    });
+    await completedAudit(
+      () =>
+        this.audit.append({
+          actorUserId: userId,
+          organizationId: organization.id,
+          action: 'TEAM_JOB_REVOKED',
+          resourceType: 'team',
+          resourceId: selectedTeamId,
+          metadata: { jobId, assignmentId },
+        }),
+      assignmentId,
+    );
     return { revoked: true };
   }
 }

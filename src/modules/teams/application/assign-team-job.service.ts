@@ -18,6 +18,7 @@ import {
 import { PROJECT_REPOSITORY, ProjectRepository } from '../../projects/domain/project.types';
 import { USER_REPOSITORY, UserRepository } from '../../users/domain/user.repository';
 import { AUDIT_REPOSITORY, AuditRepository } from '../../audit/domain/audit.repository';
+import { businessMutation, completedAudit, requestedAudit } from './team-mutation-outcome';
 
 @Injectable()
 export class AssignTeamJobService {
@@ -36,8 +37,10 @@ export class AssignTeamJobService {
     id: string,
     jobSelector: string,
     memberSelector: string,
+    assignmentSelector: string,
   ) {
     const organization = await this.access.administer(userId, organizationHeader);
+    const assignmentId = teamId(assignmentSelector);
     const team = await this.teams.findById(teamId(id), organization.id);
     if (!team || team.kind !== TeamKind.CONVERSION)
       throw new NotFoundException({
@@ -68,36 +71,47 @@ export class AssignTeamJobService {
           'A current team member, explicit project assignment and existing job in this organization are required',
       });
     }
-    await this.audit.append({
-      actorUserId: userId,
-      organizationId: organization.id,
-      action: 'TEAM_JOB_ASSIGNMENT_REQUESTED',
-      resourceType: 'team',
-      resourceId: team.id,
-      metadata: { jobId, memberId },
-    });
-    const result = await this.assignments.assign({
-      organizationId: organization.id,
-      teamId: team.id,
-      projectId: job.projectId,
-      jobId,
-      memberId,
-      assignedBy: userId,
-    });
+    await requestedAudit(() =>
+      this.audit.append({
+        actorUserId: userId,
+        organizationId: organization.id,
+        action: 'TEAM_JOB_ASSIGNMENT_REQUESTED',
+        resourceType: 'team',
+        resourceId: team.id,
+        metadata: { jobId, memberId, assignmentId },
+      }),
+    );
+    const result = await businessMutation(
+      () =>
+        this.assignments.assign({
+          assignmentId,
+          organizationId: organization.id,
+          teamId: team.id,
+          projectId: job.projectId,
+          jobId,
+          memberId,
+          assignedBy: userId,
+        }),
+      assignmentId,
+    );
     if (!result)
       throw new ConflictException({
         code: 'TEAM_JOB_ALREADY_ASSIGNED',
         message:
           'This job already has an active assignment; revoke it explicitly before reassignment',
       });
-    await this.audit.append({
-      actorUserId: userId,
-      organizationId: organization.id,
-      action: 'TEAM_JOB_ASSIGNED',
-      resourceType: 'team_job_assignment',
-      resourceId: result.id,
-      metadata: { teamId: team.id, jobId, memberId },
-    });
+    await completedAudit(
+      () =>
+        this.audit.append({
+          actorUserId: userId,
+          organizationId: organization.id,
+          action: result.replayed ? 'TEAM_JOB_ASSIGNMENT_RECONCILED' : 'TEAM_JOB_ASSIGNED',
+          resourceType: 'team_job_assignment',
+          resourceId: result.id,
+          metadata: { teamId: team.id, jobId, memberId },
+        }),
+      result.id,
+    );
     return result;
   }
 }

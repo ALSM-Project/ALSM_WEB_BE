@@ -7,6 +7,7 @@ import {
   IsIn,
   IsInt,
   IsMongoId,
+  IsOptional,
   IsString,
   MaxLength,
   Min,
@@ -29,6 +30,13 @@ export class TeamProjectDto {
   memberIds!: string[];
 }
 export class SaveTeamDto {
+  @ApiProperty({
+    required: false,
+    description: 'Required on POST: generate once and retain across retries; omit on PUT',
+  })
+  @IsOptional()
+  @IsMongoId()
+  creationId?: string;
   @ApiProperty() @IsString() @MinLength(1) @MaxLength(120) name!: string;
   @ApiProperty({ enum: TeamKind }) @IsEnum(TeamKind) kind!: TeamKind;
   @ApiProperty({ type: [String] })
@@ -58,6 +66,14 @@ export class TeamPeriodQuery {
   @ApiProperty({ enum: [7, 30] }) @Type(() => Number) @IsInt() @IsIn([7, 30]) days!: 7 | 30;
 }
 export class AssignTeamJobDto {
+  @ApiProperty({ description: 'Generate once per intended assignment and retain across retries' })
+  @IsMongoId()
+  assignmentId!: string;
   @ApiProperty() @IsMongoId() jobId!: string;
   @ApiProperty() @IsMongoId() memberId!: string;
+}
+export class RevokeTeamJobQuery {
+  @ApiProperty({ description: 'Exact active assignment ID obtained from the administration GET' })
+  @IsMongoId()
+  assignmentId!: string;
 }

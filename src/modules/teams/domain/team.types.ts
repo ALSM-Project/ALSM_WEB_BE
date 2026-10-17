@@ -17,10 +17,12 @@ export interface TeamRecord {
   managerIds: string[];
   projectAssignments: TeamProjectAssignment[];
   revision: number;
+  replayedCreation?: boolean;
 }
 
 export interface SaveTeamInput {
   id?: string;
+  creationId?: string;
   organizationId: string;
   actorUserId: string;
   name: string;

@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { ConflictException, Injectable } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { HydratedDocument, Model, Types } from 'mongoose';
 import { SaveTeamInput, TeamKind, TeamRecord, TeamRepository } from '../domain/team.types';
@@ -59,14 +59,46 @@ export class MongoTeamRepository implements TeamRepository {
       revision: input.expectedRevision + 1,
     };
     if (!input.id) {
-      return this.map(
-        await this.model.create({
-          ...state,
-          organizationId: new Types.ObjectId(input.organizationId),
-          revision: 1,
-          changes: [change],
-        }),
-      );
+      if (!input.creationId) throw new Error('A stable creation ID is required');
+      const creationId = new Types.ObjectId(input.creationId);
+      try {
+        return this.map(
+          await this.model.create({
+            ...state,
+            _id: creationId,
+            organizationId: new Types.ObjectId(input.organizationId),
+            revision: 1,
+            changes: [change],
+          }),
+        );
+      } catch (error) {
+        if (!(
+          typeof error === 'object' &&
+          error !== null &&
+          'code' in error &&
+          error.code === 11000
+        ))
+          throw error;
+        // The permanent _id fence survives subsequent edits. Compare the original
+        // actor and payload, never overwrite current state when replaying creation.
+        const existing = await this.model
+          .findOne({ _id: creationId, organizationId: new Types.ObjectId(input.organizationId) })
+          .exec();
+        const first = existing?.changes[0];
+        const original =
+          first && Object.fromEntries(Object.keys(state).map((key) => [key, first[key]]));
+        if (
+          !existing ||
+          first?.actorUserId !== input.actorUserId ||
+          JSON.stringify(original) !== JSON.stringify(state)
+        )
+          throw new ConflictException({
+            code: 'TEAM_CREATION_ID_CONFLICT',
+            message:
+              'Creation ID already used; reconcile the original request, never reuse it for different input',
+          });
+        return { ...this.map(existing), replayedCreation: true };
+      }
     }
     const doc = await this.model
       .findOneAndUpdate(

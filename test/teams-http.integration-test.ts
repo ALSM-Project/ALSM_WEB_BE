@@ -4,6 +4,7 @@ import { execFileSync } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
 import { AddressInfo } from 'node:net';
 import { INestApplication, ValidationPipe } from '@nestjs/common';
+import { ApiExceptionFilter } from '../src/shared/errors/api-exception.filter';
 import { ConfigService } from '@nestjs/config';
 import { JwtModule, JwtService } from '@nestjs/jwt';
 import { Test } from '@nestjs/testing';
@@ -118,6 +119,13 @@ owned('Teams actual HTTP + Mongo + persisted RBAC', () => {
     body?: unknown,
     organization = organizationId,
   ) {
+    if (method === 'POST' && body && typeof body === 'object') {
+      const payload = body;
+      if (route === '/teams' && !('creationId' in payload))
+        body = { ...body, creationId: new Types.ObjectId().toHexString() };
+      if (route.endsWith('/job-assignments') && !('assignmentId' in payload))
+        body = { ...payload, assignmentId: new Types.ObjectId().toHexString() };
+    }
     const response = await fetch(url + route, {
       method,
       headers: {
@@ -271,6 +279,7 @@ owned('Teams actual HTTP + Mongo + persisted RBAC', () => {
     }).compile();
     app = module.createNestApplication({ logger: false });
     app.setGlobalPrefix('api/v1');
+    app.useGlobalFilters(new ApiExceptionFilter());
     app.useGlobalPipes(
       new ValidationPipe({ transform: true, whitelist: true, forbidNonWhitelisted: true }),
     );
@@ -557,6 +566,127 @@ owned('Teams actual HTTP + Mongo + persisted RBAC', () => {
       }),
     ).toEqual([]);
   });
+  it('reconciles committed creation after audit failure without duplicate teams or overwriting later edits', async () => {
+    const payload = { ...input(), creationId: new Types.ObjectId().toHexString() };
+    const realAppend = audit.append.bind(audit);
+    const failing = jest.spyOn(audit, 'append').mockImplementation(async (event) => {
+      if (event.action === 'TEAM_SAVED') throw new Error('completion audit outage');
+      return realAppend(event);
+    });
+    try {
+      const response = await request('POST', '/teams', owner, payload);
+      expect(response.status).toBe(503);
+      expect(response.body).toMatchObject({
+        code: 'TEAM_MUTATION_COMMITTED_AUDIT_PENDING',
+        details: [{ resourceId: payload.creationId, mutationCommitted: true, retrySafe: false }],
+      });
+      expect(
+        (await request('GET', `/teams/${payload.creationId}/administration`)).body.revision,
+      ).toBe(1);
+    } finally {
+      failing.mockRestore();
+    }
+    const concurrent = await Promise.all([
+      request('POST', '/teams', owner, payload),
+      request('POST', '/teams', owner, payload),
+    ]);
+    expect(concurrent.map((r) => r.body.id)).toEqual([payload.creationId, payload.creationId]);
+    expect(
+      await connection
+        .collection('teams')
+        .countDocuments({ _id: new Types.ObjectId(payload.creationId) }),
+    ).toBe(1);
+    expect(
+      (await request('POST', '/teams', owner, { ...payload, name: 'Different intent' })).status,
+    ).toBe(409);
+    expect(
+      (await request('POST', '/teams', owner, { ...payload, creationId: undefined })).status,
+    ).toBe(400);
+    const replacement = { ...payload, creationId: undefined };
+    expect(
+      (
+        await request('PUT', `/teams/${payload.creationId}`, owner, {
+          ...replacement,
+          name: 'Edited later',
+          expectedRevision: 1,
+        })
+      ).status,
+    ).toBe(200);
+    const replay = await request('POST', '/teams', owner, payload);
+    expect(replay.body).toMatchObject({
+      name: 'Edited later',
+      revision: 2,
+      replayedCreation: true,
+    });
+  });
+  it('fences revoked assignment replays and delayed DELETE retries while retaining the original record', async () => {
+    const endpoint = `/teams/${conversionTeam.id}/job-assignments`;
+    const original = (await assignments.listActive(organizationId, conversionTeam.id)).find(
+      (a) => a.jobId === jobIds[0],
+    )!;
+    const payload = {
+      assignmentId: original.id,
+      jobId: original.jobId,
+      memberId: original.memberId,
+    };
+    const realAppend = audit.append.bind(audit);
+    const failing = jest.spyOn(audit, 'append').mockImplementation(async (event) => {
+      if (event.action === 'TEAM_JOB_REVOKED') throw new Error('completion audit outage');
+      return realAppend(event);
+    });
+    try {
+      expect(
+        (await request('DELETE', `${endpoint}/${original.jobId}?assignmentId=${original.id}`)).body,
+      ).toMatchObject({
+        code: 'TEAM_MUTATION_COMMITTED_AUDIT_PENDING',
+        details: [{ mutationCommitted: true, resourceId: original.id }],
+      });
+    } finally {
+      failing.mockRestore();
+    }
+    const replacementInput = {
+      ...payload,
+      assignmentId: new Types.ObjectId().toHexString(),
+    };
+    const assignmentAuditFailure = jest.spyOn(audit, 'append').mockImplementation(async (event) => {
+      if (event.action === 'TEAM_JOB_ASSIGNED') throw new Error('completion audit outage');
+      return realAppend(event);
+    });
+    try {
+      const uncertain = await request('POST', endpoint, owner, replacementInput);
+      expect(uncertain.status).toBe(503);
+      expect(uncertain.body).toMatchObject({
+        code: 'TEAM_MUTATION_COMMITTED_AUDIT_PENDING',
+        details: [
+          { resourceId: replacementInput.assignmentId, mutationCommitted: true, retrySafe: false },
+        ],
+      });
+      expect(
+        (await request('GET', `${endpoint}/${replacementInput.assignmentId}`)).body.revokedAt,
+      ).toBeNull();
+    } finally {
+      assignmentAuditFailure.mockRestore();
+    }
+    const replacement = await request('POST', endpoint, owner, replacementInput);
+    expect(replacement.status).toBe(201);
+    expect(replacement.body.replayed).toBe(true);
+    const replay = await request('POST', endpoint, owner, payload);
+    expect(replay.body).toMatchObject({ id: original.id, replayed: true });
+    expect(replay.body.revokedAt).toBeTruthy();
+    expect((await request('GET', `${endpoint}/${original.id}`)).body.revokedAt).toBeTruthy();
+    expect((await request('GET', `${endpoint}/${original.id}`, member)).status).toBe(403);
+    expect(
+      (await request('DELETE', `${endpoint}/${original.jobId}?assignmentId=${original.id}`)).status,
+    ).toBe(404);
+    expect((await request('DELETE', `${endpoint}/${original.jobId}`)).status).toBe(400);
+    expect((await request('POST', endpoint, owner, { ...payload, memberId: other })).status).toBe(
+      409,
+    );
+    const active = (await assignments.listActive(organizationId, conversionTeam.id)).filter(
+      (a) => a.jobId === original.jobId,
+    );
+    expect(active.map((a) => a.id)).toEqual([replacement.body.id]);
+  });
   it('revokes assignments durably, prevents another team claiming an already assigned job, and excludes deleted projects', async () => {
     const second = await request('POST', '/teams', owner, {
       name: 'Other Conversion',
@@ -578,12 +708,25 @@ owned('Teams actual HTTP + Mongo + persisted RBAC', () => {
     expect((await request('GET', `/teams/${secondId}/workload?days=7`, other)).body.totals).toEqual(
       { assignedJobs: 0, processingJobs: 0, completedJobs: 0, failedJobs: 0 },
     );
+    const active = (await assignments.listActive(organizationId, conversionTeam.id)).find(
+      (a) => a.jobId === jobIds[1],
+    )!;
     expect(
-      (await request('DELETE', `/teams/${conversionTeam.id}/job-assignments/${jobIds[1]}`, manager))
-        .status,
+      (
+        await request(
+          'DELETE',
+          `/teams/${conversionTeam.id}/job-assignments/${jobIds[1]}?assignmentId=${active.id}`,
+          manager,
+        )
+      ).status,
     ).toBe(403);
     expect(
-      (await request('DELETE', `/teams/${conversionTeam.id}/job-assignments/${jobIds[1]}`)).status,
+      (
+        await request(
+          'DELETE',
+          `/teams/${conversionTeam.id}/job-assignments/${jobIds[1]}?assignmentId=${active.id}`,
+        )
+      ).status,
     ).toBe(200);
     expect(
       (await request('GET', `/teams/${conversionTeam.id}/workload?days=7`, manager)).body.totals,
@@ -606,6 +749,7 @@ owned('Teams actual HTTP + Mongo + persisted RBAC', () => {
     try {
       await expect(
         assignments.assign({
+          assignmentId: new Types.ObjectId().toHexString(),
           organizationId,
           teamId: conversionTeam.id,
           projectId,
