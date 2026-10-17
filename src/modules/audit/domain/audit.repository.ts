@@ -1,3 +1,14 @@
+export interface AuditRecord {
+  id: string;
+  actorUserId?: string;
+  organizationId?: string;
+  action: string;
+  resourceType: string;
+  resourceId?: string;
+  metadata?: Record<string, string>;
+  createdAt?: Date;
+}
+
 export interface AuditRepository {
   append(input: {
     actorUserId?: string;
@@ -7,6 +18,7 @@ export interface AuditRepository {
     resourceId?: string;
     metadata?: Record<string, string>;
   }): Promise<void>;
+  findByResource?(resourceType: string, resourceId: string): Promise<AuditRecord[]>;
 }
 
 export interface IdempotentAuditRepository extends AuditRepository {
