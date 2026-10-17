@@ -16,7 +16,7 @@ import { RecordSalesRevenueService } from './modules/crm/application/record-sale
 import { GetSalesLeadService } from './modules/crm/application/get-sales-lead.service';
 import { SalesController } from './modules/crm/presentation/sales.controller';
 import { CurrentSessionGuard } from './shared/security/current-session.guard';
-import { RequireCurrentSessionService } from './modules/auth/application/require-current-session.service';
+import { SessionAssuranceModule } from './modules/auth/session-assurance.module';
 import { Connection, Model } from 'mongoose';
 import { TEAM_UNIT_OF_WORK } from './modules/teams/application/team-unit-of-work.port';
 import { MongoTeamUnitOfWork } from './modules/teams/infrastructure/mongo-team-unit-of-work';
@@ -260,6 +260,7 @@ import { QualityReviewController } from './modules/conversions/presentation/qual
     ConfigModule.forRoot({ isGlobal: true, validationSchema: environmentValidationSchema }),
     JwtModule.register({ global: true }),
     MongooseModule.forRootAsync({ useFactory: () => ({ uri: process.env.MONGODB_URI }) }),
+    SessionAssuranceModule,
     MongooseModule.forFeature([
       { name: Lead.name, schema: LeadSchema },
       { name: User.name, schema: UserSchema },
@@ -387,7 +388,6 @@ import { QualityReviewController } from './modules/conversions/presentation/qual
     ScreenService,
     JwtAuthGuard,
     CurrentSessionGuard,
-    RequireCurrentSessionService,
     PermissionsGuard,
     AuthService,
     ListActiveSessionsService,

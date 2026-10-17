@@ -31,6 +31,9 @@ integration('legacy validation isolation (real AppModule, HTTP and MongoDB)', ()
   const secret = 'legacy-validation-test-secret-32-characters';
   const user = new Types.ObjectId();
   const outsider = new Types.ObjectId();
+  const unassignedUser = new Types.ObjectId();
+  const session = new Types.ObjectId();
+  const unassignedSession = new Types.ObjectId();
   const org = new Types.ObjectId();
   const otherOrg = new Types.ObjectId();
   const project = new Types.ObjectId();
@@ -38,6 +41,8 @@ integration('legacy validation isolation (real AppModule, HTTP and MongoDB)', ()
   const job = new Types.ObjectId();
   const queue = { enqueue: jest.fn().mockResolvedValue(undefined) };
   const collections = [
+    'users',
+    'user_sessions',
     'organizations',
     'projects',
     'screens',
@@ -90,6 +95,26 @@ integration('legacy validation isolation (real AppModule, HTTP and MongoDB)', ()
   beforeEach(async () => {
     for (const name of collections) await connection.collection(name).deleteMany({});
     queue.enqueue.mockClear();
+    await connection.collection('users').insertMany(
+      [user, outsider, unassignedUser].map((_id) => ({
+        _id,
+        email: `${_id}@example.invalid`,
+        isActive: true,
+        mustChangePassword: false,
+      })),
+    );
+    await connection.collection('user_sessions').insertMany(
+      [
+        [session, user],
+        [unassignedSession, unassignedUser],
+      ].map(([id, userId]) => ({
+        _id: id,
+        userId,
+        tokenId: id.toString(),
+        refreshTokenHash: 'fixture-not-a-refresh-credential',
+        expiresAt: new Date(Date.now() + 60000),
+      })),
+    );
     await connection.collection('organizations').insertMany([
       { _id: org, name: 'A', type: 'ENTERPRISE', members: [{ userId: user, role: 'MEMBER' }] },
       {
@@ -141,7 +166,12 @@ integration('legacy validation isolation (real AppModule, HTTP and MongoDB)', ()
     const token =
       options.token === undefined
         ? jwt.sign(
-            { sub: user.toString(), email: 'test@example.com', isPlatformAdmin: false },
+            {
+              sub: user.toString(),
+              sid: session.toString(),
+              email: 'test@example.com',
+              isPlatformAdmin: false,
+            },
             { secret },
           )
         : options.token;
@@ -520,7 +550,10 @@ integration('legacy validation isolation (real AppModule, HTTP and MongoDB)', ()
     expect(
       (
         await request(getPath(), 'GET', {
-          token: jwt.sign({ sub: new Types.ObjectId().toString() }, { secret }),
+          token: jwt.sign(
+            { sub: unassignedUser.toString(), sid: unassignedSession.toString() },
+            { secret },
+          ),
         })
       ).status,
     ).toBe(403);

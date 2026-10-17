@@ -5,6 +5,7 @@ describe('SetPasswordService', () => {
   const users = {
     findById: jest.fn(),
     updatePassword: jest.fn(),
+    clearMustChangePassword: jest.fn(),
   };
   const service = new SetPasswordService(users as never);
 
@@ -21,6 +22,7 @@ describe('SetPasswordService', () => {
     await service.execute('u-google', 'NewPass123!');
 
     expect(users.updatePassword).toHaveBeenCalledWith('u-google', expect.any(String));
+    expect(users.clearMustChangePassword).toHaveBeenCalledWith('u-google');
   });
 
   it('throws ConflictException if user already has a password set', async () => {

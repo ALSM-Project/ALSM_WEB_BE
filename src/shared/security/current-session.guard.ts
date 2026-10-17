@@ -8,7 +8,7 @@ export class CurrentSessionGuard implements CanActivate {
   async canActivate(context: ExecutionContext): Promise<boolean> {
     const actor = context.switchToHttp().getRequest<RequestWithContext>().user;
     if (!actor) throw new UnauthorizedException();
-    await this.assurance.execute(actor.userId, actor.sessionId);
+    await this.assurance.execute(actor.userId, actor.sessionId, actor.sessionVersion);
     return true;
   }
 }
