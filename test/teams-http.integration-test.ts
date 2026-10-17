@@ -1,3 +1,7 @@
+import { Lead, LeadSchema } from '../src/modules/crm/infrastructure/lead.schema';
+import { Payment, PaymentSchema } from '../src/modules/billing/infrastructure/payment.schema';
+import { MongoSalesRevenueRepository } from '../src/modules/billing/infrastructure/persistence/mongo-sales-revenue.repository';
+import { MongoSalesPerformanceSource } from '../src/modules/crm/infrastructure/mongo-sales-performance.source';
 import { CurrentSessionGuard } from '../src/shared/security/current-session.guard';
 import { RequireCurrentSessionService } from '../src/modules/auth/application/require-current-session.service';
 import { MongoSessionRepository } from '../src/modules/auth/infrastructure/mongo-session.repository';
@@ -282,7 +286,14 @@ owned('Teams actual HTTP + Mongo + persisted RBAC', () => {
         },
         {
           provide: GetSalesTeamPerformanceService,
-          useValue: new GetSalesTeamPerformanceService(access, users),
+          useValue: new GetSalesTeamPerformanceService(
+            access,
+            users,
+            new MongoSalesPerformanceSource(
+              connection.model(Lead.name, LeadSchema),
+              new MongoSalesRevenueRepository(connection.model(Payment.name, PaymentSchema)),
+            ),
+          ),
         },
         {
           provide: GetTeamAdministrationService,
@@ -410,21 +421,21 @@ owned('Teams actual HTTP + Mongo + persisted RBAC', () => {
       expect.objectContaining({ revision: 2 }),
     ]);
   });
-  it('serves a persisted salesperson roster but never invents sales values or converted statuses', async () => {
+  it('serves persisted sales cohorts with explicit zero-denominator behavior when no records exist', async () => {
     const result = await request('GET', `/teams/${team.id}/performance?days=7`, other);
     expect(result.status).toBe(200);
     expect(result.body).toEqual(
       expect.objectContaining({
         team: expect.objectContaining({ id: team.id }),
         metrics: expect.objectContaining({
-          leadCount: expect.objectContaining({ available: false }),
+          leadCount: expect.objectContaining({ available: true, value: 0 }),
           conversionRate: expect.objectContaining({ available: false }),
-          revenueGenerated: expect.objectContaining({ available: false }),
+          revenueGenerated: expect.objectContaining({ available: true, value: 0 }),
         }),
         members: [expect.objectContaining({ userId: member })],
       }),
     );
-    expect(JSON.stringify(result.body)).not.toContain('"value":');
+    expect(result.body.coverage).toBe('RECORDED_EXPLICIT_SALES_ASSIGNMENTS');
     expect((await request('GET', `/teams/${team.id}/performance?days=30`, other)).status).toBe(200);
     expect((await request('GET', `/teams/${team.id}/performance?days=8`, other)).status).toBe(400);
     expect((await request('GET', `/teams/${team.id}/performance?days=7`, manager)).status).toBe(

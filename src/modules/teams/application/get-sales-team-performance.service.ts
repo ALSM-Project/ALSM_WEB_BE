@@ -1,7 +1,12 @@
 import { BadRequestException, ConflictException, Inject, Injectable } from '@nestjs/common';
 import { USER_REPOSITORY, UserRepository } from '../../users/domain/user.repository';
 import { TeamKind } from '../domain/team.types';
-import { reportingPeriod, unavailableSalesMetrics } from '../domain/reporting-period';
+import { reportingPeriod } from '../domain/reporting-period';
+import {
+  SALES_PERFORMANCE_SOURCE,
+  SalesPerformanceSource,
+  summarizeSales,
+} from '../../crm/domain/sales-performance-source.port';
 import { TeamAccessService } from './team-access.service';
 
 @Injectable()
@@ -9,6 +14,7 @@ export class GetSalesTeamPerformanceService {
   constructor(
     private readonly access: TeamAccessService,
     @Inject(USER_REPOSITORY) private readonly users: UserRepository,
+    @Inject(SALES_PERFORMANCE_SOURCE) private readonly source: SalesPerformanceSource,
   ) {}
   async execute(
     userId: string,
@@ -28,21 +34,38 @@ export class GetSalesTeamPerformanceService {
         code: 'INVALID_REPORTING_PERIOD',
         message: 'Choose 7 or 30 days',
       });
-    const members: {
-      userId: string;
-      fullName: string;
-      metrics: ReturnType<typeof unavailableSalesMetrics>;
-    }[] = [];
-    for (const memberId of team.memberIds) {
-      if (!organization.members.some((m) => m.userId === memberId)) continue;
+    const period = reportingPeriod(days, asOf);
+    const records = await this.source.read(
+      organization.id,
+      team.id,
+      new Date(period.start),
+      new Date(period.end),
+    );
+    // Historical contributors are authorized by retained team-owned business records,
+    // never inferred from today's roster. Current roster remains visible at zero.
+    const historical = new Set([
+      ...records.leads.flatMap((lead) => lead.memberIds),
+      ...records.revenue.map((row) => row.memberId),
+    ]);
+    const people = new Map<string, { fullName: string; currentMember: boolean }>();
+    for (const memberId of new Set([...team.memberIds, ...historical])) {
       const user = await this.users.findById(memberId);
-      if (user?.isActive)
-        members.push({
-          userId: memberId,
-          fullName: user.fullName,
-          metrics: unavailableSalesMetrics(),
+      const currentMember = Boolean(
+        user?.isActive &&
+        team.memberIds.includes(memberId) &&
+        organization.members.some((member) => member.userId === memberId),
+      );
+      if (currentMember || historical.has(memberId))
+        people.set(memberId, {
+          fullName: user?.fullName ?? 'Historical salesperson',
+          currentMember,
         });
     }
+    const calculated = summarizeSales(records, [...people.keys()]);
+    const members = calculated.members.map((member) => ({
+      ...member,
+      ...people.get(member.userId)!,
+    }));
     const current = await this.access.managed(userId, organization.id, team.id, TeamKind.SALES);
     if (
       current.team.revision !== team.revision ||
@@ -54,9 +77,13 @@ export class GetSalesTeamPerformanceService {
       });
     return {
       team: { id: team.id, name: team.name, kind: team.kind, organizationId: organization.id },
-      period: reportingPeriod(days, asOf),
+      period,
       asOf: asOf.toISOString(),
-      metrics: unavailableSalesMetrics(),
+      metrics: calculated.metrics,
+      cohort: 'ASSIGNMENT_START' as const,
+      conversionCredit: 'ASSIGNEE_AT_CONVERSION' as const,
+      revenueBasis: 'CONFIRMED_PAYMENTS_WITH_EXPLICIT_SALESPERSON' as const,
+      coverage: 'RECORDED_EXPLICIT_SALES_ASSIGNMENTS' as const,
       members,
     };
   }

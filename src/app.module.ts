@@ -1,3 +1,20 @@
+import { Lead, LeadSchema } from './modules/crm/infrastructure/lead.schema';
+import { LEAD_REPOSITORY } from './modules/crm/domain/lead.types';
+import { MongoLeadRepository } from './modules/crm/infrastructure/mongo-lead.repository';
+import { SALES_PERFORMANCE_SOURCE } from './modules/crm/domain/sales-performance-source.port';
+import { MongoSalesPerformanceSource } from './modules/crm/infrastructure/mongo-sales-performance.source';
+import { SALES_UNIT_OF_WORK } from './modules/crm/application/sales-unit-of-work.port';
+import { MongoSalesUnitOfWork } from './modules/crm/infrastructure/mongo-sales-unit-of-work';
+import { SALES_REVENUE_REPOSITORY } from './modules/billing/domain/sales-revenue.port';
+import { MongoSalesRevenueRepository } from './modules/billing/infrastructure/persistence/mongo-sales-revenue.repository';
+import { SALES_TEAM_ADMINISTRATION } from './modules/teams/domain/sales-team-administration.port';
+import { SalesTeamAdministrationService } from './modules/teams/application/sales-team-administration.service';
+import { CreateSalesLeadService } from './modules/crm/application/create-sales-lead.service';
+import { ReassignSalesLeadService } from './modules/crm/application/reassign-sales-lead.service';
+import { ConvertSalesLeadService } from './modules/crm/application/convert-sales-lead.service';
+import { RecordSalesRevenueService } from './modules/crm/application/record-sales-revenue.service';
+import { GetSalesLeadService } from './modules/crm/application/get-sales-lead.service';
+import { SalesController } from './modules/crm/presentation/sales.controller';
 import { CurrentSessionGuard } from './shared/security/current-session.guard';
 import { RequireCurrentSessionService } from './modules/auth/application/require-current-session.service';
 import { Connection, Model } from 'mongoose';
@@ -244,6 +261,7 @@ import { QualityReviewController } from './modules/conversions/presentation/qual
     JwtModule.register({ global: true }),
     MongooseModule.forRootAsync({ useFactory: () => ({ uri: process.env.MONGODB_URI }) }),
     MongooseModule.forFeature([
+      { name: Lead.name, schema: LeadSchema },
       { name: User.name, schema: UserSchema },
       { name: Organization.name, schema: OrganizationSchema },
       { name: UserSession.name, schema: UserSessionSchema },
@@ -276,6 +294,7 @@ import { QualityReviewController } from './modules/conversions/presentation/qual
     MenuModule,
   ],
   controllers: [
+    SalesController,
     TeamsController,
     TeamReportsController,
     TeamJobAssignmentsController,
@@ -299,6 +318,38 @@ import { QualityReviewController } from './modules/conversions/presentation/qual
     PaymentController,
   ],
   providers: [
+    { provide: LEAD_REPOSITORY, useClass: MongoLeadRepository },
+    { provide: SALES_PERFORMANCE_SOURCE, useClass: MongoSalesPerformanceSource },
+    { provide: SALES_REVENUE_REPOSITORY, useClass: MongoSalesRevenueRepository },
+    { provide: SALES_TEAM_ADMINISTRATION, useClass: SalesTeamAdministrationService },
+    CreateSalesLeadService,
+    ReassignSalesLeadService,
+    ConvertSalesLeadService,
+    RecordSalesRevenueService,
+    GetSalesLeadService,
+    {
+      provide: SALES_UNIT_OF_WORK,
+      inject: [
+        getConnectionToken(),
+        getModelToken(Lead.name),
+        getModelToken(Payment.name),
+        getModelToken(AuditLog.name),
+      ],
+      useFactory: (
+        connection: Connection,
+        leads: Model<Lead>,
+        payments: Model<Payment>,
+        audits: Model<AuditLog>,
+      ) =>
+        new MongoSalesUnitOfWork(
+          connection,
+          new MongoLeadRepository(leads),
+          (session, selectedConnection) =>
+            new MongoSalesRevenueRepository(payments).inTransaction(session, selectedConnection),
+          (session, selectedConnection) =>
+            new MongoAuditRepository(audits).inTransaction(session, selectedConnection),
+        ),
+    },
     {
       provide: TEAM_UNIT_OF_WORK,
       inject: [

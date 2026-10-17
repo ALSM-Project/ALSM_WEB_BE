@@ -1,9 +1,6 @@
-import {
-  reportingPeriod,
-  unavailableSalesMetrics,
-} from '../src/modules/teams/domain/reporting-period';
+import { reportingPeriod } from '../src/modules/teams/domain/reporting-period';
 
-describe('approved reporting periods and unavailable sales sources', () => {
+describe('approved reporting periods', () => {
   it.each([7, 30])(
     'uses exactly %i elapsed days with an exclusive end independent of host timezone',
     (days) => {
@@ -18,13 +15,5 @@ describe('approved reporting periods and unavailable sales sources', () => {
   );
   it.each([0, 8, 31, NaN, 7.5])('rejects unsupported period %s', (days) => {
     expect(() => reportingPeriod(days, new Date())).toThrow(RangeError);
-  });
-  it('keeps missing leads, outcomes and confirmed revenue unavailable instead of zero', () => {
-    const metrics = unavailableSalesMetrics();
-    for (const metric of Object.values(metrics)) {
-      expect(metric.available).toBe(false);
-      expect(metric).not.toHaveProperty('value');
-    }
-    expect(metrics.conversionRate.reason).toContain('converted leads / assigned leads * 100');
   });
 });

@@ -34,7 +34,7 @@ export class TeamReportsController {
   @Get('performance')
   @ApiOperation({
     summary:
-      'Sales Manager: explicit team roster and unavailable sales KPIs when source records are missing; 7/30 rolling days',
+      'Sales Manager: assignment-start lead cohort, actual conversion credit and explicitly attributed confirmed payments; 7/30 rolling days',
   })
   performance(
     @CurrentUser() user: AuthenticatedUser,
