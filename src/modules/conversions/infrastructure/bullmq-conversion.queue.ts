@@ -13,7 +13,7 @@ export const BULLMQ_PRIORITY: Record<ConversionPriority, number> = {
 @Injectable()
 export class BullMqConversionQueue implements ConversionQueuePort, OnModuleDestroy {
   private readonly logger = new Logger(BullMqConversionQueue.name);
-  private queue?: Queue<{ conversionJobId: string }>;
+  private queue?: Queue<{ conversionJobId: string; executionGeneration: number }>;
 
   constructor(private readonly config: ConfigService) {
     // CONVERSION_WORKER_ENABLED is declared as Joi.boolean() in environment.validation.ts,
@@ -45,7 +45,11 @@ export class BullMqConversionQueue implements ConversionQueuePort, OnModuleDestr
   // surfaces as an error, it just hangs forever. Swallowing this error used to do exactly
   // that (confirmed by reproduction: jobs sitting in Mongo as QUEUED with zero trace in
   // Redis). Let it propagate so the caller can fail the request instead.
-  async enqueue(conversionJobId: string, priority: ConversionPriority): Promise<void> {
+  async enqueue(
+    conversionJobId: string,
+    priority: ConversionPriority,
+    executionGeneration = 0,
+  ): Promise<void> {
     if (!this.queue || !this.config.get<boolean>('CONVERSION_WORKER_ENABLED')) {
       throw new Error(
         'Conversion queue is not configured (CONVERSION_WORKER_ENABLED is not enabled)',
@@ -53,8 +57,9 @@ export class BullMqConversionQueue implements ConversionQueuePort, OnModuleDestr
     }
     await this.queue.add(
       'execute-conversion',
-      { conversionJobId },
+      { conversionJobId, executionGeneration },
       {
+        jobId: `${conversionJobId}-${executionGeneration}`,
         attempts: 3,
         backoff: { type: 'exponential', delay: 1000 },
         priority: BULLMQ_PRIORITY[priority],

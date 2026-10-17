@@ -34,7 +34,7 @@ describe('ProjectService organization isolation', () => {
     authorization as unknown as OrganizationAuthorizationService,
     audit as unknown as AuditRepository,
   );
-  beforeEach(() => jest.clearAllMocks());
+  beforeEach(() => jest.resetAllMocks());
   it('creates a project in the validated organization, never a body-provided one', async () => {
     organizations.resolve.mockResolvedValue({
       id: 'org-a',
@@ -49,12 +49,45 @@ describe('ProjectService organization isolation', () => {
       expect.objectContaining({ organizationId: 'org-a', createdBy: 'user-a' }),
     );
   });
-  it('does not expose an Organization B project through Organization A scope', async () => {
+  it('returns an empty list without creating a project or audit record', async () => {
     organizations.resolve.mockResolvedValue({ id: 'org-a' });
-    projects.findById.mockResolvedValue(null);
-    projects.create.mockResolvedValue({ ...project, id: 'project-b', organizationId: 'org-a' });
-    const res = await service.get('user-a', 'org-a', 'project-b');
-    expect(res.organizationId).toBe('org-a');
-    expect(projects.findById).toHaveBeenCalledWith('project-b', 'org-a');
+    projects.findAll.mockResolvedValue([]);
+    await expect(service.list('user-a', 'org-a')).resolves.toEqual([]);
+    expect(projects.findAll).toHaveBeenCalledWith('org-a');
+    expect(projects.create).not.toHaveBeenCalled();
+    expect(audit.append).not.toHaveBeenCalled();
+  });
+
+  describe.each(['get', 'getForOrganization'] as const)('%s', (method) => {
+    const read = (id: string) =>
+      method === 'get'
+        ? service.get('user-a', 'org-a', id)
+        : service.getForOrganization(id, 'org-a');
+
+    it.each(['project-b', 'missing-project'])(
+      'denies %s without writes or an unscoped retry',
+      async (id) => {
+        organizations.resolve.mockResolvedValue({ id: 'org-a' });
+        projects.findById.mockResolvedValue(null);
+        projects.create.mockRejectedValue({ code: 11000 });
+        await expect(read(id)).rejects.toMatchObject({
+          status: 404,
+          response: { code: 'PROJECT_NOT_FOUND' },
+        });
+        expect(projects.findById).toHaveBeenCalledTimes(1);
+        expect(projects.findById).toHaveBeenCalledWith(id, 'org-a');
+        expect(projects.create).not.toHaveBeenCalled();
+        expect(audit.append).not.toHaveBeenCalled();
+      },
+    );
+
+    it('returns an existing scoped project without writes', async () => {
+      organizations.resolve.mockResolvedValue({ id: 'org-a' });
+      projects.findById.mockResolvedValue(project);
+      await expect(read(project.id)).resolves.toEqual(project);
+      expect(projects.findById).toHaveBeenCalledWith(project.id, 'org-a');
+      expect(projects.create).not.toHaveBeenCalled();
+      expect(audit.append).not.toHaveBeenCalled();
+    });
   });
 });

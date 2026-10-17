@@ -1,4 +1,10 @@
-import { BadRequestException, ConflictException, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  ConflictException,
+  ForbiddenException,
+  NotFoundException,
+} from '@nestjs/common';
+import { OrganizationContextService } from '../src/modules/organizations/application/organization-context.service';
 import { CreateMeetingService } from '../src/modules/meetings/application/create-meeting.service';
 import { ListMeetingsService } from '../src/modules/meetings/application/list-meetings.service';
 import { MeetingRepository, MeetingStatus } from '../src/modules/meetings/domain/meeting.types';
@@ -10,7 +16,7 @@ import { GoogleCalendarService } from '../src/shared/google/google-calendar.serv
 function getFutureDates() {
   const now = Date.now();
   const start = new Date(now + 24 * 60 * 60 * 1000); // +24 hours
-  const end = new Date(now + 25 * 60 * 60 * 1000);   // +25 hours
+  const end = new Date(now + 25 * 60 * 60 * 1000); // +25 hours
   return { start, end };
 }
 
@@ -56,6 +62,9 @@ describe('CreateMeetingService (UC-43 Strict Validations)', () => {
   let audit: jest.Mocked<AuditRepository>;
   let projects: jest.Mocked<ProjectRepository>;
   let service: CreateMeetingService;
+  let organizationContext: { resolve: jest.Mock };
+  let mailService: MailService;
+  let googleCalendarService: GoogleCalendarService;
 
   beforeEach(() => {
     meetings = {
@@ -70,7 +79,9 @@ describe('CreateMeetingService (UC-43 Strict Validations)', () => {
 
     projects = {
       create: jest.fn(),
-      findById: jest.fn().mockResolvedValue({ id: 'proj-1', name: 'Project 1' } as unknown as ProjectRecord),
+      findById: jest
+        .fn()
+        .mockResolvedValue({ id: 'proj-1', name: 'Project 1' } as unknown as ProjectRecord),
       findAll: jest.fn(),
       findByName: jest.fn(),
       update: jest.fn(),
@@ -81,16 +92,60 @@ describe('CreateMeetingService (UC-43 Strict Validations)', () => {
       unassignUser: jest.fn(),
     } as unknown as jest.Mocked<ProjectRepository>;
 
-    const mailService = {
+    mailService = {
       sendMeetingInvite: jest.fn().mockResolvedValue(undefined),
     } as unknown as MailService;
 
-    const googleCalendarService = {
+    googleCalendarService = {
       isEnabled: false,
       createMeetingEvent: jest.fn(),
     } as unknown as GoogleCalendarService;
 
-    service = new CreateMeetingService(meetings, audit, projects, mailService, googleCalendarService);
+    organizationContext = { resolve: jest.fn().mockResolvedValue({ id: 'org-a' }) };
+    service = new CreateMeetingService(
+      meetings,
+      audit,
+      projects,
+      mailService,
+      googleCalendarService,
+      organizationContext as unknown as OrganizationContextService,
+    );
+  });
+
+  it('checks project access using the actor organization before creating a meeting', async () => {
+    meetings.create.mockResolvedValue(makeMeeting());
+    await service.execute('user-1', 'host@enterprise.com', validMeetingInput());
+    expect(organizationContext.resolve).toHaveBeenCalledWith('user-1');
+    expect(projects.findById).toHaveBeenCalledWith('proj-1', 'org-a');
+    expect(meetings.create).toHaveBeenCalledTimes(1);
+  });
+
+  it('rejects a foreign project before meeting, calendar, email, or audit writes', async () => {
+    projects.findById.mockResolvedValue(null);
+    await expect(
+      service.execute(
+        'user-1',
+        'host@enterprise.com',
+        validMeetingInput({ projectId: 'foreign-project' }),
+      ),
+    ).rejects.toBeInstanceOf(NotFoundException);
+    expect(projects.findById).toHaveBeenCalledWith('foreign-project', 'org-a');
+    expect(meetings.create).not.toHaveBeenCalled();
+    expect(googleCalendarService.createMeetingEvent).not.toHaveBeenCalled();
+    expect(mailService.sendMeetingInvite).not.toHaveBeenCalled();
+    expect(audit.append).not.toHaveBeenCalled();
+  });
+
+  it('rejects missing organization membership before any project or meeting side effects', async () => {
+    organizationContext.resolve.mockRejectedValue(new ForbiddenException());
+    await expect(
+      service.execute('outsider', 'host@enterprise.com', validMeetingInput()),
+    ).rejects.toBeInstanceOf(ForbiddenException);
+    expect(projects.findById).not.toHaveBeenCalled();
+    expect(meetings.create).not.toHaveBeenCalled();
+    expect(googleCalendarService.createMeetingEvent).not.toHaveBeenCalled();
+    expect(mailService.sendMeetingInvite).not.toHaveBeenCalled();
+    expect(audit.append).not.toHaveBeenCalled();
   });
 
   // ─── 1. Title Validation ───
@@ -130,7 +185,11 @@ describe('CreateMeetingService (UC-43 Strict Validations)', () => {
   it('rejects a non-existent projectId', async () => {
     projects.findById.mockResolvedValue(null);
     await expect(
-      service.execute('user-1', 'host@enterprise.com', validMeetingInput({ projectId: 'invalid-id' })),
+      service.execute(
+        'user-1',
+        'host@enterprise.com',
+        validMeetingInput({ projectId: 'invalid-id' }),
+      ),
     ).rejects.toThrow(NotFoundException);
     expect(meetings.create).not.toHaveBeenCalled();
   });
@@ -216,13 +275,17 @@ describe('CreateMeetingService (UC-43 Strict Validations)', () => {
     await service.execute('user-1', 'host@enterprise.com', validMeetingInput());
 
     const createCall = meetings.create.mock.calls[0][0];
-    expect(createCall.meetingUrl).toMatch(/^https:\/\/meet\.google\.com\/[a-z]{3}-[a-z]{4}-[a-z]{3}$/);
+    expect(createCall.meetingUrl).toMatch(
+      /^https:\/\/meet\.google\.com\/[a-z]{3}-[a-z]{4}-[a-z]{3}$/,
+    );
     expect(createCall.meetingCode).toMatch(/^[a-z]{3}-[a-z]{4}-[a-z]{3}$/);
   });
 
   it('uses the provided custom Google Meet URL', async () => {
     const customUrl = 'https://meet.google.com/xyz-abcd-efg';
-    meetings.create.mockResolvedValue(makeMeeting({ meetingUrl: customUrl, meetingCode: 'xyz-abcd-efg' }));
+    meetings.create.mockResolvedValue(
+      makeMeeting({ meetingUrl: customUrl, meetingCode: 'xyz-abcd-efg' }),
+    );
 
     await service.execute(
       'user-1',

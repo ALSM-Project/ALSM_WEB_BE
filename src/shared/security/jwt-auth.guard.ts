@@ -15,14 +15,6 @@ export class JwtAuthGuard implements CanActivate {
     const token = request.headers.authorization?.replace(/^Bearer\s+/i, '');
 
     if (!token) {
-      if (process.env.NODE_ENV !== 'production') {
-        request.user = {
-          userId: '65f1a2b3c4d5e6f7a8b9c0d1',
-          email: 'dev@alsm.local',
-          isPlatformAdmin: true,
-        };
-        return true;
-      }
       throw new UnauthorizedException({
         code: 'UNAUTHORIZED',
         message: 'Access token is required',
@@ -44,30 +36,6 @@ export class JwtAuthGuard implements CanActivate {
       };
       return true;
     } catch {
-      if (process.env.NODE_ENV !== 'production') {
-        // In dev, decode token without verification to preserve real user identity
-        try {
-          const decoded = this.jwt.decode<{
-            sub?: string;
-            email?: string;
-            isPlatformAdmin?: boolean;
-            sid?: string;
-          }>(token);
-          if (decoded && decoded.sub) {
-            request.user = {
-              userId: decoded.sub,
-              email: decoded.email || 'dev@alsm.local',
-              isPlatformAdmin: decoded.isPlatformAdmin ?? false,
-              sessionId: decoded.sid,
-            };
-            return true;
-          }
-        } catch {
-          // decode failed — fall through to hardcoded dev user
-        }
-        request.user = { userId: '65f1a2b3c4d5e6f7a8b9c0d1', email: 'dev@alsm.local', isPlatformAdmin: true };
-        return true;
-      }
       throw new UnauthorizedException({
         code: 'UNAUTHORIZED',
         message: 'Invalid or expired access token',

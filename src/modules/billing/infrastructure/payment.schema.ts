@@ -1,11 +1,13 @@
 import { Prop, Schema, SchemaFactory } from '@nestjs/mongoose';
 import { HydratedDocument, Types } from 'mongoose';
+import { SalesPaymentResponsibility } from '../domain/sales-revenue.port';
 import { PaymentStatus, PlanTier } from '../domain/billing.types';
 
 export type PaymentDocument = HydratedDocument<Payment>;
 
 @Schema({ collection: 'payments', timestamps: true })
 export class Payment {
+  @Prop({ type: Object }) salesResponsibility?: SalesPaymentResponsibility;
   @Prop({ type: Types.ObjectId, required: true, index: true })
   userId!: Types.ObjectId;
 
@@ -63,3 +65,8 @@ export class Payment {
 
 export const PaymentSchema = SchemaFactory.createForClass(Payment);
 PaymentSchema.index({ status: 1, expiresAt: 1 });
+PaymentSchema.index({ organizationId: 1, 'salesResponsibility.teamId': 1, status: 1, paidAt: 1 });
+PaymentSchema.index(
+  { organizationId: 1, cassoTransactionId: 1 },
+  { name: 'payment_confirmation_identity' },
+);

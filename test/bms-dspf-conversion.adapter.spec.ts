@@ -13,8 +13,6 @@ jest.mock('../src/modules/conversions/infrastructure/conversion-tool-runner.util
   runConversionTool: jest.fn(),
 }));
 
-import { FieldMappingRepository } from '../src/modules/conversions/domain/field-mapping.types';
-
 describe('BmsDspfConversionAdapter', () => {
   let sourceDir: string;
   const configValues: Record<string, unknown> = {
@@ -48,14 +46,11 @@ describe('BmsDspfConversionAdapter', () => {
     await fs.promises.rm(sourceDir, { recursive: true, force: true });
   });
 
-  const fieldMappings = { findByScreen: jest.fn().mockResolvedValue(null) };
-
   function buildAdapter(): BmsDspfConversionAdapter {
     return new BmsDspfConversionAdapter(
       config as unknown as ConfigService,
       storage as StoragePort,
       errorLogs as unknown as ErrorLogRepository,
-      fieldMappings as unknown as FieldMappingRepository,
     );
   }
 
@@ -114,7 +109,7 @@ describe('BmsDspfConversionAdapter', () => {
     );
   });
 
-  it('falls back to parsing BMS source when no React components were generated', async () => {
+  it('fails truthfully when no React components were generated', async () => {
     await fs.promises.writeFile(path.join(sourceDir, 'BROKEN.bms'), 'BMS');
     (toolRunner.runConversionTool as jest.Mock).mockResolvedValue({
       code: 0,
@@ -123,10 +118,10 @@ describe('BmsDspfConversionAdapter', () => {
       timedOut: false,
     });
 
-    const result = await buildAdapter().execute(baseInput);
-
-    expect(result.resultReference).toEqual('results/p1/job-1/uuid');
-    expect(storage.writeFiles).toHaveBeenCalled();
+    await expect(buildAdapter().execute(baseInput)).rejects.toThrow(
+      'No React components were generated',
+    );
+    expect(storage.writeFiles).not.toHaveBeenCalled();
   });
 
   it('throws when the uploaded source has no .bms/.dspf files', async () => {
