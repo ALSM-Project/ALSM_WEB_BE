@@ -50,8 +50,8 @@ describe('BullMqConversionQueue', () => {
     );
     expect(add).toHaveBeenCalledWith(
       'execute-conversion',
-      { conversionJobId: 'job-1' },
-      expect.objectContaining({ attempts: 3 }),
+      { conversionJobId: 'job-1', executionGeneration: 0 },
+      expect.objectContaining({ attempts: 3, jobId: 'job-1-0' }),
     );
   });
 

@@ -62,7 +62,15 @@ describe('CobolJavaConversionAdapter', () => {
   it('translates COBOL and stores the generated .java files even though exit code is always 0', async () => {
     await fs.promises.writeFile(path.join(sourceDir, 'BUBBLESORT.cob'), 'COBOL SOURCE');
     (toolRunner.runConversionTool as jest.Mock).mockImplementation(
-      async (_exe: string, _args: string[], options: { cwd: string }) => {
+      async (_exe: string, args: string[], options: { cwd: string }) => {
+        expect(args.slice(args.indexOf('-pp'), args.indexOf('-pp') + 2)).toEqual([
+          '-pp',
+          'cobolprogramclasses',
+        ]);
+        expect(args.slice(args.indexOf('-dp'), args.indexOf('-dp') + 2)).toEqual([
+          '-dp',
+          'cobolprogramclasses',
+        ]);
         // tool2java only reliably honors -odir for the first file it writes; real runs show
         // subsequent programs land under "<cwd>/cobolprogramclasses/<program>/..." instead —
         // reproduce that here rather than writing into the (unused, from the tool's own
@@ -92,6 +100,21 @@ describe('CobolJavaConversionAdapter', () => {
       ]),
     );
     expect(errorLogs.create).not.toHaveBeenCalled();
+  });
+
+  it('isolates overlapping attempts of the same job in distinct working directories', async () => {
+    const workingDirectories: string[] = [];
+    (toolRunner.runConversionTool as jest.Mock).mockImplementation(
+      async (_exe: string, _args: string[], options: { cwd: string }) => {
+        workingDirectories.push(options.cwd);
+        await fs.promises.writeFile(path.join(options.cwd, 'Result.java'), 'class Result {}');
+        await new Promise((resolve) => setTimeout(resolve, 20));
+        return { code: 0, stdout: '', stderr: '', timedOut: false };
+      },
+    );
+    await Promise.all([buildAdapter().execute(baseInput), buildAdapter().execute(baseInput)]);
+    expect(new Set(workingDirectories).size).toBe(2);
+    expect(storage.writeFiles).toHaveBeenCalledTimes(2);
   });
 
   it('records an ErrorLogRecord parsed from a ParseException block', async () => {

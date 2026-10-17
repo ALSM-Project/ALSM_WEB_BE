@@ -49,6 +49,7 @@ import { CurrentUser } from '../../../shared/security/current-user.decorator';
 import { AuthenticatedUser } from '../../../shared/logging/request-id.middleware';
 import { JwtAuthGuard } from '../../../shared/security/jwt-auth.guard';
 import { SessionPresenter } from './session.presenter';
+import { PasswordRemediation } from '../../../shared/security/password-remediation.decorator';
 
 @ApiTags('Auth')
 @Controller('auth')
@@ -122,6 +123,7 @@ export class AuthController {
   @UseGuards(JwtAuthGuard)
   @HttpCode(HttpStatus.OK)
   @Post('set-password')
+  @PasswordRemediation()
   async setPassword(
     @CurrentUser() user: AuthenticatedUser,
     @Body() dto: SetPasswordDto,
@@ -134,6 +136,7 @@ export class AuthController {
   @UseGuards(JwtAuthGuard)
   @HttpCode(HttpStatus.OK)
   @Post('change-password')
+  @PasswordRemediation()
   async changePassword(
     @CurrentUser() user: AuthenticatedUser,
     @Body() dto: ChangePasswordDto,
@@ -196,7 +199,7 @@ export class AuthController {
   @HttpCode(HttpStatus.NO_CONTENT)
   @Post('sessions/revoke-others')
   async revokeAllOtherSessions(@CurrentUser() user: AuthenticatedUser): Promise<void> {
-    await this.auth.revokeAllOtherSessions(user.userId);
+    await this.auth.revokeAllOtherSessions(user.userId, user.sessionId);
   }
 
   @ApiBearerAuth()

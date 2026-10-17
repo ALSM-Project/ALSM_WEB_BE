@@ -1,4 +1,11 @@
-import { BadRequestException, Inject, Injectable, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  Inject,
+  Injectable,
+  NotFoundException,
+  ServiceUnavailableException,
+} from '@nestjs/common';
+import { ProjectService } from '../../projects/application/project.service';
 import { STORAGE_PORT, StoragePort } from '../../../shared/storage/storage.port';
 import { OrganizationContextService } from '../../organizations/application/organization-context.service';
 import {
@@ -31,6 +38,7 @@ export class GetConversionQualityReviewService {
     private readonly qualityReviews: ConversionQualityReviewRepository,
     @Inject(STORAGE_PORT) private readonly storage: StoragePort,
     private readonly organizationContext: OrganizationContextService,
+    private readonly projects: ProjectService,
   ) {}
 
   async execute(
@@ -40,6 +48,7 @@ export class GetConversionQualityReviewService {
     conversionJobId: string,
   ): Promise<ConversionQualityReviewResponse> {
     const organization = await this.organizationContext.resolve(userId, organizationHeader);
+    await this.projects.getForOrganization(projectId, organization.id);
 
     const job = await this.jobs.findById(conversionJobId, organization.id);
     if (!job || job.projectId !== projectId) {
@@ -88,17 +97,25 @@ export class GetConversionQualityReviewService {
     job: ConversionJobRecord,
   ): Promise<{ fileCount: number; totalLines: number; toolVersion?: string }> {
     if (!job.resultReference) {
-      return { fileCount: 0, totalLines: 0, toolVersion: job.toolVersion };
+      throw this.resultUnavailable();
     }
     try {
       const files = await this.storage.readFiles(job.resultReference);
+      if (files.length === 0) throw this.resultUnavailable();
       const totalLines = files.reduce(
         (sum, f) => sum + f.content.toString('utf8').split('\n').length,
         0,
       );
       return { fileCount: files.length, totalLines, toolVersion: job.toolVersion };
     } catch {
-      return { fileCount: 0, totalLines: 0, toolVersion: job.toolVersion };
+      throw this.resultUnavailable();
     }
+  }
+
+  private resultUnavailable(): ServiceUnavailableException {
+    return new ServiceUnavailableException({
+      code: 'CONVERSION_RESULT_UNAVAILABLE',
+      message: 'Conversion result files are unavailable',
+    });
   }
 }

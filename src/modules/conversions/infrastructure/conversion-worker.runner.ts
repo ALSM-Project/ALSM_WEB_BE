@@ -1,11 +1,13 @@
 import { Inject, Injectable, Logger, OnModuleDestroy } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { Worker } from 'bullmq';
+import { UnrecoverableError, Worker } from 'bullmq';
+import { randomUUID } from 'node:crypto';
 import {
   CONVERSION_ENGINE,
   CONVERSION_JOB_REPOSITORY,
   ConversionEnginePort,
   ConversionJobRepository,
+  ConversionJobStatus,
 } from '../domain/conversion-job.types';
 import { CONVERSION_QUEUE_NAME } from './bullmq-conversion.queue';
 import {
@@ -18,7 +20,7 @@ import { CopybookDependencyBlockedError } from '../domain/copybook-dependency-bl
 @Injectable()
 export class ConversionWorkerRunner implements OnModuleDestroy {
   private readonly logger = new Logger(ConversionWorkerRunner.name);
-  private worker?: Worker<{ conversionJobId: string }>;
+  private worker?: Worker<{ conversionJobId: string; executionGeneration?: number }>;
 
   constructor(
     private readonly config: ConfigService,
@@ -52,8 +54,33 @@ export class ConversionWorkerRunner implements OnModuleDestroy {
     this.worker = new Worker(
       CONVERSION_QUEUE_NAME,
       async (queueJob) => {
-        const job = await this.jobs.markProcessing(queueJob.data.conversionJobId);
-        if (!job) return;
+        const token = randomUUID();
+        const leaseDurationMs = 45000;
+        const job = await this.jobs.markProcessing(
+          queueJob.data.conversionJobId,
+          token,
+          new Date(Date.now() + leaseDurationMs),
+          queueJob.data.executionGeneration ?? 0,
+        );
+        if (!job) {
+          const existing = await this.jobs.findByIdAnyOrganization(queueJob.data.conversionJobId);
+          if (existing?.status === ConversionJobStatus.PROCESSING) {
+            throw new Error('Conversion job has an active processing lease');
+          }
+          return;
+        }
+        let leaseLost = false;
+        const heartbeat = setInterval(() => {
+          void this.jobs
+            .renewProcessingLease(job.id, token, new Date(Date.now() + leaseDurationMs))
+            .then((renewed) => {
+              if (!renewed) leaseLost = true;
+            })
+            .catch(() => {
+              leaseLost = true;
+            });
+        }, 10000);
+        heartbeat.unref();
         await this.syncScreenStatus(job, ScreenStatus.PROCESSING);
         try {
           const output = await this.engine.execute({
@@ -64,7 +91,9 @@ export class ConversionWorkerRunner implements OnModuleDestroy {
             inputReference: job.inputReference,
             conversionType: job.conversionType,
           });
-          await this.jobs.markCompleted(job.id, output);
+          if (leaseLost) throw new Error('Conversion processing lease was lost');
+          const completed = await this.jobs.markCompleted(job.id, output, undefined, token);
+          if (!completed) throw new Error('Conversion processing lease was lost');
           await this.syncScreenStatus(job, ScreenStatus.COMPLETED);
         } catch (error) {
           const message =
@@ -73,26 +102,23 @@ export class ConversionWorkerRunner implements OnModuleDestroy {
             error instanceof CopybookDependencyBlockedError
               ? 'COPYBOOK_DEPENDENCY_BLOCKED'
               : 'CONVERSION_ENGINE_UNAVAILABLE';
-          // BullMQ's own exponential-backoff attempts (configured at enqueue time in
-          // BullMqConversionQueue) redeliver this SAME job to this SAME callback — it never
-          // calls markProcessing() again on our behalf. If we mark the job FAILED here on a
-          // non-final attempt, the redelivered attempt's markProcessing() (which only
-          // matches QUEUED/PROCESSING) finds nothing, returns null, and the callback exits
-          // without throwing — BullMQ then considers that attempt a *success* and stops
-          // retrying, even though no real work happened. Confirmed by reproduction: a job's
-          // configured 3 attempts silently collapsed into 1. Only mark FAILED once BullMQ
-          // itself has no attempts left; otherwise leave the job in PROCESSING so the next
-          // redelivery's markProcessing() still matches.
           const attemptsAllowed = queueJob.opts.attempts ?? 1;
-          const isFinalAttempt = queueJob.attemptsMade + 1 >= attemptsAllowed;
+          const isFinalAttempt =
+            error instanceof UnrecoverableError || queueJob.attemptsMade + 1 >= attemptsAllowed;
           if (isFinalAttempt) {
-            await this.jobs.markFailed(job.id, code, message);
-            await this.syncScreenStatus(job, ScreenStatus.FAILED);
+            await this.jobs.markFailed(job.id, code, message, token);
+            if (!leaseLost) await this.syncScreenStatus(job, ScreenStatus.FAILED);
+          } else {
+            await this.jobs.releaseProcessingForRetry(job.id, token);
           }
           throw error;
+        } finally {
+          clearInterval(heartbeat);
         }
       },
       {
+        // Mongo leases expire before BullMQ recovers an abandoned lock.
+        lockDuration: 60000,
         connection: {
           host: this.config.getOrThrow('REDIS_HOST'),
           port: this.config.getOrThrow<number>('REDIS_PORT'),
@@ -100,6 +126,26 @@ export class ConversionWorkerRunner implements OnModuleDestroy {
         },
       },
     );
+    this.worker.on('error', (error) =>
+      this.logger.error(`Conversion worker error: ${String(error)}`),
+    );
+    this.worker.on('failed', (queueJob) => {
+      if (!queueJob) return;
+      // BullMQ may exhaust stalled recovery without entering the processor again.
+      // Only an expired lease for this exact execution may be failed by that event.
+      void queueJob
+        .isFailed()
+        .then(async (terminal) => {
+          if (terminal)
+            await this.jobs.markAbandonedFailed(
+              queueJob.data.conversionJobId,
+              queueJob.data.executionGeneration ?? 0,
+            );
+        })
+        .catch((error: unknown) =>
+          this.logger.error(`Failed to reconcile abandoned conversion: ${String(error)}`),
+        );
+    });
     this.logger.log('Conversion worker started.');
   }
 

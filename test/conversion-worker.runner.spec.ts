@@ -14,14 +14,22 @@ type Processor = (job: {
 let capturedProcessor: Processor | undefined;
 
 jest.mock('bullmq', () => ({
+  UnrecoverableError: jest.requireActual('bullmq').UnrecoverableError,
   Worker: jest.fn().mockImplementation((_name: string, processor: Processor) => {
     capturedProcessor = processor;
-    return { close: jest.fn() };
+    return { close: jest.fn(), on: jest.fn() };
   }),
 }));
 
 describe('ConversionWorkerRunner', () => {
-  const jobs = { markProcessing: jest.fn(), markFailed: jest.fn(), markCompleted: jest.fn() };
+  const jobs = {
+    markProcessing: jest.fn(),
+    markFailed: jest.fn(),
+    markCompleted: jest.fn(),
+    renewProcessingLease: jest.fn(),
+    releaseProcessingForRetry: jest.fn(),
+    findByIdAnyOrganization: jest.fn(),
+  };
   const engine = { execute: jest.fn() };
   const screens = { updateStatus: jest.fn() };
   const enabledValues: Record<string, unknown> = {
@@ -37,6 +45,9 @@ describe('ConversionWorkerRunner', () => {
   beforeEach(() => {
     jest.clearAllMocks();
     capturedProcessor = undefined;
+    jobs.markCompleted.mockResolvedValue({ id: 'job-1' });
+    jobs.releaseProcessingForRetry.mockResolvedValue(true);
+    jobs.findByIdAnyOrganization.mockResolvedValue(null);
   });
 
   it('does not create a worker when CONVERSION_WORKER_ENABLED is false', () => {
@@ -76,10 +87,15 @@ describe('ConversionWorkerRunner', () => {
     expect(capturedProcessor).toBeDefined();
     await capturedProcessor!({ data: { conversionJobId: 'job-1' } });
 
-    expect(jobs.markCompleted).toHaveBeenCalledWith('job-1', {
-      resultReference: 'results/p1/job-1',
-      toolVersion: 'convert2fe',
-    });
+    expect(jobs.markCompleted).toHaveBeenCalledWith(
+      'job-1',
+      {
+        resultReference: 'results/p1/job-1',
+        toolVersion: 'convert2fe',
+      },
+      undefined,
+      expect.any(String),
+    );
     expect(jobs.markFailed).not.toHaveBeenCalled();
     expect(screens.updateStatus).toHaveBeenNthCalledWith(
       1,
@@ -123,6 +139,7 @@ describe('ConversionWorkerRunner', () => {
       'job-1',
       'CONVERSION_ENGINE_UNAVAILABLE',
       'tool crashed',
+      expect.any(String),
     );
     expect(jobs.markCompleted).not.toHaveBeenCalled();
     // No screenId on this job — status sync must be skipped entirely, not called with undefined.
@@ -164,6 +181,7 @@ describe('ConversionWorkerRunner', () => {
     ).rejects.toThrow('tool crashed');
 
     expect(jobs.markFailed).not.toHaveBeenCalled();
+    expect(jobs.releaseProcessingForRetry).toHaveBeenCalledWith('job-1', expect.any(String));
     // The PROCESSING sync from the start of this attempt is fine; FAILED must not fire yet.
     expect(screens.updateStatus).not.toHaveBeenCalledWith('scr-1', 'org-1', ScreenStatus.FAILED);
   });
@@ -190,9 +208,14 @@ describe('ConversionWorkerRunner', () => {
       capturedProcessor!({ data: { conversionJobId: 'job-1' } }),
     ).resolves.toBeUndefined();
 
-    expect(jobs.markCompleted).toHaveBeenCalledWith('job-1', {
-      resultReference: 'results/p1/job-1',
-    });
+    expect(jobs.markCompleted).toHaveBeenCalledWith(
+      'job-1',
+      {
+        resultReference: 'results/p1/job-1',
+      },
+      undefined,
+      expect.any(String),
+    );
   });
 
   it('skips processing when the job could not be marked processing (already consumed/cancelled)', async () => {

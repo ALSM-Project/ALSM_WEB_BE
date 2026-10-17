@@ -15,6 +15,9 @@ export class ConversionJob {
   @Prop({ enum: ConversionPriority, required: true }) priority!: ConversionPriority;
   @Prop({ default: 0 }) attemptCount!: number;
   @Prop({ default: 3 }) maxAttempts!: number;
+  @Prop({ default: 0 }) executionGeneration!: number;
+  @Prop() processingToken?: string;
+  @Prop() processingLeaseExpiresAt?: Date;
   @Prop() inputReference?: string;
   @Prop() resultReference?: string;
   @Prop() errorCode?: string;

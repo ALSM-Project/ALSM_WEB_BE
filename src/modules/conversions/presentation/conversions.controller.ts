@@ -115,6 +115,7 @@ export class ConversionsController {
   })
   @ApiParam({ name: 'id', description: 'Conversion Job ID' })
   @ApiResponse({ status: 200, description: 'Conversion result files' })
+  @ApiResponse({ status: 503, description: 'Generated result files unavailable' })
   async getResultFiles(
     @CurrentUser() user: AuthenticatedUser,
     @Headers('x-organization-id') organizationId: string | undefined,

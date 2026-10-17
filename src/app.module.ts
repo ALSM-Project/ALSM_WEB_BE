@@ -1,7 +1,49 @@
+import { Lead, LeadSchema } from './modules/crm/infrastructure/lead.schema';
+import { LEAD_REPOSITORY } from './modules/crm/domain/lead.types';
+import { MongoLeadRepository } from './modules/crm/infrastructure/mongo-lead.repository';
+import { SALES_PERFORMANCE_SOURCE } from './modules/crm/domain/sales-performance-source.port';
+import { MongoSalesPerformanceSource } from './modules/crm/infrastructure/mongo-sales-performance.source';
+import { SALES_UNIT_OF_WORK } from './modules/crm/application/sales-unit-of-work.port';
+import { MongoSalesUnitOfWork } from './modules/crm/infrastructure/mongo-sales-unit-of-work';
+import { SALES_REVENUE_REPOSITORY } from './modules/billing/domain/sales-revenue.port';
+import { MongoSalesRevenueRepository } from './modules/billing/infrastructure/persistence/mongo-sales-revenue.repository';
+import { SALES_TEAM_ADMINISTRATION } from './modules/teams/domain/sales-team-administration.port';
+import { SalesTeamAdministrationService } from './modules/teams/application/sales-team-administration.service';
+import { CreateSalesLeadService } from './modules/crm/application/create-sales-lead.service';
+import { ReassignSalesLeadService } from './modules/crm/application/reassign-sales-lead.service';
+import { ConvertSalesLeadService } from './modules/crm/application/convert-sales-lead.service';
+import { RecordSalesRevenueService } from './modules/crm/application/record-sales-revenue.service';
+import { GetSalesLeadService } from './modules/crm/application/get-sales-lead.service';
+import { SalesController } from './modules/crm/presentation/sales.controller';
+import { CurrentSessionGuard } from './shared/security/current-session.guard';
+import { SessionAssuranceModule } from './modules/auth/session-assurance.module';
+import { Connection, Model } from 'mongoose';
+import { TEAM_UNIT_OF_WORK } from './modules/teams/application/team-unit-of-work.port';
+import { MongoTeamUnitOfWork } from './modules/teams/infrastructure/mongo-team-unit-of-work';
 import { MiddlewareConsumer, Module, NestModule } from '@nestjs/common';
+import { Team, TeamSchema } from './modules/teams/infrastructure/team.schema';
+import { MongoTeamRepository } from './modules/teams/infrastructure/mongo-team.repository';
+import { TEAM_REPOSITORY } from './modules/teams/domain/team.types';
+import { TeamAccessService } from './modules/teams/application/team-access.service';
+import { SaveTeamService } from './modules/teams/application/save-team.service';
+import { ListManagedTeamsService } from './modules/teams/application/list-managed-teams.service';
+import { TeamsController } from './modules/teams/presentation/teams.controller';
+import { GetTeamAdministrationService } from './modules/teams/application/get-team-administration.service';
+import { GetSalesTeamPerformanceService } from './modules/teams/application/get-sales-team-performance.service';
+import { TeamReportsController } from './modules/teams/presentation/team-reports.controller';
+import { TeamJobAssignment, TeamJobAssignmentSchema } from './modules/teams/infrastructure/team-job-assignment.schema';
+import { MongoTeamJobAssignmentRepository } from './modules/teams/infrastructure/mongo-team-job-assignment.repository';
+import { TEAM_JOB_ASSIGNMENTS } from './modules/teams/domain/team-job-assignment.types';
+import { AssignTeamJobService } from './modules/teams/application/assign-team-job.service';
+import { RevokeTeamJobService } from './modules/teams/application/revoke-team-job.service';
+import { ListTeamJobAssignmentsService } from './modules/teams/application/list-team-job-assignments.service';
+import { GetTeamWorkloadService } from './modules/teams/application/get-team-workload.service';
+import { TeamJobAssignmentsController } from './modules/teams/presentation/team-job-assignments.controller';
+import { CONVERSION_WORKLOAD } from './modules/conversions/domain/conversion-workload.port';
+import { MongoConversionWorkloadReader } from './modules/conversions/infrastructure/mongo-conversion-workload.reader';
 import { ConfigModule } from '@nestjs/config';
 import { JwtModule } from '@nestjs/jwt';
-import { MongooseModule } from '@nestjs/mongoose';
+import { getConnectionToken, getModelToken, MongooseModule } from '@nestjs/mongoose';
 import { environmentValidationSchema } from './config/environment.validation';
 import { RequestIdMiddleware } from './shared/logging/request-id.middleware';
 import { JwtAuthGuard } from './shared/security/jwt-auth.guard';
@@ -34,6 +76,14 @@ import {
   MethodMapping,
   MethodMappingSchema,
 } from './modules/conversions/infrastructure/method-mapping.schema';
+import { Meeting, MeetingSchema } from './modules/meetings/infrastructure/meeting.schema';
+import { MEETING_REPOSITORY } from './modules/meetings/domain/meeting.types';
+import { MongoMeetingRepository } from './modules/meetings/infrastructure/mongo-meeting.repository';
+import { CreateMeetingService } from './modules/meetings/application/create-meeting.service';
+import { ListMeetingsService } from './modules/meetings/application/list-meetings.service';
+import { MeetingController } from './modules/meetings/presentation/meeting.controller';
+import { MailService } from './shared/mail/mail.service';
+import { GoogleCalendarService } from './shared/google/google-calendar.service';
 import { ErrorLog, ErrorLogSchema } from './modules/conversions/infrastructure/error-log.schema';
 import {
   ValidationRun,
@@ -210,12 +260,16 @@ import { QualityReviewController } from './modules/conversions/presentation/qual
     ConfigModule.forRoot({ isGlobal: true, validationSchema: environmentValidationSchema }),
     JwtModule.register({ global: true }),
     MongooseModule.forRootAsync({ useFactory: () => ({ uri: process.env.MONGODB_URI }) }),
+    SessionAssuranceModule,
     MongooseModule.forFeature([
+      { name: Lead.name, schema: LeadSchema },
       { name: User.name, schema: UserSchema },
       { name: Organization.name, schema: OrganizationSchema },
       { name: UserSession.name, schema: UserSessionSchema },
       { name: AuditLog.name, schema: AuditLogSchema },
       { name: Project.name, schema: ProjectSchema },
+      { name: Team.name, schema: TeamSchema },
+      { name: TeamJobAssignment.name, schema: TeamJobAssignmentSchema },
       { name: ConversionJob.name, schema: ConversionJobSchema },
       { name: Subscription.name, schema: SubscriptionSchema },
       { name: Invoice.name, schema: InvoiceSchema },
@@ -226,6 +280,7 @@ import { QualityReviewController } from './modules/conversions/presentation/qual
       { name: EmailVerification.name, schema: EmailVerificationSchema },
       { name: FieldMapping.name, schema: FieldMappingSchema },
       { name: MethodMapping.name, schema: MethodMappingSchema },
+      { name: Meeting.name, schema: MeetingSchema },
       { name: ErrorLog.name, schema: ErrorLogSchema },
       { name: ScreenDocument.name, schema: ConversionScreenSchema },
       { name: Screen.name, schema: ScreenSchema },
@@ -240,6 +295,10 @@ import { QualityReviewController } from './modules/conversions/presentation/qual
     MenuModule,
   ],
   controllers: [
+    SalesController,
+    TeamsController,
+    TeamReportsController,
+    TeamJobAssignmentsController,
     AuthController,
     ProjectsController,
     ConversionsController,
@@ -249,6 +308,7 @@ import { QualityReviewController } from './modules/conversions/presentation/qual
     ConversionScreensController,
     FieldMappingController,
     MethodMappingController,
+    MeetingController,
     UsersController,
     ExportController,
     ErrorLogController,
@@ -259,8 +319,75 @@ import { QualityReviewController } from './modules/conversions/presentation/qual
     PaymentController,
   ],
   providers: [
+    { provide: LEAD_REPOSITORY, useClass: MongoLeadRepository },
+    { provide: SALES_PERFORMANCE_SOURCE, useClass: MongoSalesPerformanceSource },
+    { provide: SALES_REVENUE_REPOSITORY, useClass: MongoSalesRevenueRepository },
+    { provide: SALES_TEAM_ADMINISTRATION, useClass: SalesTeamAdministrationService },
+    CreateSalesLeadService,
+    ReassignSalesLeadService,
+    ConvertSalesLeadService,
+    RecordSalesRevenueService,
+    GetSalesLeadService,
+    {
+      provide: SALES_UNIT_OF_WORK,
+      inject: [
+        getConnectionToken(),
+        getModelToken(Lead.name),
+        getModelToken(Payment.name),
+        getModelToken(AuditLog.name),
+      ],
+      useFactory: (
+        connection: Connection,
+        leads: Model<Lead>,
+        payments: Model<Payment>,
+        audits: Model<AuditLog>,
+      ) =>
+        new MongoSalesUnitOfWork(
+          connection,
+          new MongoLeadRepository(leads),
+          (session, selectedConnection) =>
+            new MongoSalesRevenueRepository(payments).inTransaction(session, selectedConnection),
+          (session, selectedConnection) =>
+            new MongoAuditRepository(audits).inTransaction(session, selectedConnection),
+        ),
+    },
+    {
+      provide: TEAM_UNIT_OF_WORK,
+      inject: [
+        getConnectionToken(),
+        getModelToken(Team.name),
+        getModelToken(TeamJobAssignment.name),
+        getModelToken(AuditLog.name),
+      ],
+      useFactory: (
+        connection: Connection,
+        teams: Model<Team>,
+        assignments: Model<TeamJobAssignment>,
+        audits: Model<AuditLog>,
+      ) =>
+        new MongoTeamUnitOfWork(
+          connection,
+          new MongoTeamRepository(teams),
+          new MongoTeamJobAssignmentRepository(assignments),
+          (session, selectedConnection) =>
+            new MongoAuditRepository(audits).inTransaction(session, selectedConnection),
+        ),
+    },
+    TeamAccessService,
+    GetTeamAdministrationService,
+    GetSalesTeamPerformanceService,
+    AssignTeamJobService,
+    RevokeTeamJobService,
+    ListTeamJobAssignmentsService,
+    GetTeamWorkloadService,
+    { provide: TEAM_JOB_ASSIGNMENTS, useClass: MongoTeamJobAssignmentRepository },
+    { provide: CONVERSION_WORKLOAD, useClass: MongoConversionWorkloadReader },
+    SaveTeamService,
+    ListManagedTeamsService,
+    { provide: TEAM_REPOSITORY, useClass: MongoTeamRepository },
     ScreenService,
     JwtAuthGuard,
+    CurrentSessionGuard,
     PermissionsGuard,
     AuthService,
     ListActiveSessionsService,
@@ -341,6 +468,11 @@ import { QualityReviewController } from './modules/conversions/presentation/qual
     { provide: BANK_CONFIG_REPOSITORY, useClass: MongoBankConfigRepository },
     { provide: FIELD_MAPPING_REPOSITORY, useClass: MongoFieldMappingRepository },
     { provide: METHOD_MAPPING_REPOSITORY, useClass: MongoMethodMappingRepository },
+    { provide: MEETING_REPOSITORY, useClass: MongoMeetingRepository },
+    CreateMeetingService,
+    ListMeetingsService,
+    MailService,
+    GoogleCalendarService,
     { provide: ERROR_LOG_REPOSITORY, useExisting: MongoErrorLogRepository },
     { provide: VALIDATION_RUN_REPOSITORY, useClass: MongoValidationRunRepository },
     { provide: VALIDATION_FINDING_REPOSITORY, useClass: MongoValidationFindingRepository },
