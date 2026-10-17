@@ -86,7 +86,11 @@ export class ConversionJobService {
     const screen = input.screenId
       ? await this.screens.findById(input.screenId, organization.id)
       : null;
-    const inputReference = screen?.inputReference ?? input.inputReference;
+    if (input.screenId && (!screen || screen.projectId !== project.id)) {
+      throw new NotFoundException({ code: 'SCREEN_NOT_FOUND', message: 'Screen was not found' });
+    }
+    const inputReference = screen ? screen.inputReference : input.inputReference;
+    if (!screen) await this.requireSourceAccess(organization.id, project.id, inputReference);
     const job = await this.jobs.create({
       organizationId: organization.id,
       projectId: project.id,
@@ -105,6 +109,11 @@ export class ConversionJobService {
     try {
       await this.queue.enqueue(job.id, job.priority);
     } catch (error) {
+      await this.jobs.markFailed(
+        job.id,
+        'CONVERSION_QUEUE_UNAVAILABLE',
+        'Conversion job could not be queued',
+      );
       // A BadRequestException is never logged by the global exception filter (it only logs
       // unhandled 500s) — without this, an enqueue failure reaches the user with no trace
       // anywhere on the server, which is no better than the silent swallow this replaced.
@@ -112,7 +121,6 @@ export class ConversionJobService {
       throw new BadRequestException({
         code: 'CONVERSION_QUEUE_UNAVAILABLE',
         message: 'Conversion job could not be queued',
-        details: error instanceof Error ? [error.message] : [],
       });
     }
     await this.audit.append({
@@ -131,6 +139,7 @@ export class ConversionJobService {
     projectId: string,
   ): Promise<ConversionJobRecord[]> {
     const organization = await this.organizationContext.resolve(userId, organizationHeader);
+    await this.projects.getForOrganization(projectId, organization.id);
     return this.jobs.listByProject(projectId, organization.id);
   }
 
@@ -141,25 +150,8 @@ export class ConversionJobService {
     screenId: string,
   ): Promise<ConversionJobRecord[]> {
     const organization = await this.organizationContext.resolve(userId, organizationHeader);
-    const jobs = await this.jobs.listByScreen(projectId, screenId, organization.id);
-    const now = Date.now();
-    const twoMinutesAgo = now - 2 * 60 * 1000;
-
-    for (const job of jobs) {
-      if (
-        (job.status === ConversionJobStatus.QUEUED ||
-          job.status === ConversionJobStatus.PROCESSING) &&
-        new Date(job.createdAt).getTime() < twoMinutesAgo
-      ) {
-        await this.jobs.markFailed(
-          job.id,
-          'STALE_JOB',
-          'Job timed out - please re-run the conversion.',
-        );
-        job.status = ConversionJobStatus.FAILED;
-      }
-    }
-    return jobs;
+    await this.projects.getForOrganization(projectId, organization.id);
+    return this.jobs.listByScreen(projectId, screenId, organization.id);
   }
 
   async get(
@@ -170,6 +162,7 @@ export class ConversionJobService {
     const organization = await this.organizationContext.resolve(userId, organizationHeader);
     const job = await this.jobs.findById(id, organization.id);
     if (!job) throw this.notFound();
+    await this.projects.getForOrganization(job.projectId, organization.id);
     return job;
   }
 
@@ -179,21 +172,46 @@ export class ConversionJobService {
     id: string,
   ): Promise<ConversionJobRecord> {
     const organization = await this.organizationContext.resolve(userId, organizationHeader);
+    this.authorization.require(organization, userId, [
+      OrganizationRole.OWNER,
+      OrganizationRole.ADMIN,
+      OrganizationRole.MEMBER,
+    ]);
+    const existing = await this.jobs.findById(id, organization.id);
+    if (!existing) throw this.notFound();
+    await this.projects.getForOrganization(existing.projectId, organization.id);
+    await this.requireSourceAccess(
+      organization.id,
+      existing.projectId,
+      existing.inputReference,
+      existing.screenId,
+    );
     const job = await this.jobs.retry(id, organization.id);
     if (!job) throw this.notFound();
     // jobs.retry() only flips the Mongo record back to QUEUED — it was never actually
     // re-enqueued in BullMQ, so a "retried" job just sat there forever with nothing to ever
     // pick it up (same class of bug as the original create-job enqueue swallow).
     try {
-      await this.queue.enqueue(job.id, job.priority);
+      await this.queue.enqueue(job.id, job.priority, job.executionGeneration ?? 0);
     } catch (error) {
+      await this.jobs.markFailed(
+        job.id,
+        'CONVERSION_QUEUE_UNAVAILABLE',
+        'Conversion job could not be queued',
+      );
       this.logger.error(`Failed to re-enqueue retried conversion job ${job.id}: ${String(error)}`);
       throw new BadRequestException({
         code: 'CONVERSION_QUEUE_UNAVAILABLE',
         message: 'Conversion job could not be queued',
-        details: error instanceof Error ? [error.message] : [],
       });
     }
+    await this.audit.append({
+      actorUserId: userId,
+      organizationId: organization.id,
+      action: 'CONVERSION_JOB_RETRIED',
+      resourceType: 'CONVERSION_JOB',
+      resourceId: job.id,
+    });
     return job;
   }
 
@@ -202,5 +220,30 @@ export class ConversionJobService {
       code: 'JOB_NOT_FOUND',
       message: 'Conversion job was not found',
     });
+  }
+
+  private async requireSourceAccess(
+    organizationId: string,
+    projectId: string,
+    inputReference: string | undefined,
+    screenId?: string,
+  ): Promise<void> {
+    if (!inputReference) return;
+    const candidates = screenId
+      ? [await this.screens.findById(screenId, organizationId)]
+      : await this.screens.listByProject(projectId, organizationId);
+    if (
+      !candidates.some(
+        (screen) =>
+          screen?.projectId === projectId &&
+          screen.organizationId === organizationId &&
+          screen.inputReference === inputReference,
+      )
+    ) {
+      throw new BadRequestException({
+        code: 'CONVERSION_SOURCE_NOT_ACCESSIBLE',
+        message: 'Conversion source is not available in this project',
+      });
+    }
   }
 }
