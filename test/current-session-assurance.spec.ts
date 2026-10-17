@@ -56,7 +56,27 @@ describe('ordinary current-session prerequisite, without impersonation admission
     const f = fixture();
     f.sessions.findActiveByUserId.mockRejectedValue(new Error('private driver error'));
     await expect(f.service.execute(userId, sessionId)).rejects.toMatchObject({
+      status: 503,
       response: { code: 'SESSION_ASSURANCE_UNAVAILABLE' },
     });
+  });
+  it('fails closed without disclosing account-store errors', async () => {
+    const f = fixture();
+    f.users.findById.mockRejectedValue(new Error('private driver credentials'));
+    await expect(f.service.execute(userId, sessionId)).rejects.toMatchObject({
+      status: 503,
+      response: {
+        code: 'SESSION_ASSURANCE_UNAVAILABLE',
+        message: 'Session state could not be verified',
+      },
+    });
+    expect(f.sessions.findActiveByUserId).not.toHaveBeenCalled();
+  });
+  it('rejects a missing account and an invalid persisted expiration', async () => {
+    const f = fixture();
+    f.users.findById.mockResolvedValueOnce(null);
+    await expect(f.service.execute(userId, sessionId)).rejects.toMatchObject({ status: 401 });
+    f.session.expiresAt = new Date('invalid');
+    await expect(f.service.execute(userId, sessionId)).rejects.toMatchObject({ status: 401 });
   });
 });

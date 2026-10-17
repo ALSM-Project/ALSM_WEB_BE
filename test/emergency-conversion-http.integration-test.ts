@@ -81,6 +81,16 @@ import { USER_REPOSITORY, UserRepository } from '../src/modules/users/domain/use
 import { MongoUserRepository } from '../src/modules/users/infrastructure/mongo-user.repository';
 import { User, UserSchema } from '../src/modules/users/infrastructure/user.schema';
 import { JwtAuthGuard } from '../src/shared/security/jwt-auth.guard';
+import { RequireCurrentSessionService } from '../src/modules/auth/application/require-current-session.service';
+import {
+  SESSION_REPOSITORY,
+  SessionRepository,
+} from '../src/modules/auth/domain/session.repository';
+import { MongoSessionRepository } from '../src/modules/auth/infrastructure/mongo-session.repository';
+import {
+  UserSession,
+  UserSessionSchema,
+} from '../src/modules/auth/infrastructure/user-session.schema';
 import { LocalDiskStorageAdapter } from '../src/shared/storage/local-disk-storage.adapter';
 import { STORAGE_PORT, StoragePort } from '../src/shared/storage/storage.port';
 
@@ -175,6 +185,7 @@ async function main(): Promise<void> {
           { name: Organization.name, schema: OrganizationSchema },
           { name: Project.name, schema: ProjectSchema },
           { name: User.name, schema: UserSchema },
+          { name: UserSession.name, schema: UserSessionSchema },
           { name: Screen.name, schema: ScreenSchema },
           { name: AuditLog.name, schema: AuditLogSchema },
           { name: ConversionJob.name, schema: ConversionJobSchema },
@@ -195,6 +206,8 @@ async function main(): Promise<void> {
           }),
         },
         { provide: USER_REPOSITORY, useClass: MongoUserRepository },
+        { provide: SESSION_REPOSITORY, useClass: MongoSessionRepository },
+        RequireCurrentSessionService,
         { provide: ORGANIZATION_REPOSITORY, useClass: MongoOrganizationRepository },
         { provide: PROJECT_REPOSITORY, useClass: MongoProjectRepository },
         { provide: SCREEN_REPOSITORY, useClass: MongoScreenRepository },
@@ -261,11 +274,19 @@ async function main(): Promise<void> {
       type: OrganizationType.INTERNAL,
       members: [{ userId: outsider.id, role: OrganizationRole.OWNER }],
     });
-    const token = (user: { id: string; email: string }) =>
-      jwt.sign({ sub: user.id, email: user.email, isPlatformAdmin: false });
-    const ownerToken = token(owner);
-    const viewerToken = token(viewer);
-    const otherToken = token(outsider);
+    const sessions = moduleRef.get<SessionRepository>(SESSION_REPOSITORY);
+    const token = async (user: { id: string; email: string }) => {
+      const session = await sessions.create({
+        userId: user.id,
+        tokenId: randomUUID(),
+        refreshTokenHash: 'fixture-not-a-refresh-credential',
+        expiresAt: new Date(Date.now() + 60000),
+      });
+      return jwt.sign({ sub: user.id, sid: session.id, email: user.email, isPlatformAdmin: false });
+    };
+    const ownerToken = await token(owner);
+    const viewerToken = await token(viewer);
+    const otherToken = await token(outsider);
     async function request<T>(
       method: string,
       route: string,
@@ -476,12 +497,10 @@ async function main(): Promise<void> {
         assert.equal(persisted?.status, 'ACCEPTED');
         assert.equal(persisted?.qualityScore, 4);
         assert.equal(
-          await db
-            .collection('audit_logs')
-            .countDocuments({
-              action: 'CONVERSION_QUALITY_REVIEW_SUBMITTED',
-              resourceId: accepted.id,
-            }),
+          await db.collection('audit_logs').countDocuments({
+            action: 'CONVERSION_QUALITY_REVIEW_SUBMITTED',
+            resourceId: accepted.id,
+          }),
           1,
         );
         await request('GET', reviewRoute, 403, otherToken, orgA.id);

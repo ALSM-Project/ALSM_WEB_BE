@@ -21,6 +21,17 @@ Credentials, MFA secrets, and refresh tokens are sensitive. Authorization must
 use authenticated identity and organization membership, never a client-supplied
 organization claim alone.
 
+Every ordinary user access JWT protected by `JwtAuthGuard` must include `sid`
+and pass `RequireCurrentSessionService` against the active account and persisted
+unexpired, unrevoked session belonging to that user. Sessionless legacy tokens
+are rejected; sign in again. Logout and refresh rotation invalidate the old
+session's access tokens on subsequent requests. Unavailable authoritative state
+fails closed with `503 SESSION_ASSURANCE_UNAVAILABLE`; invalid sessions receive
+`401 CURRENT_SESSION_REQUIRED`. Public authentication/health routes keep their
+existing contracts. This is ordinary session assurance, not impersonation or
+command MFA admission. `SessionAssuranceModule` exports only this service globally
+so guards in the RBAC/menu modules enforce the same contract.
+
 ## Related Documentation
 
 [`RULE.md`](../../../RULE.md) · [Coding Standards](../../../docs/engineering/CODING_STANDARDS.md) · [ADR-004](../../../docs/engineering/adr/ADR-004-single-backend-multi-portal-organization-isolation.md)
