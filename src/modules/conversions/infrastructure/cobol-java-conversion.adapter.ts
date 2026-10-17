@@ -70,7 +70,7 @@ export class CobolJavaConversionAdapter {
     const sourceDir = this.storage.resolvePath(input.inputReference);
     // Each job gets its own working directory: the tool writes a hard-coded temp file
     // ($temporary.file) into its CWD, so concurrent jobs must never share one.
-    const jobWorkDir = path.join(os.tmpdir(), 'alsm-conversions', input.conversionJobId);
+    const jobWorkDir = await fs.promises.mkdtemp(path.join(os.tmpdir(), 'alsm-conversion-'));
     const outDir = path.join(jobWorkDir, 'out');
     await fs.promises.mkdir(outDir, { recursive: true });
     const timeoutMs = this.config.get<number>('CONVERSION_TOOL_TIMEOUT_MS') ?? 120000;
@@ -143,9 +143,15 @@ export class CobolJavaConversionAdapter {
       );
       return { resultReference, toolVersion: 'tool2java' };
     } finally {
-      await fs.promises.rm(jobWorkDir, { recursive: true, force: true }).catch((error: unknown) => {
-        this.logger.warn(`Failed to clean up workspace ${jobWorkDir}: ${String(error)}`);
-      });
+      if (path.dirname(path.resolve(jobWorkDir)) === path.resolve(os.tmpdir())) {
+        await fs.promises
+          .rm(jobWorkDir, { recursive: true, force: true })
+          .catch((error: unknown) => {
+            this.logger.warn(`Failed to clean up workspace ${jobWorkDir}: ${String(error)}`);
+          });
+      } else {
+        this.logger.error('Refused to clean up an unsafe conversion workspace');
+      }
     }
   }
 
