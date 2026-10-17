@@ -4,7 +4,9 @@ import {
   Inject,
   Injectable,
   NotFoundException,
+  ServiceUnavailableException,
 } from '@nestjs/common';
+import { STORAGE_PORT, StoragePort } from '../../../shared/storage/storage.port';
 import { AUDIT_REPOSITORY, AuditRepository } from '../../audit/domain/audit.repository';
 import { OrganizationAuthorizationService } from '../../organizations/application/organization-authorization.service';
 import { OrganizationContextService } from '../../organizations/application/organization-context.service';
@@ -49,6 +51,7 @@ export class SubmitConversionQualityReviewService {
     private readonly authorization: OrganizationAuthorizationService,
     private readonly projects: ProjectService,
     @Inject(AUDIT_REPOSITORY) private readonly audit: AuditRepository,
+    @Inject(STORAGE_PORT) private readonly storage: StoragePort,
   ) {}
 
   async execute(input: SubmitQualityReviewCommand): Promise<ConversionQualityReviewRecord> {
@@ -77,6 +80,20 @@ export class SubmitConversionQualityReviewService {
       throw new BadRequestException({
         code: 'CONVERSION_NOT_COMPLETED',
         message: 'Conversion job has not completed successfully yet',
+      });
+    }
+
+    try {
+      if (
+        !job.resultReference ||
+        (await this.storage.readFiles(job.resultReference)).length === 0
+      ) {
+        throw new Error('Missing conversion result');
+      }
+    } catch {
+      throw new ServiceUnavailableException({
+        code: 'CONVERSION_RESULT_UNAVAILABLE',
+        message: 'Conversion result files are unavailable',
       });
     }
 

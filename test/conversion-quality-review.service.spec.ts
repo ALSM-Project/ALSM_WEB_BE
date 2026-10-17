@@ -99,7 +99,9 @@ describe('Conversion Quality Review Services', () => {
         resolve: jest.fn().mockResolvedValue(org),
       } as unknown as jest.Mocked<OrganizationContextService>;
 
-      service = new GetConversionQualityReviewService(jobsRepo, qualityRepo, storage, orgContext);
+      service = new GetConversionQualityReviewService(jobsRepo, qualityRepo, storage, orgContext, {
+        getForOrganization: jest.fn().mockResolvedValue({ id: 'project-1' }),
+      } as unknown as ProjectService);
     });
 
     it('Case 1: GET returns synthetic PENDING record when no review exists yet', async () => {
@@ -189,6 +191,11 @@ describe('Conversion Quality Review Services', () => {
         authorization,
         projects,
         audit,
+        {
+          readFiles: jest
+            .fn()
+            .mockResolvedValue([{ relativePath: 'result.java', content: Buffer.from('code') }]),
+        } as unknown as StoragePort,
       );
     });
 
