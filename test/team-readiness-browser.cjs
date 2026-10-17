@@ -5,15 +5,15 @@ const { randomUUID, randomBytes } = require('node:crypto');
 const { execFileSync } = require('node:child_process');
 const http = require('node:http');
 const workspace = 'E:/ALSM/ALSM_WEB_BE';
-const evidence = path.join(workspace, 'coverage/team-readiness');
+const evidence = path.join(workspace, 'coverage/updated-priorities/browser');
 const assert = require('node:assert/strict');
 const { setup } = require('./team-dev-indexes.cjs');
 const runId = randomUUID().replaceAll('-', '');
 const databaseName = `alsm_team_dev_${runId}`;
 function verify() {
-  for (const [name, internal, external] of [
-    ['alsm-emergency-20261017-mongo', '27017/tcp', '27117'],
-    ['alsm-emergency-20261017-browser-redis', '6379/tcp', '6398'],
+  for (const [name, owner, internal, external] of [
+    ['alsm-priorities-20261017-mongo-rs', 'priorities-20261017', '27017/tcp', '27127'],
+    ['alsm-emergency-20261017-browser-redis', 'emergency-20261017', '6379/tcp', '6398'],
   ]) {
     const [info] = JSON.parse(
       execFileSync('docker', ['inspect', name], { encoding: 'utf8', windowsHide: true }),
@@ -21,7 +21,7 @@ function verify() {
     const bindings = info.NetworkSettings.Ports[internal];
     if (
       !info.State.Running ||
-      info.Config.Labels['alsm.owner'] !== 'emergency-20261017' ||
+      info.Config.Labels['alsm.owner'] !== owner ||
       bindings?.length !== 1 ||
       bindings[0].HostIp !== '127.0.0.1' ||
       bindings[0].HostPort !== external
@@ -33,7 +33,7 @@ verify();
 process.chdir(workspace);
 Object.assign(process.env, {
   NODE_ENV: 'test',
-  MONGODB_URI: `mongodb://127.0.0.1:27117/${databaseName}`,
+  MONGODB_URI: `mongodb://127.0.0.1:27127/${databaseName}?replicaSet=alsmPriorities&directConnection=true`,
   REDIS_HOST: '127.0.0.1',
   REDIS_PORT: '6398',
   REDIS_PASSWORD: '',
@@ -71,8 +71,8 @@ req('mongoose').set('autoIndex', false);
 let liveApp;
 async function main() {
   await fs.mkdir(evidence, { recursive: true });
-  const firstIndexes = await setup(databaseName);
-  assert.deepEqual(await setup(databaseName), firstIndexes);
+  const firstIndexes = await setup(databaseName, { replicaSet: true });
+  assert.deepEqual(await setup(databaseName, { replicaSet: true }), firstIndexes);
   await fs.writeFile(
     path.join(evidence, 'startup-indexes.json'),
     JSON.stringify(firstIndexes, null, 2),
@@ -92,7 +92,8 @@ async function main() {
     if (
       connection.name !== databaseName ||
       connection.host !== '127.0.0.1' ||
-      connection.port !== 27117
+      connection.port !== 27127 ||
+      (await connection.db.admin().command({ hello: 1 })).setName !== 'alsmPriorities'
     )
       throw new Error('Unsafe application DB');
     db = connection.db;
@@ -106,7 +107,8 @@ async function main() {
     adminId = new Types.ObjectId(),
     otherId = new Types.ObjectId(),
     foreignId = new Types.ObjectId(),
-    foreignOrgId = new Types.ObjectId();
+    foreignOrgId = new Types.ObjectId(),
+    customerId = new Types.ObjectId();
   const password = randomBytes(24).toString('base64url'),
     email = 'team-browser-fixture@example.invalid';
   const now = new Date();
@@ -144,6 +146,7 @@ async function main() {
       [adminId, 'admin'],
       [otherId, 'other-manager'],
       [foreignId, 'foreign'],
+      [customerId, 'customer'],
     ].map(([id, label]) => ({
       _id: id,
       email: `team-${label}-fixture@example.invalid`,
@@ -170,32 +173,29 @@ async function main() {
       { userId: staffId, role: 'MEMBER' },
       { userId: adminId, role: 'ADMIN' },
       { userId: otherId, role: 'MEMBER' },
+      { userId: customerId, role: 'MEMBER' },
     ],
     createdAt: now,
     updatedAt: now,
   });
-  await db
-    .collection('projects')
-    .insertOne({
-      _id: projectId,
-      organizationId,
-      createdBy: userId,
-      name: 'TEST FIXTURE --- Workload Records',
-      conversionType: 'COBOL_TO_JAVA',
-      status: 'ACTIVE',
-      createdAt: now,
-      updatedAt: now,
-    });
-  await db
-    .collection('organizations')
-    .insertOne({
-      _id: foreignOrgId,
-      name: 'TEST FIXTURE - Foreign Organization',
-      type: 'INTERNAL',
-      members: [{ userId: foreignId, role: 'OWNER' }],
-      createdAt: now,
-      updatedAt: now,
-    });
+  await db.collection('projects').insertOne({
+    _id: projectId,
+    organizationId,
+    createdBy: userId,
+    name: 'TEST FIXTURE --- Workload Records',
+    conversionType: 'COBOL_TO_JAVA',
+    status: 'ACTIVE',
+    createdAt: now,
+    updatedAt: now,
+  });
+  await db.collection('organizations').insertOne({
+    _id: foreignOrgId,
+    name: 'TEST FIXTURE - Foreign Organization',
+    type: 'INTERNAL',
+    members: [{ userId: foreignId, role: 'OWNER' }],
+    createdAt: now,
+    updatedAt: now,
+  });
   const proofs = [];
   async function login(selectedEmail) {
     const response = await fetch('http://127.0.0.1:3107/api/v1/auth/login', {
@@ -248,11 +248,78 @@ async function main() {
   const sales = await createTeam({
     name: 'TEST FIXTURE --- Sales Team',
     kind: 'SALES',
-    memberIds: [String(staffId)],
+    memberIds: [String(staffId), String(otherId)],
     managerIds: [String(userId)],
     projectAssignments: [],
     expectedRevision: 0,
   });
+  const oid = () => new Types.ObjectId().toHexString();
+  const createLead = (salespersonId) =>
+    api('POST', '/sales/leads', {
+      leadId: oid(),
+      assignmentId: oid(),
+      teamId: sales.id,
+      salespersonId: String(salespersonId),
+      title: 'TEST FIXTURE sourced lead',
+      sourceReference: `TEST-FIXTURE/${oid()}`,
+    });
+  let firstLead = await createLead(staffId);
+  firstLead = await api('POST', `/sales/leads/${firstLead.id}/assignments`, {
+    assignmentId: oid(),
+    teamId: sales.id,
+    salespersonId: String(otherId),
+    expectedRevision: firstLead.revision,
+  });
+  firstLead = await api('POST', `/sales/leads/${firstLead.id}/customer-conversions`, {
+    conversionId: oid(),
+    customerUserId: String(customerId),
+    reference: `TEST-FIXTURE/${oid()}`,
+    expectedRevision: firstLead.revision,
+  });
+  await api('POST', `/sales/leads/${firstLead.id}/assignments`, {
+    assignmentId: oid(),
+    teamId: sales.id,
+    salespersonId: String(staffId),
+    expectedRevision: firstLead.revision,
+  });
+  await createLead(staffId);
+  const thirdLead = await createLead(otherId);
+  await api('POST', `/sales/leads/${thirdLead.id}/customer-conversions`, {
+    conversionId: oid(),
+    customerUserId: String(customerId),
+    reference: `TEST-FIXTURE/${oid()}`,
+    expectedRevision: thirdLead.revision,
+  });
+  for (const [salespersonId, amountVnd] of [
+    [staffId, 125000],
+    [otherId, 275000],
+  ]) {
+    const paymentId = new Types.ObjectId();
+    // Explicit synthetic confirmed-transaction fixtures in this disposable test DB only.
+    await db.collection('payments').insertOne({
+      _id: paymentId,
+      organizationId,
+      userId: customerId,
+      planTier: 'STARTER',
+      status: 'COMPLETED',
+      amountVnd,
+      paidAt: new Date(),
+      cassoTransactionId: `TEST-FIXTURE-${paymentId}`,
+      referenceCode: `TEST-FIXTURE-${paymentId}`,
+      bankName: 'TEST FIXTURE',
+      accountNumber: 'TEST-ONLY',
+      accountName: 'TEST FIXTURE',
+      expiresAt: new Date(Date.now() + 60000),
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    });
+    await api('POST', '/sales/revenue-attributions', {
+      paymentId: String(paymentId),
+      teamId: sales.id,
+      salespersonId: String(salespersonId),
+      evidenceReference: `TEST-FIXTURE/${paymentId}`,
+    });
+  }
   const conversion = await createTeam({
     name: 'TEST FIXTURE --- Conversion Team',
     kind: 'CONVERSION',
@@ -271,23 +338,21 @@ async function main() {
   ].entries()) {
     const id = new Types.ObjectId();
     jobIds.push(String(id));
-    await db
-      .collection('conversion_jobs')
-      .insertOne({
-        _id: id,
-        organizationId,
-        projectId,
-        conversionType: 'COBOL_TO_JAVA',
-        status,
-        priority: 'NORMAL',
-        attemptCount: 3,
-        maxAttempts: 3,
-        executionGeneration: 0,
-        createdBy: userId,
-        toolVersion: 'TEST FIXTURE --- not converter evidence',
-        createdAt: new Date(Date.now() - (index === 4 ? 10 : 1) * 86400000),
-        updatedAt: now,
-      });
+    await db.collection('conversion_jobs').insertOne({
+      _id: id,
+      organizationId,
+      projectId,
+      conversionType: 'COBOL_TO_JAVA',
+      status,
+      priority: 'NORMAL',
+      attemptCount: 3,
+      maxAttempts: 3,
+      executionGeneration: 0,
+      createdBy: userId,
+      toolVersion: 'TEST FIXTURE --- not converter evidence',
+      createdAt: new Date(Date.now() - (index === 4 ? 10 : 1) * 86400000),
+      updatedAt: now,
+    });
     await assignJob(conversion.id, String(id), String(staffId));
   }
   const emptySales = await createTeam({
@@ -354,11 +419,27 @@ async function main() {
       undefined,
       managerTokens,
     );
-    assert.equal(performance.members.length, 1);
-    for (const metric of Object.values(performance.members[0].metrics)) {
-      assert.equal(metric.available, false);
-      assert.equal('value' in metric, false);
+    assert.equal(performance.members.length, 2);
+    assert.equal(performance.cohort, 'ASSIGNMENT_START');
+    assert.equal(performance.metrics.leadCount.value, 3);
+    assert.ok(Math.abs(performance.metrics.conversionRate.value - 200 / 3) < 0.000001);
+    assert.equal(performance.metrics.revenueGenerated.value, 400000);
+    for (const [seller, rate, amount] of [
+      [staffId, 0, 125000],
+      [otherId, 100, 275000],
+    ]) {
+      const row = performance.members.find((member) => member.userId === String(seller));
+      assert.equal(row.metrics.leadCount.value, 2);
+      assert.equal(row.metrics.conversionRate.value, rate);
+      assert.equal(row.metrics.revenueGenerated.value, amount);
     }
+    const thirtySales = await api(
+      'GET',
+      `/teams/${sales.id}/performance?days=30`,
+      undefined,
+      managerTokens,
+    );
+    assert.deepEqual(thirtySales.metrics, performance.metrics);
     assert.equal(
       (await api('GET', `/teams/${emptySales.id}/performance?days=7`, undefined, managerTokens))
         .members.length,
@@ -416,7 +497,7 @@ async function main() {
           phase,
           persisted: true,
           fixtureData: true,
-          reports: { seven, thirty, performance },
+          reports: { seven, thirty, performance, thirtySales },
           proofs,
         },
         null,

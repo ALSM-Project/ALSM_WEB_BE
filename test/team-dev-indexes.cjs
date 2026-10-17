@@ -7,9 +7,10 @@ const { randomUUID } = require('node:crypto');
 const mongoose = require('mongoose');
 require('reflect-metadata');
 const owner = 'team-readiness-indexes-v1';
-function verifyOwnedMongo() {
+function verifyOwnedMongo(replicaSet = false) {
+  const name = replicaSet ? 'alsm-priorities-20261017-mongo-rs' : 'alsm-emergency-20261017-mongo';
   const [info] = JSON.parse(
-    execFileSync('docker', ['inspect', 'alsm-emergency-20261017-mongo'], {
+    execFileSync('docker', ['inspect', name], {
       encoding: 'utf8',
       windowsHide: true,
     }),
@@ -17,10 +18,11 @@ function verifyOwnedMongo() {
   const ports = info.NetworkSettings.Ports['27017/tcp'];
   if (
     !info.State.Running ||
-    info.Config.Labels['alsm.owner'] !== 'emergency-20261017' ||
+    info.Config.Labels['alsm.owner'] !==
+      (replicaSet ? 'priorities-20261017' : 'emergency-20261017') ||
     ports?.length !== 1 ||
     ports[0].HostIp !== '127.0.0.1' ||
-    ports[0].HostPort !== '27117'
+    ports[0].HostPort !== (replicaSet ? '27127' : '27117')
   )
     throw new Error('Owned development Mongo guard failed');
 }
@@ -79,19 +81,24 @@ function sameIndex(existing, expected) {
   }
   return !existing.hidden;
 }
-async function setup(database) {
+async function setup(database, { replicaSet = false } = {}) {
   if (!/^alsm_team_dev_[a-f0-9]{32}$/.test(database))
     throw new Error('Only uniquely named owned development databases are allowed');
-  verifyOwnedMongo();
+  verifyOwnedMongo(replicaSet);
   const manifest = declaredIndexes();
   const connection = await mongoose
-    .createConnection(`mongodb://127.0.0.1:27117/${database}`, {
-      autoIndex: false,
-      autoCreate: false,
-    })
+    .createConnection(
+      `mongodb://127.0.0.1:${replicaSet ? '27127' : '27117'}/${database}${replicaSet ? '?replicaSet=alsmPriorities&directConnection=true' : ''}`,
+      {
+        autoIndex: false,
+        autoCreate: false,
+      },
+    )
     .asPromise();
   try {
     const db = connection.db;
+    if (replicaSet && (await db.admin().command({ hello: 1 })).setName !== 'alsmPriorities')
+      throw new Error('Owned replica-set identity mismatch');
     const collections = await db.listCollections().toArray();
     if (!collections.length) await db.collection('_team_dev_owner').insertOne({ owner, database });
     if (!(await db.collection('_team_dev_owner').findOne({ owner, database })))
@@ -127,7 +134,7 @@ async function setup(database) {
     }
     return {
       database,
-      host: '127.0.0.1:27117',
+      host: replicaSet ? '127.0.0.1:27127' : '127.0.0.1:27117',
       owner,
       autoIndex: false,
       collections: result,
@@ -140,9 +147,13 @@ async function setup(database) {
 module.exports = { setup, verifyOwnedMongo, declaredIndexes, sameIndex };
 if (require.main === module) {
   const args = process.argv.slice(2);
+  const replicaSet = args[0] === '--replica-set';
+  if (replicaSet) args.shift();
   if (args.length && (args.length !== 2 || args[0] !== '--database'))
-    throw new Error('Usage: node test/team-dev-indexes.cjs [--database alsm_team_dev_<32hex>]');
-  setup(args[1] || `alsm_team_dev_${randomUUID().replaceAll('-', '')}`)
+    throw new Error(
+      'Usage: node test/team-dev-indexes.cjs [--replica-set] [--database alsm_team_dev_<32hex>]',
+    );
+  setup(args[1] || `alsm_team_dev_${randomUUID().replaceAll('-', '')}`, { replicaSet })
     .then((result) => console.log(JSON.stringify(result, null, 2)))
     .catch((error) => {
       console.error(error.message);
