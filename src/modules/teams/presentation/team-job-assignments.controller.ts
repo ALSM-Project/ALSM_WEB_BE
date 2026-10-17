@@ -1,3 +1,4 @@
+import { CurrentSessionGuard } from '../../../shared/security/current-session.guard';
 import {
   Body,
   Controller,
@@ -21,7 +22,7 @@ import { AssignTeamJobDto, RevokeTeamJobQuery } from './team.dto';
 @ApiTags('Team assignments')
 @ApiBearerAuth()
 @ApiHeader({ name: 'x-organization-id', required: false })
-@UseGuards(JwtAuthGuard)
+@UseGuards(JwtAuthGuard, CurrentSessionGuard)
 @Controller('teams/:teamId/job-assignments')
 export class TeamJobAssignmentsController {
   constructor(

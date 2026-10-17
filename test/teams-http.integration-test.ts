@@ -1,3 +1,10 @@
+import { CurrentSessionGuard } from '../src/shared/security/current-session.guard';
+import { RequireCurrentSessionService } from '../src/modules/auth/application/require-current-session.service';
+import { MongoSessionRepository } from '../src/modules/auth/infrastructure/mongo-session.repository';
+import {
+  UserSession,
+  UserSessionSchema,
+} from '../src/modules/auth/infrastructure/user-session.schema';
 import { MongoTeamUnitOfWork } from '../src/modules/teams/infrastructure/mongo-team-unit-of-work';
 /** Opt-in real HTTP/Mongo tests. No .env load, production DB, AI or converter execution. */
 import 'reflect-metadata';
@@ -113,6 +120,8 @@ owned('Teams actual HTTP + Mongo + persisted RBAC', () => {
   let conversionTeam: TeamRecord;
   let projectId: string;
   const jobIds: string[] = [];
+  const sessionIds: Record<string, string> = {};
+  let sessions: MongoSessionRepository;
   async function request(
     method: string,
     route: string,
@@ -130,7 +139,7 @@ owned('Teams actual HTTP + Mongo + persisted RBAC', () => {
     const response = await fetch(url + route, {
       method,
       headers: {
-        Authorization: `Bearer ${jwt.sign({ sub: actor, email: 'fixture@example.invalid', isPlatformAdmin: false })}`,
+        Authorization: `Bearer ${jwt.sign({ sub: actor, sid: sessionIds[actor], email: 'fixture@example.invalid', isPlatformAdmin: false })}`,
         'Content-Type': 'application/json',
         'x-organization-id': organization,
       },
@@ -164,6 +173,16 @@ owned('Teams actual HTTP + Mongo + persisted RBAC', () => {
       })),
     );
     users = new MongoUserRepository(userModel);
+    sessions = new MongoSessionRepository(connection.model(UserSession.name, UserSessionSchema));
+    for (const userId of [owner, manager, other, member, foreign])
+      sessionIds[userId] = (
+        await sessions.create({
+          userId,
+          tokenId: randomUUID(),
+          refreshTokenHash: 'owned-test-hash-not-a-token',
+          expiresAt: new Date(Date.now() + 3600000),
+        })
+      ).id;
     const organizations = new MongoOrganizationRepository(
       connection.model(Organization.name, OrganizationSchema),
     );
@@ -270,6 +289,11 @@ owned('Teams actual HTTP + Mongo + persisted RBAC', () => {
           useValue: new GetTeamAdministrationService(access, teams),
         },
         JwtAuthGuard,
+        CurrentSessionGuard,
+        {
+          provide: RequireCurrentSessionService,
+          useValue: new RequireCurrentSessionService(sessions, users),
+        },
         {
           provide: ConfigService,
           useValue: new ConfigService({ JWT_ACCESS_SECRET: 'owned-team-http-test-key' }),
@@ -817,6 +841,20 @@ owned('Teams actual HTTP + Mongo + persisted RBAC', () => {
       expect(await model.countDocuments({ jobId: new Types.ObjectId(jobIds[5]) })).toBe(0);
     } finally {
       await model.createIndexes();
+    }
+  });
+  it('denies stale or mismatched sessions even when their JWT signature remains valid', async () => {
+    expect((await request('GET', `/teams/${team.id}/performance?days=7`, other)).status).toBe(200);
+    await sessions.revokeUserSession(other, sessionIds[other]);
+    expect((await request('GET', `/teams/${team.id}/performance?days=7`, other)).status).toBe(401);
+    const original = sessionIds[owner];
+    try {
+      sessionIds[owner] = sessionIds[manager];
+      expect((await request('GET', `/teams/${team.id}/administration`)).status).toBe(401);
+      sessionIds[owner] = '';
+      expect((await request('POST', '/teams', owner, input())).status).toBe(401);
+    } finally {
+      sessionIds[owner] = original;
     }
   });
   it('does not authorize project assignments through the legacy project-name lookup fallback', async () => {

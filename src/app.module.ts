@@ -1,3 +1,5 @@
+import { CurrentSessionGuard } from './shared/security/current-session.guard';
+import { RequireCurrentSessionService } from './modules/auth/application/require-current-session.service';
 import { Connection, Model } from 'mongoose';
 import { TEAM_UNIT_OF_WORK } from './modules/teams/application/team-unit-of-work.port';
 import { MongoTeamUnitOfWork } from './modules/teams/infrastructure/mongo-team-unit-of-work';
@@ -333,6 +335,8 @@ import { QualityReviewController } from './modules/conversions/presentation/qual
     { provide: TEAM_REPOSITORY, useClass: MongoTeamRepository },
     ScreenService,
     JwtAuthGuard,
+    CurrentSessionGuard,
+    RequireCurrentSessionService,
     PermissionsGuard,
     AuthService,
     ListActiveSessionsService,

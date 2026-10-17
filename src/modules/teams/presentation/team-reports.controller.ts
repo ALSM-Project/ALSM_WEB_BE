@@ -1,3 +1,4 @@
+import { CurrentSessionGuard } from '../../../shared/security/current-session.guard';
 import { Controller, Get, Headers, Param, Query, UseGuards } from '@nestjs/common';
 import { ApiBearerAuth, ApiHeader, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { CurrentUser } from '../../../shared/security/current-user.decorator';
@@ -10,7 +11,7 @@ import { GetTeamWorkloadService } from '../application/get-team-workload.service
 @ApiTags('Team reports')
 @ApiBearerAuth()
 @ApiHeader({ name: 'x-organization-id', required: false })
-@UseGuards(JwtAuthGuard)
+@UseGuards(JwtAuthGuard, CurrentSessionGuard)
 @Controller('teams/:teamId')
 export class TeamReportsController {
   constructor(
