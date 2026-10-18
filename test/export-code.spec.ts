@@ -9,6 +9,7 @@ import {
   CONVERSION_JOB_REPOSITORY,
   ConversionJobStatus,
 } from '../src/modules/conversions/domain/conversion-job.types';
+import { SCREEN_REPOSITORY } from '../src/modules/screens/domain/screen.types';
 import type { ExportConfiguration } from '../src/modules/conversions/domain/export.types';
 
 const mockJwtAuthGuard = { canActivate: () => true };
@@ -20,12 +21,14 @@ describe('ExportCodeService & ExportController', () => {
   let storage: { readFiles: jest.Mock; writeFiles: jest.Mock; resolvePath: jest.Mock };
   let organizationContext: { resolve: jest.Mock };
   let projects: { getForOrganization: jest.Mock };
+  let screenRepo: { findById: jest.Mock };
 
   beforeEach(async () => {
     jobs = { listByScreen: jest.fn() };
     storage = { readFiles: jest.fn(), writeFiles: jest.fn(), resolvePath: jest.fn() };
     organizationContext = { resolve: jest.fn().mockResolvedValue({ id: 'org-1' }) };
     projects = { getForOrganization: jest.fn().mockResolvedValue({ id: 'proj-acme' }) };
+    screenRepo = { findById: jest.fn().mockResolvedValue(null) };
 
     const module: TestingModule = await Test.createTestingModule({
       controllers: [ExportController],
@@ -35,6 +38,7 @@ describe('ExportCodeService & ExportController', () => {
         { provide: STORAGE_PORT, useValue: storage },
         { provide: OrganizationContextService, useValue: organizationContext },
         { provide: ProjectService, useValue: projects },
+        { provide: SCREEN_REPOSITORY, useValue: screenRepo },
       ],
     })
       .overrideGuard(JwtAuthGuard)
@@ -221,6 +225,133 @@ describe('ExportCodeService & ExportController', () => {
     expect(javaEntry).not.toBeNull();
     const content = await javaEntry!.async('string');
     expect(content).toBe('public class Cbact01cTasklet {}');
+  });
+
+  describe('COBOL -> Java export of a bundle conversion', () => {
+    // tool2java converts the whole bundle on every run, so each screen's job result holds
+    // ALL programs' Java; tool2java also writes the first program under out/ instead of its
+    // package folder. Mirrors the real stored result of the CardDemo project.
+    const bundleResult = [
+      [
+        'cobolprogramclasses/cbact02c/tasklet/Cbact02cTasklet.java',
+        'cobolprogramclasses.cbact02c.tasklet',
+        'Cbact02cTasklet',
+      ],
+      [
+        'cobolprogramclasses/cbact02c/constants/JobConstants.java',
+        'cobolprogramclasses.cbact02c.constants',
+        'JobConstants',
+      ],
+      [
+        'cobolprogramclasses/cbact03c/tasklet/Cbact03cTasklet.java',
+        'cobolprogramclasses.cbact03c.tasklet',
+        'Cbact03cTasklet',
+      ],
+      [
+        'out/tasklet/Cbact01cTasklet.java',
+        'cobolprogramclasses.cbact01c.tasklet',
+        'Cbact01cTasklet',
+      ],
+      ['out/constants/JobConstants.java', 'cobolprogramclasses.cbact01c.constants', 'JobConstants'],
+    ].map(([relativePath, pkg, cls]) => ({
+      relativePath,
+      content: Buffer.from(`package ${pkg};
+public class ${cls} {}`),
+    }));
+
+    const config = (
+      ids: string[],
+      overrides: Partial<ExportConfiguration> = {},
+    ): ExportConfiguration => ({
+      projectId: 'proj-acme',
+      projectName: 'cobol2java',
+      outputOption: 'scaffold',
+      frameworkTarget: 'react-19',
+      stylingOption: 'tailwind',
+      includeTypeScriptStrict: true,
+      includeUnitTests: true,
+      includeStorybook: false,
+      includeDocumentation: true,
+      selectedScreenIds: ids,
+      ...overrides,
+    });
+
+    beforeEach(() => {
+      jobs.listByScreen.mockResolvedValue([
+        {
+          id: 'job-x',
+          status: ConversionJobStatus.COMPLETED,
+          resultReference: 'results/proj-acme/job-x/abc',
+          completedAt: new Date('2024-01-02'),
+          toolVersion: 'tool2java',
+        },
+      ]);
+      storage.readFiles.mockResolvedValue(bundleResult);
+      const names: Record<string, string> = {
+        'scr-1': 'CBACT01C.cbl',
+        'scr-2': 'CBACT02C.cbl',
+        'scr-3': 'CBACT03C.cbl',
+      };
+      screenRepo.findById.mockImplementation(async (id: string) => ({ id, name: names[id] }));
+    });
+
+    async function zipNames(cfg: ExportConfiguration): Promise<string[]> {
+      const { buffer } = await service.generateZipBuffer('user-1', undefined, 'proj-acme', cfg);
+      // eslint-disable-next-line @typescript-eslint/no-require-imports
+      const JSZip = require('jszip');
+      const zip = await JSZip.loadAsync(buffer);
+      return Object.keys(zip.files)
+        .filter((n) => !zip.files[n].dir)
+        .sort();
+    }
+
+    it('exports only the selected programs, once each, at their package path (no out/ folder)', async () => {
+      const names = await zipNames(config(['scr-1', 'scr-2', 'scr-3']));
+      expect(names.filter((n) => n.endsWith('.java'))).toEqual([
+        'java/cobolprogramclasses/cbact01c/constants/JobConstants.java',
+        'java/cobolprogramclasses/cbact01c/tasklet/Cbact01cTasklet.java',
+        'java/cobolprogramclasses/cbact02c/constants/JobConstants.java',
+        'java/cobolprogramclasses/cbact02c/tasklet/Cbact02cTasklet.java',
+        'java/cobolprogramclasses/cbact03c/tasklet/Cbact03cTasklet.java',
+      ]);
+      expect(names.some((n) => n.startsWith('java/out/'))).toBe(false);
+
+      const only = await zipNames(config(['scr-2']));
+      expect(only.filter((n) => n.endsWith('.java'))).toEqual([
+        'java/cobolprogramclasses/cbact02c/constants/JobConstants.java',
+        'java/cobolprogramclasses/cbact02c/tasklet/Cbact02cTasklet.java',
+      ]);
+    });
+
+    it('counts each file once in the preview instead of once per selected screen', async () => {
+      const preview = await service.generateExportPreview(
+        'user-1',
+        undefined,
+        'proj-acme',
+        config(['scr-1', 'scr-2', 'scr-3']),
+      );
+      expect(preview.metrics.totalFiles).toBe(5 + 1); // 5 Java files + README.md
+    });
+
+    it('has no React scaffold and no React/Tailwind lines in the README of a Java-only export', async () => {
+      const names = await zipNames(config(['scr-1', 'scr-2']));
+      expect(names.some((n) => /package\.json|\.tsx|components\//.test(n))).toBe(false);
+      const { buffer } = await service.generateZipBuffer(
+        'user-1',
+        undefined,
+        'proj-acme',
+        config(['scr-1']),
+      );
+      // eslint-disable-next-line @typescript-eslint/no-require-imports
+      const JSZip = require('jszip');
+      const readme: string = await (
+        await JSZip.loadAsync(buffer)
+      )
+        .file('README.md')
+        .async('string');
+      expect(readme).toContain('Spring Batch');
+      expect(readme).not.toMatch(/react|tailwind/i);
+    });
   });
 
   it('still exports .tsx files unaffected for a BMS job (toolVersion convert2fe)', async () => {

@@ -10,7 +10,18 @@ import {
   ConversionJobRepository,
   ConversionJobStatus,
 } from '../domain/conversion-job.types';
+import { SCREEN_REPOSITORY, ScreenRepository } from '../../screens/domain/screen.types';
 import type { ExportConfiguration, ExportFileItem, BundleMetrics } from '../domain/export.types';
+
+/** Where a generated Java file belongs, taken from its own `package` declaration. tool2java
+ * only honors -odir for the first class it writes; the rest land elsewhere, so the stored
+ * relative path (e.g. `out/tasklet/Cbact01cTasklet.java`) can't be trusted as a package path. */
+function javaPackagePath(relativePath: string, content: string): string {
+  const declared = /^\s*package\s+([\w.]+)\s*;/m.exec(content);
+  if (!declared) return relativePath;
+  const baseName = relativePath.split('/').pop() ?? relativePath;
+  return `${declared[1].replace(/\./g, '/')}/${baseName}`;
+}
 
 interface ScreenExport {
   screenId: string;
@@ -26,6 +37,7 @@ export class ExportCodeService {
     @Inject(STORAGE_PORT) private readonly storage: StoragePort,
     private readonly organizationContext: OrganizationContextService,
     private readonly projects: ProjectService,
+    @Inject(SCREEN_REPOSITORY) private readonly screens: ScreenRepository,
   ) {}
 
   /**
@@ -125,9 +137,7 @@ export class ExportCodeService {
       const isJavaJob = latestCompleted.toolVersion === 'tool2java';
       const stored = await this.storage.readFiles(latestCompleted.resultReference);
       const files = isJavaJob
-        ? stored
-            .filter((f) => f.relativePath.toLowerCase().endsWith('.java'))
-            .map((f) => ({ relativePath: f.relativePath, content: f.content.toString('utf8') }))
+        ? await this.selectJavaFilesForScreen(stored, screenId, organization.id)
         : stored
             .filter(
               (f) =>
@@ -144,6 +154,31 @@ export class ExportCodeService {
       });
     }
     return { screens };
+  }
+
+  /**
+   * tool2java converts every program in the uploaded bundle on each run, so a job's stored
+   * result holds the Java of ALL programs, not just the selected screen's. Keep only this
+   * screen's own classes (package segment == program name) and put each file at the path its
+   * `package` declares. If the program can't be identified, keep everything rather than lose
+   * output; duplicates across screens are removed when the tree is built.
+   */
+  private async selectJavaFilesForScreen(
+    stored: { relativePath: string; content: Buffer }[],
+    screenId: string,
+    organizationId: string,
+  ): Promise<{ relativePath: string; content: string }[]> {
+    const all = stored
+      .filter((f) => f.relativePath.toLowerCase().endsWith('.java'))
+      .map((f) => {
+        const content = f.content.toString('utf8');
+        return { relativePath: javaPackagePath(f.relativePath, content), content };
+      });
+    const screen = await this.screens.findById(screenId, organizationId).catch(() => null);
+    const program = screen?.name.replace(/\.[^.]+$/, '').toLowerCase();
+    if (!program) return all;
+    const own = all.filter((f) => f.relativePath.toLowerCase().split('/').includes(program));
+    return own.length > 0 ? own : all;
   }
 
   private buildFileTree(
@@ -193,8 +228,11 @@ export class ExportCodeService {
     // already produced (e.g. cobolprogramclasses/cbact01c/Cbact01cTasklet.java). No
     // fabricated build scaffold (pom.xml, JUnit tests) is added - only real output.
     const javaFiles: ExportFileItem[] = [];
+    const seenJavaPaths = new Set<string>();
     for (const screen of javaScreens) {
       for (const file of screen.files) {
+        if (seenJavaPaths.has(file.relativePath)) continue;
+        seenJavaPaths.add(file.relativePath);
         javaFiles.push({
           path: `java/${file.relativePath}`,
           name: file.relativePath,
@@ -479,7 +517,9 @@ export class ExportCodeService {
     const imports = reactScreens
       .map((s) => `import { ${s.componentName} } from './components/${s.componentName}';`)
       .join('\n');
-    const screenEntries = reactScreens.map((s) => `  { id: '${s.componentName}', Component: ${s.componentName} },`).join('\n');
+    const screenEntries = reactScreens
+      .map((s) => `  { id: '${s.componentName}', Component: ${s.componentName} },`)
+      .join('\n');
     const routes = reactScreens
       .map(
         (s) =>
@@ -749,7 +789,12 @@ export default App;
 
     if (!isReactScaffold) {
       // Java-only or standalone exports: a flat source tree, no app to run.
-      return `# ${projectName} - Modernized Export Package\n\nGenerated automatically by **ALSM Platform Backend Engine** from real conversion job output.\n\n## Configuration\n- Target Framework: ${config.frameworkTarget}\n- Output Option: ${config.outputOption}\n- Styling: ${config.stylingOption}\n- Converted Screens: ${convertedScreens.map((s) => s.screenId).join(', ') || 'none'}\n${missingNote}\n${
+      // React framework/styling only describe a React bundle - never print them for Java.
+      const configLines =
+        reactScreens.length === 0 && javaScreens.length > 0
+          ? `- Output: generated Java source (Spring Batch), one folder per COBOL program\n- Converted Programs: ${javaScreens.map((s) => s.screenId).join(', ')}\n`
+          : `- Target Framework: ${config.frameworkTarget}\n- Output Option: ${config.outputOption}\n- Styling: ${config.stylingOption}\n- Converted Screens: ${convertedScreens.map((s) => s.screenId).join(', ') || 'none'}\n`;
+      return `# ${projectName} - Modernized Export Package\n\nGenerated automatically by **ALSM Platform Backend Engine** from real conversion job output.\n\n## Configuration\n${configLines}${missingNote}\n${
         javaScreens.length > 0
           ? `\n## Java Output\nThis package contains real COBOL -> Java source generated by tool2java (${javaScreens.length} program(s)) under \`java/\`. No build scaffold (pom.xml, JUnit) is included - this is source-only output; wire it into your own Java build as needed.\n`
           : `\n## Components Only\nThis is a flat component bundle (\`outputOption: standalone\`), not a runnable app. Copy \`components/\` into an existing React + TypeScript + Vite project (the components use Tailwind utility classNames and call \`axios\` directly against \`VITE_API_BASE_URL\`).\n`
