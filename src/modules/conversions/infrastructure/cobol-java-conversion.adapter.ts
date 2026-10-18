@@ -16,6 +16,7 @@ import type { DependencyEntry } from '../domain/copybook-dependency.types';
 import { isSystemCopybook } from '../domain/copybook-dependency-resolver';
 import { SCREEN_REPOSITORY, ScreenRepository } from '../../screens/domain/screen.types';
 import { runConversionTool } from './conversion-tool-runner.util';
+import { normalizeBundle } from './cics-source-normalizer';
 
 interface ParsedToolError {
   fileName: string;
@@ -50,7 +51,9 @@ export class CobolJavaConversionAdapter {
       // screens analyzed before system copybooks (DFH*/CMQ*) were recognized still carry
       // BLOCKED purely because of those, and should convert without a re-upload.
       const blockers =
-        screen?.dependencyStatus === 'BLOCKED' ? this.collectBlockers(screen.dependencies ?? []) : [];
+        screen?.dependencyStatus === 'BLOCKED'
+          ? this.collectBlockers(screen.dependencies ?? [])
+          : [];
       if (blockers.length > 0) {
         throw new CopybookDependencyBlockedError(
           `Blocked by unresolved copybook dependencies: ${blockers.join(' | ')}`,
@@ -83,6 +86,7 @@ export class CobolJavaConversionAdapter {
     const javaExecutable = this.config.get<string>('JAVA_EXECUTABLE') || 'java';
 
     try {
+      const toolSourceDir = await this.prepareSources(sourceDir, path.join(jobWorkDir, 'src'));
       const result = await runConversionTool(
         javaExecutable,
         [
@@ -115,7 +119,7 @@ export class CobolJavaConversionAdapter {
           '-fixed',
           '-c2',
           '-overwrite',
-          sourceDir,
+          toolSourceDir,
         ],
         { cwd: jobWorkDir, timeoutMs },
       );
@@ -159,6 +163,66 @@ export class CobolJavaConversionAdapter {
         this.logger.error('Refused to clean up an unsafe conversion workspace');
       }
     }
+  }
+
+  /**
+   * Copies the uploaded bundle into the job workspace and rewrites EXEC CICS blocks (plus a
+   * few other constructs) into the dialect tool2java can parse, adding stand-ins for the
+   * IBM system copybooks (DFHAID, DFHBMSCA, EIB) next to every program. The stored upload
+   * is never modified. If normalization itself fails, the original sources are used so the
+   * job behaves exactly as before.
+   */
+  private async prepareSources(sourceDir: string, targetDir: string): Promise<string> {
+    try {
+      const relativePaths = await this.listFilesRecursive(sourceDir);
+      const files = await Promise.all(
+        relativePaths.map(async (relativePath) => ({
+          name: relativePath,
+          // latin1 round-trips every byte, so untouched content is copied unchanged.
+          content: await fs.promises.readFile(path.join(sourceDir, relativePath), 'latin1'),
+        })),
+      );
+      const normalized = normalizeBundle(files);
+
+      const programDirs = new Set<string>();
+      for (const file of files) {
+        const target = path.join(targetDir, file.name);
+        await fs.promises.mkdir(path.dirname(target), { recursive: true });
+        await fs.promises.writeFile(
+          target,
+          normalized.rewritten.get(file.name) ?? file.content,
+          'latin1',
+        );
+        if (/\.(cbl|cob)$/i.test(file.name)) programDirs.add(path.dirname(target));
+      }
+      for (const dir of programDirs) {
+        for (const [stubName, content] of normalized.stubs) {
+          await fs.promises.writeFile(path.join(dir, stubName), content, 'latin1');
+        }
+      }
+
+      const changeCount = [...normalized.changes.values()].reduce((n, list) => n + list.length, 0);
+      if (changeCount > 0) {
+        this.logger.log(
+          `Normalized ${normalized.rewritten.size} source file(s) for tool2java (${changeCount} change(s); stubs: ${[...normalized.stubs.keys()].join(', ') || 'none'})`,
+        );
+      }
+      return targetDir;
+    } catch (error) {
+      this.logger.warn(`Source normalization failed, using original sources: ${String(error)}`);
+      return sourceDir;
+    }
+  }
+
+  private async listFilesRecursive(root: string, prefix = ''): Promise<string[]> {
+    const entries = await fs.promises.readdir(path.join(root, prefix), { withFileTypes: true });
+    const result: string[] = [];
+    for (const entry of entries) {
+      const relative = path.join(prefix, entry.name);
+      if (entry.isDirectory()) result.push(...(await this.listFilesRecursive(root, relative)));
+      else if (entry.isFile()) result.push(relative);
+    }
+    return result;
   }
 
   /** Flattens the unresolved entries (top-level and nested) of a dependency tree into
