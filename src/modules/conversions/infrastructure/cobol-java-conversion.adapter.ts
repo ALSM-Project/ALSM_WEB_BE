@@ -13,6 +13,7 @@ import {
 } from '../domain/error-log.types';
 import { CopybookDependencyBlockedError } from '../domain/copybook-dependency-blocked.error';
 import type { DependencyEntry } from '../domain/copybook-dependency.types';
+import { isSystemCopybook } from '../domain/copybook-dependency-resolver';
 import { SCREEN_REPOSITORY, ScreenRepository } from '../../screens/domain/screen.types';
 import { runConversionTool } from './conversion-tool-runner.util';
 
@@ -45,9 +46,14 @@ export class CobolJavaConversionAdapter {
 
     if (input.screenId) {
       const screen = await this.screens.findById(input.screenId, input.organizationId);
-      if (screen?.dependencyStatus === 'BLOCKED') {
+      // Re-derive blockers from the stored tree rather than trusting the stored flag alone:
+      // screens analyzed before system copybooks (DFH*/CMQ*) were recognized still carry
+      // BLOCKED purely because of those, and should convert without a re-upload.
+      const blockers =
+        screen?.dependencyStatus === 'BLOCKED' ? this.collectBlockers(screen.dependencies ?? []) : [];
+      if (blockers.length > 0) {
         throw new CopybookDependencyBlockedError(
-          this.buildBlockedMessage(screen.dependencies ?? []),
+          `Blocked by unresolved copybook dependencies: ${blockers.join(' | ')}`,
         );
       }
     }
@@ -155,13 +161,18 @@ export class CobolJavaConversionAdapter {
     }
   }
 
-  /** Flattens the unresolved entries (top-level and nested) of a BLOCKED dependency tree into
-   * one clear, actionable message — surfaced as the job's errorMessage. */
-  private buildBlockedMessage(dependencies: DependencyEntry[]): string {
+  /** Flattens the unresolved entries (top-level and nested) of a dependency tree into
+   * actionable messages — surfaced as the job's errorMessage. IBM system copybooks never
+   * count, whether stored as SYSTEM_PROVIDED or (older analyses) as MISSING. */
+  private collectBlockers(dependencies: DependencyEntry[]): string[] {
     const unresolved: string[] = [];
     const collect = (entries: DependencyEntry[]) => {
       for (const entry of entries) {
-        if (entry.status !== 'RESOLVED') {
+        const nonBlocking =
+          entry.status === 'RESOLVED' ||
+          entry.status === 'SYSTEM_PROVIDED' ||
+          (entry.status === 'MISSING' && isSystemCopybook(entry.copyName));
+        if (!nonBlocking) {
           unresolved.push(entry.message ?? `${entry.copyName}: ${entry.status}`);
         } else if (entry.dependencies) {
           collect(entry.dependencies);
@@ -169,7 +180,7 @@ export class CobolJavaConversionAdapter {
       }
     };
     collect(dependencies);
-    return `Blocked by unresolved copybook dependencies: ${unresolved.join(' | ')}`;
+    return unresolved;
   }
 
   private async listJavaFiles(dir: string): Promise<string[]> {

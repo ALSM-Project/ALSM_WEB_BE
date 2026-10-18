@@ -198,4 +198,41 @@ describe('CopybookDependencyResolver', () => {
       ]);
     });
   });
+
+  describe('IBM system copybooks', () => {
+    it('marks missing DFH*/CMQ* copybooks SYSTEM_PROVIDED and does not block', () => {
+      const files = bundle({
+        'COSGN00C.cbl':
+          '       COPY COCOM01Y.\n       COPY DFHAID.\n       COPY DFHBMSCA.\n       COPY CMQV.\n',
+        'COCOM01Y.cpy': '       01 CARDDEMO-COMMAREA.\n',
+      });
+      const analysis = analyzeBundle(files).get('COSGN00C.cbl')!;
+      expect(analysis.status).toBe('READY_FOR_CONVERSION');
+      expect(analysis.dependencies.map((d) => [d.copyName, d.status])).toEqual([
+        ['COCOM01Y', 'RESOLVED'],
+        ['DFHAID', 'SYSTEM_PROVIDED'],
+        ['DFHBMSCA', 'SYSTEM_PROVIDED'],
+        ['CMQV', 'SYSTEM_PROVIDED'],
+      ]);
+      expect(analysis.dependencies[1].message).toMatch(/system copybook/);
+    });
+
+    it('prefers an uploaded file over the system fallback', () => {
+      const files = bundle({
+        'P.cbl': '       COPY DFHAID.\n',
+        'DFHAID.cpy': '       01 DFHAID.\n',
+      });
+      const analysis = analyzeBundle(files).get('P.cbl')!;
+      expect(analysis.dependencies[0]).toEqual(
+        expect.objectContaining({ status: 'RESOLVED', resolvedFile: 'DFHAID.cpy' }),
+      );
+    });
+
+    it('still blocks on a missing application copybook alongside system ones', () => {
+      const files = bundle({ 'P.cbl': '       COPY DFHAID.\n       COPY CVACT01Y.\n' });
+      const analysis = analyzeBundle(files).get('P.cbl')!;
+      expect(analysis.status).toBe('BLOCKED');
+      expect(analysis.dependencies[1].status).toBe('MISSING');
+    });
+  });
 });
