@@ -30,6 +30,15 @@ export interface BundleFile {
 const COPY_STATEMENT_RE = /\bCOPY\b\s+([A-Za-z0-9][A-Za-z0-9-]*)/gi;
 const PROGRAM_EXTENSIONS = ['.cbl', '.cob'];
 
+/** IBM system copybooks shipped with the runtime rather than the application: CICS
+ * (DFHAID, DFHBMSCA, DFHEIBLK, ...) and IBM MQ (CMQV, CMQODV, CMQMDV, ...). Customers
+ * almost never have these as files, so a missing one must not block conversion. */
+const SYSTEM_COPYBOOK_RE = /^(DFH|CMQ)[A-Z0-9-]*$/i;
+
+export function isSystemCopybook(copyName: string): boolean {
+  return SYSTEM_COPYBOOK_RE.test(normalizeCopyName(copyName));
+}
+
 /** Blanks out COBOL comment lines (fixed-format '*' in column 7, and free-format inline
  * '*>') so they never contribute false-positive COPY matches, while preserving every
  * original line so line numbers reported to the user stay accurate. */
@@ -104,6 +113,10 @@ function buildMissingMessage(copyName: string, referencedBy: string): string {
   return `COPYBOOK '${copyName}' referenced by '${referencedBy}' could not be found.`;
 }
 
+function buildSystemProvidedMessage(copyName: string, referencedBy: string): string {
+  return `COPYBOOK '${copyName}' referenced by '${referencedBy}' is an IBM system copybook (CICS/MQ) supplied by the runtime; it is not expected in the upload.`;
+}
+
 function buildAmbiguousMessage(copyName: string, referencedBy: string): string {
   return `COPYBOOK '${copyName}' referenced by '${referencedBy}' matches multiple files.`;
 }
@@ -157,6 +170,15 @@ function resolveDependenciesOf(
     }
 
     const resolved = resolveCopyName(copyName, index);
+    // An uploaded file always wins; only fall back to "system-provided" when absent.
+    if (resolved.status === 'MISSING' && isSystemCopybook(copyName)) {
+      return {
+        copyName,
+        status: 'SYSTEM_PROVIDED',
+        lineNumber,
+        message: buildSystemProvidedMessage(copyName, fileName),
+      };
+    }
     if (resolved.status === 'MISSING') {
       return {
         copyName,
@@ -199,7 +221,8 @@ function resolveDependenciesOf(
 function isFullyResolved(entries: DependencyEntry[]): boolean {
   return entries.every(
     (entry) =>
-      entry.status === 'RESOLVED' && (!entry.dependencies || isFullyResolved(entry.dependencies)),
+      entry.status === 'SYSTEM_PROVIDED' ||
+      (entry.status === 'RESOLVED' && (!entry.dependencies || isFullyResolved(entry.dependencies))),
   );
 }
 
