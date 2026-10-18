@@ -248,4 +248,36 @@ describe('CobolJavaConversionAdapter', () => {
 
     expect(toolRunner.runConversionTool).toHaveBeenCalled();
   });
+
+  it('runs tool2java on a normalized copy of the bundle, leaving the stored upload untouched', async () => {
+    const original = [
+      '       PROCEDURE DIVISION.',
+      '           EXEC CICS RETURN TRANSID(WS-TRANID) RESP(WS-RESP) END-EXEC.',
+    ].join('\n');
+    await fs.promises.mkdir(path.join(sourceDir, 'app'));
+    await fs.promises.writeFile(path.join(sourceDir, 'app', 'PGM.cbl'), original);
+    let seen: { dir: string; program: string; stubs: string[] } | undefined;
+    (toolRunner.runConversionTool as jest.Mock).mockImplementation(
+      async (_exe: string, args: string[], options: { cwd: string }) => {
+        const dir = args[args.length - 1];
+        seen = {
+          dir,
+          program: await fs.promises.readFile(path.join(dir, 'app', 'PGM.cbl'), 'latin1'),
+          stubs: (await fs.promises.readdir(path.join(dir, 'app'))).filter((f) => f !== 'PGM.cbl'),
+        };
+        await fs.promises.writeFile(path.join(options.cwd, 'Pgm.java'), 'public class Pgm {}');
+        return { code: 0, stdout: 'Done in 0s.', stderr: '', timedOut: false };
+      },
+    );
+
+    await buildAdapter().execute(baseInput);
+
+    expect(seen?.dir).not.toBe(sourceDir);
+    expect(seen?.program).not.toMatch(/^ {7}.*RESP\(/m);
+    expect(seen?.program).toMatch(/^ +EXEC CICS RETURN TRANSID\(WS-TRANID\)$/m);
+    expect(seen?.stubs.sort()).toEqual(['DFHAID.cpy', 'DFHBMSCA.cpy']);
+    expect(await fs.promises.readFile(path.join(sourceDir, 'app', 'PGM.cbl'), 'latin1')).toBe(
+      original,
+    );
+  });
 });

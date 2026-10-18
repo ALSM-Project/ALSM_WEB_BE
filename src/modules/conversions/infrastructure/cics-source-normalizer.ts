@@ -816,15 +816,16 @@ export function normalizeCicsSource(source: string): NormalizationResult {
     const lead = [prefix.trim(), ...moves].filter(Boolean).join(' ');
     if (lead) output.push(...layout(lead, indent));
     const tail = suffix.trim();
+    const attachTail = (text: string) =>
+      `${text}${tail.startsWith('.') ? tail : tail ? ` ${tail}` : ''}`;
     if (rewrite.replaced) {
-      output.push(...layout([rewrite.statement, tail].filter(Boolean).join(' '), indent));
+      output.push(...layout(attachTail(rewrite.statement), indent));
     } else {
       // tool2java's preprocessor rewrites every "EXEC" on the EXEC CICS line to "EXEC-CICS"
       // (END-EXEC included, which then fails to parse) and the line grows by 5 columns, so
       // END-EXEC goes on its own line and the first line keeps room for that growth.
       output.push(...layout(rewrite.statement, indent, 'EXEC-CICS'.length - 'EXEC'.length));
-      const endLine = `END-EXEC${tail.startsWith('.') ? tail : tail ? ` ${tail}` : ''}`;
-      output.push(...layout(endLine, indent));
+      output.push(...layout(attachTail('END-EXEC'), indent));
     }
     rewrite.notes.forEach((n) => changes.push({ ...n, line: start.line + 1 }));
     cursor = end.line + 1;
