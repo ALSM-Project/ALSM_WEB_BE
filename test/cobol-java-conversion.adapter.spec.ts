@@ -206,6 +206,30 @@ describe('CobolJavaConversionAdapter', () => {
     expect(toolRunner.runConversionTool).not.toHaveBeenCalled();
   });
 
+  it('does not block a legacy BLOCKED screen whose only MISSING entries are IBM system copybooks', async () => {
+    (screens.findById as jest.Mock).mockResolvedValue({
+      id: 'scr-1',
+      dependencyStatus: 'BLOCKED',
+      dependencies: [
+        { copyName: 'COCOM01Y', status: 'RESOLVED', resolvedFile: 'COCOM01Y.cpy' },
+        { copyName: 'DFHAID', status: 'MISSING' },
+        { copyName: 'CMQV', status: 'MISSING' },
+      ],
+    });
+    await fs.promises.writeFile(path.join(sourceDir, 'OK.cob'), 'COBOL SOURCE');
+    (toolRunner.runConversionTool as jest.Mock).mockImplementation(
+      async (_exe: string, args: string[]) => {
+        const outDir = args[4];
+        await fs.promises.writeFile(path.join(outDir, 'Ok.java'), 'public class Ok {}');
+        return { code: 0, stdout: 'Done in 0s.', stderr: '', timedOut: false };
+      },
+    );
+
+    await buildAdapter().execute({ ...baseInput, screenId: 'scr-1' });
+
+    expect(toolRunner.runConversionTool).toHaveBeenCalled();
+  });
+
   it('proceeds to run tool2java when the screen is READY_FOR_CONVERSION', async () => {
     (screens.findById as jest.Mock).mockResolvedValue({
       id: 'scr-1',
