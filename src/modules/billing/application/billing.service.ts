@@ -12,11 +12,12 @@ import {
   ServiceUnavailableException,
 } from '@nestjs/common';
 import { InjectConnection, InjectModel } from '@nestjs/mongoose';
-import { ClientSession, Connection, Model } from 'mongoose';
+import { ClientSession, Connection, Model, Types } from 'mongoose';
 import { User, UserDocument } from '../../users/infrastructure/user.schema';
 import { Organization, OrganizationDocument } from '../../organizations/infrastructure/organization.schema';
 import { ListInvoicesQueryDto } from '../presentation/billing.dto';
 import { generateInvoicePdfBuffer } from './invoice-pdf.generator';
+import { generateCleanBankQrDataUrl } from '../../../shared/utils/bank-qr.helper';
 import { AuthenticatedUser } from '../../../shared/logging/request-id.middleware';
 import { OrganizationContextService } from '../../organizations/application/organization-context.service';
 import { OrganizationRole } from '../../organizations/domain/organization.types';
@@ -89,7 +90,8 @@ export class BillingService implements OnModuleInit {
       }));
       await this.planRepo.seedDefaults(defaultCatalog);
       this.logger.log('Subscription plans initialized in MongoDB repository');
-      await this.seedDefaultEnterpriseInvoices();
+      // Disabled automatic dummy invoice seeding
+      // await this.seedDefaultEnterpriseInvoices();
     } catch (err) {
       this.logger.error('Failed to seed default subscription plans in MongoDB:', err);
     }
@@ -297,6 +299,7 @@ export class BillingService implements OnModuleInit {
     query?: ListInvoicesQueryDto,
   ) {
     const userId = typeof userOrUserId === 'string' ? userOrUserId : userOrUserId.userId;
+    const userEmail = typeof userOrUserId === 'object' ? (userOrUserId.email || '').toLowerCase().trim() : undefined;
     const isPlatformAdmin = typeof userOrUserId === 'object' && Boolean(
       userOrUserId.isPlatformAdmin ||
       (userOrUserId as any).roles?.includes('ADMIN') ||
@@ -321,6 +324,28 @@ export class BillingService implements OnModuleInit {
       }
     }
 
+    // Collect all organizations the user is owner or member of to include their invoices
+    const userOrgIds: string[] = [];
+    if (targetOrgId) userOrgIds.push(targetOrgId);
+    if (!isPlatformAdmin && userId) {
+      try {
+        const uIdObj = Types.ObjectId.isValid(userId) ? new Types.ObjectId(userId) : null;
+        const orgDocs = await this.connection.db!.collection('organizations').find({
+          $or: [
+            ...(uIdObj ? [{ ownerId: uIdObj }, { 'members.userId': uIdObj }] : []),
+            { ownerId: userId },
+            { 'members.userId': userId },
+          ],
+        }).project({ _id: 1 }).toArray();
+        orgDocs.forEach((o) => {
+          const idStr = o._id.toString();
+          if (!userOrgIds.includes(idStr)) userOrgIds.push(idStr);
+        });
+      } catch (err: any) {
+        this.logger.warn(`Failed to collect user organizations: ${err.message}`);
+      }
+    }
+
     const page = Math.max(1, query?.page || 1);
     const limit = Math.max(1, Math.min(100, query?.limit || 20));
     const skip = (page - 1) * limit;
@@ -329,6 +354,8 @@ export class BillingService implements OnModuleInit {
       const res = await this.invoiceRepo.findInvoices({
         userId: isPlatformAdmin && !targetOrgId ? undefined : userId,
         organizationId: targetOrgId,
+        organizationIds: userOrgIds.length > 0 ? userOrgIds : undefined,
+        userEmail: isPlatformAdmin ? undefined : userEmail,
         status: query?.status,
         planTier: query?.planTier,
         search: query?.search,
@@ -366,6 +393,7 @@ export class BillingService implements OnModuleInit {
     }
 
     const userId = typeof userOrUserId === 'string' ? userOrUserId : userOrUserId.userId;
+    const userEmail = typeof userOrUserId === 'object' ? (userOrUserId.email || '').toLowerCase().trim() : undefined;
     const isPlatformAdmin = typeof userOrUserId === 'object' && Boolean(
       userOrUserId.isPlatformAdmin ||
       (userOrUserId as any).roles?.includes('ADMIN') ||
@@ -442,7 +470,13 @@ export class BillingService implements OnModuleInit {
       accountNumber: '090123456789',
       accountName: 'CONG TY CO PHAN ALSM SOFTWARE',
       referenceCode: refCode,
-      qrDataUrl: `https://img.vietqr.io/image/MB-090123456789-compact2.png?amount=${invoice.amountVnd}&addInfo=${refCode}&accountName=CONG%20TY%20CO%20PHAN%20ALSM%20SOFTWARE`,
+      qrDataUrl: await generateCleanBankQrDataUrl({
+        bankBin: '970422',
+        accountNumber: '0899886249',
+        accountName: 'CONG TY CO PHAN ALSM SOFTWARE',
+        amount: invoice.amountVnd,
+        message: refCode,
+      }),
     };
 
     return {

@@ -41,7 +41,7 @@ export function generateInvoicePdfBuffer(data: InvoicePdfData): Buffer {
   const planTier = sanitize(data.planTier);
   const status = sanitize(data.status).toUpperCase();
   const period = `${formatDate(data.billingPeriodStart)} to ${formatDate(data.billingPeriodEnd)}`;
-  const payMethod = sanitize(data.paymentMethod || 'Bank Wire / QR VietQR');
+  const payMethod = sanitize(data.paymentMethod || 'Bank Wire / QR Payment');
   const subtotal = data.amountVnd;
   const vat = Math.round(subtotal * 0.1);
   const total = subtotal + vat;
