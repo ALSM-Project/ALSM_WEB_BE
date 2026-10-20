@@ -47,20 +47,61 @@ export class MongoInvoiceRepository implements IInvoiceRepository {
     return doc ? InvoiceMapper.toDomain(doc) : null;
   }
 
+  async findByContractNumber(contractNumber: string): Promise<InvoiceProps | null> {
+    if (!contractNumber) return null;
+    const doc = await this.model.findOne({ contractNumber: contractNumber.trim() }).sort({ createdAt: -1 }).exec();
+    return doc ? InvoiceMapper.toDomain(doc) : null;
+  }
+
+  async findByContractId(contractId: string): Promise<InvoiceProps | null> {
+    if (!contractId || !Types.ObjectId.isValid(contractId)) return null;
+    const doc = await this.model.findOne({ contractId: new Types.ObjectId(contractId) }).sort({ createdAt: -1 }).exec();
+    return doc ? InvoiceMapper.toDomain(doc) : null;
+  }
+
   async findInvoices(options: InvoiceQueryOptions): Promise<{ items: InvoiceProps[]; total: number }> {
     const filter: FilterQuery<InvoiceDocument> = {};
 
-    if (options.organizationId && Types.ObjectId.isValid(options.organizationId)) {
-      if (options.userId && Types.ObjectId.isValid(options.userId)) {
-        filter.$or = [
-          { organizationId: new Types.ObjectId(options.organizationId) },
-          { userId: new Types.ObjectId(options.userId) },
-        ];
-      } else {
-        filter.organizationId = new Types.ObjectId(options.organizationId);
+    const orClauses: any[] = [];
+
+    // Support multiple organization IDs or single organizationId (matching both ObjectId and String)
+    const orgIds: any[] = [];
+    if (options.organizationIds && Array.isArray(options.organizationIds)) {
+      options.organizationIds.forEach((id: string) => {
+        if (!id) return;
+        orgIds.push(id.toString());
+        if (Types.ObjectId.isValid(id)) orgIds.push(new Types.ObjectId(id));
+      });
+    }
+    if (options.organizationId) {
+      orgIds.push(options.organizationId.toString());
+      if (Types.ObjectId.isValid(options.organizationId)) {
+        orgIds.push(new Types.ObjectId(options.organizationId));
       }
-    } else if (options.userId && Types.ObjectId.isValid(options.userId)) {
-      filter.userId = new Types.ObjectId(options.userId);
+    }
+
+    if (orgIds.length > 0) {
+      orClauses.push({ organizationId: { $in: orgIds } });
+    }
+
+    if (options.userId) {
+      const uId = options.userId.toString();
+      const validUObjId = Types.ObjectId.isValid(uId) ? new Types.ObjectId(uId) : null;
+      orClauses.push({ userId: validUObjId ? { $in: [uId, validUObjId] } : uId });
+    }
+
+    if (options.userEmail) {
+      const email = options.userEmail.toLowerCase().trim();
+      orClauses.push({ customerEmail: email });
+      orClauses.push({ customerEmail: new RegExp(`^${email}$`, 'i') });
+    }
+
+    if (orClauses.length > 0) {
+      filter.$or = orClauses;
+    }
+
+    if (options.contractNumber) {
+      filter.contractNumber = options.contractNumber;
     }
 
     if (options.status) {
@@ -83,7 +124,7 @@ export class MongoInvoiceRepository implements IInvoiceRepository {
 
     if (options.search?.trim()) {
       const searchRegex = new RegExp(options.search.trim(), 'i');
-      const searchConditions = [{ invoiceNumber: searchRegex }, { planName: searchRegex }];
+      const searchConditions: any[] = [{ invoiceNumber: searchRegex }, { planName: searchRegex }, { contractNumber: searchRegex }];
       if (filter.$or) {
         filter.$and = [{ $or: filter.$or }, { $or: searchConditions }];
         delete filter.$or;
@@ -115,22 +156,27 @@ export class MongoInvoiceRepository implements IInvoiceRepository {
       ...props,
       userId: new Types.ObjectId(props.userId),
       organizationId: new Types.ObjectId(props.organizationId),
-      subscriptionId: props.subscriptionId ? new Types.ObjectId(props.subscriptionId) : undefined,
+      subscriptionId: props.subscriptionId && Types.ObjectId.isValid(props.subscriptionId) ? new Types.ObjectId(props.subscriptionId) : undefined,
+      contractId: props.contractId && Types.ObjectId.isValid(props.contractId) ? new Types.ObjectId(props.contractId) : undefined,
     });
 
     return InvoiceMapper.toDomain(doc);
   }
 
-  async markPaid(id: string, paymentMethod: string): Promise<InvoiceProps | null> {
+  async markPaid(id: string, paymentMethod: string, cassoTxId?: string): Promise<InvoiceProps | null> {
     if (!id || !Types.ObjectId.isValid(id)) return null;
+    const updatePayload: any = {
+      status: InvoiceStatus.PAID,
+      paidAt: new Date(),
+      paymentMethod,
+    };
+    if (cassoTxId) {
+      updatePayload.cassoTransactionId = cassoTxId;
+    }
     const doc = await this.model
       .findByIdAndUpdate(
         id,
-        {
-          status: InvoiceStatus.PAID,
-          paidAt: new Date(),
-          paymentMethod,
-        },
+        updatePayload,
         { new: true },
       )
       .exec();
