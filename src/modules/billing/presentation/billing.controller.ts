@@ -2,6 +2,7 @@ import {
   Body,
   Controller,
   Get,
+  Headers,
   HttpCode,
   HttpStatus,
   Param,
@@ -536,9 +537,14 @@ export class BillingController {
     status: HttpStatus.UNAUTHORIZED,
     description: 'Missing or invalid authentication token',
   })
-  async getUsageStats(@CurrentUser() user: AuthenticatedUser) {
+  async getUsageStats(
+    @CurrentUser() user: AuthenticatedUser,
+    @Headers('x-organization-id') headerOrgId?: string,
+  ) {
     const orgId =
-      (user as AuthenticatedUser & { organizationId?: string }).organizationId || user.userId;
+      headerOrgId ||
+      (user as AuthenticatedUser & { organizationId?: string }).organizationId ||
+      user.userId;
     return this.usageService.getUsageStats(user.userId, orgId);
   }
 }

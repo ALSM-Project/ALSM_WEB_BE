@@ -223,12 +223,21 @@ export class CassoTransaction {
   @IsNumber()
   id!: number;
 
-  @ApiProperty({
+  @ApiPropertyOptional({
     example: 'MBVCB.123456789',
     description: 'Bank transaction reference ID',
   })
+  @IsOptional()
   @IsString()
-  tid!: string;
+  tid?: string;
+
+  @ApiPropertyOptional({
+    example: 'FT123456',
+    description: 'Transaction reference ID (V2)',
+  })
+  @IsOptional()
+  @IsString()
+  reference?: string;
 
   @ApiProperty({
     example: 'ALSM8821 NAP TIEN PRO',
@@ -241,26 +250,103 @@ export class CassoTransaction {
   @IsNumber()
   amount!: number;
 
-  @ApiProperty({
+  @ApiPropertyOptional({
     example: 12500000,
     description: 'Cumulative bank account balance after transaction',
   })
+  @IsOptional()
   @IsNumber()
-  cusum_balance!: number;
+  cusum_balance?: number;
 
-  @ApiProperty({
+  @ApiPropertyOptional({
+    example: 12500000,
+    description: 'Running balance after transaction (V2)',
+  })
+  @IsOptional()
+  @IsNumber()
+  runningBalance?: number;
+
+  @ApiPropertyOptional({
     example: '2026-09-05 14:30:00',
     description: 'Transaction timestamp',
   })
+  @IsOptional()
   @IsString()
-  when!: string;
+  when?: string;
 
-  @ApiProperty({
+  @ApiPropertyOptional({
+    example: '2026-09-05 14:30:00',
+    description: 'Transaction date time (V2)',
+  })
+  @IsOptional()
+  @IsString()
+  transactionDateTime?: string;
+
+  @ApiPropertyOptional({
+    example: '2026-09-05',
+    description: 'Booking date (V2)',
+  })
+  @IsOptional()
+  @IsString()
+  booking_date?: string;
+
+  @ApiPropertyOptional({
     example: '090123456789',
     description: 'Bank sub-account ID',
   })
+  @IsOptional()
   @IsString()
-  bank_sub_acc_id!: string;
+  bank_sub_acc_id?: string;
+
+  @ApiPropertyOptional({ example: '123456789' })
+  @IsOptional()
+  @IsString()
+  accountNumber?: string;
+
+  @ApiPropertyOptional({ example: 'MBBank' })
+  @IsOptional()
+  @IsString()
+  bankName?: string;
+
+  @ApiPropertyOptional({ example: 'MB' })
+  @IsOptional()
+  @IsString()
+  bankAbbreviation?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  virtualAccountNumber?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  virtualAccountName?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  counterAccountName?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  counterAccountNumber?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  counterAccountBankId?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  counterAccountBankName?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  currency?: string;
 }
 
 export class CassoWebhookPayload {
@@ -273,14 +359,10 @@ export class CassoWebhookPayload {
   error?: number;
 
   @ApiPropertyOptional({
-    type: [CassoTransaction],
-    description: 'List of bank transactions received',
+    description: 'List or single bank transaction received (Casso test call sends single object)',
   })
   @IsOptional()
-  @IsArray()
-  @ValidateNested({ each: true })
-  @Type(() => CassoTransaction)
-  data?: CassoTransaction[];
+  data?: CassoTransaction[] | CassoTransaction;
 }
 
 // ═════════════════════════════════════════════════════════════════
@@ -498,6 +580,12 @@ export class UsageStatsPlanDto {
 
   @ApiPropertyOptional({ example: 'Professional' })
   name?: string;
+
+  @ApiPropertyOptional({ example: 'ALSM-CTR-2026-9A52' })
+  contractNumber?: string;
+
+  @ApiPropertyOptional({ example: true })
+  isContractPlan?: boolean;
 }
 
 export class UsageStatsResponseDto {
@@ -506,6 +594,9 @@ export class UsageStatsResponseDto {
 
   @ApiProperty({ type: UsageStatsItemDto })
   screens!: UsageStatsItemDto;
+
+  @ApiProperty({ type: UsageStatsItemDto })
+  programs!: UsageStatsItemDto;
 
   @ApiProperty({ type: UsageStatsItemDto })
   projects!: UsageStatsItemDto;
@@ -633,7 +724,7 @@ export class QuoteRequestResponseDto {
   @ApiProperty({ example: '2026-09-25T09:00:00.000Z' })
   createdAt!: Date | string;
 }
-
+
 // ═════════════════════════════════════════════════════════════════
 // ─── INVOICE DTOs (View Invoices Workflow)
 // ═════════════════════════════════════════════════════════════════
