@@ -13,7 +13,13 @@ export class Invoice {
   organizationId!: Types.ObjectId;
 
   @Prop({ type: Types.ObjectId, ref: 'Subscription', index: true })
-  subscriptionId!: Types.ObjectId;
+  subscriptionId?: Types.ObjectId;
+
+  @Prop({ type: Types.ObjectId, ref: 'ContractAggregate', index: true })
+  contractId?: Types.ObjectId;
+
+  @Prop({ index: true })
+  contractNumber?: string;
 
   /** Human-readable invoice number: INV-YYYY-NNNN */
   @Prop({ required: true, unique: true })
@@ -25,9 +31,21 @@ export class Invoice {
   @Prop({ required: true })
   planName!: string;
 
+  @Prop({ default: 0 })
+  subtotalVnd?: number;
+
+  @Prop({ default: 10 })
+  vatRate?: number;
+
+  @Prop({ default: 0 })
+  taxAmountVnd?: number;
+
   /** Amount in VND */
   @Prop({ required: true })
   amountVnd!: number;
+
+  @Prop({ default: 'VND' })
+  currency?: string;
 
   @Prop({ enum: InvoiceStatus, default: InvoiceStatus.PENDING })
   status!: InvoiceStatus;
@@ -39,10 +57,19 @@ export class Invoice {
   billingPeriodEnd!: Date;
 
   @Prop()
+  dueDate?: Date;
+
+  @Prop()
   paidAt?: Date;
 
   @Prop()
   paymentMethod?: string;
+
+  @Prop()
+  cassoTransactionId?: string;
+
+  @Prop({ type: Array, default: [] })
+  items?: any[];
 
   createdAt!: Date;
   updatedAt!: Date;
@@ -50,3 +77,5 @@ export class Invoice {
 
 export const InvoiceSchema = SchemaFactory.createForClass(Invoice);
 InvoiceSchema.index({ userId: 1, createdAt: -1 });
+InvoiceSchema.index({ contractNumber: 1 });
+InvoiceSchema.index({ organizationId: 1, createdAt: -1 });
