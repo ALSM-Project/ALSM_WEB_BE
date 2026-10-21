@@ -203,6 +203,19 @@ export class MongoLeadRepository implements LeadRepository {
       conversion: doc.conversion
         ? { ...doc.conversion, convertedAt: new Date(doc.conversion.convertedAt) }
         : undefined,
+      contactName: doc.contactName,
+      company: doc.company,
+      phone: doc.phone,
+      source: doc.source,
+      stage: doc.stage,
+      score: doc.score,
+      lastContactAt: doc.lastContactAt,
+      notes: doc.notes,
+      interactions: doc.interactions,
+      demos: doc.demos,
+      quotes: doc.quotes,
+      contracts: doc.contracts,
+      assignedTo: doc.assignedTo,
     };
   }
 }
