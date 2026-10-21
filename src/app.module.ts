@@ -15,6 +15,9 @@ import { ConvertSalesLeadService } from './modules/crm/application/convert-sales
 import { RecordSalesRevenueService } from './modules/crm/application/record-sales-revenue.service';
 import { GetSalesLeadService } from './modules/crm/application/get-sales-lead.service';
 import { SalesController } from './modules/crm/presentation/sales.controller';
+import { SalesCrmController } from './modules/crm/presentation/sales-crm.controller';
+import { SalesCrmService } from './modules/crm/application/sales-crm.service';
+import { AdminModule } from './modules/admin/admin.module';
 import { CurrentSessionGuard } from './shared/security/current-session.guard';
 import { SessionAssuranceModule } from './modules/auth/session-assurance.module';
 import { Connection, Model } from 'mongoose';
@@ -113,6 +116,8 @@ import { VALIDATION_RUN_REPOSITORY } from './modules/validation/domain/validatio
 import { VALIDATION_FINDING_REPOSITORY } from './modules/validation/domain/validation-finding.repository';
 import { MongoValidationRunRepository } from './modules/validation/infrastructure/mongo-validation-run.repository';
 import { MongoValidationFindingRepository } from './modules/validation/infrastructure/mongo-validation-finding.repository';
+import { BmsSanitizerService } from './modules/validation/application/bms-sanitizer.service';
+import { BmsAiValidatorAdapter } from './modules/validation/infrastructure/bms-ai-validator.adapter';
 import { BuildValidationContextService } from './modules/validation/application/build-validation-context.service';
 import { ValidationReadService } from './modules/validation/application/validation-read.service';
 import { ExecuteAiValidationService } from './modules/validation/application/execute-ai-validation.service';
@@ -158,6 +163,7 @@ import { FIELD_MAPPING_REPOSITORY } from './modules/conversions/domain/field-map
 import { MongoFieldMappingRepository } from './modules/conversions/infrastructure/mongo-field-mapping.repository';
 import { GetFieldMappingService } from './modules/conversions/application/get-field-mapping.service';
 import { SaveFieldMappingService } from './modules/conversions/application/save-field-mapping.service';
+import { SaveScreenCodeService } from './modules/conversions/application/save-screen-code.service';
 import { FieldMappingController } from './modules/conversions/presentation/field-mapping.controller';
 import { METHOD_MAPPING_REPOSITORY } from './modules/conversions/domain/method-mapping.types';
 import { MongoMethodMappingRepository } from './modules/conversions/infrastructure/mongo-method-mapping.repository';
@@ -255,12 +261,15 @@ import { GetConversionQualityReviewService } from './modules/conversions/applica
 import { SubmitConversionQualityReviewService } from './modules/conversions/application/submit-conversion-quality-review.service';
 import { QualityReviewController } from './modules/conversions/presentation/quality-review.controller';
 
+import { AuditModule } from './modules/audit/audit.module';
+
 @Module({
   imports: [
     ConfigModule.forRoot({ isGlobal: true, validationSchema: environmentValidationSchema }),
     JwtModule.register({ global: true }),
     MongooseModule.forRootAsync({ useFactory: () => ({ uri: process.env.MONGODB_URI }) }),
     SessionAssuranceModule,
+    AuditModule,
     MongooseModule.forFeature([
       { name: Lead.name, schema: LeadSchema },
       { name: User.name, schema: UserSchema },
@@ -293,9 +302,11 @@ import { QualityReviewController } from './modules/conversions/presentation/qual
     ]),
     RbacModule,
     MenuModule,
+    AdminModule,
   ],
   controllers: [
     SalesController,
+    SalesCrmController,
     TeamsController,
     TeamReportsController,
     TeamJobAssignmentsController,
@@ -328,6 +339,7 @@ import { QualityReviewController } from './modules/conversions/presentation/qual
     ConvertSalesLeadService,
     RecordSalesRevenueService,
     GetSalesLeadService,
+    SalesCrmService,
     {
       provide: SALES_UNIT_OF_WORK,
       inject: [
@@ -414,6 +426,7 @@ import { QualityReviewController } from './modules/conversions/presentation/qual
     MongoScreenRepository,
     GetFieldMappingService,
     SaveFieldMappingService,
+    SaveScreenCodeService,
     GetMethodMappingService,
     SaveMethodMappingService,
     OnboardUserService,
@@ -435,6 +448,8 @@ import { QualityReviewController } from './modules/conversions/presentation/qual
     FakeAiValidatorAdapter,
     OpenAiValidatorAdapter,
     GeminiAiValidatorAdapter,
+    BmsSanitizerService,
+    BmsAiValidatorAdapter,
     aiValidatorProvider,
     MongoErrorLogRepository,
     ConversionWorkerRunner,
