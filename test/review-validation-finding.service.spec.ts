@@ -104,6 +104,7 @@ describe('ReviewValidationFindingService', () => {
     [ValidationFindingStatus.PENDING, ValidationFindingStatus.NEEDS_CORRECTION, undefined],
     [ValidationFindingStatus.PENDING, ValidationFindingStatus.MANUAL_REVIEW, undefined],
     [ValidationFindingStatus.PENDING, ValidationFindingStatus.NOT_APPLICABLE, 'Not relevant'],
+    [ValidationFindingStatus.PENDING, ValidationFindingStatus.RESOLVED, undefined],
     [ValidationFindingStatus.NEEDS_CORRECTION, ValidationFindingStatus.RESOLVED, undefined],
     [ValidationFindingStatus.NOT_APPLICABLE, ValidationFindingStatus.MANUAL_REVIEW, undefined],
     [ValidationFindingStatus.RESOLVED, ValidationFindingStatus.MANUAL_REVIEW, undefined],

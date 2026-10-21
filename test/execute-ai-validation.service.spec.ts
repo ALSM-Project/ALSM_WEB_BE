@@ -32,11 +32,15 @@ describe('ExecuteAiValidationService', () => {
     countByRun: jest.fn(),
     upsertManyForRun: jest.fn(),
   };
+  const bmsAiValidator = {
+    validateBmsConversion: jest.fn(),
+  };
   const service = new ExecuteAiValidationService(
     buildContext as unknown as BuildValidationContextService,
     prepareContext as unknown as PrepareAiValidationContextService,
     runtimeGuard as unknown as AiValidationRuntimeGuard,
     reconcileRun as unknown as ReconcileValidationRunService,
+    bmsAiValidator as unknown as any,
     validator as unknown as AiValidatorPort,
     validationRuns as unknown as ValidationRunRepository,
     validationFindings as unknown as ValidationFindingRepository,
