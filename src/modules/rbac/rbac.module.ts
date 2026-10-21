@@ -16,9 +16,12 @@ import {
 import { RbacService } from './application/rbac.service';
 import { EffectivePermissionsService } from './application/effective-permissions.service';
 import { RbacSeedService } from './application/rbac-seed.service';
+import { TemporaryRoleService } from './application/temporary-role.service';
 import { RbacController } from './presentation/rbac.controller';
+import { TemporaryRoleController } from './presentation/temporary-role.controller';
 import { RBAC_REPOSITORY } from './domain/rbac.repository.interface';
 import { MongoRbacRepository } from './infrastructure/persistence/mongo-rbac.repository';
+import { TemporaryRole, TemporaryRoleSchema } from './infrastructure/schemas/temporary-role.schema';
 
 @Module({
   imports: [
@@ -30,9 +33,10 @@ import { MongoRbacRepository } from './infrastructure/persistence/mongo-rbac.rep
       { name: User.name, schema: UserSchema },
       { name: MenuItem.name, schema: MenuItemSchema },
       { name: MenuItemPermission.name, schema: MenuItemPermissionSchema },
+      { name: TemporaryRole.name, schema: TemporaryRoleSchema },
     ]),
   ],
-  controllers: [RbacController],
+  controllers: [RbacController, TemporaryRoleController],
   providers: [
     MongoRbacRepository,
     {
@@ -42,7 +46,8 @@ import { MongoRbacRepository } from './infrastructure/persistence/mongo-rbac.rep
     RbacService,
     EffectivePermissionsService,
     RbacSeedService,
+    TemporaryRoleService,
   ],
-  exports: [RBAC_REPOSITORY, RbacService, EffectivePermissionsService],
+  exports: [RBAC_REPOSITORY, RbacService, EffectivePermissionsService, TemporaryRoleService],
 })
 export class RbacModule {}
