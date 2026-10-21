@@ -184,8 +184,8 @@ export class MongoMenuBuilderRepository implements IMenuBuilderRepository {
       status: doc.status,
       openInNewTab: doc.openInNewTab ?? false,
       hideParentLabel: doc.hideParentLabel ?? false,
-      createdAt: (doc as any).createdAt,
-      updatedAt: (doc as any).updatedAt,
+      createdAt: doc.createdAt,
+      updatedAt: doc.updatedAt,
     };
   }
 }

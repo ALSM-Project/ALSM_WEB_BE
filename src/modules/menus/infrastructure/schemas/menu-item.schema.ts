@@ -45,6 +45,9 @@ export class MenuItem {
 
   @Prop({ default: false })
   hideParentLabel!: boolean;
+
+  createdAt?: Date;
+  updatedAt?: Date;
 }
 
 export const MenuItemSchema = SchemaFactory.createForClass(MenuItem);

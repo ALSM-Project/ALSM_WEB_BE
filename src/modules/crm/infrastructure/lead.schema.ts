@@ -1,6 +1,8 @@
 import { Prop, Schema, SchemaFactory } from '@nestjs/mongoose';
-import { Schema as MongoSchema, Types } from 'mongoose';
+import { HydratedDocument, Schema as MongoSchema, Types } from 'mongoose';
 import { LeadAssignment, LeadConversion, LeadStatus } from '../domain/lead.types';
+export type LeadDocument = HydratedDocument<Lead>;
+
 @Schema({ collection: 'leads', timestamps: true })
 export class Lead {
   @Prop({ enum: LeadStatus, required: true }) status!: LeadStatus;

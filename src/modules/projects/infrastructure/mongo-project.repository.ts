@@ -1,6 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
-import { Model } from 'mongoose';
+import { FilterQuery, Model } from 'mongoose';
 import { Project, ProjectDocument } from './project.schema';
 import { ProjectRecord, ProjectRepository } from '../domain/project.types';
 import { toValidObjectId } from '../../../shared/utils/object-id.util';
@@ -41,7 +41,7 @@ export class MongoProjectRepository implements ProjectRepository {
   }
 
   async findAll(organizationId?: string): Promise<ProjectRecord[]> {
-    const filter: Record<string, any> = { deletedAt: { $exists: false } };
+    const filter: FilterQuery<ProjectDocument> = { deletedAt: { $exists: false } };
     if (organizationId?.trim()) {
       const orgObjId = toValidObjectId(organizationId);
       filter.organizationId = { $in: [orgObjId, organizationId] };

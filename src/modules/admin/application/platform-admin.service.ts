@@ -1,14 +1,13 @@
 import {
   BadRequestException,
   ConflictException,
-  ForbiddenException,
   Inject,
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
-import { Model, Types } from 'mongoose';
-import { Organization, OrganizationDocument } from '../../organizations/infrastructure/organization.schema';
+import { FilterQuery, Model, Types } from 'mongoose';
+import { Organization, OrganizationDocument, OrganizationMember } from '../../organizations/infrastructure/organization.schema';
 import { OrganizationRole, OrganizationType } from '../../organizations/domain/organization.types';
 import { User, UserDocument } from '../../users/infrastructure/user.schema';
 import { UserSession, UserSessionDocument } from '../../auth/infrastructure/user-session.schema';
@@ -34,7 +33,7 @@ export class PlatformAdminService {
 
   // ─── 3.13.1 View All Organisations ──────────────────────────────
   async listOrganizations(query?: { search?: string; type?: string; status?: string }) {
-    const filter: Record<string, any> = {};
+    const filter: FilterQuery<OrganizationDocument> = {};
     if (query?.type && query.type !== 'ALL') {
       filter.type = query.type;
     }
@@ -78,11 +77,11 @@ export class PlatformAdminService {
     });
 
     // Populate member details
-    const memberUserIds = (org.members || []).map((m: any) => m.userId);
+    const memberUserIds = (org.members || []).map((m: OrganizationMember) => m.userId);
     const users = await this.userModel.find({ _id: { $in: memberUserIds } }).exec();
     const userMap = new Map(users.map((u) => [u._id.toString(), u]));
 
-    const populatedMembers = (org.members || []).map((m: any) => {
+    const populatedMembers = (org.members || []).map((m: OrganizationMember) => {
       const u = userMap.get(m.userId.toString());
       return {
         userId: m.userId.toString(),
@@ -300,7 +299,7 @@ export class PlatformAdminService {
     return list;
   }
 
-  async createEngagementType(actorUserId: string, dto: any) {
+  async createEngagementType(actorUserId: string, dto: Record<string, unknown>) {
     const created = await this.engagementModel.create(dto);
     await this.audit.append({
       actorUserId,
@@ -312,7 +311,7 @@ export class PlatformAdminService {
     return created;
   }
 
-  async editEngagementType(actorUserId: string, id: string, dto: any) {
+  async editEngagementType(actorUserId: string, id: string, dto: Record<string, unknown>) {
     const updated = await this.engagementModel.findByIdAndUpdate(
       toValidObjectId(id),
       { $set: dto },
@@ -523,7 +522,7 @@ export class PlatformAdminService {
     const limit = Math.min(100, Math.max(1, query?.limit || 20));
     const skip = (page - 1) * limit;
 
-    const filter: Record<string, any> = {};
+    const filter: FilterQuery<AuditLogDocument> = {};
     if (query?.action) filter.action = new RegExp(query.action, 'i');
     if (query?.resourceType) filter.resourceType = query.resourceType;
 
@@ -556,8 +555,9 @@ export class PlatformAdminService {
       .exec();
 
     const headers = 'Timestamp,Actor,Action,ResourceType,ResourceId,Metadata\n';
-    const rows = logs.map((l: any) => {
-      const actorStr = l.actorUserId?.fullName || l.actorUserId?.email || String(l.actorUserId || 'SYSTEM');
+    const rows = logs.map((l) => {
+      const actor = l.actorUserId as unknown as { fullName?: string; email?: string } | undefined;
+      const actorStr = actor?.fullName || actor?.email || String(l.actorUserId || 'SYSTEM');
       const metaStr = JSON.stringify(l.metadata || {}).replace(/"/g, '""');
       return `"${l.createdAt ? (l.createdAt as Date).toISOString() : ''}","${actorStr}","${l.action}","${l.resourceType}","${l.resourceId || ''}","${metaStr}"`;
     });
@@ -566,7 +566,7 @@ export class PlatformAdminService {
   }
 
   private async findOrgById(id: string) {
-    let doc: any;
+    let doc: OrganizationDocument | null = null;
     if (Types.ObjectId.isValid(id)) {
       doc = await this.orgModel.findById(id).exec();
     }

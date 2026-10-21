@@ -145,7 +145,7 @@ describe('TriggerAiValidationService', () => {
     conversionJobs.findById.mockResolvedValue({
       id: 'conversion-1',
       projectId: 'project-1',
-      conversionType: 'UNSUPPORTED_TYPE' as any,
+      conversionType: 'UNSUPPORTED_TYPE' as unknown as ConversionType,
       status: ConversionJobStatus.COMPLETED,
     });
 

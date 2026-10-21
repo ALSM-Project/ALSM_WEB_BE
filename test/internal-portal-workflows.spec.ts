@@ -29,10 +29,10 @@ describe('Internal Staff Portal & Platform Administration Workflows', () => {
       };
 
       const projectService = new ProjectService(
-        projectRepo as any,
-        orgContext as any,
-        orgAuth as any,
-        auditRepo as any,
+        projectRepo as never,
+        orgContext as never,
+        orgAuth as never,
+        auditRepo as never,
       );
 
       const demo = await projectService.createDemo('user-staff-1', 'org-internal-1', {
@@ -63,14 +63,14 @@ describe('Internal Staff Portal & Platform Administration Workflows', () => {
       };
 
       const adminService = new PlatformAdminService(
-        orgModel as any,
-        {} as any,
-        {} as any,
-        {} as any,
-        {} as any,
-        {} as any,
-        {} as any,
-        auditRepo as any,
+        orgModel as never,
+        {} as never,
+        {} as never,
+        {} as never,
+        {} as never,
+        {} as never,
+        {} as never,
+        auditRepo as never,
       );
 
       const result = await adminService.impersonateOrganization('support-user-1', 'org-cust-1');
@@ -88,10 +88,31 @@ describe('Internal Staff Portal & Platform Administration Workflows', () => {
 
   describe('3.11 & 3.12 CRM, Sales Management & Approvals', () => {
     let salesCrmService: SalesCrmService;
-    let mockLead: any;
-    let leadModel: any;
-    let orgModel: any;
-    let userModel: any;
+    let mockLead: Record<string, unknown> & {
+      interactions: Record<string, unknown>[];
+      demos: Record<string, unknown>[];
+      quotes: Record<string, unknown>[];
+      contracts: Record<string, unknown>[];
+      save: jest.Mock;
+      [key: string]: unknown;
+    };
+    let leadModel: {
+      find: jest.Mock;
+      findById: jest.Mock;
+      findOne: jest.Mock;
+      create: jest.Mock;
+    };
+    let orgModel: {
+      findOne: jest.Mock;
+      create: jest.Mock;
+      findById?: jest.Mock;
+    };
+    let userModel: {
+      findOne?: jest.Mock;
+      create?: jest.Mock;
+      findById?: jest.Mock;
+      find?: jest.Mock;
+    };
 
     beforeEach(() => {
       mockLead = {
@@ -133,10 +154,10 @@ describe('Internal Staff Portal & Platform Administration Workflows', () => {
       };
 
       salesCrmService = new SalesCrmService(
-        leadModel as any,
-        orgModel as any,
-        userModel as any,
-        auditRepo as any,
+        leadModel as never,
+        orgModel as never,
+        userModel as never,
+        auditRepo as never,
       );
     });
 
@@ -222,10 +243,10 @@ describe('Internal Staff Portal & Platform Administration Workflows', () => {
 
   describe('3.13 & 3.14 Platform Administration & User Lifecycle', () => {
     let adminService: PlatformAdminService;
-    let userModel: any;
-    let sessionModel: any;
-    let projectModel: any;
-    let orgModel: any;
+    let userModel: { findById: jest.Mock; find: jest.Mock };
+    let sessionModel: { countDocuments: jest.Mock; updateMany: jest.Mock };
+    let projectModel: { find: jest.Mock; findById: jest.Mock; updateMany: jest.Mock };
+    let orgModel: { findById: jest.Mock };
 
     beforeEach(() => {
       const targetUser = {
@@ -278,14 +299,14 @@ describe('Internal Staff Portal & Platform Administration Workflows', () => {
       };
 
       adminService = new PlatformAdminService(
-        orgModel as any,
-        userModel as any,
-        sessionModel as any,
-        {} as any,
-        projectModel as any,
-        { countDocuments: jest.fn().mockResolvedValue(0) } as any,
-        { find: jest.fn().mockReturnValue({ populate: jest.fn().mockReturnValue({ sort: jest.fn().mockReturnValue({ skip: jest.fn().mockReturnValue({ limit: jest.fn().mockReturnValue({ exec: jest.fn().mockResolvedValue([]) }) }) }) }) }), countDocuments: jest.fn().mockResolvedValue(0) } as any,
-        auditRepo as any,
+        orgModel as never,
+        userModel as never,
+        sessionModel as never,
+        {} as never,
+        projectModel as never,
+        { countDocuments: jest.fn().mockResolvedValue(0) } as never,
+        { find: jest.fn().mockReturnValue({ populate: jest.fn().mockReturnValue({ sort: jest.fn().mockReturnValue({ skip: jest.fn().mockReturnValue({ limit: jest.fn().mockReturnValue({ exec: jest.fn().mockResolvedValue([]) }) }) }) }) }), countDocuments: jest.fn().mockResolvedValue(0) } as never,
+        auditRepo as never,
       );
     });
 
@@ -325,7 +346,7 @@ describe('Internal Staff Portal & Platform Administration Workflows', () => {
         _id: new Types.ObjectId(),
         isActive: true,
       };
-      userModel.findById.mockImplementation((id: any) => ({
+      userModel.findById.mockImplementation(() => ({
         exec: jest.fn().mockResolvedValue(newStaff),
       }));
 
@@ -346,9 +367,15 @@ describe('Internal Staff Portal & Platform Administration Workflows', () => {
 
   describe('3.15 Temporary Role Management', () => {
     let tempRoleService: TemporaryRoleService;
-    let tempRoleModel: any;
-    let roleModel: any;
-    let userModel: any;
+    let tempRoleModel: {
+      findOne: jest.Mock;
+      create: jest.Mock;
+      findById: jest.Mock;
+      find: jest.Mock;
+      updateMany: jest.Mock;
+    };
+    let roleModel: { findOne: jest.Mock };
+    let userModel: { findById: jest.Mock };
 
     beforeEach(() => {
       tempRoleModel = {
@@ -393,10 +420,10 @@ describe('Internal Staff Portal & Platform Administration Workflows', () => {
       };
 
       tempRoleService = new TemporaryRoleService(
-        tempRoleModel as any,
-        userModel as any,
-        roleModel as any,
-        auditRepo as any,
+        tempRoleModel as never,
+        userModel as never,
+        roleModel as never,
+        auditRepo as never,
       );
     });
 
@@ -476,8 +503,8 @@ describe('Internal Staff Portal & Platform Administration Workflows', () => {
       };
 
       const effectivePermsService = new EffectivePermissionsService(
-        rbacRepo as any,
-        mockTempModel as any,
+        rbacRepo as never,
+        mockTempModel as never,
       );
 
       const perms = await effectivePermsService.getEffectivePermissions('user-1');

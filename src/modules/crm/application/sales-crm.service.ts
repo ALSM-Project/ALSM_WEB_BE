@@ -1,14 +1,13 @@
 import {
-  BadRequestException,
   ConflictException,
   Inject,
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
-import { Model, Types } from 'mongoose';
+import { FilterQuery, Model, Types } from 'mongoose';
 import { randomBytes, randomUUID } from 'node:crypto';
-import { Lead } from '../infrastructure/lead.schema';
+import { Lead, LeadDocument } from '../infrastructure/lead.schema';
 import { Organization } from '../../organizations/infrastructure/organization.schema';
 import { OrganizationRole, OrganizationType } from '../../organizations/domain/organization.types';
 import { User } from '../../users/infrastructure/user.schema';
@@ -65,7 +64,7 @@ export class SalesCrmService {
     organizationId?: string,
     query?: { stage?: string; search?: string },
   ) {
-    const filter: Record<string, any> = {};
+    const filter: FilterQuery<LeadDocument> = {};
     if (organizationId && Types.ObjectId.isValid(organizationId)) {
       filter.organizationId = new Types.ObjectId(organizationId);
     }
@@ -318,7 +317,7 @@ export class SalesCrmService {
 
   async signContract(userId: string, leadId: string, contractId: string) {
     const doc = await this.findLeadById(leadId);
-    const contract = (doc.contracts || []).find((c: any) => c.id === contractId);
+    const contract = (doc.contracts || []).find((c) => c.id === contractId);
     if (!contract) {
       throw new NotFoundException('Contract was not found on this lead');
     }
@@ -343,7 +342,7 @@ export class SalesCrmService {
     return this.mapLead(doc);
   }
 
-  async autoProvisionCustomer(userId: string, leadDoc: any) {
+  async autoProvisionCustomer(userId: string, leadDoc: LeadDocument) {
     try {
       const orgName = leadDoc.company || `${leadDoc.contactName} Enterprise`;
       let org = await this.orgModel.findOne({ name: orgName }).exec();
@@ -432,7 +431,7 @@ export class SalesCrmService {
   async exportSalesReportsCsv() {
     const leads = await this.leadModel.find().sort({ createdAt: -1 }).exec();
     const headers = 'ID,Company,Contact,Email,Phone,Source,Stage,Score,LastContactAt,Created\n';
-    const rows = leads.map((l: any) => {
+    const rows = leads.map((l) => {
       const createdAtStr = l.createdAt ? new Date(l.createdAt).toISOString() : '';
       return `"${l.id}","${l.company || ''}","${l.contactName || ''}","${l.contactEmail || ''}","${l.phone || ''}","${l.source || ''}","${l.stage}","${l.score}","${l.lastContactAt ? l.lastContactAt.toISOString() : ''}","${createdAtStr}"`;
     });
@@ -445,7 +444,7 @@ export class SalesCrmService {
       leadId: string;
       company?: string;
       contactName?: string;
-      quote: any;
+      quote: Record<string, unknown>;
     }> = [];
 
     for (const lead of leads) {
@@ -472,7 +471,7 @@ export class SalesCrmService {
     reason?: string,
   ) {
     const doc = await this.findLeadById(leadId);
-    const quote = (doc.quotes || []).find((q: any) => q.id === quoteId);
+    const quote = (doc.quotes || []).find((q) => q.id === quoteId);
     if (!quote) {
       throw new NotFoundException('Quote was not found');
     }
@@ -497,7 +496,7 @@ export class SalesCrmService {
   }
 
   private async findLeadById(id: string) {
-    let doc: any;
+    let doc: LeadDocument | null = null;
     if (Types.ObjectId.isValid(id)) {
       doc = await this.leadModel.findById(id).exec();
     }
@@ -517,7 +516,7 @@ export class SalesCrmService {
     return doc;
   }
 
-  private mapLead(doc: any) {
+  private mapLead(doc: LeadDocument) {
     return {
       id: doc.id || doc._id.toString(),
       organizationId: doc.organizationId?.toString(),

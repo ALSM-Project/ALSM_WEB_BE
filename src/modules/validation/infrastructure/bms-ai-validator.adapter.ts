@@ -8,7 +8,6 @@ import {
 } from '../domain/bms-validation-taxonomy';
 import { buildBmsAiValidationPrompt } from './bms-ai-validation.prompt';
 import { ValidationFindingSeverity } from '../domain/validation-finding.types';
-import { AiValidatorError } from '../domain/ai-validator.error';
 
 export interface BmsAiValidationInput {
   conversionJobId: string;
@@ -103,9 +102,10 @@ export class BmsAiValidatorAdapter {
         findings: deduplicated,
         durationMs: Date.now() - startTime,
       };
-    } catch (error: any) {
+    } catch (error: unknown) {
+      const msg = error instanceof Error ? error.message : String(error);
       this.logger.warn(
-        `BMS AI Validation call failed: ${error?.message || String(error)}. Gracefully falling back to heuristic validation engine.`,
+        `BMS AI Validation call failed: ${msg}. Gracefully falling back to heuristic validation engine.`,
       );
       return {
         provider: 'heuristic-fallback',
@@ -180,8 +180,8 @@ export class BmsAiValidatorAdapter {
 
           const parsed = JSON.parse(candidateText);
           return parsed.findings || [];
-        } catch (err: any) {
-          lastError = err;
+        } catch (err: unknown) {
+          lastError = err instanceof Error ? err : new Error(String(err));
           if (signal.aborted) throw err;
           if (attempt >= 2) break;
         }

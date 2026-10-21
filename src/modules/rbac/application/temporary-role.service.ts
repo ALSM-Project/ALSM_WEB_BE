@@ -7,7 +7,7 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
-import { Model, Types } from 'mongoose';
+import { FilterQuery, Model } from 'mongoose';
 import { TemporaryRole, TemporaryRoleDocument } from '../infrastructure/schemas/temporary-role.schema';
 import { User, UserDocument } from '../../users/infrastructure/user.schema';
 import { Role, RoleDocument } from '../infrastructure/schemas/role.schema';
@@ -97,7 +97,7 @@ export class TemporaryRoleService {
   }
 
   async listTemporaryRoles(statusFilter?: string) {
-    const filter: Record<string, any> = {};
+    const filter: FilterQuery<TemporaryRoleDocument> = {};
     if (statusFilter && statusFilter !== 'ALL') {
       filter.status = statusFilter;
     }
@@ -241,8 +241,9 @@ export class TemporaryRoleService {
   async exportHistoryCsv() {
     const history = await this.getHistory();
     const headers = 'ID,User,Role,DurationHours,GrantedAt,ExpiresAt,Status,Reason\n';
-    const rows = history.map((h: any) => {
-      const userStr = h.userId?.fullName || h.userId?.email || String(h.userId);
+    const rows = history.map((h) => {
+      const user = h.userId as unknown as { fullName?: string; email?: string } | undefined;
+      const userStr = user?.fullName || user?.email || String(h.userId);
       return `"${h.id}","${userStr}","${h.roleId}","${h.durationHours}","${h.grantedAt ? h.grantedAt.toISOString() : ''}","${h.expiresAt ? h.expiresAt.toISOString() : ''}","${h.status}","${(h.reason || '').replace(/"/g, '""')}"`;
     });
     return headers + rows.join('\n');

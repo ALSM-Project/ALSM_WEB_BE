@@ -68,7 +68,7 @@ export class SaveScreenCodeService {
       return lower.endsWith('.tsx') || lower.endsWith('.jsx');
     });
 
-    let updatedFiles = [...files];
+    const updatedFiles = [...files];
     if (targetIndex >= 0) {
       updatedFiles[targetIndex] = {
         relativePath: files[targetIndex].relativePath,

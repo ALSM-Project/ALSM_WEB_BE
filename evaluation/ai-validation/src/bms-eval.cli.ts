@@ -84,7 +84,7 @@ export function evaluateBmsValidator(
   for (const c of manifest.cases) {
     // Nếu không truyền predictor, dùng mock/baseline heuristic
     const predictions: PredictedFinding[] = runPredictor
-      ? (runPredictor(c) as any)
+      ? (runPredictor(c) as unknown as PredictedFinding[])
       : defaultMockPredictor(c);
 
     for (const exp of c.expectedFindings) {

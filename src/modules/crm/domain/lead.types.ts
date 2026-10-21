@@ -40,10 +40,10 @@ export interface LeadRecord {
   score?: number;
   lastContactAt?: Date;
   notes?: string;
-  interactions?: any[];
-  demos?: any[];
-  quotes?: any[];
-  contracts?: any[];
+  interactions?: Record<string, unknown>[];
+  demos?: Record<string, unknown>[];
+  quotes?: Record<string, unknown>[];
+  contracts?: Record<string, unknown>[];
   assignedTo?: string;
 }
 export interface CreateLead {

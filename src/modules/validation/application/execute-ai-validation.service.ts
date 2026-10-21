@@ -19,7 +19,6 @@ import {
 } from '../domain/validation-finding.repository';
 import {
   ValidationFindingCategory,
-  ValidationFindingSeverity,
   ValidationFindingSource,
   ValidationFindingStatus,
 } from '../domain/validation-finding.types';

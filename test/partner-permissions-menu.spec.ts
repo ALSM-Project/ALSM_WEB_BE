@@ -1,8 +1,9 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { ApplicationContext, MenuItemType, MenuItemStatus } from '../src/modules/menus/domain/enums/menu.enums';
-import { NavigationService, NavNode } from '../src/modules/menus/application/services/navigation.service';
+import { NavigationService } from '../src/modules/menus/application/services/navigation.service';
 import { EffectivePermissionsService } from '../src/modules/rbac/application/effective-permissions.service';
 import {
+  IMenuItemData,
   INavigationRepository,
   NAVIGATION_REPOSITORY,
 } from '../src/modules/menus/domain/interfaces/menu-builder.repository.interface';
@@ -95,13 +96,13 @@ describe('Partner Permissions and Dynamic Menu RBAC', () => {
 
   beforeEach(async () => {
     mockNavRepo = {
-      findActiveVisibleMenuItems: jest.fn().mockResolvedValue(sampleMenuItems as any),
+      findActiveVisibleMenuItems: jest.fn().mockResolvedValue(sampleMenuItems as unknown as IMenuItemData[]),
       findMenuItemPermissionsByItemIds: jest.fn().mockResolvedValue(permissionsMap),
-    } as any;
+    } as unknown as jest.Mocked<INavigationRepository>;
 
     mockEffectivePerms = {
       getEffectivePermissions: jest.fn(),
-    } as any;
+    } as unknown as jest.Mocked<EffectivePermissionsService>;
 
     const module: TestingModule = await Test.createTestingModule({
       providers: [

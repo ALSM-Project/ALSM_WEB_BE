@@ -43,7 +43,17 @@ export class PlatformAdminController {
   @ApiOperation({ summary: 'Create new Enterprise organisation with Trial (3.13.4)' })
   async createEnterprise(
     @CurrentUser() user: AuthenticatedUser,
-    @Body() body: any,
+    @Body()
+    body: {
+      name: string;
+      domain?: string;
+      contactEmail: string;
+      engagementType?: string;
+      trialDays?: number;
+      maxScreens?: number;
+      maxPrograms?: number;
+      maxStorageGb?: number;
+    },
   ) {
     return this.adminService.createEnterpriseOrganization(user.userId, body);
   }
@@ -53,7 +63,13 @@ export class PlatformAdminController {
   async updateEngagement(
     @CurrentUser() user: AuthenticatedUser,
     @Param('id') id: string,
-    @Body() body: any,
+    @Body()
+    body: {
+      engagementType?: string;
+      status?: 'ACTIVE' | 'SUSPENDED' | 'TRIAL';
+      trialExpiresAt?: string;
+      limits?: { maxScreens: number; maxPrograms: number; maxStorageGb: number };
+    },
   ) {
     return this.adminService.updateOrganizationEngagement(user.userId, id, body);
   }
@@ -83,7 +99,7 @@ export class PlatformAdminController {
   @ApiOperation({ summary: 'Create new engagement type (3.13.7)' })
   async createEngagementType(
     @CurrentUser() user: AuthenticatedUser,
-    @Body() body: any,
+    @Body() body: Record<string, unknown>,
   ) {
     return this.adminService.createEngagementType(user.userId, body);
   }
@@ -93,7 +109,7 @@ export class PlatformAdminController {
   async editEngagementType(
     @CurrentUser() user: AuthenticatedUser,
     @Param('id') id: string,
-    @Body() body: any,
+    @Body() body: Record<string, unknown>,
   ) {
     return this.adminService.editEngagementType(user.userId, id, body);
   }
