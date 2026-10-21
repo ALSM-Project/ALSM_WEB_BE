@@ -40,17 +40,13 @@ export class MongoProjectRepository implements ProjectRepository {
     return doc ? this.map(doc) : null;
   }
 
-  async findAll(organizationId: string): Promise<ProjectRecord[]> {
-    const orgObjId = toValidObjectId(organizationId);
-    return (
-      await this.model
-        .find({
-          organizationId: { $in: [orgObjId, organizationId] },
-          deletedAt: { $exists: false },
-        })
-        .sort({ createdAt: -1 })
-        .exec()
-    ).map((doc) => this.map(doc));
+  async findAll(organizationId?: string): Promise<ProjectRecord[]> {
+    const filter: Record<string, any> = { deletedAt: { $exists: false } };
+    if (organizationId?.trim()) {
+      const orgObjId = toValidObjectId(organizationId);
+      filter.organizationId = { $in: [orgObjId, organizationId] };
+    }
+    return (await this.model.find(filter).sort({ createdAt: -1 }).exec()).map((doc) => this.map(doc));
   }
 
   async update(
@@ -68,6 +64,18 @@ export class MongoProjectRepository implements ProjectRepository {
           deletedAt: { $exists: false },
         },
         { $set: input },
+        { new: true },
+      )
+      .exec();
+    return doc ? this.map(doc) : null;
+  }
+
+  async assignTeamLead(id: string, teamLeadId: string): Promise<ProjectRecord | null> {
+    const projObjId = toValidObjectId(id);
+    const doc = await this.model
+      .findOneAndUpdate(
+        { _id: projObjId, deletedAt: { $exists: false } },
+        { $set: { assignedTeamLeadId: toValidObjectId(teamLeadId) } },
         { new: true },
       )
       .exec();
@@ -99,6 +107,8 @@ export class MongoProjectRepository implements ProjectRepository {
       conversionType: doc.conversionType,
       status: doc.status,
       createdBy: doc.createdBy.toString(),
+      isDemo: doc.isDemo,
+      assignedTeamLeadId: doc.assignedTeamLeadId?.toString(),
       createdAt: doc.createdAt,
       updatedAt: doc.updatedAt,
       deletedAt: doc.deletedAt,
