@@ -51,6 +51,14 @@ export class CreateMenuItemDto {
   status?: MenuItemStatus;
 
   @IsOptional()
+  @IsBoolean()
+  openInNewTab?: boolean;
+
+  @IsOptional()
+  @IsBoolean()
+  hideParentLabel?: boolean;
+
+  @IsOptional()
   @IsArray()
   @IsString({ each: true })
   permissions?: string[];
@@ -92,6 +100,14 @@ export class UpdateMenuItemDto {
   @IsOptional()
   @IsEnum(MenuItemStatus)
   status?: MenuItemStatus;
+
+  @IsOptional()
+  @IsBoolean()
+  openInNewTab?: boolean;
+
+  @IsOptional()
+  @IsBoolean()
+  hideParentLabel?: boolean;
 
   @IsOptional()
   @IsArray()

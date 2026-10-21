@@ -38,6 +38,8 @@ export class MongoNavigationRepository implements INavigationRepository {
       order: doc.order,
       visibility: doc.visibility,
       status: doc.status,
+      openInNewTab: doc.openInNewTab ?? false,
+      hideParentLabel: doc.hideParentLabel ?? false,
     }));
   }
 
