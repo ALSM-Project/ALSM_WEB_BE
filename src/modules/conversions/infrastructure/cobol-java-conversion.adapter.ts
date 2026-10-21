@@ -63,14 +63,8 @@ export class CobolJavaConversionAdapter {
 
     let jarPath = this.config.get<string>('TOOL2JAVA_JAR_PATH');
     if (jarPath) {
-      const resolved = path.isAbsolute(jarPath) ? jarPath : path.resolve(process.cwd(), jarPath);
-      if (fs.existsSync(resolved)) {
-        jarPath = resolved;
-      } else {
-        jarPath = undefined;
-      }
-    }
-    if (!jarPath) {
+      jarPath = path.isAbsolute(jarPath) ? jarPath : path.resolve(process.cwd(), jarPath);
+    } else {
       const candidatePaths = [
         path.resolve(process.cwd(), '../ALSM_TOOL_BE/target/akaBatch-1.0.jar'),
         path.resolve(process.cwd(), '../ALSM_TOOL/tool2java/target/akaBatch-1.0.jar'),
