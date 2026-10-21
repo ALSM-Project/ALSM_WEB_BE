@@ -32,6 +32,19 @@ export interface LeadRecord {
   assignments: LeadAssignment[];
   conversion?: LeadConversion;
   replayed?: boolean;
+  contactName?: string;
+  company?: string;
+  phone?: string;
+  source?: string;
+  stage?: 'NEW' | 'CONTACTED' | 'QUALIFIED' | 'PROPOSAL' | 'WON' | 'LOST';
+  score?: number;
+  lastContactAt?: Date;
+  notes?: string;
+  interactions?: Record<string, unknown>[];
+  demos?: Record<string, unknown>[];
+  quotes?: Record<string, unknown>[];
+  contracts?: Record<string, unknown>[];
+  assignedTo?: string;
 }
 export interface CreateLead {
   leadId: string;

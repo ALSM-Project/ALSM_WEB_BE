@@ -90,7 +90,9 @@ export const environmentValidationSchema = Joi.object({
   AI_MAX_FILE_CHARS: Joi.number().integer().min(1).max(2_000_000).default(200_000),
   AI_MAX_TOTAL_CHARS: Joi.number().integer().min(1).max(5_000_000).default(500_000),
   AI_MAX_FINDINGS: Joi.number().integer().min(1).max(200).default(50),
-  AI_PROMPT_VERSION: Joi.string().valid('semantic-cobol-java-v1').default('semantic-cobol-java-v1'),
+  AI_PROMPT_VERSION: Joi.string()
+    .valid('semantic-cobol-java-v1', 'semantic-bms-react-v1')
+    .default('semantic-bms-react-v1'),
   VALIDATION_WORKER_ENABLED: Joi.boolean().default(false),
   VALIDATION_WORKER_CONCURRENCY: Joi.number().integer().min(1).max(10).default(1),
   VALIDATION_JOB_ATTEMPTS: Joi.number().integer().min(1).max(5).default(2),

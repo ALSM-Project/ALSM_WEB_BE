@@ -13,6 +13,24 @@ export class Organization {
   @Prop({ required: true, trim: true }) name!: string;
   @Prop({ enum: OrganizationType, required: true }) type!: OrganizationType;
   @Prop({ type: [OrganizationMemberSchema], default: [] }) members!: OrganizationMember[];
+  @Prop({ trim: true }) domain?: string;
+  @Prop({ trim: true }) contactEmail?: string;
+  @Prop({ default: 'ACTIVE' }) status!: 'ACTIVE' | 'SUSPENDED' | 'TRIAL';
+  @Prop({ default: 'Trial' }) engagementType!: string;
+  @Prop() trialExpiresAt?: Date;
+  @Prop({
+    type: {
+      maxScreens: { type: Number, default: 20 },
+      maxPrograms: { type: Number, default: 10 },
+      maxStorageGb: { type: Number, default: 5 },
+    },
+    default: () => ({ maxScreens: 20, maxPrograms: 10, maxStorageGb: 5 }),
+  })
+  limits!: {
+    maxScreens: number;
+    maxPrograms: number;
+    maxStorageGb: number;
+  };
   createdAt!: Date;
   updatedAt!: Date;
 }

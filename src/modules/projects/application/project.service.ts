@@ -49,6 +49,52 @@ export class ProjectService {
     return project;
   }
 
+  async createDemo(
+    userId: string,
+    organizationHeader: string | undefined,
+    input?: { name?: string; description?: string },
+  ): Promise<ProjectRecord> {
+    const organization = await this.organizationContext.resolve(userId, organizationHeader);
+    const projectName = input?.name || `ALSM Demo Banking Modernization ${new Date().toISOString().slice(0, 10)}`;
+    const project = await this.projects.create({
+      organizationId: organization.id,
+      createdBy: userId,
+      name: projectName,
+      description:
+        input?.description ||
+        'Interactive demonstration project with pre-configured BMS screens and COBOL batch logic for customer presentations.',
+      conversionType: ConversionType.BMS_DSPF_TO_FRONTEND,
+      status: ProjectStatus.ACTIVE,
+      isDemo: true,
+    });
+    await this.audit.append({
+      actorUserId: userId,
+      organizationId: organization.id,
+      action: 'DEMO_PROJECT_CREATED',
+      resourceType: 'PROJECT',
+      resourceId: project.id,
+    });
+    return project;
+  }
+
+  async assignTeamLead(
+    userId: string,
+    projectId: string,
+    teamLeadId: string,
+  ): Promise<ProjectRecord> {
+    const project = await this.projects.assignTeamLead(projectId, teamLeadId);
+    if (!project) throw this.notFound();
+    await this.audit.append({
+      actorUserId: userId,
+      organizationId: project.organizationId,
+      action: 'PROJECT_ASSIGNED_TO_TEAM_LEAD',
+      resourceType: 'PROJECT',
+      resourceId: projectId,
+      metadata: { assignedTeamLeadId: teamLeadId },
+    });
+    return project;
+  }
+
   async list(userId: string, organizationHeader?: string): Promise<ProjectRecord[]> {
     const organization = await this.organizationContext.resolve(userId, organizationHeader);
     return this.projects.findAll(organization.id);

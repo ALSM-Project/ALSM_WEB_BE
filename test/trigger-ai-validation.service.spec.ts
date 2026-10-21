@@ -141,11 +141,11 @@ describe('TriggerAiValidationService', () => {
     expect(validationRuns.createOrGetActiveAiRun).not.toHaveBeenCalled();
   });
 
-  it('rejects a non-COBOL-to-Java conversion', async () => {
+  it('rejects an unsupported conversion type', async () => {
     conversionJobs.findById.mockResolvedValue({
       id: 'conversion-1',
       projectId: 'project-1',
-      conversionType: ConversionType.BMS_DSPF_TO_FRONTEND,
+      conversionType: 'UNSUPPORTED_TYPE' as unknown as ConversionType,
       status: ConversionJobStatus.COMPLETED,
     });
 

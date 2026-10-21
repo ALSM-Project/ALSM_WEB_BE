@@ -5,6 +5,7 @@ import {
   Inject,
   Injectable,
   NotFoundException,
+  Optional,
 } from '@nestjs/common';
 import {
   IRbacRepository,
@@ -12,6 +13,7 @@ import {
   IRole,
   IPermission,
 } from '../domain/rbac.repository.interface';
+import { AUDIT_REPOSITORY, AuditRepository } from '../../audit/domain/audit.repository';
 
 export interface IRoleResponse extends IRole {
   key: string;
@@ -21,7 +23,12 @@ export interface IRoleResponse extends IRole {
 
 @Injectable()
 export class RbacService {
-  constructor(@Inject(RBAC_REPOSITORY) private readonly rbacRepo: IRbacRepository) {}
+  constructor(
+    @Inject(RBAC_REPOSITORY) private readonly rbacRepo: IRbacRepository,
+    @Optional()
+    @Inject(AUDIT_REPOSITORY)
+    private readonly audit?: AuditRepository,
+  ) {}
 
   async getRoles(): Promise<IRoleResponse[]> {
     const roles = await this.rbacRepo.findRoles();
@@ -54,7 +61,13 @@ export class RbacService {
     };
   }
 
-  async createRole(rawKey: string, name: string, description?: string): Promise<IRoleResponse> {
+  async createRole(
+    rawKey: string,
+    name: string,
+    description?: string,
+    isSystem: boolean = false,
+    actorId?: string,
+  ): Promise<IRoleResponse> {
     if (!rawKey || !rawKey.trim()) {
       throw new BadRequestException({ code: 'ROLE_KEY_REQUIRED', message: 'Role key is required' });
     }
@@ -70,8 +83,22 @@ export class RbacService {
       id: normalizedKey,
       name: name.trim(),
       description: description ? description.trim() : '',
-      isSystem: false,
+      isSystem,
     });
+
+    if (this.audit) {
+      await this.audit.append({
+        actorUserId: actorId,
+        action: 'ROLE_CREATED',
+        resourceType: 'role',
+        resourceId: saved.id,
+        metadata: {
+          name: saved.name,
+          isSystem: saved.isSystem ? 'true' : 'false',
+        },
+      });
+    }
+
     return {
       ...saved,
       id: saved.id,
@@ -80,39 +107,71 @@ export class RbacService {
     };
   }
 
-  async updateRole(id: string, name?: string, description?: string): Promise<IRole> {
+  async updateRole(
+    id: string,
+    name?: string,
+    description?: string,
+    actorId?: string,
+  ): Promise<IRole> {
     const role = await this.rbacRepo.findRoleById(id);
     if (!role) {
       throw new NotFoundException({ code: 'ROLE_NOT_FOUND', message: `Role '${id}' not found` });
     }
-    const updated = await this.rbacRepo.updateRole(id, {
+    const resolvedRoleId = role.id;
+    const updated = await this.rbacRepo.updateRole(resolvedRoleId, {
       name: name !== undefined ? name.trim() : undefined,
       description: description !== undefined ? description.trim() : undefined,
     });
+
+    if (this.audit) {
+      await this.audit.append({
+        actorUserId: actorId,
+        action: 'ROLE_UPDATED',
+        resourceType: 'role',
+        resourceId: resolvedRoleId,
+        metadata: {
+          name: updated?.name || role.name,
+        },
+      });
+    }
+
     return updated!;
   }
 
-  async deleteRole(id: string): Promise<void> {
+  async deleteRole(id: string, actorId?: string, force: boolean = false): Promise<void> {
     const role = await this.rbacRepo.findRoleById(id);
     if (!role) {
       throw new NotFoundException({ code: 'ROLE_NOT_FOUND', message: `Role '${id}' not found` });
     }
-    if (role.isSystem) {
-      throw new ForbiddenException({
-        code: 'CANNOT_DELETE_SYSTEM_ROLE',
-        message: `System role '${id}' cannot be deleted`,
+    const resolvedRoleId = role.id;
+    if (!force) {
+      if (role.isSystem) {
+        throw new ForbiddenException({
+          code: 'CANNOT_DELETE_SYSTEM_ROLE',
+          message: `System role '${resolvedRoleId}' cannot be deleted`,
+        });
+      }
+      const userCount = await this.rbacRepo.countUsersWithRole(resolvedRoleId);
+      if (userCount > 0) {
+        throw new ConflictException({
+          code: 'ROLE_IN_USE',
+          message: `Role '${resolvedRoleId}' is assigned to users and cannot be deleted`,
+        });
+      }
+    }
+    await this.rbacRepo.deleteRole(resolvedRoleId);
+    await this.rbacRepo.deleteRolePermissionsByRoleId(resolvedRoleId);
+    await this.rbacRepo.deleteUserRolesByRoleId(resolvedRoleId);
+
+    if (this.audit) {
+      await this.audit.append({
+        actorUserId: actorId,
+        action: 'ROLE_DELETED',
+        resourceType: 'role',
+        resourceId: id,
+        metadata: { name: role.name },
       });
     }
-    const userCount = await this.rbacRepo.countUsersWithRole(id);
-    if (userCount > 0) {
-      throw new ConflictException({
-        code: 'ROLE_IN_USE',
-        message: `Role '${id}' is assigned to users and cannot be deleted`,
-      });
-    }
-    await this.rbacRepo.deleteRole(id);
-    await this.rbacRepo.deleteRolePermissionsByRoleId(id);
-    await this.rbacRepo.deleteUserRolesByRoleId(id);
   }
 
   async getPermissions(): Promise<IPermission[]> {
@@ -124,6 +183,7 @@ export class RbacService {
     label: string,
     group: string,
     description?: string,
+    actorId?: string,
   ): Promise<IPermission> {
     if (!key || !key.trim()) {
       throw new BadRequestException({
@@ -139,12 +199,24 @@ export class RbacService {
         message: `Permission '${normalizedKey}' already exists`,
       });
     }
-    return this.rbacRepo.createPermission({
+    const perm = await this.rbacRepo.createPermission({
       key: normalizedKey,
       label: label.trim(),
       group: group.trim(),
       description: description ? description.trim() : '',
     });
+
+    if (this.audit) {
+      await this.audit.append({
+        actorUserId: actorId,
+        action: 'PERMISSION_CREATED',
+        resourceType: 'permission',
+        resourceId: perm.key,
+        metadata: { label: perm.label, group: perm.group },
+      });
+    }
+
+    return perm;
   }
 
   async updatePermission(
@@ -152,6 +224,7 @@ export class RbacService {
     label?: string,
     group?: string,
     description?: string,
+    actorId?: string,
   ): Promise<IPermission> {
     const perm = await this.rbacRepo.findPermissionByKey(key);
     if (!perm) {
@@ -165,10 +238,21 @@ export class RbacService {
       group: group !== undefined ? group.trim() : undefined,
       description: description !== undefined ? description.trim() : undefined,
     });
+
+    if (this.audit) {
+      await this.audit.append({
+        actorUserId: actorId,
+        action: 'PERMISSION_UPDATED',
+        resourceType: 'permission',
+        resourceId: key,
+        metadata: { label: updated?.label || perm.label },
+      });
+    }
+
     return updated!;
   }
 
-  async deletePermission(key: string): Promise<void> {
+  async deletePermission(key: string, actorId?: string): Promise<void> {
     const perm = await this.rbacRepo.findPermissionByKey(key);
     if (!perm) {
       throw new NotFoundException({
@@ -178,13 +262,28 @@ export class RbacService {
     }
     await this.rbacRepo.deletePermission(key);
     await this.rbacRepo.deleteRolePermissionsByPermissionKey(key);
+
+    if (this.audit) {
+      await this.audit.append({
+        actorUserId: actorId,
+        action: 'PERMISSION_DELETED',
+        resourceType: 'permission',
+        resourceId: key,
+      });
+    }
   }
 
   async getRolePermissions(roleId: string): Promise<string[]> {
-    return this.rbacRepo.findRolePermissions(roleId);
+    const role = await this.rbacRepo.findRoleById(roleId);
+    const resolvedRoleId = role ? role.id : roleId;
+    return this.rbacRepo.findRolePermissions(resolvedRoleId);
   }
 
-  async updateRolePermissions(roleId: string, permissionKeys: string[]): Promise<string[]> {
+  async updateRolePermissions(
+    roleId: string,
+    permissionKeys: string[],
+    actorId?: string,
+  ): Promise<string[]> {
     const role = await this.rbacRepo.findRoleById(roleId);
     if (!role) {
       throw new NotFoundException({
@@ -192,6 +291,7 @@ export class RbacService {
         message: `Role '${roleId}' not found`,
       });
     }
+    const resolvedRoleId = role.id;
 
     const uniqueKeys = Array.from(new Set(permissionKeys));
 
@@ -205,14 +305,33 @@ export class RbacService {
       }
     }
 
-    return this.rbacRepo.updateRolePermissions(roleId, uniqueKeys);
+    const updated = await this.rbacRepo.updateRolePermissions(resolvedRoleId, uniqueKeys);
+
+    if (this.audit) {
+      await this.audit.append({
+        actorUserId: actorId,
+        action: 'ROLE_PERMISSIONS_UPDATED',
+        resourceType: 'role',
+        resourceId: resolvedRoleId,
+        metadata: {
+          permissionCount: uniqueKeys.length.toString(),
+          permissions: uniqueKeys.join(','),
+        },
+      });
+    }
+
+    return updated;
   }
 
   async getUserRoles(userId: string): Promise<string[]> {
     return this.rbacRepo.findUserRoles(userId);
   }
 
-  async updateUserRoles(userId: string, roleIds: string[]): Promise<string[]> {
+  async updateUserRoles(
+    userId: string,
+    roleIds: string[],
+    actorId?: string,
+  ): Promise<string[]> {
     const user = await this.rbacRepo.findUserById(userId);
     if (!user) {
       throw new NotFoundException({
@@ -222,7 +341,21 @@ export class RbacService {
     }
 
     const validRoleIds = await this.rbacRepo.findValidRoles(roleIds);
-    return this.rbacRepo.updateUserRoles(userId, validRoleIds);
+    const updated = await this.rbacRepo.updateUserRoles(userId, validRoleIds);
+
+    if (this.audit) {
+      await this.audit.append({
+        actorUserId: actorId,
+        action: 'USER_ROLES_UPDATED',
+        resourceType: 'user',
+        resourceId: userId,
+        metadata: {
+          roles: validRoleIds.join(','),
+        },
+      });
+    }
+
+    return updated;
   }
 
   async getAllUsers(): Promise<

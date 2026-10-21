@@ -9,7 +9,8 @@ import {
 } from '@nestjs/swagger';
 import { GetFieldMappingService } from '../application/get-field-mapping.service';
 import { SaveFieldMappingService } from '../application/save-field-mapping.service';
-import { SaveFieldMappingDto } from './field-mapping.dto';
+import { SaveScreenCodeService } from '../application/save-screen-code.service';
+import { SaveFieldMappingDto, SaveScreenCodeDto } from './field-mapping.dto';
 import { JwtAuthGuard } from '../../../shared/security/jwt-auth.guard';
 import { CurrentUser } from '../../../shared/security/current-user.decorator';
 import { AuthenticatedUser } from '../../../shared/logging/request-id.middleware';
@@ -27,6 +28,7 @@ export class FieldMappingController {
   constructor(
     private readonly getFieldMapping: GetFieldMappingService,
     private readonly saveFieldMapping: SaveFieldMappingService,
+    private readonly saveScreenCode: SaveScreenCodeService,
   ) {}
 
   @Get('projects/:projectId/screens/:screenId/field-mapping')
@@ -72,6 +74,31 @@ export class FieldMappingController {
       projectId,
       screenId,
       mappings: dto.mappings,
+    });
+  }
+
+  @Put('projects/:projectId/screens/:screenId/code')
+  @ApiOperation({
+    summary: 'Save updated screen component code (TSX)',
+    description: 'Updates generated React code in conversion results to enable direct editing and custom AI validation.',
+  })
+  @ApiParam({ name: 'projectId', description: 'Project ID' })
+  @ApiParam({ name: 'screenId', description: 'Screen ID' })
+  @ApiResponse({ status: 200, description: 'Screen code saved successfully' })
+  async updateCode(
+    @CurrentUser() user: AuthenticatedUser,
+    @Headers('x-organization-id') organizationId: string | undefined,
+    @Param('projectId') projectId: string,
+    @Param('screenId') screenId: string,
+    @Body() dto: SaveScreenCodeDto,
+  ) {
+    return this.saveScreenCode.execute({
+      userId: user.userId,
+      organizationHeader: organizationId,
+      projectId,
+      screenId,
+      code: dto.code,
+      filename: dto.filename,
     });
   }
 }

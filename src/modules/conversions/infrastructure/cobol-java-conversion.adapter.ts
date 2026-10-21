@@ -62,16 +62,22 @@ export class CobolJavaConversionAdapter {
     }
 
     let jarPath = this.config.get<string>('TOOL2JAVA_JAR_PATH');
-    if (!jarPath) {
-      const autoPath = path.resolve(
-        process.cwd(),
-        '../ALSM_TOOL/tool2java/target/akaBatch-1.0.jar',
-      );
-      if (fs.existsSync(autoPath)) {
-        jarPath = autoPath;
-      } else {
+    if (jarPath) {
+      jarPath = path.isAbsolute(jarPath) ? jarPath : path.resolve(process.cwd(), jarPath);
+    } else {
+      const candidatePaths = [
+        path.resolve(process.cwd(), '../ALSM_TOOL_BE/target/akaBatch-1.0.jar'),
+        path.resolve(process.cwd(), '../ALSM_TOOL/tool2java/target/akaBatch-1.0.jar'),
+      ];
+      for (const candidate of candidatePaths) {
+        if (fs.existsSync(candidate)) {
+          jarPath = candidate;
+          break;
+        }
+      }
+      if (!jarPath) {
         throw new Error(
-          'TOOL2JAVA_JAR_PATH is not configured and ../ALSM_TOOL/tool2java/target/akaBatch-1.0.jar was not found',
+          'TOOL2JAVA_JAR_PATH is not configured and neither ../ALSM_TOOL_BE/target/akaBatch-1.0.jar nor ../ALSM_TOOL/tool2java/target/akaBatch-1.0.jar was found',
         );
       }
     }
@@ -134,8 +140,11 @@ export class CobolJavaConversionAdapter {
       // it). Search the whole job working directory rather than trusting -odir alone.
       const generatedFiles = await this.listJavaFiles(jobWorkDir);
       if (generatedFiles.length === 0) {
+        const toolOutput = [result.stdout.trim(), result.stderr.trim()]
+          .filter(Boolean)
+          .join('\n');
         throw new Error(
-          `No Java files were generated. Tool output: ${result.stdout.slice(0, 2000)}`,
+          `No Java files were generated. Tool output: ${toolOutput.slice(0, 2000)}`,
         );
       }
 

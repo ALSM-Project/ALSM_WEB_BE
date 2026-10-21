@@ -36,6 +36,12 @@ export class MongoMenuBuilderRepository implements IMenuBuilderRepository {
     return this.toData(doc);
   }
 
+  async findMenuItemByKey(key: string, app: ApplicationContext): Promise<IMenuItemData | null> {
+    const doc = await this.menuItemModel.findOne({ key, application: app }).exec();
+    if (!doc) return null;
+    return this.toData(doc);
+  }
+
   async findMenuItemPermissionsByItemIds(itemIds: string[]): Promise<Map<string, string[]>> {
     const itemPermissions = await this.menuItemPermissionModel
       .find({ menuItemId: { $in: itemIds } })
@@ -87,6 +93,8 @@ export class MongoMenuBuilderRepository implements IMenuBuilderRepository {
     if (data.order !== undefined) item.order = data.order;
     if (data.visibility !== undefined) item.visibility = data.visibility;
     if (data.status !== undefined) item.status = data.status;
+    if (data.openInNewTab !== undefined) item.openInNewTab = data.openInNewTab;
+    if (data.hideParentLabel !== undefined) item.hideParentLabel = data.hideParentLabel;
 
     await item.save();
 
@@ -174,6 +182,10 @@ export class MongoMenuBuilderRepository implements IMenuBuilderRepository {
       order: doc.order,
       visibility: doc.visibility,
       status: doc.status,
+      openInNewTab: doc.openInNewTab ?? false,
+      hideParentLabel: doc.hideParentLabel ?? false,
+      createdAt: doc.createdAt,
+      updatedAt: doc.updatedAt,
     };
   }
 }

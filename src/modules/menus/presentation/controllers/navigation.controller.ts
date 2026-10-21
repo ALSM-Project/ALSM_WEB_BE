@@ -9,7 +9,7 @@ import { ApplicationContext } from '../../domain/enums/menu.enums';
 @ApiTags('Navigation')
 @ApiBearerAuth()
 @UseGuards(JwtAuthGuard)
-@Controller('navigation')
+@Controller(['navigation', 'internal/navigation'])
 export class NavigationController {
   constructor(private readonly navigationService: NavigationService) {}
 

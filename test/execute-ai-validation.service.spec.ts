@@ -17,6 +17,7 @@ import {
 import { ValidationRunRepository } from '../src/modules/validation/domain/validation-run.repository';
 import { ValidationRunStatus } from '../src/modules/validation/domain/validation-run.types';
 import { ConversionType } from '../src/modules/projects/domain/project.types';
+import { BmsAiValidatorAdapter } from '../src/modules/validation/infrastructure/bms-ai-validator.adapter';
 
 describe('ExecuteAiValidationService', () => {
   const buildContext = { execute: jest.fn() };
@@ -32,11 +33,15 @@ describe('ExecuteAiValidationService', () => {
     countByRun: jest.fn(),
     upsertManyForRun: jest.fn(),
   };
+  const bmsAiValidator = {
+    validateBmsConversion: jest.fn(),
+  };
   const service = new ExecuteAiValidationService(
     buildContext as unknown as BuildValidationContextService,
     prepareContext as unknown as PrepareAiValidationContextService,
     runtimeGuard as unknown as AiValidationRuntimeGuard,
     reconcileRun as unknown as ReconcileValidationRunService,
+    bmsAiValidator as unknown as BmsAiValidatorAdapter,
     validator as unknown as AiValidatorPort,
     validationRuns as unknown as ValidationRunRepository,
     validationFindings as unknown as ValidationFindingRepository,

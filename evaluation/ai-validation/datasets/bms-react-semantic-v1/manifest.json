@@ -1,0 +1,304 @@
+{
+  "datasetId": "bms-react-semantic-v1",
+  "version": "1.0.0",
+  "type": "synthetic-curated",
+  "description": "Benchmark evaluation dataset for BMS/DSPF to React 19 TypeScript Semantic AI Validation using Mutation Testing. Contains clean controls and injected functional defects.",
+  "caseCount": 10,
+  "creationMethodology": "Mutation Testing: Clean controls extracted from real CICS BMS maps (e.g. CardDemo COCRDUP, BNK1ACC). Systematically injected with 8 realistic mutations covering all categories of the taxonomy.",
+  "limitations": [
+    "Ground truth represents standard 3270 Model 2 to React conversions.",
+    "Tolerance allows minor comment or whitespace variations."
+  ],
+  "cases": [
+    {
+      "caseId": "bms-clean-01",
+      "title": "Clean Control: COCRDUP Credit Card Update",
+      "description": "Synthetic clean control: COCRDUP.bms converted faithfully into React 19 TSX. Zero semantic discrepancies.",
+      "sourceFiles": [
+        {
+          "path": "COCRDUP.bms",
+          "content": "COCRDUP  DFHMSD TYPE=&SYSPARM,MODE=INOUT,LANG=COBOL,STORAGE=AUTO,      X\n               TIOAPFX=YES,TERM=3270-2\nCCRDUPA  DFHMDI SIZE=(24,80),LINE=1,COLUMN=1\n         DFHMDF POS=(1,1),LENGTH=5,ATTRB=(ASKIP,NORM),INITIAL='Tran:'\nTRNNAME  DFHMDF POS=(1,7),LENGTH=4,ATTRB=(ASKIP,NORM)\n         DFHMDF POS=(8,23),LENGTH=19,ATTRB=(ASKIP,NORM),              X\n               INITIAL='Card Number       :'\nCARDSID  DFHMDF POS=(8,45),LENGTH=16,ATTRB=(UNPROT,NORM)\n         DFHMDF POS=(24,1),LENGTH=21,ATTRB=(ASKIP,NORM),              X\n               INITIAL='ENTER=Process F3=Exit'\n         DFHMSD TYPE=FINAL"
+        }
+      ],
+      "targetFiles": [
+        {
+          "path": "COCRDUP.tsx",
+          "content": "export function COCRDUP() {\n  const [formData, setFormData] = useState({ cardsid: '' });\n  const FUNCTION_KEYS = [{ key: 'Enter', action: 'ENTER' }, { key: 'F3', action: 'PF3' }];\n  return (\n    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(80, 1ch)', gridTemplateRows: 'repeat(24, 1.35em)' }}>\n      <span style={{ gridRow: 1, gridColumn: '1 / span 5' }}>{'Tran:'}</span>\n      <span style={{ gridRow: 8, gridColumn: '23 / span 19' }}>{'Card Number       :'}</span>\n      <input style={{ gridRow: 8, gridColumn: '45 / span 16' }} id=\"cardsid\" maxLength={16} value={formData.cardsid} />\n      <span style={{ gridRow: 24, gridColumn: '1 / span 21' }}>{'ENTER=Process F3=Exit'}</span>\n    </div>\n  );\n}"
+        }
+      ],
+      "expectedFindings": [],
+      "isClean": true,
+      "difficulty": "EASY",
+      "tags": ["clean-control", "bms", "react"]
+    },
+    {
+      "caseId": "bms-clean-02",
+      "title": "Clean Control: BNK1ACC Bank Account Details",
+      "description": "Synthetic clean control: Account details with numeric account number and password.",
+      "sourceFiles": [
+        {
+          "path": "BNK1ACC.bms",
+          "content": "BNK1ACC  DFHMDI SIZE=(24,80)\n         DFHMDF POS=(5,10),LENGTH=12,INITIAL='Account No:'\nACCTNO   DFHMDF POS=(5,25),LENGTH=10,ATTRB=(UNPROT,NUM)\n         DFHMDF POS=(7,10),LENGTH=9,INITIAL='Password:'\nPASSWD   DFHMDF POS=(7,25),LENGTH=8,ATTRB=(UNPROT,DRK)\n         DFHMDF POS=(24,1),LENGTH=15,INITIAL='ENTER=Submit'"
+        }
+      ],
+      "targetFiles": [
+        {
+          "path": "BNK1ACC.tsx",
+          "content": "export function BNK1ACC() {\n  return (\n    <div style={{ display: 'grid' }}>\n      <span style={{ gridRow: 5, gridColumn: '10 / span 12' }}>{'Account No:'}</span>\n      <input style={{ gridRow: 5, gridColumn: '25 / span 10' }} id=\"acctno\" inputMode=\"numeric\" maxLength={10} />\n      <span style={{ gridRow: 7, gridColumn: '10 / span 9' }}>{'Password:'}</span>\n      <input style={{ gridRow: 7, gridColumn: '25 / span 8' }} id=\"passwd\" type=\"password\" maxLength={8} />\n      <span style={{ gridRow: 24, gridColumn: '1 / span 15' }}>{'ENTER=Submit'}</span>\n    </div>\n  );\n}"
+        }
+      ],
+      "expectedFindings": [],
+      "isClean": true,
+      "difficulty": "EASY",
+      "tags": ["clean-control", "numeric", "password"]
+    },
+    {
+      "caseId": "bms-mut-01",
+      "title": "Mutation 1: Missing Input Field CARDSID",
+      "description": "Mutated: The input element for CARDSID was dropped during React generation.",
+      "sourceFiles": [
+        {
+          "path": "COCRDUP.bms",
+          "content": "CARDSID  DFHMDF POS=(8,45),LENGTH=16,ATTRB=(UNPROT,NORM)"
+        }
+      ],
+      "targetFiles": [
+        {
+          "path": "COCRDUP.tsx",
+          "content": "export function COCRDUP() {\n  return (\n    <div style={{ display: 'grid' }}>\n      <span style={{ gridRow: 8, gridColumn: '23 / span 19' }}>{'Card Number       :'}</span>\n    </div>\n  );\n}"
+        }
+      ],
+      "expectedFindings": [
+        {
+          "findingId": "mut-01-f1",
+          "category": "MISSING_FIELD",
+          "severity": "HIGH",
+          "sourceLocation": { "file": "COCRDUP.bms", "startLine": 1, "endLine": 1 },
+          "targetLocation": { "file": "COCRDUP.tsx", "startLine": 3, "endLine": 5 },
+          "description": "Field CARDSID is declared in BMS but missing in React JSX.",
+          "mutationId": "drop-input-cardsid"
+        }
+      ],
+      "isClean": false,
+      "difficulty": "EASY",
+      "tags": ["mutation", "missing-field"]
+    },
+    {
+      "caseId": "bms-mut-02",
+      "title": "Mutation 2: Length Mismatch on Card Number",
+      "description": "Mutated: BMS defines LENGTH=16, but React component has maxLength={10}.",
+      "sourceFiles": [
+        {
+          "path": "COCRDUP.bms",
+          "content": "CARDSID  DFHMDF POS=(8,45),LENGTH=16,ATTRB=(UNPROT,NORM)"
+        }
+      ],
+      "targetFiles": [
+        {
+          "path": "COCRDUP.tsx",
+          "content": "<input style={{ gridRow: 8, gridColumn: '45 / span 16' }} id=\"cardsid\" maxLength={10} />"
+        }
+      ],
+      "expectedFindings": [
+        {
+          "findingId": "mut-02-f1",
+          "category": "ATTRIBUTE_MISMATCH",
+          "severity": "MEDIUM",
+          "sourceLocation": { "file": "COCRDUP.bms", "startLine": 1, "endLine": 1 },
+          "targetLocation": { "file": "COCRDUP.tsx", "startLine": 1, "endLine": 1 },
+          "description": "BMS declared LENGTH=16, but React maxLength is 10.",
+          "mutationId": "wrong-maxlength"
+        }
+      ],
+      "isClean": false,
+      "difficulty": "EASY",
+      "tags": ["mutation", "attribute-mismatch", "length"]
+    },
+    {
+      "caseId": "bms-mut-03",
+      "title": "Mutation 3: Secret Password Rendered as Plain Text",
+      "description": "Mutated: BMS declares ATTRB=DRK (password), but React uses type='text'.",
+      "sourceFiles": [
+        {
+          "path": "BNK1ACC.bms",
+          "content": "PASSWD   DFHMDF POS=(7,25),LENGTH=8,ATTRB=(UNPROT,DRK)"
+        }
+      ],
+      "targetFiles": [
+        {
+          "path": "BNK1ACC.tsx",
+          "content": "<input style={{ gridRow: 7, gridColumn: '25 / span 8' }} id=\"passwd\" type=\"text\" maxLength={8} />"
+        }
+      ],
+      "expectedFindings": [
+        {
+          "findingId": "mut-03-f1",
+          "category": "ATTRIBUTE_MISMATCH",
+          "severity": "CRITICAL",
+          "sourceLocation": { "file": "BNK1ACC.bms", "startLine": 1, "endLine": 1 },
+          "targetLocation": { "file": "BNK1ACC.tsx", "startLine": 1, "endLine": 1 },
+          "description": "BMS field PASSWD has ATTRB=DRK, but React input has type='text' instead of type='password'.",
+          "mutationId": "insecure-password-type"
+        }
+      ],
+      "isClean": false,
+      "difficulty": "MEDIUM",
+      "tags": ["mutation", "attribute-mismatch", "security"]
+    },
+    {
+      "caseId": "bms-mut-04",
+      "title": "Mutation 4: Layout Grid Row Divergence",
+      "description": "Mutated: BMS defines POS=(8,45), but React gridRow is placed at row 15.",
+      "sourceFiles": [
+        {
+          "path": "COCRDUP.bms",
+          "content": "CARDSID  DFHMDF POS=(8,45),LENGTH=16,ATTRB=(UNPROT,NORM)"
+        }
+      ],
+      "targetFiles": [
+        {
+          "path": "COCRDUP.tsx",
+          "content": "<input style={{ gridRow: 15, gridColumn: '45 / span 16' }} id=\"cardsid\" maxLength={16} />"
+        }
+      ],
+      "expectedFindings": [
+        {
+          "findingId": "mut-04-f1",
+          "category": "LAYOUT_DISCREPANCY",
+          "severity": "HIGH",
+          "sourceLocation": { "file": "COCRDUP.bms", "startLine": 1, "endLine": 1 },
+          "targetLocation": { "file": "COCRDUP.tsx", "startLine": 1, "endLine": 1 },
+          "description": "BMS declared position row 8, but React component is placed at gridRow 15.",
+          "mutationId": "wrong-grid-row"
+        }
+      ],
+      "isClean": false,
+      "difficulty": "EASY",
+      "tags": ["mutation", "layout-discrepancy"]
+    },
+    {
+      "caseId": "bms-mut-05",
+      "title": "Mutation 5: Dropped Function Key F3 Listener",
+      "description": "Mutated: BMS screen defines 'ENTER=Process F3=Exit', but React only listens for Enter.",
+      "sourceFiles": [
+        {
+          "path": "COCRDUP.bms",
+          "content": "FKEYS    DFHMDF POS=(24,1),LENGTH=21,ATTRB=(ASKIP,NORM),INITIAL='ENTER=Process F3=Exit'"
+        }
+      ],
+      "targetFiles": [
+        {
+          "path": "COCRDUP.tsx",
+          "content": "const FUNCTION_KEYS = [{ key: 'Enter', action: 'ENTER' }];"
+        }
+      ],
+      "expectedFindings": [
+        {
+          "findingId": "mut-05-f1",
+          "category": "PF_KEY_MISMATCH",
+          "severity": "HIGH",
+          "sourceLocation": { "file": "COCRDUP.bms", "startLine": 1, "endLine": 1 },
+          "targetLocation": { "file": "COCRDUP.tsx", "startLine": 1, "endLine": 1 },
+          "description": "BMS defines F3=Exit, but React component lacks F3 key handler in FUNCTION_KEYS.",
+          "mutationId": "missing-f3-key"
+        }
+      ],
+      "isClean": false,
+      "difficulty": "MEDIUM",
+      "tags": ["mutation", "pf-key-mismatch"]
+    },
+    {
+      "caseId": "bms-mut-06",
+      "title": "Mutation 6: Missing NUM Numeric Attribute",
+      "description": "Mutated: BMS declares ATTRB=NUM, but React input does not specify numeric mode.",
+      "sourceFiles": [
+        {
+          "path": "BNK1ACC.bms",
+          "content": "ACCTNO   DFHMDF POS=(5,25),LENGTH=10,ATTRB=(UNPROT,NUM)"
+        }
+      ],
+      "targetFiles": [
+        {
+          "path": "BNK1ACC.tsx",
+          "content": "<input style={{ gridRow: 5, gridColumn: '25 / span 10' }} id=\"acctno\" maxLength={10} />"
+        }
+      ],
+      "expectedFindings": [
+        {
+          "findingId": "mut-06-f1",
+          "category": "ATTRIBUTE_MISMATCH",
+          "severity": "MEDIUM",
+          "sourceLocation": { "file": "BNK1ACC.bms", "startLine": 1, "endLine": 1 },
+          "targetLocation": { "file": "BNK1ACC.tsx", "startLine": 1, "endLine": 1 },
+          "description": "BMS field ACCTNO has ATTRB=NUM, but React input lacks inputMode='numeric'.",
+          "mutationId": "missing-num-attribute"
+        }
+      ],
+      "isClean": false,
+      "difficulty": "EASY",
+      "tags": ["mutation", "attribute-mismatch", "numeric"]
+    },
+    {
+      "caseId": "bms-mut-07",
+      "title": "Mutation 7: Corrupted Initial Date Format",
+      "description": "Mutated: BMS specifies initial 'mm/dd/yy', but React initializes with 'dd-mm-yyyy'.",
+      "sourceFiles": [
+        {
+          "path": "COCRDUP.bms",
+          "content": "CURDATE  DFHMDF POS=(1,71),LENGTH=8,ATTRB=(ASKIP,NORM),INITIAL='mm/dd/yy'"
+        }
+      ],
+      "targetFiles": [
+        {
+          "path": "COCRDUP.tsx",
+          "content": "const [receivedData, setReceivedData] = useState({ curdate: 'dd-mm-yyyy' });"
+        }
+      ],
+      "expectedFindings": [
+        {
+          "findingId": "mut-07-f1",
+          "category": "SEMANTIC_LOGIC",
+          "severity": "LOW",
+          "sourceLocation": { "file": "COCRDUP.bms", "startLine": 1, "endLine": 1 },
+          "targetLocation": { "file": "COCRDUP.tsx", "startLine": 1, "endLine": 1 },
+          "description": "BMS INITIAL was 'mm/dd/yy', but React code initializes with 'dd-mm-yyyy'.",
+          "mutationId": "corrupted-date-format"
+        }
+      ],
+      "isClean": false,
+      "difficulty": "EASY",
+      "tags": ["mutation", "semantic-logic"]
+    },
+    {
+      "caseId": "bms-mut-08",
+      "title": "Mutation 8: Dropped Customer Name Field CRDNAME",
+      "description": "Mutated: The CRDNAME field declared in BMS was not generated in React.",
+      "sourceFiles": [
+        {
+          "path": "COCRDUP.bms",
+          "content": "CRDNAME  DFHMDF POS=(11,25),LENGTH=50,ATTRB=(UNPROT,NORM)"
+        }
+      ],
+      "targetFiles": [
+        {
+          "path": "COCRDUP.tsx",
+          "content": "<div style={{ display: 'grid' }}>\n  <span style={{ gridRow: 11, gridColumn: '4 / span 20' }}>{'Name on card      :'}</span>\n</div>"
+        }
+      ],
+      "expectedFindings": [
+        {
+          "findingId": "mut-08-f1",
+          "category": "MISSING_FIELD",
+          "severity": "HIGH",
+          "sourceLocation": { "file": "COCRDUP.bms", "startLine": 1, "endLine": 1 },
+          "targetLocation": { "file": "COCRDUP.tsx", "startLine": 1, "endLine": 3 },
+          "description": "Field CRDNAME is declared in BMS but missing in React JSX.",
+          "mutationId": "drop-input-crdname"
+        }
+      ],
+      "isClean": false,
+      "difficulty": "EASY",
+      "tags": ["mutation", "missing-field"]
+    }
+  ]
+}

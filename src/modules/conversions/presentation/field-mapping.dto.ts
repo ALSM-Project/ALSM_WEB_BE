@@ -95,3 +95,14 @@ export class SaveFieldMappingDto {
   @Type(() => FieldMappingEntryDto)
   mappings!: FieldMappingEntryDto[];
 }
+
+export class SaveScreenCodeDto {
+  @ApiProperty({ description: 'Updated screen component code (TSX)' })
+  @IsString()
+  code!: string;
+
+  @ApiProperty({ description: 'Optional filename, defaults to <screenId>.tsx', required: false })
+  @IsOptional()
+  @IsString()
+  filename?: string;
+}

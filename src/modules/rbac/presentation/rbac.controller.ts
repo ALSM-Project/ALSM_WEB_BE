@@ -1,4 +1,15 @@
-import { Body, Controller, Delete, Get, Param, Patch, Post, Put, UseGuards } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  Delete,
+  Get,
+  Param,
+  Patch,
+  Post,
+  Put,
+  Query,
+  UseGuards,
+} from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiParam, ApiResponse, ApiTags } from '@nestjs/swagger';
 import { RbacService } from '../application/rbac.service';
 import {
@@ -12,11 +23,13 @@ import {
 import { JwtAuthGuard } from '../../../shared/security/jwt-auth.guard';
 import { PermissionsGuard } from '../../../shared/security/permissions.guard';
 import { RequirePermissions } from '../../../shared/security/require-permissions.decorator';
+import { CurrentUser } from '../../../shared/security/current-user.decorator';
+import { AuthenticatedUser } from '../../../shared/logging/request-id.middleware';
 
 @ApiTags('RBAC & Users')
 @ApiBearerAuth()
 @UseGuards(JwtAuthGuard, PermissionsGuard)
-@Controller()
+@Controller(['', 'admin'])
 export class RbacController {
   constructor(private readonly rbacService: RbacService) {}
 
@@ -49,9 +62,9 @@ export class RbacController {
   })
   @ApiResponse({ status: 201, description: 'Role created successfully' })
   @ApiResponse({ status: 403, description: 'Forbidden - Missing roles.manage permission' })
-  async createRole(@Body() dto: CreateRoleDto) {
+  async createRole(@Body() dto: CreateRoleDto, @CurrentUser() user: AuthenticatedUser) {
     const key = dto.key || dto.id;
-    return this.rbacService.createRole(key!, dto.name, dto.description);
+    return this.rbacService.createRole(key!, dto.name, dto.description, false, user.userId);
   }
 
   @Patch('roles/:id')
@@ -63,21 +76,30 @@ export class RbacController {
   @ApiParam({ name: 'id', description: 'Role ID' })
   @ApiResponse({ status: 200, description: 'Role updated successfully' })
   @ApiResponse({ status: 403, description: 'Forbidden - Missing roles.manage permission' })
-  async updateRole(@Param('id') id: string, @Body() dto: UpdateRoleDto) {
-    return this.rbacService.updateRole(id, dto.name, dto.description);
+  async updateRole(
+    @Param('id') id: string,
+    @Body() dto: UpdateRoleDto,
+    @CurrentUser() user: AuthenticatedUser,
+  ) {
+    return this.rbacService.updateRole(id, dto.name, dto.description, user.userId);
   }
 
   @Delete('roles/:id')
   @RequirePermissions('roles.manage')
   @ApiOperation({
-    summary: 'Delete a custom role',
+    summary: 'Delete a role',
     description: 'Requires roles.manage permission.',
   })
   @ApiParam({ name: 'id', description: 'Role ID' })
   @ApiResponse({ status: 200, description: 'Role deleted successfully' })
   @ApiResponse({ status: 403, description: 'Forbidden - Missing roles.manage permission' })
-  async deleteRole(@Param('id') id: string) {
-    await this.rbacService.deleteRole(id);
+  async deleteRole(
+    @Param('id') id: string,
+    @Query('force') force: string | undefined,
+    @CurrentUser() user: AuthenticatedUser,
+  ) {
+    const forceDelete = force !== 'false';
+    await this.rbacService.deleteRole(id, user.userId, forceDelete);
     return { success: true };
   }
 
@@ -100,8 +122,14 @@ export class RbacController {
   })
   @ApiResponse({ status: 201, description: 'Permission created successfully' })
   @ApiResponse({ status: 403, description: 'Forbidden - Missing roles.manage permission' })
-  async createPermission(@Body() dto: CreatePermissionDto) {
-    return this.rbacService.createPermission(dto.key, dto.label, dto.group, dto.description);
+  async createPermission(@Body() dto: CreatePermissionDto, @CurrentUser() user: AuthenticatedUser) {
+    return this.rbacService.createPermission(
+      dto.key,
+      dto.label,
+      dto.group,
+      dto.description,
+      user.userId,
+    );
   }
 
   @Patch('permissions/:key')
@@ -113,8 +141,18 @@ export class RbacController {
   @ApiParam({ name: 'key', description: 'Permission Key' })
   @ApiResponse({ status: 200, description: 'Permission updated successfully' })
   @ApiResponse({ status: 403, description: 'Forbidden - Missing roles.manage permission' })
-  async updatePermission(@Param('key') key: string, @Body() dto: UpdatePermissionDto) {
-    return this.rbacService.updatePermission(key, dto.label, dto.group, dto.description);
+  async updatePermission(
+    @Param('key') key: string,
+    @Body() dto: UpdatePermissionDto,
+    @CurrentUser() user: AuthenticatedUser,
+  ) {
+    return this.rbacService.updatePermission(
+      key,
+      dto.label,
+      dto.group,
+      dto.description,
+      user.userId,
+    );
   }
 
   @Delete('permissions/:key')
@@ -126,8 +164,8 @@ export class RbacController {
   @ApiParam({ name: 'key', description: 'Permission Key' })
   @ApiResponse({ status: 200, description: 'Permission deleted successfully' })
   @ApiResponse({ status: 403, description: 'Forbidden - Missing roles.manage permission' })
-  async deletePermission(@Param('key') key: string) {
-    await this.rbacService.deletePermission(key);
+  async deletePermission(@Param('key') key: string, @CurrentUser() user: AuthenticatedUser) {
+    await this.rbacService.deletePermission(key, user.userId);
     return { success: true };
   }
 
@@ -151,8 +189,12 @@ export class RbacController {
   })
   @ApiParam({ name: 'id', description: 'Role ID' })
   @ApiResponse({ status: 200, description: 'Role permissions updated successfully' })
-  async updateRolePermissions(@Param('id') roleId: string, @Body() dto: UpdateRolePermissionsDto) {
-    return this.rbacService.updateRolePermissions(roleId, dto.permissions);
+  async updateRolePermissions(
+    @Param('id') roleId: string,
+    @Body() dto: UpdateRolePermissionsDto,
+    @CurrentUser() user: AuthenticatedUser,
+  ) {
+    return this.rbacService.updateRolePermissions(roleId, dto.permissions, user.userId);
   }
 
   @Get('users')
@@ -186,7 +228,11 @@ export class RbacController {
   })
   @ApiParam({ name: 'id', description: 'User ID' })
   @ApiResponse({ status: 200, description: 'User roles assigned successfully' })
-  async updateUserRoles(@Param('id') userId: string, @Body() dto: UpdateUserRolesDto) {
-    return this.rbacService.updateUserRoles(userId, dto.roles);
+  async updateUserRoles(
+    @Param('id') userId: string,
+    @Body() dto: UpdateUserRolesDto,
+    @CurrentUser() user: AuthenticatedUser,
+  ) {
+    return this.rbacService.updateUserRoles(userId, dto.roles, user.userId);
   }
 }
