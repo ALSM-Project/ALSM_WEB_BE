@@ -69,14 +69,22 @@ export class TriggerAiValidationService {
         message: 'Conversion job must be completed before AI validation',
       });
     }
-    if (conversion.conversionType !== ConversionType.COBOL_TO_JAVA) {
+    if (
+      conversion.conversionType !== ConversionType.COBOL_TO_JAVA &&
+      conversion.conversionType !== ConversionType.BMS_DSPF_TO_FRONTEND
+    ) {
       throw new BadRequestException({
         code: 'VALIDATION_UNSUPPORTED_CONVERSION_TYPE',
-        message: 'AI semantic validation currently supports COBOL_TO_JAVA only',
+        message: 'AI semantic validation supports COBOL_TO_JAVA and BMS_DSPF_TO_FRONTEND',
       });
     }
 
     const metadata = this.runtimeGuard.assertAvailable();
+    const promptVersion =
+      conversion.conversionType === ConversionType.BMS_DSPF_TO_FRONTEND
+        ? 'semantic-bms-react-v1'
+        : metadata.promptVersion;
+
     const claim = await this.validationRuns.createOrGetActiveAiRun({
       organizationId: organization.id,
       projectId,
@@ -88,7 +96,7 @@ export class TriggerAiValidationService {
       findingCount: 0,
       provider: metadata.provider,
       model: metadata.model,
-      promptVersion: metadata.promptVersion,
+      promptVersion,
     });
 
     if (!claim.created) return claim;

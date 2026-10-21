@@ -18,6 +18,8 @@ import {
   ValidationFindingRepository,
 } from '../domain/validation-finding.repository';
 import {
+  ValidationFindingCategory,
+  ValidationFindingSeverity,
   ValidationFindingSource,
   ValidationFindingStatus,
 } from '../domain/validation-finding.types';
@@ -26,6 +28,7 @@ import {
   ValidationRunRepository,
 } from '../domain/validation-run.repository';
 import { ValidationRunRecord, ValidationRunStatus } from '../domain/validation-run.types';
+import { BmsAiValidatorAdapter } from '../infrastructure/bms-ai-validator.adapter';
 
 export interface ExecuteAiValidationInput {
   validationRunId: string;
@@ -46,6 +49,7 @@ export class ExecuteAiValidationService {
     private readonly prepareContext: PrepareAiValidationContextService,
     private readonly runtimeGuard: AiValidationRuntimeGuard,
     private readonly reconcileRun: ReconcileValidationRunService,
+    private readonly bmsAiValidator: BmsAiValidatorAdapter,
     @Inject(AI_VALIDATOR) private readonly aiValidator: AiValidatorPort,
     @Inject(VALIDATION_RUN_REPOSITORY)
     private readonly validationRuns: ValidationRunRepository,
@@ -80,18 +84,45 @@ export class ExecuteAiValidationService {
       }
 
       const context = await this.buildContext.execute(input);
-      if (context.conversionType !== ConversionType.COBOL_TO_JAVA) {
+      if (
+        context.conversionType !== ConversionType.COBOL_TO_JAVA &&
+        context.conversionType !== ConversionType.BMS_DSPF_TO_FRONTEND
+      ) {
         throw new ValidationExecutionError(
           'VALIDATION_UNSUPPORTED_CONVERSION_TYPE',
-          'AI semantic validation currently supports COBOL_TO_JAVA only',
+          'AI semantic validation supports COBOL_TO_JAVA and BMS_DSPF_TO_FRONTEND',
           false,
         );
       }
 
       const prepared = this.prepareContext.execute(context);
-      const result = await this.aiValidator.validate(prepared.input);
+      let drafts: AiValidationFindingDraft[] = [];
+
+      if (context.conversionType === ConversionType.BMS_DSPF_TO_FRONTEND) {
+        const bmsResult = await this.bmsAiValidator.validate({
+          conversionJobId: context.conversionJobId,
+          sourceFiles: context.sourceFiles,
+          targetFiles: context.targetFiles,
+        });
+        drafts = bmsResult.findings.map((finding) => ({
+          category: finding.category as unknown as ValidationFindingCategory,
+          severity: finding.severity,
+          title: `[${finding.category}] ${finding.fieldName}`,
+          explanation: finding.explanation,
+          expectedBehavior: finding.expectedBehavior,
+          actualBehavior: finding.actualBehavior,
+          suggestion: finding.suggestion,
+          sourceLocation: finding.sourceLocation,
+          targetLocation: finding.targetLocation,
+          confidence: finding.confidence ?? 0.95,
+        }));
+      } else {
+        const result = await this.aiValidator.validate(prepared.input);
+        drafts = result.findings;
+      }
+
       const findings = this.uniqueFindings(
-        result.findings.map((finding) =>
+        drafts.map((finding) =>
           this.toPersistenceInput(input, run.screenId, metadata, finding),
         ),
       );
@@ -162,10 +193,11 @@ export class ExecuteAiValidationService {
     run: ValidationRunRecord,
     metadata: ReturnType<AiValidatorPort['getMetadata']>,
   ): void {
+    const isBmsPrompt = run.promptVersion === 'semantic-bms-react-v1';
     if (
       run.provider !== metadata.provider ||
       run.model !== metadata.model ||
-      run.promptVersion !== metadata.promptVersion
+      (!isBmsPrompt && run.promptVersion !== metadata.promptVersion)
     ) {
       throw new ValidationExecutionError(
         'VALIDATION_AI_CONFIGURATION_CHANGED',
