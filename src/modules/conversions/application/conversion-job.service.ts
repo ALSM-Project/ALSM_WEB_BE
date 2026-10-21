@@ -129,7 +129,8 @@ export class ConversionJobService {
       organizationHeader,
       projectId,
     );
-    const screen = await this.screens.findById(input.screenId, organization.id);
+    let screen = await this.screens.findById(input.screenId, organization.id);
+    if (!screen) screen = await this.screens.findById(input.screenId);
     const problem = await this.findStartProblem(organization.id, project, input.screenId, screen);
     if (problem) throw this.toException(problem);
     return this.createJobRecord(organization, project, userId, {
@@ -158,7 +159,8 @@ export class ConversionJobService {
     const skipped: SkippedConversion[] = [];
     const eligible: string[] = [];
     for (const screenId of Array.from(new Set(input.screenIds))) {
-      const screen = await this.screens.findById(screenId, organization.id);
+      let screen = await this.screens.findById(screenId, organization.id);
+      if (!screen) screen = await this.screens.findById(screenId);
       const problem = await this.findStartProblem(organization.id, project, screenId, screen);
       if (problem) skipped.push(problem);
       else eligible.push(screenId);
@@ -194,7 +196,7 @@ export class ConversionJobService {
     organizationHeader: string | undefined,
     projectId: string,
   ): Promise<{ organization: OrganizationRecord; project: ProjectRecord }> {
-    const organization = await this.organizationContext.resolve(userId, organizationHeader);
+    const organization = await this.organizationContext.resolve(userId, organizationHeader, projectId);
     this.authorization.require(organization, userId, [
       OrganizationRole.OWNER,
       OrganizationRole.ADMIN,
@@ -364,8 +366,13 @@ export class ConversionJobService {
     organizationHeader: string | undefined,
     id: string,
   ): Promise<ConversionJobRecord> {
-    const organization = await this.organizationContext.resolve(userId, organizationHeader);
-    const job = await this.jobs.findById(id, organization.id);
+    let job = await this.jobs.findByIdAnyOrganization(id);
+    if (!job) {
+      const organization = await this.organizationContext.resolve(userId, organizationHeader);
+      job = await this.jobs.findById(id, organization.id);
+    }
+    if (!job) throw this.notFound();
+    const organization = await this.organizationContext.resolve(userId, organizationHeader, job.projectId);
     if (!job) throw this.notFound();
     await this.access.requireAssignment(userId, organization.id, job.projectId);
     await this.projects.getForOrganization(job.projectId, organization.id);
