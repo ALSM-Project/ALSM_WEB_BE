@@ -325,6 +325,7 @@ export class RbacSeedService implements OnApplicationBootstrap {
       'roles.temporary.view',
       'meetings.view',
       'partner.view',
+      'partner.create',
       'partner_project.view',
       'partner_project.manage_files',
       'partner_project.start_conversion',
