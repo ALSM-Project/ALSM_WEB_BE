@@ -164,12 +164,12 @@ describe('UC-48 partner export endpoints (HTTP)', () => {
     permissions.getEffectivePermissions.mockResolvedValue(['conversion_result.view']);
     const server = app.getHttpServer();
 
-    const responses = await Promise.all([
-      request(server).post(`/projects/${PROJECT}/partner-export/preview`).send(OPTIONS),
-      request(server).post(`/projects/${PROJECT}/partner-export/download`).send(OPTIONS),
-      request(server).get(`/projects/${PROJECT}/partner-export/bundles`),
-      request(server).get(`/projects/${PROJECT}/partner-export/bundles/${BUNDLE}/download`),
-    ]);
+    const responses = [
+      await request(server).post(`/projects/${PROJECT}/partner-export/preview`).send(OPTIONS),
+      await request(server).post(`/projects/${PROJECT}/partner-export/download`).send(OPTIONS),
+      await request(server).get(`/projects/${PROJECT}/partner-export/bundles`),
+      await request(server).get(`/projects/${PROJECT}/partner-export/bundles/${BUNDLE}/download`),
+    ];
 
     for (const response of responses) expect(response.status).toBe(403);
     expect(bundles.build).not.toHaveBeenCalled();
@@ -179,14 +179,16 @@ describe('UC-48 partner export endpoints (HTTP)', () => {
     const server = app.getHttpServer();
     const url = `/projects/${PROJECT}/partner-export/publish-and-notify`;
 
-    const responses = await Promise.all([
-      request(server).post(url).send({ partnerEmail: 'not-an-email', options: OPTIONS }),
-      request(server).post(url).send({ partnerEmail: 'a@b.io', customNotes: 'x'.repeat(2001), options: OPTIONS }),
-      request(server).post(url).send({ partnerEmail: 'a@b.io' }),
-      request(server)
+    const responses = [
+      await request(server).post(url).send({ partnerEmail: 'not-an-email', options: OPTIONS }),
+      await request(server)
+        .post(url)
+        .send({ partnerEmail: 'a@b.io', customNotes: 'x'.repeat(2001), options: OPTIONS }),
+      await request(server).post(url).send({ partnerEmail: 'a@b.io' }),
+      await request(server)
         .post(url)
         .send({ partnerEmail: 'a@b.io', options: { ...OPTIONS, storageReference: '../../etc' } }),
-    ]);
+    ];
 
     for (const response of responses) expect(response.status).toBe(400);
     expect(publisher.publish).not.toHaveBeenCalled();
