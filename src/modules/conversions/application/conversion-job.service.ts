@@ -1,4 +1,13 @@
-import { BadRequestException, Inject, Injectable, Logger, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  ConflictException,
+  HttpException,
+  Inject,
+  Injectable,
+  Logger,
+  NotFoundException,
+  UnprocessableEntityException,
+} from '@nestjs/common';
 import { AUDIT_REPOSITORY, AuditRepository } from '../../audit/domain/audit.repository';
 import { OrganizationAuthorizationService } from '../../organizations/application/organization-authorization.service';
 import { OrganizationContextService } from '../../organizations/application/organization-context.service';
@@ -14,8 +23,37 @@ import {
   ConversionQueuePort,
 } from '../domain/conversion-job.types';
 import { OrganizationRecord } from '../../organizations/domain/organization.repository';
-import { ProjectRecord } from '../../projects/domain/project.types';
-import { SCREEN_REPOSITORY, ScreenRepository } from '../../screens/domain/screen.types';
+import { ConversionType, ProjectRecord } from '../../projects/domain/project.types';
+import {
+  SCREEN_REPOSITORY,
+  ScreenRecord,
+  ScreenRepository,
+} from '../../screens/domain/screen.types';
+import { findCopybookBlockers } from '../domain/copybook-dependency-resolver';
+
+/** A screen that a staff-triggered conversion did not start, and why. */
+export interface SkippedConversion {
+  screenId: string;
+  code:
+    | 'SCREEN_NOT_FOUND'
+    | 'CONVERSION_ALREADY_IN_PROGRESS'
+    | 'COPYBOOK_DEPENDENCY_BLOCKED'
+    | 'CONVERSION_QUEUE_UNAVAILABLE';
+  message: string;
+}
+
+export interface BulkConversionStartResult {
+  jobs: ConversionJobRecord[];
+  skipped: SkippedConversion[];
+}
+
+const IN_FLIGHT_STATUSES = new Set<ConversionJobStatus>([
+  ConversionJobStatus.QUEUED,
+  ConversionJobStatus.PROCESSING,
+]);
+/** A QUEUED/PROCESSING job untouched for this long is treated as stuck (e.g. the worker
+ * died) so it cannot lock its screen out of conversion forever. */
+const IN_FLIGHT_STALE_AFTER_MS = 15 * 60 * 1000;
 @Injectable()
 export class ConversionJobService {
   private readonly logger = new Logger(ConversionJobService.name);
@@ -70,6 +108,163 @@ export class ConversionJobService {
       );
     }
     return jobs;
+  }
+
+  /**
+   * Conversion Staff start (or retry) the conversion of one screen/program of a partner
+   * project (UC-47). The screen is the source of truth for the input; a screen that already
+   * has a conversion in flight, or a COBOL program blocked by missing copybooks, is rejected
+   * up front instead of producing a job that races the running one or fails in the worker.
+   */
+  async startForPartner(
+    userId: string,
+    organizationHeader: string | undefined,
+    projectId: string,
+    input: { screenId: string; priority?: ConversionPriority },
+  ): Promise<ConversionJobRecord> {
+    const { organization, project } = await this.resolveWritableProject(
+      userId,
+      organizationHeader,
+      projectId,
+    );
+    const screen = await this.screens.findById(input.screenId, organization.id);
+    const problem = await this.findStartProblem(organization.id, project, input.screenId, screen);
+    if (problem) throw this.toException(problem);
+    return this.createJobRecord(organization, project, userId, {
+      screenId: input.screenId,
+      priority: input.priority,
+    });
+  }
+
+  /**
+   * "Run All" for a partner project. Every requested screen is checked first; the ones that
+   * cannot start are reported in `skipped` with the reason, the rest are queued. If the
+   * queue goes down part-way, the remaining screens are reported as skipped (the jobs
+   * already queued stay valid) and the call only fails when nothing could be queued.
+   */
+  async startBulkForPartner(
+    userId: string,
+    organizationHeader: string | undefined,
+    projectId: string,
+    input: { screenIds: string[]; priority?: ConversionPriority },
+  ): Promise<BulkConversionStartResult> {
+    const { organization, project } = await this.resolveWritableProject(
+      userId,
+      organizationHeader,
+      projectId,
+    );
+    const skipped: SkippedConversion[] = [];
+    const eligible: string[] = [];
+    for (const screenId of Array.from(new Set(input.screenIds))) {
+      const screen = await this.screens.findById(screenId, organization.id);
+      const problem = await this.findStartProblem(organization.id, project, screenId, screen);
+      if (problem) skipped.push(problem);
+      else eligible.push(screenId);
+    }
+
+    const jobs: ConversionJobRecord[] = [];
+    for (let i = 0; i < eligible.length; i++) {
+      try {
+        jobs.push(
+          await this.createJobRecord(organization, project, userId, {
+            screenId: eligible[i],
+            priority: input.priority,
+          }),
+        );
+      } catch (error) {
+        if (!this.isQueueUnavailable(error)) throw error;
+        for (const screenId of eligible.slice(i)) {
+          skipped.push({
+            screenId,
+            code: 'CONVERSION_QUEUE_UNAVAILABLE',
+            message: 'Conversion job could not be queued',
+          });
+        }
+        if (jobs.length === 0) throw error;
+        break;
+      }
+    }
+    return { jobs, skipped };
+  }
+
+  private async resolveWritableProject(
+    userId: string,
+    organizationHeader: string | undefined,
+    projectId: string,
+  ): Promise<{ organization: OrganizationRecord; project: ProjectRecord }> {
+    const organization = await this.organizationContext.resolve(userId, organizationHeader);
+    this.authorization.require(organization, userId, [
+      OrganizationRole.OWNER,
+      OrganizationRole.ADMIN,
+      OrganizationRole.MEMBER,
+    ]);
+    const project = await this.projects.getForOrganization(projectId, organization.id);
+    return { organization, project };
+  }
+
+  private async findStartProblem(
+    organizationId: string,
+    project: ProjectRecord,
+    screenId: string,
+    screen: ScreenRecord | null,
+  ): Promise<SkippedConversion | null> {
+    if (!screen || screen.projectId !== project.id) {
+      return {
+        screenId,
+        code: 'SCREEN_NOT_FOUND',
+        message: 'Screen was not found in this project',
+      };
+    }
+
+    const now = Date.now();
+    const jobs = await this.jobs.listByScreen(project.id, screen.id, organizationId);
+    const running = jobs.find(
+      (job) =>
+        IN_FLIGHT_STATUSES.has(job.status) &&
+        now - new Date(job.updatedAt).getTime() < IN_FLIGHT_STALE_AFTER_MS,
+    );
+    if (running) {
+      return {
+        screenId,
+        code: 'CONVERSION_ALREADY_IN_PROGRESS',
+        message: `"${screen.name}" already has a conversion in progress`,
+      };
+    }
+
+    if (
+      project.conversionType === ConversionType.COBOL_TO_JAVA &&
+      screen.dependencyStatus === 'BLOCKED'
+    ) {
+      const blockers = findCopybookBlockers(screen.dependencies ?? []);
+      if (blockers.length > 0) {
+        return {
+          screenId,
+          code: 'COPYBOOK_DEPENDENCY_BLOCKED',
+          message: `"${screen.name}" is missing copybooks: ${blockers.join(' | ')}`,
+        };
+      }
+    }
+    return null;
+  }
+
+  private toException(problem: SkippedConversion): HttpException {
+    const body = { code: problem.code, message: problem.message };
+    switch (problem.code) {
+      case 'SCREEN_NOT_FOUND':
+        return new NotFoundException(body);
+      case 'CONVERSION_ALREADY_IN_PROGRESS':
+        return new ConflictException(body);
+      case 'COPYBOOK_DEPENDENCY_BLOCKED':
+        return new UnprocessableEntityException(body);
+      default:
+        return new BadRequestException(body);
+    }
+  }
+
+  private isQueueUnavailable(error: unknown): boolean {
+    if (!(error instanceof BadRequestException)) return false;
+    const response = error.getResponse() as { code?: string };
+    return response?.code === 'CONVERSION_QUEUE_UNAVAILABLE';
   }
 
   private async createJobRecord(
