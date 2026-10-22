@@ -12,8 +12,7 @@ import {
   ErrorLogStatus,
 } from '../domain/error-log.types';
 import { CopybookDependencyBlockedError } from '../domain/copybook-dependency-blocked.error';
-import type { DependencyEntry } from '../domain/copybook-dependency.types';
-import { isSystemCopybook } from '../domain/copybook-dependency-resolver';
+import { findCopybookBlockers } from '../domain/copybook-dependency-resolver';
 import { SCREEN_REPOSITORY, ScreenRepository } from '../../screens/domain/screen.types';
 import { runConversionTool } from './conversion-tool-runner.util';
 import { normalizeBundle } from './cics-source-normalizer';
@@ -52,7 +51,7 @@ export class CobolJavaConversionAdapter {
       // BLOCKED purely because of those, and should convert without a re-upload.
       const blockers =
         screen?.dependencyStatus === 'BLOCKED'
-          ? this.collectBlockers(screen.dependencies ?? [])
+          ? findCopybookBlockers(screen.dependencies ?? [])
           : [];
       if (blockers.length > 0) {
         throw new CopybookDependencyBlockedError(
@@ -232,28 +231,6 @@ export class CobolJavaConversionAdapter {
       else if (entry.isFile()) result.push(relative);
     }
     return result;
-  }
-
-  /** Flattens the unresolved entries (top-level and nested) of a dependency tree into
-   * actionable messages — surfaced as the job's errorMessage. IBM system copybooks never
-   * count, whether stored as SYSTEM_PROVIDED or (older analyses) as MISSING. */
-  private collectBlockers(dependencies: DependencyEntry[]): string[] {
-    const unresolved: string[] = [];
-    const collect = (entries: DependencyEntry[]) => {
-      for (const entry of entries) {
-        const nonBlocking =
-          entry.status === 'RESOLVED' ||
-          entry.status === 'SYSTEM_PROVIDED' ||
-          (entry.status === 'MISSING' && isSystemCopybook(entry.copyName));
-        if (!nonBlocking) {
-          unresolved.push(entry.message ?? `${entry.copyName}: ${entry.status}`);
-        } else if (entry.dependencies) {
-          collect(entry.dependencies);
-        }
-      }
-    };
-    collect(dependencies);
-    return unresolved;
   }
 
   private async listJavaFiles(dir: string): Promise<string[]> {
