@@ -9,10 +9,17 @@ import {
 } from '@nestjs/swagger';
 import { ConversionJobService } from '../application/conversion-job.service';
 import { GetConversionResultService } from '../application/get-conversion-result.service';
-import { BulkCreateConversionJobDto, CreateConversionJobDto } from './conversion.dto';
+import {
+  BulkCreateConversionJobDto,
+  CreateConversionJobDto,
+  StartPartnerBulkConversionDto,
+  StartPartnerConversionDto,
+} from './conversion.dto';
 import { JwtAuthGuard } from '../../../shared/security/jwt-auth.guard';
 import { CurrentUser } from '../../../shared/security/current-user.decorator';
 import { AuthenticatedUser } from '../../../shared/logging/request-id.middleware';
+import { PermissionsGuard } from '../../../shared/security/permissions.guard';
+import { RequirePermissions } from '../../../shared/security/require-permissions.decorator';
 
 @ApiTags('Conversion Jobs')
 @ApiBearerAuth()
@@ -43,6 +50,48 @@ export class ConversionsController {
     @Body() dto: CreateConversionJobDto,
   ) {
     return this.conversions.create(user.userId, organizationId, projectId, dto);
+  }
+
+  @Post('projects/:projectId/conversions/jobs')
+  @UseGuards(PermissionsGuard)
+  @RequirePermissions('partner_project.start_conversion')
+  @ApiOperation({
+    summary: 'Convert or retry one screen/program on behalf of a partner (UC-47)',
+    description:
+      'Queues a conversion job for the screen. Rejects a screen outside the project (404), one that already has a conversion in progress (409) and a COBOL program blocked by missing copybooks (422).',
+  })
+  @ApiParam({ name: 'projectId', description: 'Project ID' })
+  @ApiResponse({ status: 201, description: 'Conversion job queued' })
+  @ApiResponse({ status: 400, description: 'Queue unavailable (CONVERSION_QUEUE_UNAVAILABLE)' })
+  @ApiResponse({ status: 404, description: 'SCREEN_NOT_FOUND' })
+  @ApiResponse({ status: 409, description: 'CONVERSION_ALREADY_IN_PROGRESS' })
+  @ApiResponse({ status: 422, description: 'COPYBOOK_DEPENDENCY_BLOCKED' })
+  async startForPartner(
+    @CurrentUser() user: AuthenticatedUser,
+    @Headers('x-organization-id') organizationId: string | undefined,
+    @Param('projectId') projectId: string,
+    @Body() dto: StartPartnerConversionDto,
+  ) {
+    return this.conversions.startForPartner(user.userId, organizationId, projectId, dto);
+  }
+
+  @Post('projects/:projectId/conversions/jobs/bulk')
+  @UseGuards(PermissionsGuard)
+  @RequirePermissions('partner_project.start_conversion')
+  @ApiOperation({
+    summary: 'Run all conversions for a partner project (UC-47)',
+    description:
+      'Queues one job per eligible screen and returns the screens that were skipped, with the reason.',
+  })
+  @ApiParam({ name: 'projectId', description: 'Project ID' })
+  @ApiResponse({ status: 201, description: '{ jobs, skipped }' })
+  async startBulkForPartner(
+    @CurrentUser() user: AuthenticatedUser,
+    @Headers('x-organization-id') organizationId: string | undefined,
+    @Param('projectId') projectId: string,
+    @Body() dto: StartPartnerBulkConversionDto,
+  ) {
+    return this.conversions.startBulkForPartner(user.userId, organizationId, projectId, dto);
   }
 
   @Post('projects/:projectId/conversions/bulk')
