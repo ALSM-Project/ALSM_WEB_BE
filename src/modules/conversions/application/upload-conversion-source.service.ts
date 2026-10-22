@@ -9,6 +9,7 @@ import { ConversionType } from '../../projects/domain/project.types';
 import { ScreenService } from '../../screens/application/screen.service';
 import { ScreenRecord, ScreenSourceType } from '../../screens/domain/screen.types';
 import { analyzeBundle } from '../domain/copybook-dependency-resolver';
+import { expandZipArchives } from './source-archive.util';
 
 export interface UploadedSourceFile {
   originalname: string;
@@ -20,7 +21,14 @@ export interface UploadConversionSourceResult {
   inputReference: string;
   files: { name: string; sizeBytes: number }[];
   screens: ScreenRecord[];
+  /** ZIP entries skipped because they are not source files for this project's conversion type. */
+  ignoredEntries: string[];
 }
+
+const MAX_FILE_BYTES = Number(process.env.MAX_UPLOAD_FILE_SIZE_MB || 50) * 1024 * 1024;
+const MAX_FILES_PER_UPLOAD = Number(process.env.MAX_UPLOAD_FILES_PER_REQUEST || 300);
+/** Upper bound for everything a single upload may expand to (guards against zip bombs). */
+const MAX_TOTAL_BYTES = MAX_FILE_BYTES * 4;
 
 const ALLOWED_EXTENSIONS: Record<ConversionType, string[]> = {
   [ConversionType.BMS_DSPF_TO_FRONTEND]: ['.bms', '.dspf'],
@@ -50,9 +58,9 @@ export class UploadConversionSourceService {
     userId: string,
     organizationHeader: string | undefined,
     projectId: string,
-    files: UploadedSourceFile[],
+    uploads: UploadedSourceFile[],
   ): Promise<UploadConversionSourceResult> {
-    if (!files || files.length === 0) {
+    if (!uploads || uploads.length === 0) {
       throw new BadRequestException({
         code: 'NO_FILES_UPLOADED',
         message: 'At least one file is required',
@@ -66,6 +74,22 @@ export class UploadConversionSourceService {
     ]);
     const project = await this.projects.getForOrganization(projectId, organization.id);
     const allowedExtensions = ALLOWED_EXTENSIONS[project.conversionType];
+
+    // A .zip is replaced by the supported source files inside it before any other check, so
+    // archives get exactly the same per-file validation as individually selected files.
+    const { files, ignored } = await expandZipArchives(uploads, allowedExtensions, {
+      maxEntries: MAX_FILES_PER_UPLOAD,
+      maxFileBytes: MAX_FILE_BYTES,
+      maxTotalBytes: MAX_TOTAL_BYTES,
+    });
+    for (const file of files) {
+      if (file.size === 0 || file.buffer.length === 0) {
+        throw new BadRequestException({
+          code: 'EMPTY_FILE',
+          message: `File "${file.originalname}" is empty (0 bytes)`,
+        });
+      }
+    }
     for (const file of files) {
       const ext = path.extname(file.originalname).toLowerCase();
       if (!allowedExtensions.includes(ext)) {
@@ -142,6 +166,7 @@ export class UploadConversionSourceService {
       inputReference,
       files: files.map((file) => ({ name: file.originalname, sizeBytes: file.size })),
       screens,
+      ignoredEntries: ignored,
     };
   }
 }

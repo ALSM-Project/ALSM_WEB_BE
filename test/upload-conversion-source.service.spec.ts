@@ -1,4 +1,6 @@
 import { BadRequestException } from '@nestjs/common';
+// eslint-disable-next-line @typescript-eslint/no-require-imports
+const JSZip = require('jszip');
 import { UploadConversionSourceService } from '../src/modules/conversions/application/upload-conversion-source.service';
 import { StoragePort } from '../src/shared/storage/storage.port';
 import { OrganizationContextService } from '../src/modules/organizations/application/organization-context.service';
@@ -119,7 +121,7 @@ describe('UploadConversionSourceService', () => {
 
     const result = await service.execute('u1', 'org-1', 'p1', [
       { originalname: 'PROGRAM.cob', buffer: Buffer.from('       COPY SHARED.\n'), size: 20 },
-      { originalname: 'SHARED.cpy', buffer: Buffer.from(''), size: 0 },
+      { originalname: 'SHARED.cpy', buffer: Buffer.from('       01 X PIC X.\n'), size: 17 },
     ]);
 
     expect(screenService.recordDependencyDiagnostics).toHaveBeenCalledTimes(1);
@@ -166,5 +168,123 @@ describe('UploadConversionSourceService', () => {
       ]),
     ).rejects.toBeInstanceOf(BadRequestException);
     expect(storage.writeFiles).not.toHaveBeenCalled();
+  });
+
+  describe('empty files and ZIP archives', () => {
+    async function zipOf(entries: Record<string, string>): Promise<Buffer> {
+      const zip = new JSZip();
+      for (const [name, content] of Object.entries(entries)) zip.file(name, content);
+      return zip.generateAsync({ type: 'nodebuffer' });
+    }
+
+    function archive(buffer: Buffer, name = 'bundle.zip') {
+      return { originalname: name, buffer, size: buffer.length };
+    }
+
+    it('rejects a 0-byte file with EMPTY_FILE and stores nothing', async () => {
+      projects.getForOrganization.mockResolvedValue({
+        id: 'p1',
+        conversionType: ConversionType.BMS_DSPF_TO_FRONTEND,
+      });
+
+      const error = await service
+        .execute('u1', 'org-1', 'p1', [
+          { originalname: 'EMPTY.bms', buffer: Buffer.alloc(0), size: 0 },
+        ])
+        .catch((e: unknown) => e);
+
+      expect(error).toBeInstanceOf(BadRequestException);
+      expect((error as BadRequestException).getResponse()).toMatchObject({ code: 'EMPTY_FILE' });
+      expect(storage.writeFiles).not.toHaveBeenCalled();
+    });
+
+    it('expands a .zip into its source files, flattened and creating one screen per program', async () => {
+      projects.getForOrganization.mockResolvedValue({
+        id: 'p1',
+        conversionType: ConversionType.COBOL_TO_JAVA,
+      });
+      const zip = await zipOf({
+        'app/PROG1.cbl': '       IDENTIFICATION DIVISION.\n',
+        'app/copy/SHARED.cpy': '       01 X PIC X.\n',
+        'README.md': 'not source',
+        '__MACOSX/app/._PROG1.cbl': 'junk',
+        'app/../../evil/PROG2.cob': '       IDENTIFICATION DIVISION.\n',
+      });
+
+      const result = await service.execute('u1', 'org-1', 'p1', [archive(zip)]);
+
+      expect(result.files.map((f) => f.name).sort()).toEqual([
+        'PROG1.cbl',
+        'PROG2.cob',
+        'SHARED.cpy',
+      ]);
+      expect(storage.writeFiles).toHaveBeenCalledWith(
+        'sources/p1',
+        expect.arrayContaining([{ relativePath: 'PROG1.cbl', content: expect.any(Buffer) }]),
+      );
+      expect(result.screens.map((s) => s.name).sort()).toEqual(['PROG1.cbl', 'PROG2.cob']);
+      expect(result.ignoredEntries).toEqual(
+        expect.arrayContaining(['bundle.zip/README.md', 'bundle.zip/__MACOSX/app/._PROG1.cbl']),
+      );
+    });
+
+    it('validates files from a .zip by the project conversion type', async () => {
+      projects.getForOrganization.mockResolvedValue({
+        id: 'p1',
+        conversionType: ConversionType.BMS_DSPF_TO_FRONTEND,
+      });
+      const zip = await zipOf({ 'PROG1.cbl': '       IDENTIFICATION DIVISION.\n' });
+
+      const error = await service
+        .execute('u1', 'org-1', 'p1', [archive(zip)])
+        .catch((e: unknown) => e);
+
+      expect((error as BadRequestException).getResponse()).toMatchObject({ code: 'EMPTY_ARCHIVE' });
+      expect(storage.writeFiles).not.toHaveBeenCalled();
+    });
+
+    it('rejects an archive that is not a valid ZIP', async () => {
+      projects.getForOrganization.mockResolvedValue({
+        id: 'p1',
+        conversionType: ConversionType.COBOL_TO_JAVA,
+      });
+
+      const error = await service
+        .execute('u1', 'org-1', 'p1', [archive(Buffer.from('this is not a zip'))])
+        .catch((e: unknown) => e);
+
+      expect((error as BadRequestException).getResponse()).toMatchObject({
+        code: 'INVALID_ARCHIVE',
+      });
+    });
+
+    it('rejects an empty source file inside a .zip', async () => {
+      projects.getForOrganization.mockResolvedValue({
+        id: 'p1',
+        conversionType: ConversionType.COBOL_TO_JAVA,
+      });
+      const zip = await zipOf({ 'PROG1.cbl': '' });
+
+      const error = await service
+        .execute('u1', 'org-1', 'p1', [archive(zip)])
+        .catch((e: unknown) => e);
+
+      expect((error as BadRequestException).getResponse()).toMatchObject({ code: 'EMPTY_FILE' });
+    });
+
+    it('rejects a zip that holds the same file name twice after flattening', async () => {
+      projects.getForOrganization.mockResolvedValue({
+        id: 'p1',
+        conversionType: ConversionType.COBOL_TO_JAVA,
+      });
+      const zip = await zipOf({
+        'a/X.cpy': '       01 A PIC X.\n',
+        'b/X.cpy': '       01 B PIC X.\n',
+      });
+
+      await expect(service.execute('u1', 'org-1', 'p1', [archive(zip)])).rejects.toMatchObject({
+        response: { code: 'DUPLICATE_FILE_NAME' },
+      });
+    });
   });
 });
