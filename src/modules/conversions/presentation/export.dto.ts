@@ -4,9 +4,11 @@ import {
   ArrayMaxSize,
   IsArray,
   IsBoolean,
+  IsDefined,
   IsEmail,
   IsEnum,
   IsNotEmpty,
+  IsObject,
   IsOptional,
   IsString,
   MaxLength,
@@ -102,6 +104,8 @@ export class TriggerExportAndNotifyDto {
   customNotes?: string;
 
   @ApiProperty({ type: PartnerExportOptionsDto })
+  @IsDefined()
+  @IsObject()
   @ValidateNested()
   @Type(() => PartnerExportOptionsDto)
   options!: PartnerExportOptionsDto;
