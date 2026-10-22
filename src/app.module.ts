@@ -209,6 +209,19 @@ import { HealthController } from './modules/health/health.controller';
 import { ConversionWorkerRunner } from './modules/conversions/infrastructure/conversion-worker.runner';
 import { ExportCodeService } from './modules/conversions/application/export-code.service';
 import { ExportController } from './modules/conversions/presentation/export.controller';
+import { PartnerExportController } from './modules/conversions/presentation/partner-export.controller';
+import { PartnerBundleService } from './modules/conversions/application/partner-bundle.service';
+import { PublishPartnerExportService } from './modules/conversions/application/publish-partner-export.service';
+import {
+  ExportBundle,
+  ExportBundleSchema,
+} from './modules/conversions/infrastructure/export-bundle.schema';
+import { MongoExportBundleRepository } from './modules/conversions/infrastructure/mongo-export-bundle.repository';
+import { MongoExportPublicationUnitOfWork } from './modules/conversions/infrastructure/mongo-export-publication.unit-of-work';
+import {
+  EXPORT_BUNDLE_REPOSITORY,
+  EXPORT_PUBLICATION_UNIT_OF_WORK,
+} from './modules/conversions/domain/export.types';
 import {
   Subscription,
   SubscriptionSchema,
@@ -306,6 +319,7 @@ import { AuditModule } from './modules/audit/audit.module';
       { name: LegacyValidationFinding.name, schema: LegacyValidationFindingSchema },
       { name: QuoteRequest.name, schema: QuoteRequestSchema },
       { name: ConversionQualityReview.name, schema: ConversionQualityReviewSchema },
+      { name: ExportBundle.name, schema: ExportBundleSchema },
     ]),
     RbacModule,
     MenuModule,
@@ -330,6 +344,7 @@ import { AuditModule } from './modules/audit/audit.module';
     PartnerController,
     UsersController,
     ExportController,
+    PartnerExportController,
     ErrorLogController,
     ValidationController,
     RuleValidationController,
@@ -442,6 +457,34 @@ import { AuditModule } from './modules/audit/audit.module';
     RuleValidatorService,
     LegacyValidationService,
     ExportCodeService,
+    PartnerBundleService,
+    PublishPartnerExportService,
+    { provide: EXPORT_BUNDLE_REPOSITORY, useClass: MongoExportBundleRepository },
+    {
+      provide: EXPORT_PUBLICATION_UNIT_OF_WORK,
+      inject: [
+        getConnectionToken(),
+        getModelToken(Project.name),
+        getModelToken(Partner.name),
+        getModelToken(ExportBundle.name),
+        getModelToken(AuditLog.name),
+      ],
+      useFactory: (
+        connection: Connection,
+        projects: Model<Project>,
+        partners: Model<Partner>,
+        bundles: Model<ExportBundle>,
+        audits: Model<AuditLog>,
+      ) =>
+        new MongoExportPublicationUnitOfWork(
+          connection,
+          projects,
+          partners,
+          bundles,
+          (session, selectedConnection) =>
+            new MongoAuditRepository(audits).inTransaction(session, selectedConnection),
+        ),
+    },
     ErrorLogService,
     BuildValidationContextService,
     PrepareAiValidationContextService,

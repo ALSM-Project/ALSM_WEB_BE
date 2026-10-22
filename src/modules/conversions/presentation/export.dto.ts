@@ -1,5 +1,17 @@
 import { ApiProperty } from '@nestjs/swagger';
-import { IsArray, IsBoolean, IsEnum, IsOptional, IsString } from 'class-validator';
+import { Type } from 'class-transformer';
+import {
+  ArrayMaxSize,
+  IsArray,
+  IsBoolean,
+  IsEmail,
+  IsEnum,
+  IsNotEmpty,
+  IsOptional,
+  IsString,
+  MaxLength,
+  ValidateNested,
+} from 'class-validator';
 import type { ExportOutputOption, FrameworkTarget, StylingOption } from '../domain/export.types';
 
 export class ExportConfigurationDto {
@@ -40,4 +52,57 @@ export class ExportConfigurationDto {
   @IsOptional()
   @IsString()
   projectName?: string;
+}
+
+export const CUSTOM_NOTES_MAX_LENGTH = 2000;
+
+/** UC-48 packaging options for a partner bundle. */
+export class PartnerExportOptionsDto {
+  @ApiProperty({
+    example: ['6650aa00aa00aa00aa00aa01'],
+    type: [String],
+    description: 'Screens/programs to package; empty means every item of the project',
+  })
+  @IsArray()
+  @ArrayMaxSize(1000)
+  @IsString({ each: true })
+  selectedScreenIds!: string[];
+
+  @ApiProperty({ example: true, description: 'Generate tsconfig with strict mode (React bundles)' })
+  @IsBoolean()
+  includeTypeScript!: boolean;
+
+  @ApiProperty({ example: true })
+  @IsBoolean()
+  includeUnitTests!: boolean;
+
+  @ApiProperty({ example: true, description: 'README, setup guide and release notes' })
+  @IsBoolean()
+  includeDocumentation!: boolean;
+
+  @ApiProperty({ example: 'Core Banking Screens', required: false })
+  @IsOptional()
+  @IsString()
+  @MaxLength(200)
+  projectName?: string;
+}
+
+export class TriggerExportAndNotifyDto {
+  @ApiProperty({ example: 'jreynolds@pacificbanking.com' })
+  @IsString()
+  @IsNotEmpty()
+  @IsEmail({}, { message: 'partnerEmail must be a valid email address' })
+  @MaxLength(254)
+  partnerEmail!: string;
+
+  @ApiProperty({ example: 'All screens passed validation.', required: false })
+  @IsOptional()
+  @IsString()
+  @MaxLength(CUSTOM_NOTES_MAX_LENGTH)
+  customNotes?: string;
+
+  @ApiProperty({ type: PartnerExportOptionsDto })
+  @ValidateNested()
+  @Type(() => PartnerExportOptionsDto)
+  options!: PartnerExportOptionsDto;
 }
