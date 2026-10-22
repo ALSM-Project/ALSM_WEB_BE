@@ -1,6 +1,8 @@
-import { BadRequestException, Inject, Injectable } from '@nestjs/common';
+import { BadRequestException, Inject, Injectable, Logger } from '@nestjs/common';
 import * as path from 'path';
 import { STORAGE_PORT, StoragePort } from '../../../shared/storage/storage.port';
+import { AUDIT_REPOSITORY, AuditRepository } from '../../audit/domain/audit.repository';
+import { EffectivePermissionsService } from '../../rbac/application/effective-permissions.service';
 import { OrganizationAuthorizationService } from '../../organizations/application/organization-authorization.service';
 import { OrganizationContextService } from '../../organizations/application/organization-context.service';
 import { OrganizationRole } from '../../organizations/domain/organization.types';
@@ -44,14 +46,21 @@ const SCREEN_SOURCE_TYPE_BY_EXTENSION: Record<string, ScreenSourceType> = {
   '.cbl': ScreenSourceType.COBOL,
 };
 
+/** Permission held by Conversion Staff who work on a partner's projects. */
+const PARTNER_FILES_PERMISSION = 'partner_project.manage_files';
+
 @Injectable()
 export class UploadConversionSourceService {
+  private readonly logger = new Logger(UploadConversionSourceService.name);
+
   constructor(
     @Inject(STORAGE_PORT) private readonly storage: StoragePort,
     private readonly organizationContext: OrganizationContextService,
     private readonly authorization: OrganizationAuthorizationService,
     private readonly projects: ProjectService,
     private readonly screenService: ScreenService,
+    @Inject(AUDIT_REPOSITORY) private readonly audit: AuditRepository,
+    private readonly effectivePermissions: EffectivePermissionsService,
   ) {}
 
   async execute(
@@ -162,11 +171,44 @@ export class UploadConversionSourceService {
       }
     }
 
+    await this.recordUploadAudit(userId, organization.id, project.id, files.length, screens.length);
+
     return {
       inputReference,
       files: files.map((file) => ({ name: file.originalname, sizeBytes: file.size })),
       screens,
       ignoredEntries: ignored,
     };
+  }
+
+  /**
+   * Audit trail for a successful upload. Staff who hold partner_project.manage_files are
+   * uploading on a partner's behalf (PARTNER_PROJECT_FILES_UPLOADED); any other member's own
+   * upload is recorded as CONVERSION_SOURCES_UPLOADED. Only reached after the files and
+   * screens exist, so a failed upload never leaves an entry. The upload itself already
+   * happened, so an audit-store failure is logged rather than turned into a failed request.
+   */
+  private async recordUploadAudit(
+    userId: string,
+    organizationId: string,
+    projectId: string,
+    fileCount: number,
+    screenCount: number,
+  ): Promise<void> {
+    try {
+      const permissions = await this.effectivePermissions.getEffectivePermissions(userId);
+      await this.audit.append({
+        actorUserId: userId,
+        organizationId,
+        action: permissions.includes(PARTNER_FILES_PERMISSION)
+          ? 'PARTNER_PROJECT_FILES_UPLOADED'
+          : 'CONVERSION_SOURCES_UPLOADED',
+        resourceType: 'PROJECT',
+        resourceId: projectId,
+        metadata: { fileCount: String(fileCount), screenCount: String(screenCount) },
+      });
+    } catch (error) {
+      this.logger.error(`Failed to record upload audit for project ${projectId}: ${String(error)}`);
+    }
   }
 }
