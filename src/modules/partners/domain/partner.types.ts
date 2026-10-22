@@ -14,6 +14,9 @@ export interface PartnerRecord {
   engagementType?: string;
   assignedStaffName?: string;
   status: PartnerStatus;
+  /** Code bundles released to this partner (UC-48). */
+  completedExportCount: number;
+  latestActivity?: string;
   createdBy: string;
   createdAt: Date;
   updatedAt: Date;

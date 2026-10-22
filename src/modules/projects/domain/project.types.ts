@@ -5,6 +5,8 @@ export enum ConversionType {
 export enum ProjectStatus {
   DRAFT = 'DRAFT',
   ACTIVE = 'ACTIVE',
+  /** The converted code bundle has been released to the partner (UC-48). */
+  COMPLETED = 'COMPLETED',
   ARCHIVED = 'ARCHIVED',
 }
 export interface ProjectRecord {
@@ -17,6 +19,9 @@ export interface ProjectRecord {
   createdBy: string;
   isDemo?: boolean;
   assignedTeamLeadId?: string;
+  isExported?: boolean;
+  exportedAt?: Date;
+  exportedBundleName?: string;
   createdAt: Date;
   updatedAt: Date;
   deletedAt?: Date;

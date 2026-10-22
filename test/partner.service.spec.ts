@@ -23,6 +23,7 @@ function partnerRecord(overrides: Partial<PartnerRecord> = {}): PartnerRecord {
     engagementType: 'Dedicated Modernization',
     assignedStaffName: 'Sarah Jenkins',
     status: PartnerStatus.ACTIVE,
+    completedExportCount: 0,
     createdBy: USER_ID,
     createdAt: new Date('2026-10-22T00:00:00Z'),
     updatedAt: new Date('2026-10-22T00:00:00Z'),

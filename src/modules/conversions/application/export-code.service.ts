@@ -12,7 +12,7 @@ import {
 } from '../domain/conversion-job.types';
 import type { ExportConfiguration, ExportFileItem, BundleMetrics } from '../domain/export.types';
 
-interface ScreenExport {
+export interface ScreenExport {
   screenId: string;
   componentName: string;
   files: { relativePath: string; content: string }[];
@@ -56,10 +56,28 @@ export class ExportCodeService {
     config: ExportConfiguration,
   ): Promise<{ buffer: Buffer; filename: string }> {
     const { screens } = await this.loadScreenExports(userId, organizationHeader, projectId, config);
-    const zip = new JSZip();
     const projectName = config.projectName || 'Modernized System';
     const tree = this.buildFileTree(config, projectName, screens);
+    const buffer = await this.zipFileTree(tree);
 
+    const safeName = projectName.toLowerCase().replace(/[^a-z0-9]/g, '-');
+    const filename = `${safeName}-export-code.zip`;
+
+    return { buffer, filename };
+  }
+
+  /** The runnable React/Vite project tree for already-loaded screens (reused by UC-48). */
+  buildReactProjectTree(
+    config: ExportConfiguration,
+    projectName: string,
+    screens: ScreenExport[],
+  ): ExportFileItem[] {
+    return this.buildFileTree(config, projectName, screens);
+  }
+
+  /** Compresses a file tree with DEFLATE level 9; the single root folder is flattened away. */
+  async zipFileTree(tree: ExportFileItem[]): Promise<Buffer> {
+    const zip = new JSZip();
     const addItemsToZip = (items: ExportFileItem[], currentFolder: JSZipType) => {
       for (const item of items) {
         if (item.type === 'dir') {
@@ -79,16 +97,11 @@ export class ExportCodeService {
       addItemsToZip(tree, zip);
     }
 
-    const arrayBuffer = await zip.generateAsync({
+    return zip.generateAsync({
       type: 'nodebuffer',
       compression: 'DEFLATE',
       compressionOptions: { level: 9 },
     });
-
-    const safeName = projectName.toLowerCase().replace(/[^a-z0-9]/g, '-');
-    const filename = `${safeName}-export-code.zip`;
-
-    return { buffer: arrayBuffer, filename };
   }
 
   /** Resolves each selected screen to the real files from its latest COMPLETED conversion job. Screens with no completed job yet are kept (with an empty files list) rather than failing the whole export — the caller surfaces this as a warning, never as fake generated code. */

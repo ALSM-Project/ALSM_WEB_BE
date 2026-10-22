@@ -204,4 +204,124 @@ export class MailService {
       this.logger.error(`Failed to send meeting invite to ${to}: ${(err as Error).message}`);
     }
   }
+
+  /**
+   * UC-48: tells a partner their modernized code bundle is ready. Returns false when SMTP is
+   * not configured (nothing was sent) and throws when the SMTP server rejects the message,
+   * so the caller can record the real delivery outcome.
+   */
+  async sendPartnerExportNotification(params: {
+    to: string;
+    projectName: string;
+    packageName: string;
+    targetFramework: string;
+    includedCount: number;
+    excludedItems: { name: string; reason: string }[];
+    customNotes?: string;
+    portalUrl: string;
+  }): Promise<boolean> {
+    const esc = (value: string) =>
+      value
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
+    const { to, projectName, packageName, targetFramework, includedCount, excludedItems, portalUrl } =
+      params;
+    const notes = params.customNotes?.trim();
+    const subject = `[ALSM] Modernized Code Bundle Ready: ${projectName}`;
+
+    const excludedRows = excludedItems.length
+      ? `
+              <p style="color:#091E42;font-size:14px;font-weight:700;margin:24px 0 8px;">Not included (${excludedItems.length})</p>
+              <ul style="color:#42526E;font-size:13px;line-height:1.6;margin:0;padding-left:20px;">
+                ${excludedItems.map((i) => `<li><strong>${esc(i.name)}</strong>: ${esc(i.reason)}</li>`).join('')}
+              </ul>`
+      : '';
+    const notesBlock = notes
+      ? `
+              <p style="color:#091E42;font-size:14px;font-weight:700;margin:24px 0 8px;">Notes from the conversion team</p>
+              <div style="background:#F7F9FC;border:1px solid #D9E2EC;border-radius:8px;padding:14px 18px;color:#42526E;font-size:13px;line-height:1.6;white-space:pre-wrap;">${esc(notes)}</div>`
+      : '';
+
+    const html = `
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Code Bundle Ready</title>
+</head>
+<body style="margin:0;padding:0;background:#f5f7fa;font-family:'Segoe UI',Arial,sans-serif;">
+  <table width="100%" cellpadding="0" cellspacing="0" style="background:#f5f7fa;padding:40px 0;">
+    <tr>
+      <td align="center">
+        <table width="600" cellpadding="0" cellspacing="0" style="background:#fff;border-radius:12px;overflow:hidden;box-shadow:0 4px 16px rgba(0,0,0,.08);">
+          <tr>
+            <td style="background:#0652CC;padding:28px 40px;">
+              <h1 style="color:#fff;margin:0 0 4px;font-size:20px;font-weight:700;">Your modernized code bundle is ready</h1>
+              <p style="color:rgba(255,255,255,.85);margin:0;font-size:14px;">${esc(projectName)}</p>
+            </td>
+          </tr>
+          <tr>
+            <td style="padding:32px 40px;">
+              <table width="100%" cellpadding="0" cellspacing="0" style="background:#F7F9FC;border:1px solid #D9E2EC;border-radius:10px;">
+                <tr><td style="padding:18px 24px;color:#42526E;font-size:14px;line-height:1.8;">
+                  Package: <strong style="color:#091E42;font-family:monospace;">${esc(packageName)}</strong><br/>
+                  Target: <strong style="color:#091E42;">${esc(targetFramework)}</strong><br/>
+                  Converted items included: <strong style="color:#091E42;">${includedCount}</strong>
+                </td></tr>
+              </table>
+              ${excludedRows}
+              ${notesBlock}
+              <table width="100%" cellpadding="0" cellspacing="0" style="margin:28px 0 8px;">
+                <tr>
+                  <td align="center">
+                    <a href="${esc(portalUrl)}"
+                       style="display:inline-block;background:#0652CC;color:#fff;font-size:15px;font-weight:700;text-decoration:none;padding:12px 32px;border-radius:8px;">
+                      Open Partner Download Center
+                    </a>
+                  </td>
+                </tr>
+              </table>
+              <p style="color:#6B778C;font-size:12px;line-height:1.5;margin:16px 0 0;">
+                The package includes a README with setup steps. Contact your ALSM conversion team if anything is missing.
+              </p>
+            </td>
+          </tr>
+          <tr>
+            <td style="background:#F7F9FC;border-top:1px solid #D9E2EC;padding:18px 40px;text-align:center;">
+              <p style="margin:0;font-size:11px;color:#6B778C;">Sent automatically by <strong>ALSM Enterprise Platform</strong>. Do not reply to this email.</p>
+            </td>
+          </tr>
+        </table>
+      </td>
+    </tr>
+  </table>
+</body>
+</html>`;
+
+    const text = [
+      `Your modernized code bundle for ${projectName} is ready.`,
+      `Package: ${packageName}`,
+      `Target: ${targetFramework}`,
+      `Converted items included: ${includedCount}`,
+      ...(excludedItems.length
+        ? ['', 'Not included:', ...excludedItems.map((i) => `- ${i.name}: ${i.reason}`)]
+        : []),
+      ...(notes ? ['', 'Notes from the conversion team:', notes] : []),
+      '',
+      `Partner Download Center: ${portalUrl}`,
+    ].join('\n');
+
+    if (!this.transporter) {
+      this.logger.warn(`[EMAIL SKIPPED - No SMTP] To: ${to} | Subject: ${subject}`);
+      return false;
+    }
+
+    await this.transporter.sendMail({ from: this.fromAddress, to, subject, html, text });
+    this.logger.log(`Export notification sent to ${to} for ${packageName}`);
+    return true;
+  }
 }

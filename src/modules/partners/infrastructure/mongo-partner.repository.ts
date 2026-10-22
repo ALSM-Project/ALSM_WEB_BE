@@ -72,6 +72,8 @@ export class MongoPartnerRepository implements PartnerRepository {
       engagementType: doc.engagementType,
       assignedStaffName: doc.assignedStaffName,
       status: doc.status,
+      completedExportCount: doc.completedExportCount ?? 0,
+      latestActivity: doc.latestActivity,
       createdBy: doc.createdBy.toString(),
       createdAt: doc.createdAt,
       updatedAt: doc.updatedAt,

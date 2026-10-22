@@ -13,6 +13,9 @@ export class Project {
   @Prop({ type: MongooseSchema.Types.ObjectId, required: true }) createdBy!: Types.ObjectId;
   @Prop({ default: false }) isDemo?: boolean;
   @Prop({ type: MongooseSchema.Types.ObjectId, ref: 'User', required: false }) assignedTeamLeadId?: Types.ObjectId;
+  @Prop({ default: false }) isExported?: boolean;
+  @Prop() exportedAt?: Date;
+  @Prop({ trim: true }) exportedBundleName?: string;
   @Prop() deletedAt?: Date;
   createdAt!: Date;
   updatedAt!: Date;
