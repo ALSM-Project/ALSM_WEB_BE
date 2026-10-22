@@ -45,6 +45,8 @@ export const environmentValidationSchema = Joi.object({
   APP_BASE_URL: Joi.string()
     .uri({ scheme: ['http', 'https'] })
     .default('http://localhost:5173'),
+  /** Partner Portal origin linked from UC-48 export emails; APP_BASE_URL when unset. */
+  PARTNER_PORTAL_URL: Joi.string().uri({ scheme: ['http', 'https'] }).allow('').default(''),
   AI_VALIDATION_ENABLED: Joi.boolean().default(false),
   AI_PROVIDER: Joi.string().valid('fake', 'openai', 'gemini').default('fake'),
   OPENAI_API_KEY: Joi.when('AI_VALIDATION_ENABLED', {

@@ -28,6 +28,12 @@ export class Partner {
   @Prop({ type: String, enum: PartnerStatus, default: PartnerStatus.ACTIVE })
   status!: PartnerStatus;
 
+  @Prop({ default: 0, min: 0 })
+  completedExportCount!: number;
+
+  @Prop({ trim: true })
+  latestActivity?: string;
+
   @Prop({ type: Types.ObjectId, required: true })
   createdBy!: Types.ObjectId;
 
