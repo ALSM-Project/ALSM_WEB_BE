@@ -55,9 +55,7 @@ describe('LockUserService (UC 3.13.9)', () => {
     expect(user.lockDuration).toBe('7 days');
     expect(save).toHaveBeenCalled();
     expect(sessionModel.updateMany).toHaveBeenCalled();
-    expect(email.send).toHaveBeenCalledWith(
-      expect.objectContaining({ to: 'staff@acmecorp.com' }),
-    );
+    expect(email.send).toHaveBeenCalledWith(expect.objectContaining({ to: 'staff@acmecorp.com' }));
     expect(audit.append).toHaveBeenCalledWith(
       expect.objectContaining({ action: 'USER_ACCOUNT_LOCKED', resourceId: 'user-1' }),
     );

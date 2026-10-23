@@ -65,9 +65,7 @@ export class LockUserService {
         `<p>Hi ${this.escape(user.fullName)},</p>` +
         `<p>Your account has been locked by an administrator.</p>` +
         `<p>Reason: ${this.escape(input.reason)}</p>` +
-        (input.duration
-          ? `<p>Lock duration: ${this.escape(input.duration)}</p>`
-          : '') +
+        (input.duration ? `<p>Lock duration: ${this.escape(input.duration)}</p>` : '') +
         `<p>Please contact your administrator if you believe this is a mistake.</p>`,
     });
 
