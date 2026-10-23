@@ -3,15 +3,21 @@ import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { Response } from 'express';
 import { CurrentUser } from '../../../shared/security/current-user.decorator';
 import { JwtAuthGuard } from '../../../shared/security/jwt-auth.guard';
+import { PermissionsGuard } from '../../../shared/security/permissions.guard';
+import { RequirePermissions } from '../../../shared/security/require-permissions.decorator';
 import { AuthenticatedUser } from '../../../shared/logging/request-id.middleware';
 import { PlatformAdminService } from '../application/platform-admin.service';
+import { LockUserService } from '../application/lock-user.service';
 
 @ApiTags('Platform Administration (Sections 3.10, 3.13 & 3.14)')
 @ApiBearerAuth()
 @UseGuards(JwtAuthGuard)
 @Controller('admin')
 export class PlatformAdminController {
-  constructor(private readonly adminService: PlatformAdminService) {}
+  constructor(
+    private readonly adminService: PlatformAdminService,
+    private readonly lockUserService: LockUserService,
+  ) {}
 
   @Get('organizations')
   @ApiOperation({ summary: 'View all organisations (3.13.1)' })
@@ -101,6 +107,28 @@ export class PlatformAdminController {
     @Body() body: Record<string, unknown>,
   ) {
     return this.adminService.editEngagementType(user.userId, id, body);
+  }
+
+  @Post('users/:id/lock')
+  @ApiOperation({ summary: 'Lock user account and revoke sessions (3.13.9)' })
+  async lockUser(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('id') id: string,
+    @Body('reason') reason: string,
+    @Body('duration') duration?: string,
+  ) {
+    return this.lockUserService.lock({
+      actorUserId: user.userId,
+      targetUserId: id,
+      reason: reason || 'Violation of platform policies',
+      duration,
+    });
+  }
+
+  @Post('users/:id/unlock')
+  @ApiOperation({ summary: 'Unlock user account (3.13.9)' })
+  async unlockUser(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string) {
+    return this.lockUserService.unlock(user.userId, id);
   }
 
   @Get('users/:id/offboarding-summary')
