@@ -4,6 +4,7 @@ import { Model } from 'mongoose';
 import { User, UserDocument } from '../../users/infrastructure/user.schema';
 import { UserSession, UserSessionDocument } from '../../auth/infrastructure/user-session.schema';
 import { AUDIT_REPOSITORY, AuditRepository } from '../../audit/domain/audit.repository';
+import { EMAIL_PORT, EmailPort } from '../../auth/domain/email.port';
 import { toValidObjectId } from '../../../shared/utils/object-id.util';
 
 export interface LockUserInput {
@@ -28,6 +29,7 @@ export class LockUserService {
     @InjectModel(User.name) private readonly userModel: Model<UserDocument>,
     @InjectModel(UserSession.name) private readonly sessionModel: Model<UserSessionDocument>,
     @Inject(AUDIT_REPOSITORY) private readonly audit: AuditRepository,
+    @Inject(EMAIL_PORT) private readonly email: EmailPort,
   ) {}
 
   async lock(input: LockUserInput): Promise<LockUserResult> {
@@ -55,6 +57,20 @@ export class LockUserService {
       metadata: { email: user.email, reason: input.reason, duration: input.duration ?? '' },
     });
 
+    // Notify the user that their account has been locked.
+    await this.email.send({
+      to: user.email,
+      subject: 'Your ALSM account has been locked',
+      html:
+        `<p>Hi ${this.escape(user.fullName)},</p>` +
+        `<p>Your account has been locked by an administrator.</p>` +
+        `<p>Reason: ${this.escape(input.reason)}</p>` +
+        (input.duration
+          ? `<p>Lock duration: ${this.escape(input.duration)}</p>`
+          : '') +
+        `<p>Please contact your administrator if you believe this is a mistake.</p>`,
+    });
+
     return { success: true, message: `Account for ${user.email} has been locked.` };
   }
 
@@ -78,5 +94,18 @@ export class LockUserService {
     });
 
     return { success: true, message: `Account for ${user.email} has been unlocked.` };
+  }
+
+  private escape(value: string): string {
+    return value.replace(/[&<>"']/g, (c) => {
+      const map: Record<string, string> = {
+        '&': '&amp;',
+        '<': '&lt;',
+        '>': '&gt;',
+        '"': '&quot;',
+        "'": '&#39;',
+      };
+      return map[c];
+    });
   }
 }
