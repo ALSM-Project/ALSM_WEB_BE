@@ -5,6 +5,7 @@ import {
   Injectable,
   Logger,
   NotFoundException,
+  Optional,
   ServiceUnavailableException,
   UnauthorizedException,
 } from '@nestjs/common';
@@ -14,6 +15,7 @@ import { AuditLog } from '../../audit/infrastructure/audit-log.schema';
 import { Organization } from '../../organizations/infrastructure/organization.schema';
 import { OrganizationRole, OrganizationType } from '../../organizations/domain/organization.types';
 import { User } from '../../users/infrastructure/user.schema';
+import { Partner, PartnerDocument } from '../../partners/infrastructure/partner.schema';
 import { Lead } from '../infrastructure/lead.schema';
 import { ContractAggregate, ContractVersion } from '../infrastructure/contract-aggregate.schema';
 import { LeadStatus } from '../domain/lead.types';
@@ -40,6 +42,7 @@ export class ActivateCrmLeadService {
     @InjectModel(ContractAggregate.name) private readonly contracts: Model<ContractAggregate>,
     @InjectModel(ContractVersion.name) private readonly contractVersions: Model<ContractVersion>,
     private readonly crm: SalesCrmService,
+    @Optional() @InjectModel(Partner.name) private readonly partners?: Model<PartnerDocument>,
   ) {}
 
   async execute(actorUserId: string, leadId: string): Promise<ActivateCrmLeadResult> {
@@ -190,18 +193,40 @@ export class ActivateCrmLeadService {
           });
         }
         const adminLinked = true;
-        const members = [{ userId: customerUser._id, role: OrganizationRole.ADMIN }];
+        const plan = (signedVersion.plan || 'Enterprise').trim();
+        const isManaged = plan.toLowerCase().includes('managed');
+        const serviceMode: 'ALSM_MANAGED' | 'CUSTOMER_SELF_SERVICE' = isManaged ? 'ALSM_MANAGED' : 'CUSTOMER_SELF_SERVICE';
+        const role = isManaged ? OrganizationRole.VIEWER : OrganizationRole.ADMIN;
+        const members = [{ userId: customerUser._id, role }];
         const domain = email.split('@')[1];
         const organization = existingOrganization || (await this.organizations.create([{
           name: company,
           type: OrganizationType.ENTERPRISE,
           status: 'ACTIVE',
-          engagementType: signedVersion.plan || 'Enterprise',
+          engagementType: plan,
+          serviceMode,
+          contractId: signedContract._id,
+          activeContractNumber: signedContract.contractNumber,
           contactEmail: email,
           domain,
           sourceLeadId,
           members,
         }], { session: activeSession }))[0];
+
+        if (isManaged && this.partners) {
+          const existingPartner = await this.partners.findOne({ contactEmail: email }).session(activeSession).exec();
+          if (!existingPartner) {
+            await this.partners.create([{
+              name: company,
+              contactEmail: email,
+              contactName,
+              primaryDomain: domain || (company.toLowerCase().replace(/[^a-z0-9]/g, '') + '.com'),
+              engagementType: plan,
+              status: 'ACTIVE' as any,
+              createdBy: new Types.ObjectId(actorUserId),
+            }], { session: activeSession });
+          }
+        }
 
         const organizationId = organization._id.toString();
         const convertedAt = new Date();
