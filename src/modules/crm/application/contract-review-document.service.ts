@@ -39,24 +39,48 @@ export class ContractReviewDocumentService {
     return this.renderPdf(value, 'CANONICAL_UNSIGNED');
   }
 
+  private async resolveFontPath(): Promise<{ regular: string; bold: string }> {
+    const candidateRegular = [
+      this.config.get<string>('CONTRACT_PDF_FONT_PATH')?.trim(),
+      resolve('fonts/times.ttf'),
+      resolve('ALSM_WEB_BE/fonts/times.ttf'),
+      'C:\\Windows\\Fonts\\times.ttf',
+    ].filter(Boolean) as string[];
+
+    const candidateBold = [
+      this.config.get<string>('CONTRACT_PDF_FONT_BOLD_PATH')?.trim(),
+      resolve('fonts/timesbd.ttf'),
+      resolve('ALSM_WEB_BE/fonts/timesbd.ttf'),
+      'C:\\Windows\\Fonts\\timesbd.ttf',
+    ].filter(Boolean) as string[];
+
+    let regular = '';
+    for (const p of candidateRegular) {
+      try {
+        await access(p, constants.R_OK);
+        regular = p;
+        break;
+      } catch {}
+    }
+
+    let bold = '';
+    for (const p of candidateBold) {
+      try {
+        await access(p, constants.R_OK);
+        bold = p;
+        break;
+      } catch {}
+    }
+
+    if (!regular) {
+      throw new ServiceUnavailableException({ code: 'CONTRACT_PDF_FONT_NOT_CONFIGURED', message: 'Vietnamese PDF fonts are not configured or available.' });
+    }
+
+    return { regular, bold: bold || regular };
+  }
+
   private async renderPdf(value: ContractWithCurrentVersion, kind: 'REVIEW_COPY' | 'CANONICAL_UNSIGNED'): Promise<Buffer> {
-    const fontPath = this.config.get<string>('CONTRACT_PDF_FONT_PATH')?.trim();
-    if (!fontPath) {
-      throw new ServiceUnavailableException({ code: 'CONTRACT_PDF_FONT_NOT_CONFIGURED', message: 'Vietnamese PDF fonts are not configured.' });
-    }
-    const resolvedFontPath = resolve(fontPath);
-    try {
-      await access(resolvedFontPath, constants.R_OK);
-    } catch {
-      throw new ServiceUnavailableException({ code: 'CONTRACT_PDF_FONT_UNAVAILABLE', message: 'The configured Vietnamese PDF font is unavailable.' });
-    }
-    const configuredBoldPath = this.config.get<string>('CONTRACT_PDF_FONT_BOLD_PATH')?.trim();
-    const boldFontPath = configuredBoldPath ? resolve(configuredBoldPath) : resolvedFontPath;
-    try {
-      await access(boldFontPath, constants.R_OK);
-    } catch {
-      throw new ServiceUnavailableException({ code: 'CONTRACT_PDF_BOLD_FONT_UNAVAILABLE', message: 'The configured contract PDF bold font is unavailable.' });
-    }
+    const { regular: resolvedFontPath, bold: boldFontPath } = await this.resolveFontPath();
 
     const { contract, version } = value;
     const template = version.approvedTemplateSnapshot;
