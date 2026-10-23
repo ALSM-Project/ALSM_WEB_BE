@@ -4,8 +4,8 @@ import { EmailPort } from '../src/modules/auth/domain/email.port';
 import { AuditRepository } from '../src/modules/audit/domain/audit.repository';
 
 describe('LockUserService (UC 3.13.9)', () => {
-  let userModel: any;
-  let sessionModel: any;
+  let userModel: { findById: jest.Mock };
+  let sessionModel: { updateMany: jest.Mock };
   let audit: jest.Mocked<AuditRepository>;
   let email: jest.Mocked<EmailPort>;
   let service: LockUserService;
@@ -32,7 +32,7 @@ describe('LockUserService (UC 3.13.9)', () => {
 
   it('locks the user, revokes sessions, sends email, and writes audit', async () => {
     const save = jest.fn().mockResolvedValue(true);
-    const user: any = {
+    const user: Record<string, unknown> = {
       _id: 'user-1',
       id: 'user-1',
       email: 'staff@acmecorp.com',
@@ -66,7 +66,7 @@ describe('LockUserService (UC 3.13.9)', () => {
 
   it('unlocks the user and clears lock fields', async () => {
     const save = jest.fn().mockResolvedValue(true);
-    const user: any = {
+    const user: Record<string, unknown> = {
       _id: 'user-1',
       id: 'user-1',
       email: 'staff@acmecorp.com',
