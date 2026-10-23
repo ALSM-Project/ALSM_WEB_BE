@@ -142,6 +142,8 @@ export class MongoUserRepository implements UserRepository {
       isActive: doc.isActive,
       isEmailVerified: doc.isEmailVerified ?? true,
       mustChangePassword: doc.mustChangePassword ?? false,
+      isLocked: doc.isLocked ?? false,
+      lockReason: doc.lockReason,
       mfa: {
         enabled: doc.mfa?.enabled ?? false,
         secret: doc.mfa?.secret ?? null,

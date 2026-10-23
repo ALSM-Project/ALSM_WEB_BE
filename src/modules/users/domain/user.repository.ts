@@ -14,6 +14,8 @@ export interface UserRecord {
   isActive: boolean;
   isEmailVerified: boolean;
   mustChangePassword: boolean;
+  isLocked: boolean;
+  lockReason?: string;
   mfa: MfaState;
   createdAt: Date;
   updatedAt: Date;
