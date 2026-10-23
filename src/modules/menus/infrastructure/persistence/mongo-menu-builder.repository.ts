@@ -69,8 +69,7 @@ export class MongoMenuBuilderRepository implements IMenuBuilderRepository {
     const saved = await created.save();
 
     if (permissions && permissions.length > 0) {
-      const permDocs = permissions.map((pKey) => ({ menuItemId: saved.id, permissionKey: pKey }));
-      await this.menuItemPermissionModel.insertMany(permDocs);
+      await this.setMenuItemPermissions(saved.id, permissions);
     }
 
     return this.toData(saved);
@@ -99,14 +98,32 @@ export class MongoMenuBuilderRepository implements IMenuBuilderRepository {
     await item.save();
 
     if (permissions !== undefined) {
-      await this.menuItemPermissionModel.deleteMany({ menuItemId: id }).exec();
-      if (permissions.length > 0) {
-        const permDocs = permissions.map((pKey) => ({ menuItemId: id, permissionKey: pKey }));
-        await this.menuItemPermissionModel.insertMany(permDocs);
-      }
+      await this.setMenuItemPermissions(id, permissions);
     }
 
     return this.toData(item);
+  }
+
+  /**
+   * Makes the item's permission set exactly `permissions`. Upserts instead of delete + insert,
+   * so two app instances seeding at the same moment cannot collide on the unique
+   * (menuItemId, permissionKey) index and crash the startup.
+   */
+  private async setMenuItemPermissions(menuItemId: string, permissions: string[]): Promise<void> {
+    const keys = [...new Set(permissions)];
+    await this.menuItemPermissionModel
+      .deleteMany({ menuItemId, permissionKey: { $nin: keys } })
+      .exec();
+    if (keys.length === 0) return;
+    await this.menuItemPermissionModel.bulkWrite(
+      keys.map((permissionKey) => ({
+        updateOne: {
+          filter: { menuItemId, permissionKey },
+          update: { $setOnInsert: { menuItemId, permissionKey } },
+          upsert: true,
+        },
+      })),
+    );
   }
 
   async deleteMenuItem(id: string): Promise<void> {
