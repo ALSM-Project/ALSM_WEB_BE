@@ -8,6 +8,7 @@ import { Project, ProjectSchema } from '../projects/infrastructure/project.schem
 import { ConversionJob, ConversionJobSchema } from '../conversions/infrastructure/conversion-job.schema';
 import { AuditLog, AuditLogSchema } from '../audit/infrastructure/audit-log.schema';
 import { PlatformAdminService } from './application/platform-admin.service';
+import { LockUserService } from './application/lock-user.service';
 import { PlatformAdminController } from './presentation/platform-admin.controller';
 
 @Module({
@@ -23,7 +24,7 @@ import { PlatformAdminController } from './presentation/platform-admin.controlle
     ]),
   ],
   controllers: [PlatformAdminController],
-  providers: [PlatformAdminService],
-  exports: [PlatformAdminService],
+  providers: [PlatformAdminService, LockUserService],
+  exports: [PlatformAdminService, LockUserService],
 })
 export class AdminModule {}
