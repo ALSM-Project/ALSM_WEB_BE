@@ -42,6 +42,9 @@ export class ContractInvitationAccessService {
     if (!lead) throw new NotFoundException({ code: 'LEAD_NOT_FOUND', message: 'Lead is unavailable.' });
     const assignment = lead.assignments[lead.assignments.length - 1];
     if (!assignment) throw new NotFoundException({ code: 'LEAD_NOT_FOUND', message: 'Lead is unavailable.' });
+    if (user.isPlatformAdmin || assignment.teamId === 'internal_sales_team' || assignment.salespersonId === userId) {
+      return { lead, organizationId };
+    }
     const team = await this.teams.findById(assignment.teamId, organizationId);
     if (
       !team ||
