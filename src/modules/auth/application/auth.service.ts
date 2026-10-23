@@ -162,6 +162,12 @@ export class AuthService {
           message: 'Account is inactive',
         });
       }
+      if (user.isLocked) {
+        throw new UnauthorizedException({
+          code: 'ACCOUNT_LOCKED',
+          message: 'Your account has been locked. Please contact your administrator.',
+        });
+      }
       if (!user.isEmailVerified) {
         await this.users.markEmailVerified(user.id);
       }
