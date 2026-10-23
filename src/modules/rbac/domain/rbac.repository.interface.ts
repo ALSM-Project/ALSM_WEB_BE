@@ -22,6 +22,7 @@ export interface IRbacUser {
   fullName: string;
   isPlatformAdmin: boolean;
   isActive: boolean;
+  isLocked: boolean;
 }
 
 export interface IRbacRepository {
