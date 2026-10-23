@@ -7,13 +7,23 @@ import {
 } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { FilterQuery, Model, Types } from 'mongoose';
-import { Organization, OrganizationDocument, OrganizationMember } from '../../organizations/infrastructure/organization.schema';
+import {
+  Organization,
+  OrganizationDocument,
+  OrganizationMember,
+} from '../../organizations/infrastructure/organization.schema';
 import { OrganizationRole, OrganizationType } from '../../organizations/domain/organization.types';
 import { User, UserDocument } from '../../users/infrastructure/user.schema';
 import { UserSession, UserSessionDocument } from '../../auth/infrastructure/user-session.schema';
-import { EngagementType, EngagementTypeDocument } from '../../organizations/infrastructure/engagement-type.schema';
+import {
+  EngagementType,
+  EngagementTypeDocument,
+} from '../../organizations/infrastructure/engagement-type.schema';
 import { Project, ProjectDocument } from '../../projects/infrastructure/project.schema';
-import { ConversionJob, ConversionJobDocument } from '../../conversions/infrastructure/conversion-job.schema';
+import {
+  ConversionJob,
+  ConversionJobDocument,
+} from '../../conversions/infrastructure/conversion-job.schema';
 import { AuditLog, AuditLogDocument } from '../../audit/infrastructure/audit-log.schema';
 import { AUDIT_REPOSITORY, AuditRepository } from '../../audit/domain/audit.repository';
 import { toValidObjectId } from '../../../shared/utils/object-id.util';
@@ -24,7 +34,8 @@ export class PlatformAdminService {
     @InjectModel(Organization.name) private readonly orgModel: Model<OrganizationDocument>,
     @InjectModel(User.name) private readonly userModel: Model<UserDocument>,
     @InjectModel(UserSession.name) private readonly sessionModel: Model<UserSessionDocument>,
-    @InjectModel(EngagementType.name) private readonly engagementModel: Model<EngagementTypeDocument>,
+    @InjectModel(EngagementType.name)
+    private readonly engagementModel: Model<EngagementTypeDocument>,
     @InjectModel(Project.name) private readonly projectModel: Model<ProjectDocument>,
     @InjectModel(ConversionJob.name) private readonly jobModel: Model<ConversionJobDocument>,
     @InjectModel(AuditLog.name) private readonly auditModel: Model<AuditLogDocument>,
@@ -268,7 +279,8 @@ export class PlatformAdminService {
       await this.engagementModel.create([
         {
           name: 'Trial',
-          description: '30-day initial trial with limited screens and programs for testing the modernization engine.',
+          description:
+            '30-day initial trial with limited screens and programs for testing the modernization engine.',
           price: 0,
           trialLimits: { maxScreens: 10, maxPrograms: 5, maxStorageGb: 2 },
           usageLimits: { maxScreens: 10, maxPrograms: 5, maxStorageGb: 2 },
@@ -277,7 +289,8 @@ export class PlatformAdminService {
         },
         {
           name: 'Enterprise Pilot',
-          description: 'Guided pilot phase for migrating core departmental BMS screens and business logic.',
+          description:
+            'Guided pilot phase for migrating core departmental BMS screens and business logic.',
           price: 15000,
           trialLimits: { maxScreens: 50, maxPrograms: 25, maxStorageGb: 10 },
           usageLimits: { maxScreens: 100, maxPrograms: 50, maxStorageGb: 25 },
@@ -286,7 +299,8 @@ export class PlatformAdminService {
         },
         {
           name: 'Enterprise Production',
-          description: 'Full-scale enterprise production conversion with dedicated team lead and SLAs.',
+          description:
+            'Full-scale enterprise production conversion with dedicated team lead and SLAs.',
           price: 45000,
           trialLimits: { maxScreens: 100, maxPrograms: 50, maxStorageGb: 20 },
           usageLimits: { maxScreens: 500, maxPrograms: 250, maxStorageGb: 100 },
@@ -312,11 +326,9 @@ export class PlatformAdminService {
   }
 
   async editEngagementType(actorUserId: string, id: string, dto: Record<string, unknown>) {
-    const updated = await this.engagementModel.findByIdAndUpdate(
-      toValidObjectId(id),
-      { $set: dto },
-      { new: true },
-    ).exec();
+    const updated = await this.engagementModel
+      .findByIdAndUpdate(toValidObjectId(id), { $set: dto }, { new: true })
+      .exec();
     if (!updated) throw new NotFoundException('Engagement type not found');
 
     await this.audit.append({
@@ -329,55 +341,6 @@ export class PlatformAdminService {
     return updated;
   }
 
-  // ─── 3.13.9 Lock / Unlock User Account ───────────────────────────
-  async lockUser(actorUserId: string, targetUserId: string, reason: string) {
-    const user = await this.userModel.findById(toValidObjectId(targetUserId)).exec();
-    if (!user) throw new NotFoundException('User not found');
-
-    user.isLocked = true;
-    user.lockReason = reason;
-    user.lockedAt = new Date();
-    user.lockedBy = actorUserId;
-    await user.save();
-
-    // Invalidate all active sessions immediately
-    await this.sessionModel.updateMany(
-      { userId: user._id, revokedAt: { $exists: false } },
-      { $set: { revokedAt: new Date() } },
-    );
-
-    await this.audit.append({
-      actorUserId,
-      action: 'USER_ACCOUNT_LOCKED',
-      resourceType: 'USER',
-      resourceId: user.id,
-      metadata: { email: user.email, reason },
-    });
-
-    return { success: true, message: `Account for ${user.email} has been locked.` };
-  }
-
-  async unlockUser(actorUserId: string, targetUserId: string) {
-    const user = await this.userModel.findById(toValidObjectId(targetUserId)).exec();
-    if (!user) throw new NotFoundException('User not found');
-
-    user.isLocked = false;
-    user.lockReason = undefined;
-    user.lockedAt = undefined;
-    user.lockedBy = undefined;
-    await user.save();
-
-    await this.audit.append({
-      actorUserId,
-      action: 'USER_ACCOUNT_UNLOCKED',
-      resourceType: 'USER',
-      resourceId: user.id,
-      metadata: { email: user.email },
-    });
-
-    return { success: true, message: `Account for ${user.email} has been unlocked.` };
-  }
-
   // ─── 3.14.2 User Offboarding Workflow ────────────────────────────
   async getOffboardingSummary(targetUserId: string) {
     const user = await this.userModel.findById(toValidObjectId(targetUserId)).exec();
@@ -388,13 +351,12 @@ export class PlatformAdminService {
       revokedAt: { $exists: false },
     });
 
-    const assignedProjects = await this.projectModel.find({
-      $or: [
-        { assignedTeamLeadId: user._id },
-        { createdBy: user._id },
-      ],
-      deletedAt: { $exists: false },
-    }).exec();
+    const assignedProjects = await this.projectModel
+      .find({
+        $or: [{ assignedTeamLeadId: user._id }, { createdBy: user._id }],
+        deletedAt: { $exists: false },
+      })
+      .exec();
 
     const pendingJobsCount = await this.jobModel.countDocuments({
       createdBy: user._id,
@@ -402,11 +364,14 @@ export class PlatformAdminService {
     });
 
     // Fetch candidate staff for resource transfer
-    const eligibleStaff = await this.userModel.find({
-      _id: { $ne: user._id },
-      isActive: true,
-      isLocked: false,
-    }).select('fullName email').exec();
+    const eligibleStaff = await this.userModel
+      .find({
+        _id: { $ne: user._id },
+        isActive: true,
+        isLocked: false,
+      })
+      .select('fullName email')
+      .exec();
 
     return {
       user: {

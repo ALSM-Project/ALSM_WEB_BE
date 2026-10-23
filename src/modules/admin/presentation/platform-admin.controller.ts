@@ -1,14 +1,4 @@
-import {
-  Body,
-  Controller,
-  Get,
-  Param,
-  Patch,
-  Post,
-  Query,
-  Res,
-  UseGuards,
-} from '@nestjs/common';
+import { Body, Controller, Get, Param, Patch, Post, Query, Res, UseGuards } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { Response } from 'express';
 import { CurrentUser } from '../../../shared/security/current-user.decorator';
@@ -76,15 +66,14 @@ export class PlatformAdminController {
 
   @Post('organizations/:id/impersonate')
   @ApiOperation({ summary: 'Impersonate customer organisation in read-only mode (3.10.4)' })
-  async impersonate(
-    @CurrentUser() user: AuthenticatedUser,
-    @Param('id') id: string,
-  ) {
+  async impersonate(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string) {
     return this.adminService.impersonateOrganization(user.userId, id);
   }
 
   @Get('revenue/summary')
-  @ApiOperation({ summary: 'View platform total revenue derived from contracts & payments (3.13.6)' })
+  @ApiOperation({
+    summary: 'View platform total revenue derived from contracts & payments (3.13.6)',
+  })
   async getRevenueSummary() {
     return this.adminService.getTotalRevenue();
   }
@@ -112,25 +101,6 @@ export class PlatformAdminController {
     @Body() body: Record<string, unknown>,
   ) {
     return this.adminService.editEngagementType(user.userId, id, body);
-  }
-
-  @Post('users/:id/lock')
-  @ApiOperation({ summary: 'Lock user account and revoke sessions (3.13.9)' })
-  async lockUser(
-    @CurrentUser() user: AuthenticatedUser,
-    @Param('id') id: string,
-    @Body('reason') reason: string,
-  ) {
-    return this.adminService.lockUser(user.userId, id, reason || 'Violation of platform policies');
-  }
-
-  @Post('users/:id/unlock')
-  @ApiOperation({ summary: 'Unlock user account (3.13.9)' })
-  async unlockUser(
-    @CurrentUser() user: AuthenticatedUser,
-    @Param('id') id: string,
-  ) {
-    return this.adminService.unlockUser(user.userId, id);
   }
 
   @Get('users/:id/offboarding-summary')
