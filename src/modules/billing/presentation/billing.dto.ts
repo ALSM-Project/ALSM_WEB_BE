@@ -455,11 +455,17 @@ export class InvoiceResponseDto {
 }
 
 export class InvoiceDownloadResponseDto {
-  @ApiProperty({ example: 'Invoice PDF generation queued' })
+  @ApiProperty({ example: 'Invoice PDF generated successfully' })
   message!: string;
 
   @ApiProperty({ example: '/api/v1/billing/invoices/sample-receipt.pdf' })
   downloadUrl!: string;
+
+  @ApiPropertyOptional({ example: 'INV-2026-0001' })
+  invoiceNumber?: string;
+
+  @ApiPropertyOptional({ example: 'INV-2026-0001.pdf' })
+  filename?: string;
 }
 
 export class UsageStatsItemDto {
@@ -626,4 +632,144 @@ export class QuoteRequestResponseDto {
 
   @ApiProperty({ example: '2026-09-25T09:00:00.000Z' })
   createdAt!: Date | string;
+}
+
+// ═════════════════════════════════════════════════════════════════
+// ─── INVOICE DTOs (View Invoices Workflow)
+// ═════════════════════════════════════════════════════════════════
+
+export class ListInvoicesQueryDto {
+  @ApiPropertyOptional({ example: 1, default: 1, description: 'Page number for pagination' })
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  page?: number;
+
+  @ApiPropertyOptional({ example: 20, default: 20, description: 'Items per page (max 100)' })
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  @Max(100)
+  limit?: number;
+
+  @ApiPropertyOptional({ enum: InvoiceStatus, description: 'Filter by invoice payment status' })
+  @IsOptional()
+  @IsEnum(InvoiceStatus)
+  status?: InvoiceStatus;
+
+  @ApiPropertyOptional({ enum: PlanTier, description: 'Filter by plan tier (e.g. ENTERPRISE, PROFESSIONAL)' })
+  @IsOptional()
+  @IsEnum(PlanTier)
+  planTier?: PlanTier;
+
+  @ApiPropertyOptional({ description: 'Filter by organization ID (enterprise scope)' })
+  @IsOptional()
+  @IsString()
+  organizationId?: string;
+
+  @ApiPropertyOptional({ description: 'Search term matching invoice number or plan name' })
+  @IsOptional()
+  @IsString()
+  search?: string;
+
+  @ApiPropertyOptional({ description: 'Start date filter ISO string' })
+  @IsOptional()
+  @IsString()
+  startDate?: string;
+
+  @ApiPropertyOptional({ description: 'End date filter ISO string' })
+  @IsOptional()
+  @IsString()
+  endDate?: string;
+}
+
+export class InvoiceLineItemDto {
+  @ApiProperty({ example: 'Enterprise Modernization License' })
+  description!: string;
+
+  @ApiProperty({ example: 1 })
+  quantity!: number;
+
+  @ApiProperty({ example: 150000000 })
+  unitPriceVnd!: number;
+
+  @ApiProperty({ example: 150000000 })
+  amountVnd!: number;
+}
+
+export class InvoicePaymentDetailsDto {
+  @ApiProperty({ example: 'MB Bank (Military Commercial Joint Stock Bank)' })
+  bankName!: string;
+
+  @ApiProperty({ example: '090123456789' })
+  accountNumber!: string;
+
+  @ApiProperty({ example: 'CONG TY CO PHAN ALSM SOFTWARE' })
+  accountName!: string;
+
+  @ApiProperty({ example: 'ALSM20260001' })
+  referenceCode!: string;
+
+  @ApiPropertyOptional({ example: 'https://img.vietqr.io/image/...' })
+  qrDataUrl?: string;
+}
+
+export class InvoiceDetailResponseDto extends InvoiceResponseDto {
+  @ApiPropertyOptional({ example: '66d9c84e1234567890abcdef' })
+  organizationId?: string;
+
+  @ApiPropertyOptional({ example: 'TechCorp Enterprise' })
+  organizationName?: string;
+
+  @ApiPropertyOptional({ example: '66d9c84e1234567890abcdef' })
+  userId?: string;
+
+  @ApiPropertyOptional({ example: 'John Doe' })
+  customerName?: string;
+
+  @ApiPropertyOptional({ example: 'john@techcorp.com' })
+  customerEmail?: string;
+
+  @ApiProperty({ example: 'VND' })
+  currency!: string;
+
+  @ApiProperty({ example: 150000000 })
+  subtotalVnd!: number;
+
+  @ApiProperty({ example: 0.1, description: 'Tax rate (0.1 for 10% VAT)' })
+  taxRate!: number;
+
+  @ApiProperty({ example: 15000000, description: 'Tax amount in VND' })
+  taxAmountVnd!: number;
+
+  @ApiProperty({ example: 165000000, description: 'Total amount including tax in VND' })
+  totalAmountVnd!: number;
+
+  @ApiProperty({ type: [InvoiceLineItemDto] })
+  lineItems!: InvoiceLineItemDto[];
+
+  @ApiPropertyOptional({ type: InvoicePaymentDetailsDto })
+  paymentDetails?: InvoicePaymentDetailsDto;
+
+  @ApiProperty({ example: '/api/v1/billing/invoices/66d9c84e1234567890abcdef/receipt.pdf' })
+  downloadUrl!: string;
+}
+
+export class PaginatedInvoicesResponseDto {
+  @ApiProperty({ type: [InvoiceResponseDto] })
+  items!: InvoiceResponseDto[];
+
+  @ApiProperty({ example: 3 })
+  total!: number;
+
+  @ApiProperty({ example: 1 })
+  page!: number;
+
+  @ApiProperty({ example: 20 })
+  limit!: number;
+
+  @ApiProperty({ example: 1 })
+  totalPages!: number;
 }

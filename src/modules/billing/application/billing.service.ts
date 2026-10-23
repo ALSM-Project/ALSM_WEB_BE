@@ -11,8 +11,12 @@ import {
   Optional,
   ServiceUnavailableException,
 } from '@nestjs/common';
-import { InjectConnection } from '@nestjs/mongoose';
-import { ClientSession, Connection } from 'mongoose';
+import { InjectConnection, InjectModel } from '@nestjs/mongoose';
+import { ClientSession, Connection, Model } from 'mongoose';
+import { User, UserDocument } from '../../users/infrastructure/user.schema';
+import { Organization, OrganizationDocument } from '../../organizations/infrastructure/organization.schema';
+import { ListInvoicesQueryDto } from '../presentation/billing.dto';
+import { generateInvoicePdfBuffer } from './invoice-pdf.generator';
 import { AuthenticatedUser } from '../../../shared/logging/request-id.middleware';
 import { OrganizationContextService } from '../../organizations/application/organization-context.service';
 import { OrganizationRole } from '../../organizations/domain/organization.types';
@@ -58,6 +62,12 @@ export class BillingService implements OnModuleInit {
     @Optional()
     @Inject(AUDIT_REPOSITORY)
     private readonly audit?: AuditRepository,
+    @Optional()
+    @InjectModel(User.name)
+    private readonly userModel?: Model<UserDocument>,
+    @Optional()
+    @InjectModel(Organization.name)
+    private readonly orgModel?: Model<OrganizationDocument>,
   ) {}
 
   async onModuleInit() {
@@ -77,6 +87,7 @@ export class BillingService implements OnModuleInit {
       }));
       await this.planRepo.seedDefaults(defaultCatalog);
       this.logger.log('Subscription plans initialized in MongoDB repository');
+      await this.seedDefaultEnterpriseInvoices();
     } catch (err) {
       this.logger.error('Failed to seed default subscription plans in MongoDB:', err);
     }
@@ -279,8 +290,236 @@ export class BillingService implements OnModuleInit {
 
   // ─── Invoices ────────────────────────────────────────────
 
-  async getInvoices(userId: string) {
-    return this.invoiceRepo.findRecentByUser(userId);
+  async getInvoices(
+    userOrUserId: AuthenticatedUser | string,
+    query?: ListInvoicesQueryDto,
+  ) {
+    const userId = typeof userOrUserId === 'string' ? userOrUserId : userOrUserId.userId;
+    const isPlatformAdmin = typeof userOrUserId === 'object' && Boolean(
+      userOrUserId.isPlatformAdmin ||
+      (userOrUserId as any).roles?.includes('ADMIN') ||
+      (userOrUserId as any).role === 'ADMIN'
+    );
+
+    let targetOrgId: string | undefined = query?.organizationId;
+
+    if (!isPlatformAdmin) {
+      if (query?.organizationId) {
+        // Enforce authorization for requested organization
+        await this.organizationContext.resolve(userId, query.organizationId);
+        targetOrgId = query.organizationId;
+      } else {
+        // Automatically resolve organization for enterprise members
+        try {
+          const defaultOrg = await this.organizationContext.resolve(userId);
+          targetOrgId = defaultOrg.id;
+        } catch {
+          // Individual user without organization
+        }
+      }
+    }
+
+    const page = Math.max(1, query?.page || 1);
+    const limit = Math.max(1, Math.min(100, query?.limit || 20));
+    const skip = (page - 1) * limit;
+
+    if (this.invoiceRepo.findInvoices) {
+      const res = await this.invoiceRepo.findInvoices({
+        userId: isPlatformAdmin && !targetOrgId ? undefined : userId,
+        organizationId: targetOrgId,
+        status: query?.status,
+        planTier: query?.planTier,
+        search: query?.search,
+        startDate: query?.startDate,
+        endDate: query?.endDate,
+        skip,
+        limit,
+      });
+
+      return {
+        items: res.items,
+        total: res.total,
+        page,
+        limit,
+        totalPages: Math.ceil(res.total / limit) || 1,
+      };
+    }
+
+    const items = await this.invoiceRepo.findRecentByUser(userId, limit);
+    return {
+      items,
+      total: items.length,
+      page: 1,
+      limit,
+      totalPages: 1,
+    };
+  }
+
+  async getInvoiceById(userOrUserId: AuthenticatedUser | string, invoiceId: string) {
+    if (!invoiceId || !/^[a-f\d]{24}$/i.test(invoiceId)) {
+      throw new BadRequestException({
+        code: 'INVALID_INVOICE_ID',
+        message: 'Invalid invoice ID format',
+      });
+    }
+
+    const userId = typeof userOrUserId === 'string' ? userOrUserId : userOrUserId.userId;
+    const isPlatformAdmin = typeof userOrUserId === 'object' && Boolean(
+      userOrUserId.isPlatformAdmin ||
+      (userOrUserId as any).roles?.includes('ADMIN') ||
+      (userOrUserId as any).role === 'ADMIN'
+    );
+
+    const invoice = await this.invoiceRepo.findById(invoiceId);
+    if (!invoice) {
+      throw new NotFoundException({
+        code: 'INVOICE_NOT_FOUND',
+        message: 'Invoice not found',
+      });
+    }
+
+    // Check authorization: platform admin, invoice creator/owner, or organization member
+    let authorized = isPlatformAdmin || invoice.userId === userId;
+    if (!authorized && invoice.organizationId) {
+      try {
+        await this.organizationContext.resolve(userId, invoice.organizationId);
+        authorized = true;
+      } catch {
+        authorized = false;
+      }
+    }
+
+    if (!authorized) {
+      throw new ForbiddenException({
+        code: 'INVOICE_ACCESS_DENIED',
+        message: 'You do not have permission to view this invoice',
+      });
+    }
+
+    let organizationName: string | undefined;
+    if (invoice.organizationId && this.orgModel) {
+      try {
+        const orgDoc = await this.orgModel.findById(invoice.organizationId).exec();
+        if (orgDoc) organizationName = orgDoc.name;
+      } catch {
+        // Fallback
+      }
+    }
+
+    let customerName: string | undefined;
+    let customerEmail: string | undefined;
+    if (invoice.userId && this.userModel) {
+      try {
+        const userDoc = await this.userModel.findById(invoice.userId).exec();
+        if (userDoc) {
+          customerName = userDoc.fullName;
+          customerEmail = userDoc.email;
+        }
+      } catch {
+        // Fallback
+      }
+    }
+
+    const subtotalVnd = invoice.amountVnd;
+    const taxRate = 0.1;
+    const taxAmountVnd = Math.round(subtotalVnd * taxRate);
+    const totalAmountVnd = subtotalVnd + taxAmountVnd;
+
+    const lineItems = [
+      {
+        description: `${invoice.planName} (${invoice.planTier}) Modernization License & Platform Access`,
+        quantity: 1,
+        unitPriceVnd: invoice.amountVnd,
+        amountVnd: invoice.amountVnd,
+      },
+    ];
+
+    const refCode = `ALSM${invoice.invoiceNumber.replace(/\D/g, '') || 'INV'}`;
+    const paymentDetails = {
+      bankName: 'MB Bank (Military Commercial Joint Stock Bank)',
+      accountNumber: '090123456789',
+      accountName: 'CONG TY CO PHAN ALSM SOFTWARE',
+      referenceCode: refCode,
+      qrDataUrl: `https://img.vietqr.io/image/MB-090123456789-compact2.png?amount=${invoice.amountVnd}&addInfo=${refCode}&accountName=CONG%20TY%20CO%20PHAN%20ALSM%20SOFTWARE`,
+    };
+
+    return {
+      ...invoice,
+      organizationName: organizationName || 'ALSM Enterprise Client',
+      customerName: customerName || (typeof userOrUserId === 'object' ? userOrUserId.email : 'Enterprise Customer'),
+      customerEmail: customerEmail || (typeof userOrUserId === 'object' ? userOrUserId.email : 'enterprise@company.com'),
+      subtotalVnd,
+      taxRate,
+      taxAmountVnd,
+      totalAmountVnd,
+      lineItems,
+      paymentDetails,
+    };
+  }
+
+  async downloadInvoicePdf(userOrUserId: AuthenticatedUser | string, invoiceId: string) {
+    const detail = await this.getInvoiceById(userOrUserId, invoiceId);
+    const buffer = generateInvoicePdfBuffer(detail);
+    return {
+      buffer,
+      invoiceNumber: detail.invoiceNumber,
+      filename: `${detail.invoiceNumber}.pdf`,
+    };
+  }
+
+  private async seedDefaultEnterpriseInvoices(): Promise<void> {
+    try {
+      const count = await this.invoiceRepo.countDocuments();
+      if (count > 0) return;
+
+      const dummyOrgId = '66d9c84e1234567890abcdef';
+      const dummyUserId = '66d9c84e1234567890abc001';
+
+      await this.invoiceRepo.create({
+        userId: dummyUserId,
+        organizationId: dummyOrgId,
+        invoiceNumber: 'INV-2026-0001',
+        planTier: PlanTier.ENTERPRISE,
+        planName: 'Enterprise Modernization Pilot',
+        amountVnd: 150000000,
+        status: InvoiceStatus.PAID,
+        billingPeriodStart: new Date('2026-08-01T00:00:00.000Z'),
+        billingPeriodEnd: new Date('2026-09-01T00:00:00.000Z'),
+        paidAt: new Date('2026-08-02T10:15:00.000Z'),
+        paymentMethod: 'Bank Wire Transfer',
+      });
+
+      await this.invoiceRepo.create({
+        userId: dummyUserId,
+        organizationId: dummyOrgId,
+        invoiceNumber: 'INV-2026-0002',
+        planTier: PlanTier.ENTERPRISE,
+        planName: 'Enterprise Production Modernization Phase 1',
+        amountVnd: 250000000,
+        status: InvoiceStatus.PAID,
+        billingPeriodStart: new Date('2026-09-01T00:00:00.000Z'),
+        billingPeriodEnd: new Date('2026-10-01T00:00:00.000Z'),
+        paidAt: new Date('2026-09-03T14:30:00.000Z'),
+        paymentMethod: 'Bank Wire Transfer',
+      });
+
+      await this.invoiceRepo.create({
+        userId: dummyUserId,
+        organizationId: dummyOrgId,
+        invoiceNumber: 'INV-2026-0003',
+        planTier: PlanTier.ENTERPRISE,
+        planName: 'Enterprise Premium SLA & Dedicated Support',
+        amountVnd: 45000000,
+        status: InvoiceStatus.PENDING,
+        billingPeriodStart: new Date('2026-10-01T00:00:00.000Z'),
+        billingPeriodEnd: new Date('2026-11-01T00:00:00.000Z'),
+        paymentMethod: 'QR Bank Transfer',
+      });
+
+      this.logger.log('Default enterprise invoices seeded successfully');
+    } catch (err) {
+      this.logger.warn(`Could not seed default enterprise invoices: ${err}`);
+    }
   }
 
   async createInvoice(

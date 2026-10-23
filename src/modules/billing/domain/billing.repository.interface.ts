@@ -93,9 +93,24 @@ export interface ISubscriptionRepository {
   cancel(id: string, reason: string, feedback?: string): Promise<SubscriptionProps | null>;
 }
 
+export interface InvoiceQueryOptions {
+  userId?: string;
+  organizationId?: string;
+  status?: InvoiceStatus;
+  planTier?: PlanTier;
+  startDate?: Date | string;
+  endDate?: Date | string;
+  search?: string;
+  skip?: number;
+  limit?: number;
+}
+
 export interface IInvoiceRepository {
   findById(id: string): Promise<InvoiceProps | null>;
   findRecentByUser(userId: string, limit?: number): Promise<InvoiceProps[]>;
+  findByOrganizationId?(organizationId: string, limit?: number): Promise<InvoiceProps[]>;
+  findByInvoiceNumber?(invoiceNumber: string): Promise<InvoiceProps | null>;
+  findInvoices?(options: InvoiceQueryOptions): Promise<{ items: InvoiceProps[]; total: number }>;
   countDocuments(): Promise<number>;
   create(props: Omit<InvoiceProps, 'id'>): Promise<InvoiceProps>;
   markPaid(id: string, paymentMethod: string): Promise<InvoiceProps | null>;

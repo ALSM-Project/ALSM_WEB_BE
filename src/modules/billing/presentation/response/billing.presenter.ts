@@ -42,6 +42,37 @@ export class BillingPresenter {
     return invoices.map((inv) => this.toInvoiceResponse(inv));
   }
 
+  static toInvoiceDetailResponse(inv: any) {
+    const subtotal = inv.amountVnd || 0;
+    const taxRate = inv.taxRate ?? 0.1;
+    const taxAmount = inv.taxAmountVnd ?? Math.round(subtotal * taxRate);
+    const totalAmount = inv.totalAmountVnd ?? (subtotal + taxAmount);
+
+    return {
+      ...this.toInvoiceResponse(inv),
+      organizationId: inv.organizationId,
+      organizationName: inv.organizationName || 'ALSM Enterprise Client',
+      userId: inv.userId,
+      customerName: inv.customerName || 'Enterprise Customer',
+      customerEmail: inv.customerEmail || 'enterprise@company.com',
+      currency: 'VND',
+      subtotalVnd: subtotal,
+      taxRate,
+      taxAmountVnd: taxAmount,
+      totalAmountVnd: totalAmount,
+      lineItems: inv.lineItems || [
+        {
+          description: `${inv.planName || 'Modernization'} (${inv.planTier || 'ENTERPRISE'}) License`,
+          quantity: 1,
+          unitPriceVnd: subtotal,
+          amountVnd: subtotal,
+        },
+      ],
+      paymentDetails: inv.paymentDetails,
+      downloadUrl: `/api/v1/billing/invoices/${inv.id}/receipt.pdf`,
+    };
+  }
+
   static toQuoteRequestResponse(req: QuoteRequestProps) {
     return {
       id: req.id,

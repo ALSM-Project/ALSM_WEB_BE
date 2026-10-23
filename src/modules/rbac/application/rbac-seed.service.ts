@@ -46,6 +46,7 @@ export class RbacSeedService implements OnApplicationBootstrap {
     // Commercial & Billing
     await this.ensurePermission('billing.quotes.manage', 'Manage Enterprise Quotes', 'billing', 'Approve or update enterprise quote requests');
     await this.ensurePermission('billing.usage.view', 'View Usage', 'billing', 'View organization usage stats and quotas');
+    await this.ensurePermission('billing.invoices.view', 'View Invoices', 'billing', 'View historical invoices and billing records');
     // Conversions
     await this.ensurePermission('conversions.view', 'View Conversions', 'conversions', 'View conversion projects and queue');
     await this.ensurePermission('conversions.queue.view', 'View Conversion Queue', 'conversions', 'View queue and conversion job items');

@@ -10,7 +10,9 @@ import {
   Put,
   Query,
   UseGuards,
+  Res,
 } from '@nestjs/common';
+import { Response } from 'express';
 import {
   ApiBearerAuth,
   ApiOperation,
@@ -29,8 +31,11 @@ import {
   CancelSubscriptionDto,
   CancelSubscriptionResponseDto,
   CreateSubscriptionDto,
+  InvoiceDetailResponseDto,
   InvoiceDownloadResponseDto,
   InvoiceResponseDto,
+  ListInvoicesQueryDto,
+  PaginatedInvoicesResponseDto,
   ListQuoteRequestsQueryDto,
   PlanResponseDto,
   QuoteRequestResponseDto,
@@ -383,35 +388,105 @@ export class BillingController {
     return this.billingService.cancelSubscription(user.userId, dto.reason, dto.feedback);
   }
 
-  // ─── Invoices ────────────────────────────────────────────
+  // ─── Invoices (View Invoices Workflow) ────────────────────
 
   @ApiBearerAuth()
   @UseGuards(JwtAuthGuard)
   @Get('invoices')
   @ApiOperation({
-    summary: 'List invoices for current user',
-    description: 'Retrieve all historical invoices and billing records for the authenticated user.',
+    summary: 'List invoices for current user or organization',
+    description: 'Retrieve historical invoices and billing records for the enterprise customer, enterprise admin, or organization member.',
   })
   @ApiResponse({
     status: HttpStatus.OK,
-    description: 'List of invoices',
-    type: [InvoiceResponseDto],
+    description: 'List of invoices or paginated result',
   })
   @ApiResponse({
     status: HttpStatus.UNAUTHORIZED,
     description: 'Missing or invalid authentication token',
   })
-  async getInvoices(@CurrentUser() user: AuthenticatedUser) {
-    const invoices = await this.billingService.getInvoices(user.userId);
-    return BillingPresenter.toInvoiceListResponse(invoices);
+  async getInvoices(
+    @CurrentUser() user: AuthenticatedUser,
+    @Query() query: ListInvoicesQueryDto,
+  ) {
+    const result = await this.billingService.getInvoices(user, query);
+    // If client explicitly requested pagination parameters
+    if (query?.page || query?.limit) {
+      return {
+        items: BillingPresenter.toInvoiceListResponse(result.items),
+        total: result.total,
+        page: result.page,
+        limit: result.limit,
+        totalPages: result.totalPages,
+      };
+    }
+    // Backward-compatible array response for clients expecting a direct array
+    return BillingPresenter.toInvoiceListResponse(result.items);
+  }
+
+  @ApiBearerAuth()
+  @UseGuards(JwtAuthGuard)
+  @Get('invoices/:id')
+  @ApiOperation({
+    summary: 'Get invoice details by ID',
+    description: 'Retrieve full breakdown of an invoice including line items, VAT, and payment details.',
+  })
+  @ApiParam({
+    name: 'id',
+    description: 'Invoice identifier (MongoDB ObjectId)',
+    example: '66d9c84e1234567890abcdef',
+  })
+  @ApiResponse({
+    status: HttpStatus.OK,
+    description: 'Detailed invoice breakdown',
+    type: InvoiceDetailResponseDto,
+  })
+  @ApiResponse({ status: HttpStatus.BAD_REQUEST, description: 'Invalid invoice ID format' })
+  @ApiResponse({ status: HttpStatus.UNAUTHORIZED, description: 'Missing or invalid authentication token' })
+  @ApiResponse({ status: HttpStatus.FORBIDDEN, description: 'Access denied to this invoice' })
+  @ApiResponse({ status: HttpStatus.NOT_FOUND, description: 'Invoice not found' })
+  async getInvoiceById(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string) {
+    const invoice = await this.billingService.getInvoiceById(user, id);
+    return BillingPresenter.toInvoiceDetailResponse(invoice);
+  }
+
+  @ApiBearerAuth()
+  @UseGuards(JwtAuthGuard)
+  @Get('invoices/:id/receipt.pdf')
+  @ApiOperation({
+    summary: 'Stream or download PDF receipt for an invoice',
+    description: 'Generates and streams standard PDF receipt with headers for inline viewing or download.',
+  })
+  @ApiParam({
+    name: 'id',
+    description: 'Invoice identifier (MongoDB ObjectId)',
+    example: '66d9c84e1234567890abcdef',
+  })
+  @ApiResponse({
+    status: HttpStatus.OK,
+    description: 'PDF binary stream',
+  })
+  @ApiResponse({ status: HttpStatus.BAD_REQUEST, description: 'Invalid invoice ID format' })
+  @ApiResponse({ status: HttpStatus.UNAUTHORIZED, description: 'Missing or invalid authentication token' })
+  @ApiResponse({ status: HttpStatus.FORBIDDEN, description: 'Access denied to this invoice' })
+  @ApiResponse({ status: HttpStatus.NOT_FOUND, description: 'Invoice not found' })
+  async streamInvoicePdf(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('id') id: string,
+    @Res() res: Response,
+  ) {
+    const pdfData = await this.billingService.downloadInvoicePdf(user, id);
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('Content-Disposition', `inline; filename="${pdfData.filename}"`);
+    res.send(pdfData.buffer);
   }
 
   @ApiBearerAuth()
   @UseGuards(JwtAuthGuard)
   @Get('invoices/:id/download')
   @ApiOperation({
-    summary: 'Download PDF receipt for an invoice',
-    description: 'Generate or retrieve download link for a PDF invoice receipt.',
+    summary: 'Download PDF receipt metadata for an invoice',
+    description: 'Generate or retrieve download link and metadata for a PDF invoice receipt.',
   })
   @ApiParam({
     name: 'id',
@@ -423,14 +498,17 @@ export class BillingController {
     description: 'Invoice download URL and status',
     type: InvoiceDownloadResponseDto,
   })
-  @ApiResponse({
-    status: HttpStatus.UNAUTHORIZED,
-    description: 'Missing or invalid authentication token',
-  })
+  @ApiResponse({ status: HttpStatus.BAD_REQUEST, description: 'Invalid invoice ID format' })
+  @ApiResponse({ status: HttpStatus.UNAUTHORIZED, description: 'Missing or invalid authentication token' })
+  @ApiResponse({ status: HttpStatus.FORBIDDEN, description: 'Access denied to this invoice' })
+  @ApiResponse({ status: HttpStatus.NOT_FOUND, description: 'Invoice not found' })
   async downloadInvoicePdf(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string) {
+    const detail = await this.billingService.getInvoiceById(user, id);
     return {
-      message: `Invoice PDF generation queued for invoice ${id} and user ${user.userId}`,
+      message: 'Invoice PDF ready for download',
       downloadUrl: `/api/v1/billing/invoices/${id}/receipt.pdf`,
+      invoiceNumber: detail.invoiceNumber,
+      filename: `${detail.invoiceNumber}.pdf`,
     };
   }
 
