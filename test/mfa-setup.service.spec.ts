@@ -21,6 +21,7 @@ function user(mfa: MfaState = pendingMfa): UserRecord {
     isActive: true,
     isEmailVerified: true,
     mustChangePassword: false,
+    isLocked: false,
     mfa,
     createdAt: new Date(),
     updatedAt: new Date(),

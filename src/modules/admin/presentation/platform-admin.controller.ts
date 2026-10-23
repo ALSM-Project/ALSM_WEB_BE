@@ -3,8 +3,6 @@ import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { Response } from 'express';
 import { CurrentUser } from '../../../shared/security/current-user.decorator';
 import { JwtAuthGuard } from '../../../shared/security/jwt-auth.guard';
-import { PermissionsGuard } from '../../../shared/security/permissions.guard';
-import { RequirePermissions } from '../../../shared/security/require-permissions.decorator';
 import { AuthenticatedUser } from '../../../shared/logging/request-id.middleware';
 import { PlatformAdminService } from '../application/platform-admin.service';
 import { LockUserService } from '../application/lock-user.service';

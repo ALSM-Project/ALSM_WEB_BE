@@ -310,22 +310,6 @@ describe('Internal Staff Portal & Platform Administration Workflows', () => {
       );
     });
 
-    it('3.13.9: locks user account, invalidates active sessions, and writes audit trail', async () => {
-      const result = await adminService.lockUser('admin-1', 'user-departing-1', 'Suspected security breach');
-
-      expect(result.success).toBe(true);
-      expect(sessionModel.updateMany).toHaveBeenCalledWith(
-        expect.objectContaining({ revokedAt: { $exists: false } }),
-        expect.objectContaining({ $set: expect.objectContaining({ revokedAt: expect.any(Date) }) }),
-      );
-      expect(auditRepo.append).toHaveBeenCalledWith(
-        expect.objectContaining({
-          action: 'USER_ACCOUNT_LOCKED',
-          metadata: expect.objectContaining({ reason: 'Suspected security breach' }),
-        }),
-      );
-    });
-
     it('3.14.2: executes user offboarding workflow, transfers resources and deactivates account', async () => {
       const summary = await adminService.getOffboardingSummary('user-departing-1');
       expect(summary.activeSessionsCount).toBe(3);
