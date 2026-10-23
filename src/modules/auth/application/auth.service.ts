@@ -102,6 +102,12 @@ export class AuthService {
         message: 'Email address is not verified. Please verify your email before logging in.',
       });
     }
+    if (user.isLocked) {
+      throw new UnauthorizedException({
+        code: 'ACCOUNT_LOCKED',
+        message: 'Your account has been locked. Please contact your administrator.',
+      });
+    }
     await this.audit.append({
       actorUserId: user.id,
       action: 'USER_LOGIN',
@@ -154,6 +160,12 @@ export class AuthService {
         throw new UnauthorizedException({
           code: 'INVALID_CREDENTIALS',
           message: 'Account is inactive',
+        });
+      }
+      if (user.isLocked) {
+        throw new UnauthorizedException({
+          code: 'ACCOUNT_LOCKED',
+          message: 'Your account has been locked. Please contact your administrator.',
         });
       }
       if (!user.isEmailVerified) {

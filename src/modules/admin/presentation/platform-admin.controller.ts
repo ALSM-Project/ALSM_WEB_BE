@@ -1,27 +1,21 @@
-import {
-  Body,
-  Controller,
-  Get,
-  Param,
-  Patch,
-  Post,
-  Query,
-  Res,
-  UseGuards,
-} from '@nestjs/common';
+import { Body, Controller, Get, Param, Patch, Post, Query, Res, UseGuards } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { Response } from 'express';
 import { CurrentUser } from '../../../shared/security/current-user.decorator';
 import { JwtAuthGuard } from '../../../shared/security/jwt-auth.guard';
 import { AuthenticatedUser } from '../../../shared/logging/request-id.middleware';
 import { PlatformAdminService } from '../application/platform-admin.service';
+import { LockUserService } from '../application/lock-user.service';
 
 @ApiTags('Platform Administration (Sections 3.10, 3.13 & 3.14)')
 @ApiBearerAuth()
 @UseGuards(JwtAuthGuard)
 @Controller('admin')
 export class PlatformAdminController {
-  constructor(private readonly adminService: PlatformAdminService) {}
+  constructor(
+    private readonly adminService: PlatformAdminService,
+    private readonly lockUserService: LockUserService,
+  ) {}
 
   @Get('organizations')
   @ApiOperation({ summary: 'View all organisations (3.13.1)' })
@@ -76,15 +70,14 @@ export class PlatformAdminController {
 
   @Post('organizations/:id/impersonate')
   @ApiOperation({ summary: 'Impersonate customer organisation in read-only mode (3.10.4)' })
-  async impersonate(
-    @CurrentUser() user: AuthenticatedUser,
-    @Param('id') id: string,
-  ) {
+  async impersonate(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string) {
     return this.adminService.impersonateOrganization(user.userId, id);
   }
 
   @Get('revenue/summary')
-  @ApiOperation({ summary: 'View platform total revenue derived from contracts & payments (3.13.6)' })
+  @ApiOperation({
+    summary: 'View platform total revenue derived from contracts & payments (3.13.6)',
+  })
   async getRevenueSummary() {
     return this.adminService.getTotalRevenue();
   }
@@ -120,17 +113,20 @@ export class PlatformAdminController {
     @CurrentUser() user: AuthenticatedUser,
     @Param('id') id: string,
     @Body('reason') reason: string,
+    @Body('duration') duration?: string,
   ) {
-    return this.adminService.lockUser(user.userId, id, reason || 'Violation of platform policies');
+    return this.lockUserService.lock({
+      actorUserId: user.userId,
+      targetUserId: id,
+      reason: reason || 'Violation of platform policies',
+      duration,
+    });
   }
 
   @Post('users/:id/unlock')
   @ApiOperation({ summary: 'Unlock user account (3.13.9)' })
-  async unlockUser(
-    @CurrentUser() user: AuthenticatedUser,
-    @Param('id') id: string,
-  ) {
-    return this.adminService.unlockUser(user.userId, id);
+  async unlockUser(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string) {
+    return this.lockUserService.unlock(user.userId, id);
   }
 
   @Get('users/:id/offboarding-summary')
