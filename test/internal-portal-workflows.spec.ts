@@ -140,12 +140,18 @@ describe('Internal Staff Portal & Platform Administration Workflows', () => {
         }),
         findById: jest.fn().mockReturnValue({ exec: jest.fn().mockResolvedValue(mockLead) }),
         findOne: jest.fn().mockReturnValue({ exec: jest.fn().mockResolvedValue(mockLead) }),
-        create: jest.fn().mockImplementation((dto) => Promise.resolve({ id: 'lead-new-1', ...dto, save: jest.fn() })),
+        create: jest
+          .fn()
+          .mockImplementation((dto) =>
+            Promise.resolve({ id: 'lead-new-1', ...dto, save: jest.fn() }),
+          ),
       };
 
       orgModel = {
         findOne: jest.fn().mockReturnValue({ exec: jest.fn().mockResolvedValue(null) }),
-        create: jest.fn().mockResolvedValue({ _id: new Types.ObjectId(), members: [], save: jest.fn() }),
+        create: jest
+          .fn()
+          .mockResolvedValue({ _id: new Types.ObjectId(), members: [], save: jest.fn() }),
       };
 
       userModel = {
@@ -305,7 +311,28 @@ describe('Internal Staff Portal & Platform Administration Workflows', () => {
         {} as never,
         projectModel as never,
         { countDocuments: jest.fn().mockResolvedValue(0) } as never,
-        { find: jest.fn().mockReturnValue({ populate: jest.fn().mockReturnValue({ sort: jest.fn().mockReturnValue({ skip: jest.fn().mockReturnValue({ limit: jest.fn().mockReturnValue({ exec: jest.fn().mockResolvedValue([]) }) }) }) }) }), countDocuments: jest.fn().mockResolvedValue(0) } as never,
+        {
+          find: jest
+            .fn()
+            .mockReturnValue({
+              populate: jest
+                .fn()
+                .mockReturnValue({
+                  sort: jest
+                    .fn()
+                    .mockReturnValue({
+                      skip: jest
+                        .fn()
+                        .mockReturnValue({
+                          limit: jest
+                            .fn()
+                            .mockReturnValue({ exec: jest.fn().mockResolvedValue([]) }),
+                        }),
+                    }),
+                }),
+            }),
+          countDocuments: jest.fn().mockResolvedValue(0),
+        } as never,
         auditRepo as never,
       );
     });
@@ -364,7 +391,9 @@ describe('Internal Staff Portal & Platform Administration Workflows', () => {
     beforeEach(() => {
       tempRoleModel = {
         findOne: jest.fn().mockReturnValue({ exec: jest.fn().mockResolvedValue(null) }),
-        create: jest.fn().mockImplementation((dto) => Promise.resolve({ id: 'temp-1', ...dto, save: jest.fn() })),
+        create: jest
+          .fn()
+          .mockImplementation((dto) => Promise.resolve({ id: 'temp-1', ...dto, save: jest.fn() })),
         findById: jest.fn().mockReturnValue({
           exec: jest.fn().mockResolvedValue({
             id: 'temp-1',
@@ -396,11 +425,17 @@ describe('Internal Staff Portal & Platform Administration Workflows', () => {
       };
 
       roleModel = {
-        findOne: jest.fn().mockReturnValue({ exec: jest.fn().mockResolvedValue({ id: 'TEAM_LEAD', name: 'Team Lead' }) }),
+        findOne: jest
+          .fn()
+          .mockReturnValue({
+            exec: jest.fn().mockResolvedValue({ id: 'TEAM_LEAD', name: 'Team Lead' }),
+          }),
       };
 
       userModel = {
-        findById: jest.fn().mockReturnValue({ exec: jest.fn().mockResolvedValue({ _id: new Types.ObjectId() }) }),
+        findById: jest
+          .fn()
+          .mockReturnValue({ exec: jest.fn().mockResolvedValue({ _id: new Types.ObjectId() }) }),
       };
 
       tempRoleService = new TemporaryRoleService(
@@ -419,7 +454,13 @@ describe('Internal Staff Portal & Platform Administration Workflows', () => {
 
       // Rule 2: Cannot grant Platform Admin
       await expect(
-        tempRoleService.grantTemporaryRole('admin-1', 'user-1', 'SYSTEM_ADMIN', 8, 'Admin escalation'),
+        tempRoleService.grantTemporaryRole(
+          'admin-1',
+          'user-1',
+          'SYSTEM_ADMIN',
+          8,
+          'Admin escalation',
+        ),
       ).rejects.toThrow('Temporary role cannot grant Platform Admin privileges');
 
       // Successful grant
@@ -436,12 +477,22 @@ describe('Internal Staff Portal & Platform Administration Workflows', () => {
       // Rule 3: Only 1 active temporary role per user
       tempRoleModel.findOne.mockReturnValue({ exec: jest.fn().mockResolvedValue(granted) });
       await expect(
-        tempRoleService.grantTemporaryRole('admin-1', 'user-1', 'CONVERSION_STAFF', 4, 'Second role'),
+        tempRoleService.grantTemporaryRole(
+          'admin-1',
+          'user-1',
+          'CONVERSION_STAFF',
+          4,
+          'Second role',
+        ),
       ).rejects.toThrow('The user already holds an active temporary role');
     });
 
     it('3.15.3: revokes temporary role with reason and audit log', async () => {
-      const revoked = await tempRoleService.revokeTemporaryRole('admin-1', 'temp-1', 'Shift ended early');
+      const revoked = await tempRoleService.revokeTemporaryRole(
+        'admin-1',
+        'temp-1',
+        'Shift ended early',
+      );
       expect(revoked.status).toBe('REVOKED');
       expect(auditRepo.append).toHaveBeenCalledWith(
         expect.objectContaining({
@@ -480,9 +531,11 @@ describe('Internal Staff Portal & Platform Administration Workflows', () => {
 
       const mockTempModel = {
         find: jest.fn().mockReturnValue({
-          exec: jest.fn().mockResolvedValue([
-            { roleId: 'TEAM_LEAD', status: 'ACTIVE', expiresAt: new Date(Date.now() + 3600000) },
-          ]),
+          exec: jest
+            .fn()
+            .mockResolvedValue([
+              { roleId: 'TEAM_LEAD', status: 'ACTIVE', expiresAt: new Date(Date.now() + 3600000) },
+            ]),
         }),
       };
 
