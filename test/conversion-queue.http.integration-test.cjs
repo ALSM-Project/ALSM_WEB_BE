@@ -93,8 +93,10 @@ async function startHarness() {
     const db = connection.db;
     const { ObjectId } = mongoose.Types;
     const staffId = new ObjectId(); const otherId = new ObjectId(); const viewerId = new ObjectId();
-    const orgId = new ObjectId(); const foreignOrgId = new ObjectId();
+    const unassignedId = new ObjectId(); const adminId = new ObjectId(); const teamId = new ObjectId();
+    const orgId = new ObjectId(); const foreignOrgId = new ObjectId(); const assignedOrgId = new ObjectId();
     const projectId = new ObjectId(); const emptyId = new ObjectId(); const foreignProjectId = new ObjectId();
+    const unassignedProjectId = new ObjectId(); const assignedProjectId = new ObjectId();
     const failedId = new ObjectId(); const processingId = new ObjectId(); const completedId = new ObjectId();
     const password = randomBytes(24).toString('base64url');
     const passwordHash = await bcrypt.hash(password, 10); const now = new Date();
@@ -103,17 +105,28 @@ async function startHarness() {
       { _id: staffId, email: staffEmail, fullName: 'Queue Staff Fixture', passwordHash, isPlatformAdmin: false, isActive: true, isEmailVerified: true, mustChangePassword: false, mfa: { enabled: false } },
       { _id: otherId, email: 'other-staff@example.invalid', fullName: 'Other Staff Fixture', passwordHash, isPlatformAdmin: false, isActive: true, isEmailVerified: true, mustChangePassword: false, mfa: { enabled: false } },
       { _id: viewerId, email: 'viewer@example.invalid', fullName: 'Viewer Fixture', passwordHash, isPlatformAdmin: false, isActive: true, isEmailVerified: true, mustChangePassword: false, mfa: { enabled: false } },
+      { _id: unassignedId, email: 'unassigned-staff@example.invalid', fullName: 'Unassigned Staff Fixture', passwordHash, isPlatformAdmin: false, isActive: true, isEmailVerified: true, mustChangePassword: false, mfa: { enabled: false } },
+      { _id: adminId, email: 'assignment-admin@example.invalid', fullName: 'Assignment Admin Fixture', passwordHash, isPlatformAdmin: true, isActive: true, isEmailVerified: true, mustChangePassword: false, mfa: { enabled: false } },
     ]);
-    await db.collection('user_roles').insertMany([{ userId: String(staffId), roleId: 'CONVERSION_STAFF' }, { userId: String(otherId), roleId: 'CONVERSION_STAFF' }]);
+    await db.collection('user_roles').insertMany([staffId, otherId, unassignedId].map((id) => ({ userId: String(id), roleId: 'CONVERSION_STAFF' })));
     await db.collection('organizations').insertMany([
-      { _id: orgId, name: 'Owned queue fixture organization', type: 'INTERNAL', members: [{ userId: staffId, role: 'OWNER' }, { userId: viewerId, role: 'VIEWER' }] },
+      { _id: orgId, name: 'Owned queue fixture organization', type: 'INTERNAL', members: [{ userId: staffId, role: 'OWNER' }, { userId: unassignedId, role: 'MEMBER' }, { userId: adminId, role: 'ADMIN' }, { userId: viewerId, role: 'VIEWER' }] },
       { _id: foreignOrgId, name: 'Foreign fixture organization', type: 'ENTERPRISE', members: [{ userId: otherId, role: 'OWNER' }] },
+      { _id: assignedOrgId, name: 'Another assigned fixture organization', type: 'ENTERPRISE', members: [{ userId: staffId, role: 'MEMBER' }] },
     ]);
     const project = (id, organizationId, name) => ({ _id: id, organizationId, name, createdBy: staffId, conversionType: 'COBOL_TO_JAVA', status: 'ACTIVE', createdAt: now, updatedAt: now });
-    await db.collection('projects').insertMany([project(projectId, orgId, 'Persisted queue verification fixtures'), project(emptyId, orgId, 'Empty queue verification fixtures'), project(foreignProjectId, foreignOrgId, 'Foreign fixture project')]);
+    await db.collection('projects').insertMany([project(projectId, orgId, 'Persisted queue verification fixtures'), project(emptyId, orgId, 'Empty queue verification fixtures'), project(foreignProjectId, foreignOrgId, 'Foreign fixture project'), project(unassignedProjectId, orgId, 'Unassigned project fixture'), project(assignedProjectId, assignedOrgId, 'Another organization assigned project fixture')]);
+    await db.collection('teams').insertMany([
+      { _id: teamId, organizationId: orgId, name: 'Assigned Conversion Team Fixture', kind: 'CONVERSION', memberIds: [String(staffId), String(unassignedId)], managerIds: [String(adminId)],
+        projectAssignments: [projectId, emptyId].map((id) => ({ projectId: String(id), memberIds: [String(staffId)] })), revision: 1, changes: [] },
+      { organizationId: assignedOrgId, name: 'Other Organization Conversion Team Fixture', kind: 'CONVERSION', memberIds: [String(staffId)], managerIds: [],
+        projectAssignments: [{ projectId: String(assignedProjectId), memberIds: [String(staffId)] }], revision: 1, changes: [] },
+    ]);
+    const { STORAGE_PORT } = require('../dist/shared/storage/storage.port');
+    const resultReference = await app.get(STORAGE_PORT).writeFiles('queue-test-fixture', [{ relativePath: 'fixture.txt', content: Buffer.from('Test fixture only. No conversion was executed.\n') }]);
     await db.collection('conversion_jobs').insertMany([
       { _id: failedId, status: 'FAILED', errorCode: 'TEST_FIXTURE_FAILURE', errorMessage: 'Persisted fixture failure; no converter executed' },
-      { _id: processingId, status: 'PROCESSING' }, { _id: completedId, status: 'COMPLETED' },
+      { _id: processingId, status: 'PROCESSING' }, { _id: completedId, status: 'COMPLETED', resultReference },
     ].map((record) => ({ ...record, organizationId: orgId, projectId, conversionType: 'COBOL_TO_JAVA', priority: 'NORMAL',
       attemptCount: 5, maxAttempts: 5, createdBy: staffId, createdAt: now, updatedAt: now, executionGeneration: 0 })));
     const base = `${await app.getUrl()}/api/v1`;
@@ -129,7 +142,7 @@ async function startHarness() {
       return result;
     }
     const login = (email = staffEmail) => request('POST', '/auth/login', 200, undefined, { email, password });
-    return { app, db, base, close, request, login, fixtureCredentials: { email: staffEmail, password }, ids: Object.fromEntries(Object.entries({ staffId, otherId, orgId, foreignOrgId, projectId, emptyId, foreignProjectId, failedId, processingId, completedId }).map(([key, value]) => [key, String(value)])), getPassed: () => passed };
+    return { app, db, base, close, request, login, fixtureCredentials: { email: staffEmail, password }, ids: Object.fromEntries(Object.entries({ staffId, otherId, unassignedId, adminId, teamId, orgId, foreignOrgId, assignedOrgId, projectId, emptyId, foreignProjectId, unassignedProjectId, assignedProjectId, failedId, processingId, completedId }).map(([key, value]) => [key, String(value)])), getPassed: () => passed };
   } catch (error) { await close(); throw error; }
 }
 async function main() {
@@ -141,7 +154,11 @@ async function main() {
     const me = await request('GET', '/auth/me', 200, staff.accessToken);
     assert.ok(me.roles.includes('CONVERSION_STAFF')); assert.ok(me.effectivePermissions.includes('conversions.queue.view')); assert.equal(me.isPlatformAdmin, false);
     const projects = await request('GET', '/projects', 200, staff.accessToken);
-    assert.equal(projects.length, 2); assert.ok(!projects.some((p) => p.id === ids.foreignProjectId));
+    assert.equal(projects.length, 3); assert.ok(!projects.some((p) => p.id === ids.foreignProjectId));
+    const assigned = await request('GET', '/conversion-queue/projects', 200, staff.accessToken);
+    assert.deepEqual(assigned.map((p) => p.id).sort(), [ids.projectId, ids.emptyId, ids.assignedProjectId].sort());
+    assert.ok(!assigned.some((p) => p.id === ids.unassignedProjectId));
+    assert.deepEqual(await request('GET', `/projects/${ids.assignedProjectId}/conversions`, 200, staff.accessToken, undefined, ids.assignedOrgId), []);
     const jobs = await request('GET', `/projects/${ids.projectId}/conversions`, 200, staff.accessToken);
     assert.deepEqual(jobs.map((job) => job.status).sort(), ['COMPLETED', 'FAILED', 'PROCESSING']);
     assert.ok(jobs.every((job) => job.organizationId === ids.orgId && job.attemptCount === 5));
@@ -149,11 +166,25 @@ async function main() {
     assert.equal(detail.errorCode, 'TEST_FIXTURE_FAILURE'); assert.equal(detail.logs, undefined);
     assert.deepEqual(await request('GET', `/projects/${ids.emptyId}/conversions`, 200, staff.accessToken), []);
     await request('GET', `/projects/${ids.projectId}/conversions`, 401);
-    await request('GET', `/projects/${ids.foreignProjectId}/conversions`, 404, staff.accessToken);
-    await request('GET', `/projects/${ids.projectId}/conversions`, 404, outsider.accessToken);
+    await request('GET', `/projects/${ids.foreignProjectId}/conversions`, 403, staff.accessToken);
+    await request('GET', `/projects/${ids.projectId}/conversions`, 403, outsider.accessToken);
     await request('GET', `/projects/${ids.foreignProjectId}/conversions`, 403, staff.accessToken, undefined, ids.foreignOrgId);
     await request('GET', `/conversions/${ids.failedId}`, 404, outsider.accessToken);
-    await request('GET', '/projects/invalid-id/conversions', 404, staff.accessToken);
+    await request('GET', '/projects/invalid-id/conversions', 403, staff.accessToken);
+    const unassigned = await login('unassigned-staff@example.invalid');
+    assert.deepEqual(await request('GET', '/conversion-queue/projects', 200, unassigned.accessToken), []);
+    await request('GET', `/projects/${ids.projectId}/conversions`, 403, unassigned.accessToken);
+    await request('GET', `/projects/${ids.unassignedProjectId}/conversions`, 403, staff.accessToken);
+    await request('GET', `/conversions/${ids.failedId}`, 403, unassigned.accessToken);
+    await request('GET', `/projects/${ids.projectId}/screens/fixture/conversions`, 403, unassigned.accessToken);
+    await request('GET', `/conversions/${ids.completedId}/result`, 403, unassigned.accessToken);
+    await request('GET', `/projects/${ids.projectId}/conversions/${ids.completedId}/quality-review`, 403, unassigned.accessToken);
+    await request('PATCH', `/projects/${ids.projectId}/conversions/${ids.completedId}/quality-review`, 403, unassigned.accessToken, { status: 'ACCEPTED' });
+    await request('POST', `/conversions/${ids.failedId}/retry`, 403, unassigned.accessToken);
+    await request('GET', `/conversions/${ids.completedId}/result`, 200, staff.accessToken);
+    await request('GET', `/projects/${ids.projectId}/conversions/${ids.completedId}/quality-review`, 200, staff.accessToken);
+    await request('GET', `/projects/${ids.projectId}/conversions`, 200, viewer.accessToken); // unchanged customer read
+    await request('GET', '/conversion-queue/projects', 403, viewer.accessToken);
     await request('POST', `/conversions/${ids.failedId}/retry`, 403, viewer.accessToken);
     await request('POST', `/conversions/${ids.completedId}/retry`, 404, staff.accessToken);
     await request('POST', `/conversions/${ids.failedId}/retry`, 400, staff.accessToken); // real disabled-queue failure
@@ -173,11 +204,28 @@ async function main() {
     const sid = JSON.parse(Buffer.from(staff.accessToken.split('.')[1], 'base64url')).sid;
     await db.collection('user_sessions').updateOne({ _id: new mongoose.Types.ObjectId(sid) }, { $set: { revokedAt: new Date() } });
     await request('GET', `/projects/${ids.projectId}/conversions`, 401, staff.accessToken);
+    await request('GET', '/conversion-queue/projects', 401, staff.accessToken);
     await request('GET', `/conversions/${ids.failedId}`, 401, staff.accessToken);
     await request('POST', `/conversions/${ids.failedId}/retry`, 401, staff.accessToken);
     const session = await login();
     const refreshed = await request('POST', '/auth/refresh', 200, undefined, { refreshToken: session.refreshToken });
     await request('GET', `/projects/${ids.projectId}/conversions`, 200, refreshed.accessToken);
+    const admin = await login('assignment-admin@example.invalid');
+    const replace = (projectAssignments) => request('PUT', `/teams/${ids.teamId}`, 200, admin.accessToken, {
+      name: 'Assigned Conversion Team Fixture', kind: 'CONVERSION', memberIds: [ids.staffId, ids.unassignedId],
+      managerIds: [ids.adminId], projectAssignments, expectedRevision: 1,
+    }, ids.orgId);
+    await replace([{ projectId: ids.emptyId, memberIds: [ids.staffId] }]);
+    // The same live JWT and organization OWNER membership must no longer grant the project.
+    await request('GET', `/projects/${ids.projectId}/conversions`, 403, refreshed.accessToken);
+    await request('GET', `/conversions/${ids.failedId}`, 403, refreshed.accessToken);
+    await request('GET', `/conversions/${ids.completedId}/result`, 403, refreshed.accessToken);
+    await request('GET', `/projects/${ids.projectId}/screens/fixture/conversions`, 403, refreshed.accessToken);
+    await request('GET', `/projects/${ids.projectId}/conversions/${ids.completedId}/quality-review`, 403, refreshed.accessToken);
+    await request('PATCH', `/projects/${ids.projectId}/conversions/${ids.completedId}/quality-review`, 403, refreshed.accessToken, { status: 'ACCEPTED' });
+    await request('POST', `/conversions/${ids.failedId}/retry`, 403, refreshed.accessToken);
+    const afterRevocation = await request('GET', '/conversion-queue/projects', 200, refreshed.accessToken);
+    assert.ok(!afterRevocation.some((project) => project.id === ids.projectId));
     console.log(`PASS: ${h.getPassed()} HTTP checks; real isolated MongoDB and production AppModule. Redis enqueue success is not verified.`);
   } finally { await h.close(); }
 }
