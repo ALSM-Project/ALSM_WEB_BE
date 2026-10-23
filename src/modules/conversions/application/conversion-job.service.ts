@@ -30,6 +30,7 @@ import {
   ScreenRepository,
 } from '../../screens/domain/screen.types';
 import { findCopybookBlockers } from '../domain/copybook-dependency-resolver';
+import { ConversionProjectAccessService } from './conversion-project-access.service';
 
 /** A screen that a staff-triggered conversion did not start, and why. */
 export interface SkippedConversion {
@@ -66,6 +67,7 @@ export class ConversionJobService {
     private readonly authorization: OrganizationAuthorizationService,
     @Inject(AUDIT_REPOSITORY) private readonly audit: AuditRepository,
     @Inject(SCREEN_REPOSITORY) private readonly screens: ScreenRepository,
+    private readonly access: ConversionProjectAccessService,
   ) {}
 
   async create(
@@ -328,12 +330,17 @@ export class ConversionJobService {
     return job;
   }
 
+  listQueueProjects(userId: string, organizationHeader?: string): Promise<ProjectRecord[]> {
+    return this.access.listQueueProjects(userId, organizationHeader);
+  }
+
   async list(
     userId: string,
     organizationHeader: string | undefined,
     projectId: string,
   ): Promise<ConversionJobRecord[]> {
     const organization = await this.organizationContext.resolve(userId, organizationHeader);
+    await this.access.requireAssignment(userId, organization.id, projectId);
     await this.projects.getForOrganization(projectId, organization.id);
     return this.jobs.listByProject(projectId, organization.id);
   }
@@ -345,6 +352,7 @@ export class ConversionJobService {
     screenId: string,
   ): Promise<ConversionJobRecord[]> {
     const organization = await this.organizationContext.resolve(userId, organizationHeader);
+    await this.access.requireAssignment(userId, organization.id, projectId);
     await this.projects.getForOrganization(projectId, organization.id);
     return this.jobs.listByScreen(projectId, screenId, organization.id);
   }
@@ -357,6 +365,7 @@ export class ConversionJobService {
     const organization = await this.organizationContext.resolve(userId, organizationHeader);
     const job = await this.jobs.findById(id, organization.id);
     if (!job) throw this.notFound();
+    await this.access.requireAssignment(userId, organization.id, job.projectId);
     await this.projects.getForOrganization(job.projectId, organization.id);
     return job;
   }
@@ -374,6 +383,7 @@ export class ConversionJobService {
     ]);
     const existing = await this.jobs.findById(id, organization.id);
     if (!existing) throw this.notFound();
+    await this.access.requireAssignment(userId, organization.id, existing.projectId);
     await this.projects.getForOrganization(existing.projectId, organization.id);
     await this.requireSourceAccess(
       organization.id,

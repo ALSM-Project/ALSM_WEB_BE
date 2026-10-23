@@ -19,6 +19,7 @@ import { OrganizationContextService } from '../src/modules/organizations/applica
 import { OrganizationAuthorizationService } from '../src/modules/organizations/application/organization-authorization.service';
 import { AuditRepository } from '../src/modules/audit/domain/audit.repository';
 import { ScreenRepository } from '../src/modules/screens/domain/screen.types';
+import { ConversionProjectAccessService } from '../src/modules/conversions/application/conversion-project-access.service';
 
 const PROJECT = '6650aa00aa00aa00aa00aa01';
 const SCREEN_A = '6650bb00bb00bb00bb00bb0a';
@@ -52,6 +53,7 @@ describe('ConversionJobService - convert on behalf of partner (UC-47)', () => {
     authorization as unknown as OrganizationAuthorizationService,
     audit as unknown as AuditRepository,
     screens as unknown as ScreenRepository,
+    { requireAssignment: jest.fn() } as unknown as ConversionProjectAccessService,
   );
 
   function screen(id: string, overrides: Record<string, unknown> = {}) {

@@ -14,6 +14,7 @@ import {
   ConversionJobStatus,
 } from '../domain/conversion-job.types';
 import { ConversionResultBundle } from '../domain/conversion-result.types';
+import { ConversionProjectAccessService } from './conversion-project-access.service';
 
 @Injectable()
 export class GetConversionResultService {
@@ -22,6 +23,7 @@ export class GetConversionResultService {
     @Inject(STORAGE_PORT) private readonly storage: StoragePort,
     private readonly organizationContext: OrganizationContextService,
     private readonly projects: ProjectService,
+    private readonly access: ConversionProjectAccessService,
   ) {}
 
   async execute(
@@ -37,6 +39,7 @@ export class GetConversionResultService {
         message: 'Conversion job was not found',
       });
     }
+    await this.access.requireAssignment(userId, organization.id, job.projectId);
     await this.projects.getForOrganization(job.projectId, organization.id);
     if (job.status !== ConversionJobStatus.COMPLETED || !job.resultReference) {
       throw new BadRequestException({

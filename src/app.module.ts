@@ -204,6 +204,7 @@ import { OrganizationContextService } from './modules/organizations/application/
 import { ProjectService } from './modules/projects/application/project.service';
 import { ProjectsController } from './modules/projects/presentation/projects.controller';
 import { ConversionJobService } from './modules/conversions/application/conversion-job.service';
+import { ConversionProjectAccessService } from './modules/conversions/application/conversion-project-access.service';
 import { ConversionsController } from './modules/conversions/presentation/conversions.controller';
 import { HealthController } from './modules/health/health.controller';
 import { ConversionWorkerRunner } from './modules/conversions/infrastructure/conversion-worker.runner';
@@ -441,6 +442,7 @@ import { AuditModule } from './modules/audit/audit.module';
     OrganizationAuthorizationService,
     ProjectService,
     ConversionJobService,
+    ConversionProjectAccessService,
     UploadConversionSourceService,
     GetConversionResultService,
     GetConversionQualityReviewService,
