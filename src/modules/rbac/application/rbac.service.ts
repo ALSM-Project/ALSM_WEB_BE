@@ -364,6 +364,7 @@ export class RbacService {
       email: string;
       fullName: string;
       isPlatformAdmin: boolean;
+      isLocked: boolean;
       roles: string[];
     }>
   > {
@@ -386,6 +387,7 @@ export class RbacService {
         email: u.email,
         fullName: u.fullName,
         isPlatformAdmin: u.isPlatformAdmin,
+        isLocked: u.isLocked,
         roles,
       };
     });

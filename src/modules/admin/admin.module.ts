@@ -1,13 +1,25 @@
 import { Module } from '@nestjs/common';
 import { MongooseModule } from '@nestjs/mongoose';
-import { Organization, OrganizationSchema } from '../organizations/infrastructure/organization.schema';
+import {
+  Organization,
+  OrganizationSchema,
+} from '../organizations/infrastructure/organization.schema';
 import { User, UserSchema } from '../users/infrastructure/user.schema';
 import { UserSession, UserSessionSchema } from '../auth/infrastructure/user-session.schema';
-import { EngagementType, EngagementTypeSchema } from '../organizations/infrastructure/engagement-type.schema';
+import {
+  EngagementType,
+  EngagementTypeSchema,
+} from '../organizations/infrastructure/engagement-type.schema';
 import { Project, ProjectSchema } from '../projects/infrastructure/project.schema';
-import { ConversionJob, ConversionJobSchema } from '../conversions/infrastructure/conversion-job.schema';
+import {
+  ConversionJob,
+  ConversionJobSchema,
+} from '../conversions/infrastructure/conversion-job.schema';
 import { AuditLog, AuditLogSchema } from '../audit/infrastructure/audit-log.schema';
+import { EMAIL_PORT } from '../auth/domain/email.port';
+import { SmtpEmailAdapter } from '../auth/infrastructure/smtp-email.adapter';
 import { PlatformAdminService } from './application/platform-admin.service';
+import { LockUserService } from './application/lock-user.service';
 import { PlatformAdminController } from './presentation/platform-admin.controller';
 
 @Module({
@@ -23,7 +35,11 @@ import { PlatformAdminController } from './presentation/platform-admin.controlle
     ]),
   ],
   controllers: [PlatformAdminController],
-  providers: [PlatformAdminService],
-  exports: [PlatformAdminService],
+  providers: [
+    PlatformAdminService,
+    LockUserService,
+    { provide: EMAIL_PORT, useClass: SmtpEmailAdapter },
+  ],
+  exports: [PlatformAdminService, LockUserService],
 })
 export class AdminModule {}

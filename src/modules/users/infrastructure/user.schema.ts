@@ -14,6 +14,7 @@ export class User {
   @Prop({ trim: true }) lockReason?: string;
   @Prop() lockedAt?: Date;
   @Prop() lockedBy?: string;
+  @Prop() lockDuration?: string;
   @Prop({
     type: {
       enabled: { type: Boolean, default: false },
