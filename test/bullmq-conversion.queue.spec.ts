@@ -3,6 +3,7 @@ import { Queue } from 'bullmq';
 import {
   BullMqConversionQueue,
   CONVERSION_QUEUE_NAME,
+  CONVERSION_QUEUE_READY_TIMEOUT_MS,
 } from '../src/modules/conversions/infrastructure/bullmq-conversion.queue';
 import { ConversionPriority } from '../src/modules/conversions/domain/conversion-job.types';
 
@@ -10,9 +11,10 @@ const add = jest.fn();
 const close = jest.fn();
 const on = jest.fn();
 const getJob = jest.fn();
+const waitUntilReady = jest.fn();
 
 jest.mock('bullmq', () => ({
-  Queue: jest.fn().mockImplementation(() => ({ add, close, on, getJob })),
+  Queue: jest.fn().mockImplementation(() => ({ add, close, on, getJob, waitUntilReady })),
 }));
 
 describe('BullMqConversionQueue', () => {
@@ -36,6 +38,7 @@ describe('BullMqConversionQueue', () => {
     jest.clearAllMocks();
     add.mockResolvedValue(undefined);
     close.mockResolvedValue(undefined);
+    waitUntilReady.mockResolvedValue(undefined);
   });
 
   it('enqueues a real BullMQ job for the conversion queue', async () => {
@@ -85,6 +88,33 @@ describe('BullMqConversionQueue', () => {
     await queue.onModuleDestroy();
 
     expect(close).toHaveBeenCalledTimes(1);
+  });
+
+  it('bounds cold readiness and never enqueues a timed-out request after Redis becomes ready', async () => {
+    jest.useFakeTimers();
+    let ready!: () => void;
+    waitUntilReady.mockImplementationOnce(
+      () =>
+        new Promise<void>((resolve) => {
+          ready = resolve;
+        }),
+    );
+    const queue = new BullMqConversionQueue(config);
+    try {
+      const rejected = expect(queue.enqueue('job-1', ConversionPriority.NORMAL)).rejects.toThrow(
+        'Redis readiness timed out',
+      );
+      await jest.advanceTimersByTimeAsync(CONVERSION_QUEUE_READY_TIMEOUT_MS);
+      await rejected;
+      ready();
+      await Promise.resolve();
+      expect(add).not.toHaveBeenCalled();
+      expect(jest.getTimerCount()).toBe(0);
+      await queue.enqueue('job-1', ConversionPriority.NORMAL, 1);
+      expect(add).toHaveBeenCalledTimes(1);
+    } finally {
+      jest.useRealTimers();
+    }
   });
 
   it('distinguishes missing, terminal and pending delivery without hiding Redis errors', async () => {

@@ -93,9 +93,14 @@ Redis or MongoDB inspection failure never establishes that a delivery is missing
 Recovery requires an authorized manual retry and never automatically replays an
 external tool. Legacy PROCESSING records without leases remain excluded.
 
-Queue producers use one Redis request retry, a 3-second connection timeout and a
-5-second command timeout; offline commands are disabled. Consumers retain Redis
-reconnection. A rejected producer request is persisted as a queue failure; it must
+Queue producers have a separate 3-second readiness deadline before `add()` can
+execute, one Redis request retry, a 3-second connection timeout and a 5-second
+command timeout. The Redis portion of an enqueue is bounded by 8 seconds total;
+HTTP also includes normal authentication and MongoDB latency. With reachable
+MongoDB and Redis absent at startup, the failure response follows the 3-second
+readiness deadline. Offline commands are disabled. Timed-out readiness never
+schedules a later add, while a subsequent request can reconnect. Consumers retain
+Redis reconnection. A rejected producer request is persisted as a queue failure; it must
 not be presented as successfully scheduled. The screen FAILED hint is updated
 only when MongoDB confirms that the current owner persisted the failure.
 
@@ -124,6 +129,12 @@ Redis and MongoDB processes, uses a fixture engine, verifies competing workers,
 an actual worker-process crash, retry generations and reconnect behavior, and
 checks ownership before removing only its temporary data. Portable server
 installation requires the owner's approval; the harness never installs services.
+
+`test/conversion-queue.cold-start.integration-test.cjs` starts Redis only after
+observing the real HTTP failure and persisted FAILED state. It verifies that the
+timed-out generation is not later enqueued and that a new authorized retry can
+complete through a labeled fixture engine. Set `ALSM_QUEUE_COLD_START_TEST` to
+`owned-local-only` and the same executable paths to run it after a build.
 
 ## Quality review and result availability
 

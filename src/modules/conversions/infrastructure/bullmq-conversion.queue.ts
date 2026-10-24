@@ -4,6 +4,7 @@ import { Queue } from 'bullmq';
 import { ConversionPriority, ConversionQueuePort } from '../domain/conversion-job.types';
 
 export const CONVERSION_QUEUE_NAME = 'conversion';
+export const CONVERSION_QUEUE_READY_TIMEOUT_MS = 3000;
 export const BULLMQ_PRIORITY: Record<ConversionPriority, number> = {
   [ConversionPriority.HIGH]: 1,
   [ConversionPriority.NORMAL]: 5,
@@ -58,6 +59,9 @@ export class BullMqConversionQueue implements ConversionQueuePort, OnModuleDestr
         'Conversion queue is not configured (CONVERSION_WORKER_ENABLED is not enabled)',
       );
     }
+    // Bound readiness separately: BullMQ awaits its first connection before it
+    // issues a command, so commandTimeout alone cannot bound a cold start.
+    await this.waitForReady(this.queue);
     await this.queue.add(
       'execute-conversion',
       { conversionJobId, executionGeneration },
@@ -87,10 +91,28 @@ export class BullMqConversionQueue implements ConversionQueuePort, OnModuleDestr
     executionGeneration: number,
   ): Promise<'pending' | 'terminal' | 'missing'> {
     if (!this.queue) throw new Error('Conversion queue is not configured');
+    await this.waitForReady(this.queue);
     const job = await this.queue.getJob(`${conversionJobId}-${executionGeneration}`);
     if (!job) return 'missing';
     const state = await job.getState();
     if (state === 'unknown') return 'missing';
     return state === 'failed' || state === 'completed' ? 'terminal' : 'pending';
+  }
+
+  private async waitForReady(queue: Queue): Promise<void> {
+    let timer: NodeJS.Timeout | undefined;
+    try {
+      await Promise.race([
+        queue.waitUntilReady(),
+        new Promise<never>((_resolve, reject) => {
+          timer = setTimeout(
+            () => reject(new Error('Conversion queue Redis readiness timed out')),
+            CONVERSION_QUEUE_READY_TIMEOUT_MS,
+          );
+        }),
+      ]);
+    } finally {
+      clearTimeout(timer);
+    }
   }
 }
