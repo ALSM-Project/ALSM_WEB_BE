@@ -12,6 +12,7 @@ const os = require('node:os');
 const path = require('node:path');
 const mongoose = require('mongoose');
 const bcrypt = require('bcrypt');
+const { cleanupAll, stopOwnedChild } = require('./conversion-test-cleanup.cjs');
 
 async function unusedPort() {
   const server = net.createServer();
@@ -49,19 +50,18 @@ async function startHarness(options = {}) {
   async function close() {
     if (closed) return;
     closed = true;
-    if (app) await app.close();
-    if (bootstrap) await bootstrap.close();
-    if (mongo.exitCode === null) {
-      const stopped = new Promise((resolve) => mongo.once('exit', resolve));
-      mongo.kill();
-      await stopped;
-    }
-    // Remove only the newly created, ownership-checked temporary directory.
-    const marker = JSON.parse(await fs.readFile(path.join(root, 'owner.json'), 'utf8'));
-    assert.equal(marker.runId, runId);
-    assert.equal(path.dirname(root), os.tmpdir());
-    assert.ok(path.basename(root).startsWith('alsmv2-1038-'));
-    await fs.rm(root, { recursive: true });
+    await cleanupAll([
+      ['HTTP application', async () => { if (app) await app.close(); }],
+      ['Mongo bootstrap connection', async () => { if (bootstrap) await bootstrap.close(); }],
+      ['Owned Mongo process', () => stopOwnedChild(mongo), 6000],
+      ['Owned Mongo data', async () => {
+        const marker = JSON.parse(await fs.readFile(path.join(root, 'owner.json'), 'utf8'));
+        assert.equal(marker.runId, runId); assert.equal(path.dirname(root), os.tmpdir());
+        assert.ok(path.basename(root).startsWith('alsmv2-1038-'));
+        assert.ok(mongo.exitCode !== null || mongo.signalCode !== null);
+        await fs.rm(root, { recursive: true });
+      }],
+    ]);
   }
   try {
     bootstrap = await until(() => mongoose.createConnection(`mongodb://127.0.0.1:${port}/admin?directConnection=true`, { serverSelectionTimeoutMS: 500 }).asPromise());
@@ -145,7 +145,7 @@ async function startHarness(options = {}) {
       return result;
     }
     const login = (email = staffEmail) => request('POST', '/auth/login', 200, undefined, { email, password });
-    return { app, db, base, close, request, login, fixtureCredentials: { email: staffEmail, password }, ids: Object.fromEntries(Object.entries({ staffId, otherId, unassignedId, adminId, teamId, orgId, foreignOrgId, assignedOrgId, projectId, emptyId, foreignProjectId, unassignedProjectId, assignedProjectId, failedId, processingId, completedId }).map(([key, value]) => [key, String(value)])), getPassed: () => passed };
+    return { app, db, base, close, request, login, ownedResources: { root, port, mongoPid: mongo.pid, runId }, fixtureCredentials: { email: staffEmail, password }, ids: Object.fromEntries(Object.entries({ staffId, otherId, unassignedId, adminId, teamId, orgId, foreignOrgId, assignedOrgId, projectId, emptyId, foreignProjectId, unassignedProjectId, assignedProjectId, failedId, processingId, completedId }).map(([key, value]) => [key, String(value)])), getPassed: () => passed };
   } catch (error) { await close(); throw error; }
 }
 async function main() {

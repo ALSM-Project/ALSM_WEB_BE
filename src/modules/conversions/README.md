@@ -95,8 +95,7 @@ external tool. Legacy PROCESSING records without leases remain excluded.
 
 Queue producers have a separate 3-second readiness deadline before `add()` can
 execute, one Redis request retry, a 3-second connection timeout and a 5-second
-command timeout. The Redis portion of an enqueue is bounded by 8 seconds total;
-HTTP also includes normal authentication and MongoDB latency. With reachable
+command timeout. HTTP also includes normal authentication and MongoDB latency. With reachable
 MongoDB and Redis absent at startup, the failure response follows the 3-second
 readiness deadline. Offline commands are disabled. Timed-out readiness never
 schedules a later add, while a subsequent request can reconnect. Consumers retain
@@ -135,6 +134,16 @@ observing the real HTTP failure and persisted FAILED state. It verifies that the
 timed-out generation is not later enqueued and that a new authorized retry can
 complete through a labeled fixture engine. Set `ALSM_QUEUE_COLD_START_TEST` to
 `owned-local-only` and the same executable paths to run it after a build.
+
+The real integration harness wraps fixture engines in abortable scopes. Shutdown
+starts worker close, aborts pending fixtures, and bounds worker drain to 5 seconds.
+Cleanup attempts every owned resource even if a previous step fails, bounds each
+step, and checks run markers before removing data. Only ChildProcess objects
+returned by this harness's own spawn calls are stopped. A child regression
+intentionally fails an assertion with a pending engine, then verifies exit 1,
+removed temporary roots, closed child ports, and usable parent Redis/MongoDB.
+Unexpected cleanup errors exit the test helper with failure after all cleanup
+steps have been attempted; data is retained if an owned process has not exited.
 
 ## Quality review and result availability
 

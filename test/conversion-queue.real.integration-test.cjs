@@ -15,8 +15,8 @@ const { Queue } = require('bullmq');
 const { ConfigService } = require('@nestjs/config');
 const { getModelToken } = require('@nestjs/mongoose');
 const { startHarness } = require('./conversion-queue.http.integration-test.cjs');
+const { bounded, cleanupAll, fixtureEngines, stopOwnedChild, pause } = require('./conversion-test-cleanup.cjs');
 
-const pause = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 async function until(work, timeout = 20000) {
   const deadline = Date.now() + timeout;
   let last;
@@ -45,6 +45,7 @@ async function main() {
   const port = await unusedPort();
   let redisProcess, client, inspection, harness;
   const runners = [];
+  const fixtures = fixtureEngines();
   let passed = 0;
   async function check(name, work) { await work(); passed++; console.log(`PASS ${passed}: ${name}`); }
   function startRedis() {
@@ -56,13 +57,14 @@ async function main() {
     redisProcess.stderr.on('data', (data) => process.stderr.write(data));
   }
   async function stopRedis() {
-    if (redisProcess && redisProcess.exitCode === null && redisProcess.signalCode === null) {
-      const exited = new Promise((resolve) => redisProcess.once('exit', resolve));
-      redisProcess.kill(); await exited;
-    }
+    await stopOwnedChild(redisProcess);
   }
   async function stopWorkers() {
-    await Promise.all(runners.splice(0).map((runner) => runner.onModuleDestroy()));
+    const stopping = runners.splice(0);
+    // Start graceful close before aborting active test fixtures, so no new work is fetched.
+    const closing = stopping.map((runner) => runner.onModuleDestroy());
+    fixtures.abortAll();
+    await bounded(() => Promise.all(closing), 5000, 'Fixture worker drain');
   }
   try {
     startRedis();
@@ -92,7 +94,7 @@ async function main() {
     console.log(JSON.stringify({ mongoVersion: mongoBuild.version, database: harness.db.databaseName, mongoAddress: model.db.getClient().options.hosts.map(String) }));
     const screens = { updateStatus: async () => {} };
     function worker(execute, repo = repository) {
-      const runner = new ConversionWorkerRunner(config, repo, { execute }, screens, queue);
+      const runner = new ConversionWorkerRunner(config, repo, { execute: (input) => fixtures.execute(execute, input) }, screens, queue);
       runners.push(runner); runner.start(); return runner;
     }
     const fixtureOutput = (input) => ({ resultReference: `fixture-only/${input.conversionJobId}`, toolVersion: 'ALSMV2-1210-fixture-no-conversion' });
@@ -109,6 +111,14 @@ async function main() {
     }
     async function queueState(id, expected) {
       return until(async () => { const entry = await inspection.getJob(id); assert.ok(entry); assert.equal(await entry.getState(), expected); return entry; });
+    }
+    if (process.env.ALSM_QUEUE_PENDING_ASSERTION === 'owned-cleanup-regression') {
+      process.send?.({ runId, root, redisPort: port, redisPid: redisProcess.pid, mongo: harness.ownedResources });
+      const job = await create();
+      worker(async () => new Promise(() => {}));
+      await queue.enqueue(job.id, job.priority, 0);
+      await state(job, 'PROCESSING');
+      assert.fail('INTENTIONAL_PENDING_FIXTURE_ASSERTION_FAILURE');
     }
     await check('real HTTP retry -> BullMQ payload -> real worker claim -> fixture completion', async () => {
       const login = await harness.login();
@@ -253,10 +263,10 @@ async function main() {
           if (released) releases++;
           return released;
         };
-        worker(async (input) => {
+        worker(async (input, signal) => {
           calls++;
           if (calls === 1) {
-            await pause(11000);
+            await pause(11000, signal);
             throw new Error('Labeled fixture: retryable engine failure after uncertain renewal');
           }
           return fixtureOutput(input);
@@ -289,7 +299,7 @@ async function main() {
         assert.equal(message.conversionJobId, job.id);
         console.log('CRASH_FIXTURE_CLAIMED: killing only the owned fixture worker');
         const old = await model.findById(job.id).lean(); assert.equal(old.status, 'PROCESSING');
-        const exited = new Promise((resolve) => child.once('exit', resolve)); child.kill(); await exited;
+        await stopOwnedChild(child);
         let calls = 0;
         worker(async (input) => { calls++; return fixtureOutput(input); });
         const result = await until(async () => {
@@ -300,7 +310,7 @@ async function main() {
         assert.equal(await repository.markCompleted(job.id, fixtureOutput(job), undefined, old.processingToken), null);
         await queueState(`${job.id}-0`, 'completed'); await stopWorkers();
       } finally {
-        if (child.exitCode === null && child.signalCode === null) { const exited = new Promise((resolve) => child.once('exit', resolve)); child.kill(); await exited; }
+        await stopOwnedChild(child);
       }
     });
     await check('Redis disconnect rejects enqueue in bounded time and reconnect consumes a new real job', async () => {
@@ -319,18 +329,45 @@ async function main() {
       await until(() => queue.enqueue(job.id, job.priority, 0));
       await state(job, 'COMPLETED'); await stopWorkers();
     });
+    await check('a failed assertion with a pending fixture exits and cleans only child-owned resources', async () => {
+      const child = spawn(process.execPath, [__filename], { windowsHide: true, stdio: ['ignore', 'pipe', 'pipe', 'ipc'],
+        env: { ...process.env, ALSM_QUEUE_PENDING_ASSERTION: 'owned-cleanup-regression' } });
+      let output = '', resources;
+      child.stdout.on('data', (data) => { output += data; }); child.stderr.on('data', (data) => { output += data; });
+      child.on('message', (message) => { resources = message; });
+      try {
+        const code = await bounded(() => new Promise((resolve, reject) => { child.once('exit', resolve); child.once('error', reject); }), 60000, 'Pending-fixture assertion child');
+        assert.equal(code, 1); assert.match(output, /INTENTIONAL_PENDING_FIXTURE_ASSERTION_FAILURE/);
+        assert.match(output, /OWNED_REAL_REDIS_AND_MONGO_CLEANUP_COMPLETE/); assert.ok(resources);
+        assert.equal(await fs.stat(resources.root).then(() => true, () => false), false);
+        assert.equal(await fs.stat(resources.mongo.root).then(() => true, () => false), false);
+        for (const childPort of [resources.redisPort, resources.mongo.port]) {
+          const probe = net.createServer();
+          await new Promise((resolve, reject) => { probe.once('error', reject); probe.listen(childPort, '127.0.0.1', resolve); });
+          await new Promise((resolve) => probe.close(resolve));
+        }
+        // The parent's services are unrelated to the child and must remain usable.
+        assert.equal(await client.ping(), 'PONG');
+        assert.equal((await harness.db.admin().ping()).ok, 1);
+        console.log('EXPECTED_ASSERTION_FAILURE_CLEANED', JSON.stringify(resources));
+      } finally { await stopOwnedChild(child); }
+    });
     console.log(`REAL_INTEGRATION_PASS=${passed}; fixture engines only; HTTP checks=${harness.getPassed()}`);
   } finally {
-    await stopWorkers();
-    if (inspection) await inspection.close();
-    if (harness) await harness.close();
-    if (client) client.disconnect();
-    await stopRedis();
-    const marker = JSON.parse(await fs.readFile(path.join(root, 'owner.json'), 'utf8'));
-    assert.equal(marker.runId, runId);
-    assert.equal(path.dirname(root), os.tmpdir());
-    assert.ok(path.basename(root).startsWith('alsmv2-1210-'));
-    await fs.rm(root, { recursive: true });
+    await cleanupAll([
+      ['Fixture workers', stopWorkers, 6000],
+      ['Inspection queue', async () => { if (inspection) await inspection.close(); }],
+      ['Mongo HTTP harness', async () => { if (harness) await harness.close(); }, 20000],
+      ['Redis inspection client', () => { client?.disconnect(); }],
+      ['Owned Redis', stopRedis, 6000],
+      ['Owned Redis data', async () => {
+        const marker = JSON.parse(await fs.readFile(path.join(root, 'owner.json'), 'utf8'));
+        assert.equal(marker.runId, runId); assert.equal(path.dirname(root), os.tmpdir());
+        assert.ok(path.basename(root).startsWith('alsmv2-1210-'));
+        assert.ok(!redisProcess || redisProcess.exitCode !== null || redisProcess.signalCode !== null);
+        await fs.rm(root, { recursive: true });
+      }],
+    ]);
     console.log('OWNED_REAL_REDIS_AND_MONGO_CLEANUP_COMPLETE');
   }
 }
@@ -355,4 +392,4 @@ async function crashFixtureChild() {
   runner.start();
 }
 (process.env.ALSM_QUEUE_FIXTURE_CHILD === 'owned-crash-fixture' ? crashFixtureChild() : main())
-  .catch((error) => { console.error(error); process.exitCode = 1; });
+  .catch((error) => { console.error(error); process.exit(1); });
