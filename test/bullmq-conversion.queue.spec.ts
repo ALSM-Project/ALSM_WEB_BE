@@ -9,9 +9,10 @@ import { ConversionPriority } from '../src/modules/conversions/domain/conversion
 const add = jest.fn();
 const close = jest.fn();
 const on = jest.fn();
+const getJob = jest.fn();
 
 jest.mock('bullmq', () => ({
-  Queue: jest.fn().mockImplementation(() => ({ add, close, on })),
+  Queue: jest.fn().mockImplementation(() => ({ add, close, on, getJob })),
 }));
 
 describe('BullMqConversionQueue', () => {
@@ -84,5 +85,24 @@ describe('BullMqConversionQueue', () => {
     await queue.onModuleDestroy();
 
     expect(close).toHaveBeenCalledTimes(1);
+  });
+
+  it('distinguishes missing, terminal and pending delivery without hiding Redis errors', async () => {
+    const queue = new BullMqConversionQueue(config);
+    getJob.mockResolvedValueOnce(undefined);
+    await expect(queue.deliveryState('job-1', 2)).resolves.toBe('missing');
+    expect(getJob).toHaveBeenCalledWith('job-1-2');
+    for (const state of ['completed', 'failed', 'active', 'delayed', 'prioritized', 'unknown']) {
+      getJob.mockResolvedValueOnce({ getState: async () => state });
+      await expect(queue.deliveryState('job-1', 2)).resolves.toBe(
+        state === 'unknown'
+          ? 'missing'
+          : ['completed', 'failed'].includes(state)
+            ? 'terminal'
+            : 'pending',
+      );
+    }
+    getJob.mockRejectedValueOnce(new Error('Redis inspection unavailable'));
+    await expect(queue.deliveryState('job-1', 2)).rejects.toThrow('Redis inspection unavailable');
   });
 });

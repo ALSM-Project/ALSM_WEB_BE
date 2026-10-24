@@ -310,6 +310,8 @@ export class ConversionJobService {
         job.id,
         'CONVERSION_QUEUE_UNAVAILABLE',
         'Conversion job could not be queued',
+        undefined,
+        job.executionGeneration ?? 0,
       );
       // A BadRequestException is never logged by the global exception filter (it only logs
       // unhandled 500s) — without this, an enqueue failure reaches the user with no trace
@@ -403,6 +405,8 @@ export class ConversionJobService {
         job.id,
         'CONVERSION_QUEUE_UNAVAILABLE',
         'Conversion job could not be queued',
+        undefined,
+        job.executionGeneration ?? 0,
       );
       this.logger.error(`Failed to re-enqueue retried conversion job ${job.id}: ${String(error)}`);
       throw new BadRequestException({

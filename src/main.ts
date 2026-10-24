@@ -12,6 +12,7 @@ import { ValidationWorkerRunner } from './modules/validation/infrastructure/vali
 
 async function bootstrap(): Promise<void> {
   const app = await NestFactory.create(AppModule);
+  app.enableShutdownHooks();
   app.use(
     helmet({
       crossOriginOpenerPolicy: false,

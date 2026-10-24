@@ -176,6 +176,8 @@ describe('ConversionJobService', () => {
       'job-1',
       'CONVERSION_QUEUE_UNAVAILABLE',
       expect.any(String),
+      undefined,
+      0,
     );
   });
   it.each(['org-b/secret-source', 'project-b/source', '../org-b/source'])(

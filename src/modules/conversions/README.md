@@ -69,6 +69,30 @@ release the claim to QUEUED for BullMQ's exponential retry. Terminal stalled
 events fail only an expired lease belonging to the exact execution generation.
 MongoDB remains the source of truth for job state.
 
+The worker validates ObjectId-shaped job IDs and nonnegative integer execution
+generations before persistence access. Missing records and malformed payloads fail
+their BullMQ delivery visibly; stale generations and terminal jobs cannot invoke
+the engine. Claims cannot exceed the persisted attempt budget. Calling `start()`
+twice on one runner creates one consumer, and both runtime entry points register
+Nest shutdown hooks to drain workers.
+
+Every 30 seconds, each enabled worker inspects up to 100 recovery candidates,
+paging by ID across successive scans so pending deliveries cannot starve later
+records. QUEUED records older than 60 seconds whose exact BullMQ delivery is missing
+or terminal become FAILED with `CONVERSION_QUEUE_DELIVERY_LOST`. An expired
+PROCESSING record with missing or terminal delivery becomes FAILED with
+`CONVERSION_WORKER_STALLED`. Pending deliveries remain under BullMQ's existing
+stalled/retry policy. Updates compare status, generation and age/lease expiry;
+Redis or MongoDB inspection failure never establishes that a delivery is missing.
+Recovery requires an authorized manual retry and never automatically replays an
+external tool. Legacy PROCESSING records without leases remain excluded.
+
+Queue producers use one Redis request retry, a 3-second connection timeout and a
+5-second command timeout; offline commands are disabled. Consumers retain Redis
+reconnection. A rejected producer request is persisted as a queue failure; it must
+not be presented as successfully scheduled. The screen FAILED hint is updated
+only when MongoDB confirms that the current owner persisted the failure.
+
 Existing documents require no backfill: a missing `executionGeneration` means
 zero. Legacy PROCESSING documents without a lease are deliberately not reclaimed
 automatically. They require explicit operator reconciliation after verifying that
@@ -85,6 +109,15 @@ output or an unsuccessful process exit fails explicitly; the backend does not
 parse source or synthesize replacement React components. A genuine successful
 conversion still requires the separately supplied converter scripts or Java JAR.
 Queue/worker plumbing tests using fixture output do not verify those algorithms.
+
+`test/conversion-queue.real.integration-test.cjs` provides an opt-in native-process
+integration harness. Build first, set `ALSM_QUEUE_REAL_TEST=owned-local-only`,
+`ALSM_QUEUE_MONGOD` and `ALSM_QUEUE_REDIS` to absolute executable paths, then run
+`node test/conversion-queue.real.integration-test.cjs`. It starts isolated loopback
+Redis and MongoDB processes, uses a fixture engine, verifies competing workers,
+an actual worker-process crash, retry generations and reconnect behavior, and
+checks ownership before removing only its temporary data. Portable server
+installation requires the owner's approval; the harness never installs services.
 
 ## Quality review and result availability
 
