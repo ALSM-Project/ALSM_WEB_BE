@@ -77,7 +77,7 @@ class ApprovedContractTemplateSnapshot {
 }
 const ApprovedContractTemplateSnapshotSchema = SchemaFactory.createForClass(ApprovedContractTemplateSnapshot);
 
-@Schema({ collection: 'contracts', timestamps: true })
+@Schema({ collection: 'contracts', timestamps: true, strict: false })
 export class ContractAggregate {
   @Prop({ type: MongoSchema.Types.ObjectId, required: true, index: true }) leadId!: Types.ObjectId;
   @Prop({ type: MongoSchema.Types.ObjectId, required: true, index: true }) organizationId!: Types.ObjectId;
