@@ -27,9 +27,12 @@ async function until(work) {
   }
   throw error;
 }
-async function startHarness() {
+async function startHarness(options = {}) {
   assert.equal(process.env.ALSM_QUEUE_HTTP_TEST, 'owned-local-only', 'Explicit isolated-test opt-in required');
   const binary = process.env.ALSM_QUEUE_MONGOD;
+  if (options.redisPort !== undefined) {
+    assert.ok(Number.isInteger(options.redisPort) && options.redisPort > 1024 && options.redisPort < 65536);
+  }
   assert.ok(binary && path.isAbsolute(binary), 'An explicit installed mongod executable is required');
   await fs.access(binary);
   const runId = randomUUID().replaceAll('-', '');
@@ -66,11 +69,11 @@ async function startHarness() {
     await until(async () => assert.equal((await bootstrap.db.admin().command({ hello: 1 })).isWritablePrimary, true));
     // Explicit values take precedence over ConfigModule's .env discovery. No provider may run.
     Object.assign(process.env, {
-      NODE_ENV: 'test', MONGODB_URI: uri, REDIS_HOST: '127.0.0.1', REDIS_PORT: '1', REDIS_PASSWORD: '',
+      NODE_ENV: 'test', MONGODB_URI: uri, REDIS_HOST: '127.0.0.1', REDIS_PORT: String(options.redisPort ?? 1), REDIS_PASSWORD: '',
       JWT_ACCESS_SECRET: randomBytes(48).toString('hex'), JWT_REFRESH_SECRET: randomBytes(48).toString('hex'),
       JWT_ACCESS_EXPIRES_IN: '15m', JWT_REFRESH_EXPIRES_IN: '1h', MFA_ENCRYPTION_KEY: randomBytes(32).toString('base64'),
       CORS_ORIGINS: 'http://127.0.0.1:31038', STORAGE_ROOT: path.join(root, 'storage'),
-      CONVERSION_WORKER_ENABLED: 'false', VALIDATION_WORKER_ENABLED: 'false', AI_VALIDATION_ENABLED: 'false',
+      CONVERSION_WORKER_ENABLED: options.redisPort ? 'true' : 'false', VALIDATION_WORKER_ENABLED: 'false', AI_VALIDATION_ENABLED: 'false',
       GOOGLE_CLIENT_ID: '', SMTP_HOST: '', SMTP_USER: '', SMTP_PASS: '', CASSO_API_KEY: '',
       GOOGLE_SERVICE_ACCOUNT_JSON: '', GOOGLE_CALENDAR_USER_EMAIL: '', TOOL_CONVERT_DIR: '', TOOL2JAVA_JAR_PATH: '',
       OPENAI_API_KEY: '', GEMINI_API_KEY: '',
