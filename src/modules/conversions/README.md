@@ -69,6 +69,12 @@ release the claim to QUEUED for BullMQ's exponential retry. Terminal stalled
 events fail only an expired lease belonging to the exact execution generation.
 MongoDB remains the source of truth for job state.
 
+A renewal returning `false` confirms that this token no longer has a live lease;
+the worker then rejects output and cannot release or fail another owner's work.
+A renewal transport error is logged as uncertain ownership. Atomic MongoDB
+token/expiry checks still decide completion or release, so a transient error does
+not strand the worker's own lease or exhaust retries before a second execution.
+
 The worker validates ObjectId-shaped job IDs and nonnegative integer execution
 generations before persistence access. Missing records and malformed payloads fail
 their BullMQ delivery visibly; stale generations and terminal jobs cannot invoke

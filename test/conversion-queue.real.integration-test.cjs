@@ -238,6 +238,42 @@ async function main() {
       await repository.markCompleted(job.id, fixtureOutput(job), undefined, 'replacement-fixture-owner');
       await queueState(`${job.id}-0`, 'completed'); await stopWorkers();
     });
+    for (const conversionType of ['BMS_DSPF_TO_FRONTEND', 'COBOL_TO_JAVA']) {
+      await check(`transient renewal transport failure safely retries ${conversionType}`, async () => {
+        const job = await create({ conversionType });
+        let calls = 0, renewals = 0, releases = 0;
+        const faultRepository = Object.create(repository);
+        faultRepository.renewProcessingLease = async (...args) => {
+          renewals++;
+          if (renewals === 1) throw new Error('Labeled fixture: one transient renewal transport failure');
+          return repository.renewProcessingLease(...args);
+        };
+        faultRepository.releaseProcessingForRetry = async (...args) => {
+          const released = await repository.releaseProcessingForRetry(...args);
+          if (released) releases++;
+          return released;
+        };
+        worker(async (input) => {
+          calls++;
+          if (calls === 1) {
+            await pause(11000);
+            throw new Error('Labeled fixture: retryable engine failure after uncertain renewal');
+          }
+          return fixtureOutput(input);
+        }, faultRepository);
+        await queue.enqueue(job.id, job.priority, 0);
+        const completed = await state(job, 'COMPLETED');
+        const delivery = await queueState(`${job.id}-0`, 'completed');
+        assert.equal(calls, 2); assert.equal(completed.attemptCount, 2);
+        assert.equal(completed.executionGeneration, 0); assert.equal(releases, 1);
+        assert.ok(delivery.attemptsMade < 3);
+        assert.equal(await model.countDocuments({ _id: job.id }), 1);
+        console.log(JSON.stringify({ conversionType, queueState: await delivery.getState(), queueAttempts: delivery.attemptsMade,
+          mongoStatus: completed.status, claims: completed.attemptCount, engineCalls: calls, releases,
+          fault: 'one explicitly injected renewal error; real Redis and MongoDB; fixture engine only' }));
+        await stopWorkers();
+      });
+    }
     await check('actual worker process crash recovers BullMQ lock and expired Mongo lease', async () => {
       const job = await create();
       const child = spawn(process.execPath, [__filename], { windowsHide: true, stdio: ['ignore', 'ignore', 'pipe', 'ipc'],

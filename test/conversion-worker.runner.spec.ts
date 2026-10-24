@@ -174,6 +174,77 @@ describe('ConversionWorkerRunner', () => {
     await worker.onModuleDestroy();
   });
 
+  it.each(['BMS_DSPF_TO_FRONTEND', 'COBOL_TO_JAVA'])(
+    'releases its fenced lease for retry after a transient renewal error for %s',
+    async (conversionType) => {
+      jest.useFakeTimers();
+      const worker = runner();
+      jobs.markProcessing.mockResolvedValue({ id: '0123456789abcdef01234567', conversionType });
+      jobs.renewProcessingLease.mockRejectedValueOnce(new Error('transient Mongo transport error'));
+      let fail!: (error: Error) => void;
+      engine.execute.mockImplementation(
+        () =>
+          new Promise((_resolve, reject) => {
+            fail = reject;
+          }),
+      );
+      worker.start();
+      try {
+        const processing = capturedProcessor!({
+          data: { conversionJobId: '0123456789abcdef01234567' },
+          attemptsMade: 0,
+          opts: { attempts: 3 },
+        });
+        const rejected = expect(processing).rejects.toThrow('fixture retryable failure');
+        await jest.advanceTimersByTimeAsync(10000);
+        fail(new Error('fixture retryable failure'));
+        await rejected;
+        expect(jobs.releaseProcessingForRetry).toHaveBeenCalledWith(
+          '0123456789abcdef01234567',
+          expect.any(String),
+        );
+        expect(jobs.markCompleted).not.toHaveBeenCalled();
+        expect(jobs.markFailed).not.toHaveBeenCalled();
+      } finally {
+        await worker.onModuleDestroy();
+        jest.useRealTimers();
+      }
+    },
+  );
+
+  it('uses the atomic completion fence after an uncertain renewal', async () => {
+    jest.useFakeTimers();
+    const worker = runner();
+    jobs.markProcessing.mockResolvedValue({ id: '0123456789abcdef01234567' });
+    jobs.renewProcessingLease.mockRejectedValueOnce(new Error('transient Mongo transport error'));
+    let finish!: (output: { resultReference: string }) => void;
+    engine.execute.mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          finish = resolve;
+        }),
+    );
+    worker.start();
+    try {
+      const processing = capturedProcessor!({
+        data: { conversionJobId: '0123456789abcdef01234567' },
+      });
+      await jest.advanceTimersByTimeAsync(10000);
+      finish({ resultReference: 'fixture-fenced-output' });
+      await processing;
+      expect(jobs.markCompleted).toHaveBeenCalledWith(
+        '0123456789abcdef01234567',
+        { resultReference: 'fixture-fenced-output' },
+        undefined,
+        expect.any(String),
+      );
+      expect(jobs.releaseProcessingForRetry).not.toHaveBeenCalled();
+    } finally {
+      await worker.onModuleDestroy();
+      jest.useRealTimers();
+    }
+  });
+
   it('fails only unreachable recovery candidates and keeps pending deliveries', async () => {
     jobs.listDeliveryRecoveryCandidates.mockResolvedValueOnce([
       { id: 'orphan', status: 'QUEUED', executionGeneration: 2 },

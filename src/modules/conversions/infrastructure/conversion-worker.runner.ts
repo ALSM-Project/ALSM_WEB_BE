@@ -102,8 +102,12 @@ export class ConversionWorkerRunner implements OnModuleDestroy {
             .then((renewed) => {
               if (!renewed) leaseLost = true;
             })
-            .catch(() => {
-              leaseLost = true;
+            .catch((error: unknown) => {
+              // A transport failure does not prove that another worker owns the lease.
+              // Completion and retry release still atomically check this token/expiry.
+              this.logger.warn(
+                `Could not confirm conversion lease renewal for ${job.id}: ${String(error)}`,
+              );
             });
         }, 10000);
         heartbeat.unref();
