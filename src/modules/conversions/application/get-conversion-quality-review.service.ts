@@ -6,6 +6,7 @@ import {
   ServiceUnavailableException,
 } from '@nestjs/common';
 import { ProjectService } from '../../projects/application/project.service';
+import { ConversionProjectAccessService } from './conversion-project-access.service';
 import { STORAGE_PORT, StoragePort } from '../../../shared/storage/storage.port';
 import { OrganizationContextService } from '../../organizations/application/organization-context.service';
 import {
@@ -39,6 +40,7 @@ export class GetConversionQualityReviewService {
     @Inject(STORAGE_PORT) private readonly storage: StoragePort,
     private readonly organizationContext: OrganizationContextService,
     private readonly projects: ProjectService,
+    private readonly access: ConversionProjectAccessService,
   ) {}
 
   async execute(
@@ -48,6 +50,7 @@ export class GetConversionQualityReviewService {
     conversionJobId: string,
   ): Promise<ConversionQualityReviewResponse> {
     const organization = await this.organizationContext.resolve(userId, organizationHeader);
+    await this.access.requireAssignment(userId, organization.id, projectId);
     await this.projects.getForOrganization(projectId, organization.id);
 
     const job = await this.jobs.findById(conversionJobId, organization.id);

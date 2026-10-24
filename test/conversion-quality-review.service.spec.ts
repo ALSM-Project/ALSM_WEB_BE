@@ -23,6 +23,7 @@ import {
 import { GetConversionQualityReviewService } from '../src/modules/conversions/application/get-conversion-quality-review.service';
 import { SubmitConversionQualityReviewService } from '../src/modules/conversions/application/submit-conversion-quality-review.service';
 import { StoragePort } from '../src/shared/storage/storage.port';
+import { ConversionProjectAccessService } from '../src/modules/conversions/application/conversion-project-access.service';
 
 describe('Conversion Quality Review Services', () => {
   const org = { id: 'org-1', name: 'Test Org', members: [] };
@@ -99,9 +100,16 @@ describe('Conversion Quality Review Services', () => {
         resolve: jest.fn().mockResolvedValue(org),
       } as unknown as jest.Mocked<OrganizationContextService>;
 
-      service = new GetConversionQualityReviewService(jobsRepo, qualityRepo, storage, orgContext, {
-        getForOrganization: jest.fn().mockResolvedValue({ id: 'project-1' }),
-      } as unknown as ProjectService);
+      service = new GetConversionQualityReviewService(
+        jobsRepo,
+        qualityRepo,
+        storage,
+        orgContext,
+        {
+          getForOrganization: jest.fn().mockResolvedValue({ id: 'project-1' }),
+        } as unknown as ProjectService,
+        { requireAssignment: jest.fn() } as unknown as ConversionProjectAccessService,
+      );
     });
 
     it('Case 1: GET returns synthetic PENDING record when no review exists yet', async () => {
@@ -196,6 +204,7 @@ describe('Conversion Quality Review Services', () => {
             .fn()
             .mockResolvedValue([{ relativePath: 'result.java', content: Buffer.from('code') }]),
         } as unknown as StoragePort,
+        { requireAssignment: jest.fn() } as unknown as ConversionProjectAccessService,
       );
     });
 

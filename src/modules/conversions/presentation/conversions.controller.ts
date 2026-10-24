@@ -110,6 +110,17 @@ export class ConversionsController {
     return this.conversions.createBulk(user.userId, organizationId, projectId, dto);
   }
 
+  @Get('conversion-queue/projects')
+  @ApiOperation({
+    summary: 'List projects authorized for the conversion queue; staff require explicit assignment',
+  })
+  async listQueueProjects(
+    @CurrentUser() user: AuthenticatedUser,
+    @Headers('x-organization-id') organizationId: string | undefined,
+  ) {
+    return this.conversions.listQueueProjects(user.userId, organizationId);
+  }
+
   @Get('projects/:projectId/conversions')
   @ApiOperation({
     summary: 'List all conversion jobs for a project',

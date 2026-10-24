@@ -12,6 +12,7 @@ import { OrganizationContextService } from '../src/modules/organizations/applica
 import { OrganizationAuthorizationService } from '../src/modules/organizations/application/organization-authorization.service';
 import { AuditRepository } from '../src/modules/audit/domain/audit.repository';
 import { ScreenRepository } from '../src/modules/screens/domain/screen.types';
+import { ConversionProjectAccessService } from '../src/modules/conversions/application/conversion-project-access.service';
 describe('ConversionJobService', () => {
   const jobs = {
     create: jest.fn(),
@@ -40,6 +41,7 @@ describe('ConversionJobService', () => {
     authorization as unknown as OrganizationAuthorizationService,
     audit as unknown as AuditRepository,
     screens as unknown as ScreenRepository,
+    { requireAssignment: jest.fn() } as unknown as ConversionProjectAccessService,
   );
   beforeEach(() => {
     jest.clearAllMocks();
