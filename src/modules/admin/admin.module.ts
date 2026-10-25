@@ -46,6 +46,6 @@ import { PlatformAdminAuthorizationGuard } from './presentation/platform-admin-a
     LockUserService,
     { provide: EMAIL_PORT, useClass: SmtpEmailAdapter },
   ],
-  exports: [PlatformAdminService, LockUserService],
+  exports: [PlatformAdminService, LockUserService, PlatformAdminAccessService, PlatformAdminAuthorizationGuard],
 })
 export class AdminModule {}

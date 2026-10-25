@@ -9,10 +9,11 @@ import { OnboardUserService } from '../application/onboard-user.service';
 import { UpdateUserStatusService } from '../application/update-user-status.service';
 import { RbacService } from '../../rbac/application/rbac.service';
 import { OnboardUserDto, UpdateUserStatusDto } from './users.dto';
+import { PlatformAdminAuthorizationGuard } from '../../admin/presentation/platform-admin-authorization.guard';
 
 @ApiTags('Users (UC-82)')
 @ApiBearerAuth()
-@UseGuards(JwtAuthGuard, PermissionsGuard)
+@UseGuards(JwtAuthGuard)
 @Controller('users')
 export class UsersController {
   constructor(
@@ -22,6 +23,7 @@ export class UsersController {
   ) {}
 
   @Get()
+  @UseGuards(PermissionsGuard)
   @RequirePermissions('users.manage')
   @ApiOperation({ summary: 'List all users', description: 'Requires users.manage permission.' })
   @ApiResponse({ status: 200, description: 'Users retrieved successfully' })
@@ -30,6 +32,7 @@ export class UsersController {
   }
 
   @Post()
+  @UseGuards(PermissionsGuard)
   @RequirePermissions('users.onboard')
   @ApiOperation({
     summary: 'Onboard an internal staff account',
@@ -49,10 +52,11 @@ export class UsersController {
   }
 
   @Patch(':id/status')
+  @UseGuards(PlatformAdminAuthorizationGuard)
   @RequirePermissions('users.manage')
   @ApiOperation({
     summary: 'Activate or deactivate a user',
-    description: 'Requires users.manage permission.',
+    description: 'Global account status changes require persisted Platform Admin status and users.manage.',
   })
   @ApiResponse({ status: 200, description: 'User status updated' })
   @ApiResponse({ status: 404, description: 'User not found' })

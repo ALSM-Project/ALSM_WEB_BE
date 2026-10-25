@@ -25,6 +25,16 @@ import { EffectivePermissionsService } from '../src/modules/rbac/application/eff
 import { RbacSeedService } from '../src/modules/rbac/application/rbac-seed.service';
 import { PERMISSIONS_KEY } from '../src/shared/security/require-permissions.decorator';
 import { ApiExceptionFilter } from '../src/shared/errors/api-exception.filter';
+import { UsersController } from '../src/modules/users/presentation/users.controller';
+import { UpdateUserStatusService } from '../src/modules/users/application/update-user-status.service';
+import { OnboardUserService } from '../src/modules/users/application/onboard-user.service';
+import { RbacModule } from '../src/modules/rbac/rbac.module';
+import { ProjectsController } from '../src/modules/projects/presentation/projects.controller';
+import { ProjectService } from '../src/modules/projects/application/project.service';
+import { ProjectRepository } from '../src/modules/projects/domain/project.types';
+import { OrganizationContextService } from '../src/modules/organizations/application/organization-context.service';
+import { OrganizationAuthorizationService } from '../src/modules/organizations/application/organization-authorization.service';
+import { OrganizationRepository } from '../src/modules/organizations/domain/organization.repository';
 
 const actorId = '111111111111111111111111';
 const sessionId = '222222222222222222222222';
@@ -53,7 +63,9 @@ const routeCases = [
   ['get', 'audit-logs', 'audit.view', 'listAuditLogs'],
   ['get', 'audit-logs/export', 'audit.view', 'exportAuditLogs'],
 ] as const;
-const catalog = [...new Set([...routeCases.map((c) => c[2]), 'resources.transfer.confirm'])];
+const catalog = [
+  ...new Set([...routeCases.map((c) => c[2]), 'resources.transfer.confirm', 'users.manage']),
+];
 
 describe('global platform admin policy', () => {
   const user = (): IRbacUser => ({
@@ -125,7 +137,7 @@ describe('real AdminModule authorization HTTP boundary', () => {
     expiresAt: Date;
     revokedAt?: Date;
   };
-  const users = { findById: jest.fn() };
+  const users = { findById: jest.fn(), updateStatus: jest.fn() };
   const sessions = { findActiveByUserId: jest.fn() };
   const rbac = {
     findUserById: jest.fn(),
@@ -135,6 +147,8 @@ describe('real AdminModule authorization HTTP boundary', () => {
   };
   const audit = { append: jest.fn() };
   const email = { send: jest.fn() };
+  const projectRepository = { assignTeamLead: jest.fn(), findAll: jest.fn() };
+  const organizationRepository = { findFirstForMember: jest.fn(), findForMember: jest.fn() };
   // Actual module, guards, RBAC resolver, current-session service and business
   // services. Only database/email ports and bootstrap side effects are fixtures.
   const modelNames = [
@@ -248,7 +262,28 @@ describe('real AdminModule authorization HTTP boundary', () => {
   class AuthenticationFixtureModule {}
 
   beforeAll(async () => {
-    let builder = Test.createTestingModule({ imports: [AuthenticationFixtureModule, AdminModule] })
+    let builder = Test.createTestingModule({
+      imports: [AuthenticationFixtureModule, AdminModule, RbacModule],
+      controllers: [UsersController, ProjectsController],
+      providers: [
+        { provide: OnboardUserService, useValue: {} },
+        {
+          provide: ProjectService,
+          useValue: new ProjectService(
+            projectRepository as unknown as ProjectRepository,
+            new OrganizationContextService(
+              organizationRepository as unknown as OrganizationRepository,
+            ),
+            new OrganizationAuthorizationService(),
+            audit,
+          ),
+        },
+        {
+          provide: UpdateUserStatusService,
+          useValue: new UpdateUserStatusService(users as unknown as UserRepository),
+        },
+      ],
+    })
       .overrideProvider(RBAC_REPOSITORY)
       .useValue(rbac)
       .overrideProvider(RbacSeedService)
@@ -287,6 +322,12 @@ describe('real AdminModule authorization HTTP boundary', () => {
     rbac.findUserRoles.mockResolvedValue(['INTERNAL_SUPPORT', 'TEAM_LEAD', 'ADMIN']);
     rbac.findRolePermissionsByRoleIds.mockResolvedValue(catalog);
     save.mockResolvedValue(undefined);
+    projectRepository.assignTeamLead.mockResolvedValue({ id: targetId, organizationId: otherId });
+    projectRepository.findAll.mockResolvedValue([]);
+    organizationRepository.findFirstForMember.mockResolvedValue({
+      id: targetId,
+      members: [{ userId: actorId, role: 'MEMBER' }],
+    });
     audit.append.mockResolvedValue(undefined);
     email.send.mockResolvedValue(undefined);
     for (const model of Object.values(models)) {
@@ -473,6 +514,86 @@ describe('real AdminModule authorization HTTP boundary', () => {
     expect(response.body.code).toBe('SUPPORT_IMPERSONATION_UNAVAILABLE');
     expect(rbac.findUserById).not.toHaveBeenCalled();
     noBusinessReads();
+  });
+  describe('alternate global user-status lifecycle route', () => {
+    const status = () =>
+      request(app.getHttpServer())
+        .patch(`/api/v1/users/${targetId}/status`)
+        .auth(
+          token({ isPlatformAdmin: true, role: 'ADMIN', effectivePermissions: ['users.manage'] }),
+          { type: 'bearer' },
+        )
+        .send({ isActive: false });
+    it.each(['TEAM_LEAD', 'INTERNAL_SUPPORT', 'ordinary member'])(
+      'denies %s despite users.manage and signed admin claims',
+      async () => {
+        account.isPlatformAdmin = false;
+        expect((await status()).status).toBe(403);
+        expect(users.updateStatus).not.toHaveBeenCalled();
+        noBusinessReads();
+      },
+    );
+    it('preserves authorized admin deactivation', async () => {
+      expect((await status()).status).toBe(200);
+      expect(users.updateStatus).toHaveBeenCalledWith(targetId, false);
+    });
+    it('denies missing users.manage before target mutation', async () => {
+      rbac.findPermissions.mockResolvedValue([]);
+      expect((await status()).status).toBe(403);
+      expect(users.updateStatus).not.toHaveBeenCalled();
+    });
+    it('retains current-session validation before global status authorization', async () => {
+      session.revokedAt = new Date();
+      expect((await status()).status).toBe(401);
+      expect(users.updateStatus).not.toHaveBeenCalled();
+    });
+    it('returns 503 when mandatory status authorization is unavailable', async () => {
+      rbac.findUserById.mockRejectedValue(new Error('private driver credentials'));
+      const response = await status();
+      expect(response.status).toBe(503);
+      expect(response.body.code).toBe('PLATFORM_ADMIN_AUTHORIZATION_UNAVAILABLE');
+      expect(users.updateStatus).not.toHaveBeenCalled();
+    });
+  });
+  describe('alternate global project reassignment route', () => {
+    const assign = (id = targetId) =>
+      request(app.getHttpServer())
+        .post(`/api/v1/projects/${id}/assign-team-lead`)
+        .auth(token({ isPlatformAdmin: true }), { type: 'bearer' })
+        .send({ teamLeadId: otherId });
+    it.each([targetId, otherId, 'invalid-id'])(
+      'denies team-lead reassignment of arbitrary project %s',
+      async (id) => {
+        account.isPlatformAdmin = false;
+        expect((await assign(id)).status).toBe(403);
+        expect(projectRepository.assignTeamLead).not.toHaveBeenCalled();
+        expect(audit.append).not.toHaveBeenCalled();
+      },
+    );
+    it.each(['organizations.manage', 'resources.transfer', 'resources.transfer.confirm'])(
+      'requires %s for global reassignment',
+      async (permission) => {
+        rbac.findPermissions.mockResolvedValue(
+          catalog.filter((key) => key !== permission).map((key) => ({ key })),
+        );
+        expect((await assign()).status).toBe(403);
+        expect(projectRepository.assignTeamLead).not.toHaveBeenCalled();
+      },
+    );
+    it('preserves permitted administrator assignment', async () => {
+      expect((await assign()).status).toBe(201);
+      expect(projectRepository.assignTeamLead).toHaveBeenCalledWith(targetId, otherId);
+    });
+    it('preserves ordinary membership-scoped project listing', async () => {
+      account.isPlatformAdmin = false;
+      const response = await request(app.getHttpServer())
+        .get('/api/v1/projects')
+        .auth(token(), { type: 'bearer' });
+      expect(response.status).toBe(200);
+      expect(organizationRepository.findFirstForMember).toHaveBeenCalledWith(actorId);
+      expect(projectRepository.findAll).toHaveBeenCalledWith(targetId);
+      expect(rbac.findUserById).not.toHaveBeenCalled();
+    });
   });
   it('covers every registered handler with an explicit permission or the single disabled exception', () => {
     const prototype = PlatformAdminController.prototype;
