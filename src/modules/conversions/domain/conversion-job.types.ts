@@ -57,13 +57,28 @@ export interface ConversionJobRepository {
   renewProcessingLease(id: string, token: string, leaseExpiresAt: Date): Promise<boolean>;
   releaseProcessingForRetry(id: string, token: string): Promise<boolean>;
   markAbandonedFailed(id: string, executionGeneration: number): Promise<boolean>;
+  listDeliveryRecoveryCandidates(
+    queuedBefore: Date,
+    afterId?: string,
+  ): Promise<ConversionJobRecord[]>;
+  markUndeliveredFailed(
+    id: string,
+    executionGeneration: number,
+    queuedBefore: Date,
+  ): Promise<boolean>;
   markCompleted(
     id: string,
     resultReferenceOrOutput: string | { resultReference: string; toolVersion?: string },
     toolVersion?: string,
     processingToken?: string,
   ): Promise<ConversionJobRecord | null>;
-  markFailed(id: string, code: string, message: string, processingToken?: string): Promise<void>;
+  markFailed(
+    id: string,
+    code: string,
+    message: string,
+    processingToken?: string,
+    executionGeneration?: number,
+  ): Promise<boolean>;
   /** Points an already-completed job at a new result location — used when the generated
    * output is amended in place after completion (e.g. a manual method-mapping rename),
    * rather than through a fresh conversion run. */
@@ -71,6 +86,10 @@ export interface ConversionJobRepository {
 }
 export const CONVERSION_JOB_REPOSITORY = Symbol('CONVERSION_JOB_REPOSITORY');
 export interface ConversionQueuePort {
+  deliveryState(
+    conversionJobId: string,
+    executionGeneration: number,
+  ): Promise<'pending' | 'terminal' | 'missing'>;
   enqueue(
     conversionJobId: string,
     priority: ConversionPriority,

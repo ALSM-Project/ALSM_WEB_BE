@@ -12,6 +12,7 @@ const os = require('node:os');
 const path = require('node:path');
 const mongoose = require('mongoose');
 const bcrypt = require('bcrypt');
+const { cleanupAll, stopOwnedChild } = require('./conversion-test-cleanup.cjs');
 
 async function unusedPort() {
   const server = net.createServer();
@@ -27,9 +28,12 @@ async function until(work) {
   }
   throw error;
 }
-async function startHarness() {
+async function startHarness(options = {}) {
   assert.equal(process.env.ALSM_QUEUE_HTTP_TEST, 'owned-local-only', 'Explicit isolated-test opt-in required');
   const binary = process.env.ALSM_QUEUE_MONGOD;
+  if (options.redisPort !== undefined) {
+    assert.ok(Number.isInteger(options.redisPort) && options.redisPort > 1024 && options.redisPort < 65536);
+  }
   assert.ok(binary && path.isAbsolute(binary), 'An explicit installed mongod executable is required');
   await fs.access(binary);
   const runId = randomUUID().replaceAll('-', '');
@@ -46,19 +50,18 @@ async function startHarness() {
   async function close() {
     if (closed) return;
     closed = true;
-    if (app) await app.close();
-    if (bootstrap) await bootstrap.close();
-    if (mongo.exitCode === null) {
-      const stopped = new Promise((resolve) => mongo.once('exit', resolve));
-      mongo.kill();
-      await stopped;
-    }
-    // Remove only the newly created, ownership-checked temporary directory.
-    const marker = JSON.parse(await fs.readFile(path.join(root, 'owner.json'), 'utf8'));
-    assert.equal(marker.runId, runId);
-    assert.equal(path.dirname(root), os.tmpdir());
-    assert.ok(path.basename(root).startsWith('alsmv2-1038-'));
-    await fs.rm(root, { recursive: true });
+    await cleanupAll([
+      ['HTTP application', async () => { if (app) await app.close(); }],
+      ['Mongo bootstrap connection', async () => { if (bootstrap) await bootstrap.close(); }],
+      ['Owned Mongo process', () => stopOwnedChild(mongo), 6000],
+      ['Owned Mongo data', async () => {
+        const marker = JSON.parse(await fs.readFile(path.join(root, 'owner.json'), 'utf8'));
+        assert.equal(marker.runId, runId); assert.equal(path.dirname(root), os.tmpdir());
+        assert.ok(path.basename(root).startsWith('alsmv2-1038-'));
+        assert.ok(mongo.exitCode !== null || mongo.signalCode !== null);
+        await fs.rm(root, { recursive: true });
+      }],
+    ]);
   }
   try {
     bootstrap = await until(() => mongoose.createConnection(`mongodb://127.0.0.1:${port}/admin?directConnection=true`, { serverSelectionTimeoutMS: 500 }).asPromise());
@@ -66,11 +69,11 @@ async function startHarness() {
     await until(async () => assert.equal((await bootstrap.db.admin().command({ hello: 1 })).isWritablePrimary, true));
     // Explicit values take precedence over ConfigModule's .env discovery. No provider may run.
     Object.assign(process.env, {
-      NODE_ENV: 'test', MONGODB_URI: uri, REDIS_HOST: '127.0.0.1', REDIS_PORT: '1', REDIS_PASSWORD: '',
+      NODE_ENV: 'test', MONGODB_URI: uri, REDIS_HOST: '127.0.0.1', REDIS_PORT: String(options.redisPort ?? 1), REDIS_PASSWORD: '',
       JWT_ACCESS_SECRET: randomBytes(48).toString('hex'), JWT_REFRESH_SECRET: randomBytes(48).toString('hex'),
       JWT_ACCESS_EXPIRES_IN: '15m', JWT_REFRESH_EXPIRES_IN: '1h', MFA_ENCRYPTION_KEY: randomBytes(32).toString('base64'),
       CORS_ORIGINS: 'http://127.0.0.1:31038', STORAGE_ROOT: path.join(root, 'storage'),
-      CONVERSION_WORKER_ENABLED: 'false', VALIDATION_WORKER_ENABLED: 'false', AI_VALIDATION_ENABLED: 'false',
+      CONVERSION_WORKER_ENABLED: options.redisPort ? 'true' : 'false', VALIDATION_WORKER_ENABLED: 'false', AI_VALIDATION_ENABLED: 'false',
       GOOGLE_CLIENT_ID: '', SMTP_HOST: '', SMTP_USER: '', SMTP_PASS: '', CASSO_API_KEY: '',
       GOOGLE_SERVICE_ACCOUNT_JSON: '', GOOGLE_CALENDAR_USER_EMAIL: '', TOOL_CONVERT_DIR: '', TOOL2JAVA_JAR_PATH: '',
       OPENAI_API_KEY: '', GEMINI_API_KEY: '',
@@ -142,7 +145,7 @@ async function startHarness() {
       return result;
     }
     const login = (email = staffEmail) => request('POST', '/auth/login', 200, undefined, { email, password });
-    return { app, db, base, close, request, login, fixtureCredentials: { email: staffEmail, password }, ids: Object.fromEntries(Object.entries({ staffId, otherId, unassignedId, adminId, teamId, orgId, foreignOrgId, assignedOrgId, projectId, emptyId, foreignProjectId, unassignedProjectId, assignedProjectId, failedId, processingId, completedId }).map(([key, value]) => [key, String(value)])), getPassed: () => passed };
+    return { app, db, base, close, request, login, ownedResources: { root, port, mongoPid: mongo.pid, runId }, fixtureCredentials: { email: staffEmail, password }, ids: Object.fromEntries(Object.entries({ staffId, otherId, unassignedId, adminId, teamId, orgId, foreignOrgId, assignedOrgId, projectId, emptyId, foreignProjectId, unassignedProjectId, assignedProjectId, failedId, processingId, completedId }).map(([key, value]) => [key, String(value)])), getPassed: () => passed };
   } catch (error) { await close(); throw error; }
 }
 async function main() {

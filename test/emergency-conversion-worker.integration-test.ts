@@ -171,7 +171,7 @@ ownedIntegration('Emergency actual BullMQ + Mongo worker integration', () => {
   }
 
   function start(engine: ConversionEnginePort): void {
-    const runner = new ConversionWorkerRunner(config, repository, engine, screens);
+    const runner = new ConversionWorkerRunner(config, repository, engine, screens, queue);
     runners.push(runner);
     runner.start();
   }

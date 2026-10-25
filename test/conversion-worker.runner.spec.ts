@@ -1,13 +1,16 @@
 import { ConfigService } from '@nestjs/config';
+import { Worker } from 'bullmq';
+import { environmentValidationSchema } from '../src/config/environment.validation';
 import { ConversionWorkerRunner } from '../src/modules/conversions/infrastructure/conversion-worker.runner';
 import {
   ConversionEnginePort,
   ConversionJobRepository,
+  ConversionQueuePort,
 } from '../src/modules/conversions/domain/conversion-job.types';
 import { ScreenRepository, ScreenStatus } from '../src/modules/screens/domain/screen.types';
 
 type Processor = (job: {
-  data: { conversionJobId: string };
+  data: { conversionJobId: string; executionGeneration?: number };
   attemptsMade?: number;
   opts?: { attempts?: number };
 }) => Promise<void>;
@@ -24,12 +27,15 @@ jest.mock('bullmq', () => ({
 describe('ConversionWorkerRunner', () => {
   const jobs = {
     markProcessing: jest.fn(),
+    listDeliveryRecoveryCandidates: jest.fn().mockResolvedValue([]),
+    markUndeliveredFailed: jest.fn(),
     markFailed: jest.fn(),
     markCompleted: jest.fn(),
     renewProcessingLease: jest.fn(),
     releaseProcessingForRetry: jest.fn(),
     findByIdAnyOrganization: jest.fn(),
   };
+  const queue = { deliveryState: jest.fn() };
   const engine = { execute: jest.fn() };
   const screens = { updateStatus: jest.fn() };
   const enabledValues: Record<string, unknown> = {
@@ -45,9 +51,223 @@ describe('ConversionWorkerRunner', () => {
   beforeEach(() => {
     jest.clearAllMocks();
     capturedProcessor = undefined;
-    jobs.markCompleted.mockResolvedValue({ id: 'job-1' });
+    jobs.markFailed.mockResolvedValue(true);
+    jobs.markCompleted.mockResolvedValue({ id: '0123456789abcdef01234567' });
     jobs.releaseProcessingForRetry.mockResolvedValue(true);
+    jobs.findByIdAnyOrganization.mockResolvedValue({ status: 'CANCELLED' });
+  });
+
+  function runner() {
+    return new ConversionWorkerRunner(
+      enabledConfig as unknown as ConfigService,
+      jobs as unknown as ConversionJobRepository,
+      engine as unknown as ConversionEnginePort,
+      screens as unknown as ScreenRepository,
+      queue as unknown as ConversionQueuePort,
+    );
+  }
+
+  it.each([-1, 0.5, NaN, Number.MAX_SAFE_INTEGER + 1])(
+    'rejects invalid generation %s before Mongo access',
+    async (executionGeneration) => {
+      const worker = runner();
+      worker.start();
+      await expect(
+        capturedProcessor!({
+          data: { conversionJobId: '0123456789abcdef01234567', executionGeneration },
+        }),
+      ).rejects.toThrow('Invalid conversion queue payload');
+      expect(jobs.markProcessing).not.toHaveBeenCalled();
+      await worker.onModuleDestroy();
+    },
+  );
+
+  it('rejects malformed IDs and missing records without executing the engine', async () => {
+    const worker = runner();
+    worker.start();
+    await expect(capturedProcessor!({ data: { conversionJobId: 'invalid' } })).rejects.toThrow(
+      'Invalid conversion queue payload',
+    );
+    jobs.markProcessing.mockResolvedValue(null);
     jobs.findByIdAnyOrganization.mockResolvedValue(null);
+    await expect(
+      capturedProcessor!({ data: { conversionJobId: '0123456789abcdef01234567' } }),
+    ).rejects.toThrow('record was not found');
+    expect(engine.execute).not.toHaveBeenCalled();
+    await worker.onModuleDestroy();
+  });
+
+  it('ignores an old generation even when the new generation is processing', async () => {
+    const worker = runner();
+    worker.start();
+    jobs.markProcessing.mockResolvedValue(null);
+    jobs.findByIdAnyOrganization.mockResolvedValue({
+      status: 'PROCESSING',
+      executionGeneration: 2,
+    });
+    await expect(
+      capturedProcessor!({
+        data: { conversionJobId: '0123456789abcdef01234567', executionGeneration: 1 },
+      }),
+    ).resolves.toBeUndefined();
+    expect(engine.execute).not.toHaveBeenCalled();
+    await worker.onModuleDestroy();
+  });
+
+  it('does not report screen failure when Mongo rejects a stale lease', async () => {
+    const worker = runner();
+    jobs.markProcessing.mockResolvedValue({
+      id: '0123456789abcdef01234567',
+      organizationId: 'org',
+      screenId: 'screen',
+    });
+    jobs.markFailed.mockResolvedValue(false);
+    engine.execute.mockRejectedValue(new Error('fixture failure'));
+    worker.start();
+    await expect(
+      capturedProcessor!({
+        data: { conversionJobId: '0123456789abcdef01234567' },
+        opts: { attempts: 1 },
+        attemptsMade: 0,
+      }),
+    ).rejects.toThrow('fixture failure');
+    expect(screens.updateStatus).not.toHaveBeenCalledWith('screen', 'org', ScreenStatus.FAILED);
+    await worker.onModuleDestroy();
+  });
+
+  it('renews the lease and fences persistence after renewal is lost', async () => {
+    jest.useFakeTimers();
+    const worker = runner();
+    jobs.markProcessing.mockResolvedValue({ id: '0123456789abcdef01234567' });
+    jobs.renewProcessingLease.mockResolvedValueOnce(true).mockResolvedValue(false);
+    let finish!: (output: { resultReference: string }) => void;
+    engine.execute.mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          finish = resolve;
+        }),
+    );
+    worker.start();
+    try {
+      const processing = capturedProcessor!({
+        data: { conversionJobId: '0123456789abcdef01234567' },
+      });
+      const rejected = expect(processing).rejects.toThrow('lease was lost');
+      await jest.advanceTimersByTimeAsync(20000);
+      expect(jobs.renewProcessingLease).toHaveBeenCalledTimes(2);
+      finish({ resultReference: 'fixture-only' });
+      await rejected;
+      expect(jobs.markCompleted).not.toHaveBeenCalled();
+      expect(jobs.markFailed).not.toHaveBeenCalled();
+      expect(jobs.releaseProcessingForRetry).not.toHaveBeenCalled();
+    } finally {
+      await worker.onModuleDestroy();
+      jest.useRealTimers();
+    }
+  });
+
+  it('starts only one worker and closes it on shutdown', async () => {
+    const worker = runner();
+    worker.start();
+    worker.start();
+    expect(Worker).toHaveBeenCalledTimes(1);
+    await worker.onModuleDestroy();
+  });
+
+  it.each(['BMS_DSPF_TO_FRONTEND', 'COBOL_TO_JAVA'])(
+    'releases its fenced lease for retry after a transient renewal error for %s',
+    async (conversionType) => {
+      jest.useFakeTimers();
+      const worker = runner();
+      jobs.markProcessing.mockResolvedValue({ id: '0123456789abcdef01234567', conversionType });
+      jobs.renewProcessingLease.mockRejectedValueOnce(new Error('transient Mongo transport error'));
+      let fail!: (error: Error) => void;
+      engine.execute.mockImplementation(
+        () =>
+          new Promise((_resolve, reject) => {
+            fail = reject;
+          }),
+      );
+      worker.start();
+      try {
+        const processing = capturedProcessor!({
+          data: { conversionJobId: '0123456789abcdef01234567' },
+          attemptsMade: 0,
+          opts: { attempts: 3 },
+        });
+        const rejected = expect(processing).rejects.toThrow('fixture retryable failure');
+        await jest.advanceTimersByTimeAsync(10000);
+        fail(new Error('fixture retryable failure'));
+        await rejected;
+        expect(jobs.releaseProcessingForRetry).toHaveBeenCalledWith(
+          '0123456789abcdef01234567',
+          expect.any(String),
+        );
+        expect(jobs.markCompleted).not.toHaveBeenCalled();
+        expect(jobs.markFailed).not.toHaveBeenCalled();
+      } finally {
+        await worker.onModuleDestroy();
+        jest.useRealTimers();
+      }
+    },
+  );
+
+  it('uses the atomic completion fence after an uncertain renewal', async () => {
+    jest.useFakeTimers();
+    const worker = runner();
+    jobs.markProcessing.mockResolvedValue({ id: '0123456789abcdef01234567' });
+    jobs.renewProcessingLease.mockRejectedValueOnce(new Error('transient Mongo transport error'));
+    let finish!: (output: { resultReference: string }) => void;
+    engine.execute.mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          finish = resolve;
+        }),
+    );
+    worker.start();
+    try {
+      const processing = capturedProcessor!({
+        data: { conversionJobId: '0123456789abcdef01234567' },
+      });
+      await jest.advanceTimersByTimeAsync(10000);
+      finish({ resultReference: 'fixture-fenced-output' });
+      await processing;
+      expect(jobs.markCompleted).toHaveBeenCalledWith(
+        '0123456789abcdef01234567',
+        { resultReference: 'fixture-fenced-output' },
+        undefined,
+        expect.any(String),
+      );
+      expect(jobs.releaseProcessingForRetry).not.toHaveBeenCalled();
+    } finally {
+      await worker.onModuleDestroy();
+      jest.useRealTimers();
+    }
+  });
+
+  it('fails only unreachable recovery candidates and keeps pending deliveries', async () => {
+    jobs.listDeliveryRecoveryCandidates.mockResolvedValueOnce([
+      { id: 'orphan', status: 'QUEUED', executionGeneration: 2 },
+      { id: 'pending', status: 'QUEUED', executionGeneration: 0 },
+      { id: 'expired', status: 'PROCESSING', executionGeneration: 1 },
+    ]);
+    queue.deliveryState
+      .mockResolvedValueOnce('missing')
+      .mockResolvedValueOnce('pending')
+      .mockResolvedValueOnce('terminal');
+    const abandoned = jest.fn();
+    const worker = new ConversionWorkerRunner(
+      enabledConfig as unknown as ConfigService,
+      { ...jobs, markAbandonedFailed: abandoned } as unknown as ConversionJobRepository,
+      engine as unknown as ConversionEnginePort,
+      screens as unknown as ScreenRepository,
+      queue as unknown as ConversionQueuePort,
+    );
+    worker.start();
+    await worker.onModuleDestroy();
+    expect(jobs.markUndeliveredFailed).toHaveBeenCalledTimes(1);
+    expect(jobs.markUndeliveredFailed).toHaveBeenCalledWith('orphan', 2, expect.any(Date));
+    expect(abandoned).toHaveBeenCalledWith('expired', 1);
   });
 
   it('does not create a worker when CONVERSION_WORKER_ENABLED is false', () => {
@@ -57,11 +277,24 @@ describe('ConversionWorkerRunner', () => {
       jobs as unknown as ConversionJobRepository,
       engine as unknown as ConversionEnginePort,
       screens as unknown as ScreenRepository,
+      queue as unknown as ConversionQueuePort,
     );
 
     runner.start();
 
     expect(capturedProcessor).toBeUndefined();
+  });
+
+  it('validates worker Redis settings before application startup', () => {
+    expect(environmentValidationSchema.extract('REDIS_HOST').validate('').error).toBeDefined();
+    expect(environmentValidationSchema.extract('REDIS_PORT').validate(70000).error).toBeDefined();
+    expect(
+      environmentValidationSchema.extract('CONVERSION_WORKER_ENABLED').validate('not-a-boolean')
+        .error,
+    ).toBeDefined();
+    expect(
+      environmentValidationSchema.extract('CONVERSION_WORKER_ENABLED').validate('true').value,
+    ).toBe(true);
   });
 
   it('persists resultReference/toolVersion via markCompleted when the engine succeeds', async () => {
@@ -70,27 +303,28 @@ describe('ConversionWorkerRunner', () => {
       jobs as unknown as ConversionJobRepository,
       engine as unknown as ConversionEnginePort,
       screens as unknown as ScreenRepository,
+      queue as unknown as ConversionQueuePort,
     );
     jobs.markProcessing.mockResolvedValue({
-      id: 'job-1',
+      id: '0123456789abcdef01234567',
       organizationId: 'org-1',
       projectId: 'p1',
       screenId: 'scr-1',
       conversionType: 'BMS_DSPF_TO_FRONTEND',
     });
     engine.execute.mockResolvedValue({
-      resultReference: 'results/p1/job-1',
+      resultReference: 'results/p1/0123456789abcdef01234567',
       toolVersion: 'convert2fe',
     });
 
     runner.start();
     expect(capturedProcessor).toBeDefined();
-    await capturedProcessor!({ data: { conversionJobId: 'job-1' } });
+    await capturedProcessor!({ data: { conversionJobId: '0123456789abcdef01234567' } });
 
     expect(jobs.markCompleted).toHaveBeenCalledWith(
-      'job-1',
+      '0123456789abcdef01234567',
       {
-        resultReference: 'results/p1/job-1',
+        resultReference: 'results/p1/0123456789abcdef01234567',
         toolVersion: 'convert2fe',
       },
       undefined,
@@ -117,9 +351,10 @@ describe('ConversionWorkerRunner', () => {
       jobs as unknown as ConversionJobRepository,
       engine as unknown as ConversionEnginePort,
       screens as unknown as ScreenRepository,
+      queue as unknown as ConversionQueuePort,
     );
     jobs.markProcessing.mockResolvedValue({
-      id: 'job-1',
+      id: '0123456789abcdef01234567',
       organizationId: 'org-1',
       projectId: 'p1',
       conversionType: 'BMS_DSPF_TO_FRONTEND',
@@ -129,14 +364,14 @@ describe('ConversionWorkerRunner', () => {
     runner.start();
     await expect(
       capturedProcessor!({
-        data: { conversionJobId: 'job-1' },
+        data: { conversionJobId: '0123456789abcdef01234567' },
         attemptsMade: 2,
         opts: { attempts: 3 },
       }),
     ).rejects.toThrow('tool crashed');
 
     expect(jobs.markFailed).toHaveBeenCalledWith(
-      'job-1',
+      '0123456789abcdef01234567',
       'CONVERSION_ENGINE_UNAVAILABLE',
       'tool crashed',
       expect.any(String),
@@ -159,9 +394,10 @@ describe('ConversionWorkerRunner', () => {
       jobs as unknown as ConversionJobRepository,
       engine as unknown as ConversionEnginePort,
       screens as unknown as ScreenRepository,
+      queue as unknown as ConversionQueuePort,
     );
     jobs.markProcessing.mockResolvedValue({
-      id: 'job-1',
+      id: '0123456789abcdef01234567',
       organizationId: 'org-1',
       projectId: 'p1',
       screenId: 'scr-1',
@@ -174,14 +410,17 @@ describe('ConversionWorkerRunner', () => {
     // redeliver this same job twice more, so the Mongo record must stay processable.
     await expect(
       capturedProcessor!({
-        data: { conversionJobId: 'job-1' },
+        data: { conversionJobId: '0123456789abcdef01234567' },
         attemptsMade: 0,
         opts: { attempts: 3 },
       }),
     ).rejects.toThrow('tool crashed');
 
     expect(jobs.markFailed).not.toHaveBeenCalled();
-    expect(jobs.releaseProcessingForRetry).toHaveBeenCalledWith('job-1', expect.any(String));
+    expect(jobs.releaseProcessingForRetry).toHaveBeenCalledWith(
+      '0123456789abcdef01234567',
+      expect.any(String),
+    );
     // The PROCESSING sync from the start of this attempt is fine; FAILED must not fire yet.
     expect(screens.updateStatus).not.toHaveBeenCalledWith('scr-1', 'org-1', ScreenStatus.FAILED);
   });
@@ -192,26 +431,27 @@ describe('ConversionWorkerRunner', () => {
       jobs as unknown as ConversionJobRepository,
       engine as unknown as ConversionEnginePort,
       screens as unknown as ScreenRepository,
+      queue as unknown as ConversionQueuePort,
     );
     jobs.markProcessing.mockResolvedValue({
-      id: 'job-1',
+      id: '0123456789abcdef01234567',
       organizationId: 'org-1',
       projectId: 'p1',
       screenId: 'scr-1',
       conversionType: 'BMS_DSPF_TO_FRONTEND',
     });
-    engine.execute.mockResolvedValue({ resultReference: 'results/p1/job-1' });
+    engine.execute.mockResolvedValue({ resultReference: 'results/p1/0123456789abcdef01234567' });
     screens.updateStatus.mockRejectedValue(new Error('screens collection unavailable'));
 
     runner.start();
     await expect(
-      capturedProcessor!({ data: { conversionJobId: 'job-1' } }),
+      capturedProcessor!({ data: { conversionJobId: '0123456789abcdef01234567' } }),
     ).resolves.toBeUndefined();
 
     expect(jobs.markCompleted).toHaveBeenCalledWith(
-      'job-1',
+      '0123456789abcdef01234567',
       {
-        resultReference: 'results/p1/job-1',
+        resultReference: 'results/p1/0123456789abcdef01234567',
       },
       undefined,
       expect.any(String),
@@ -224,11 +464,12 @@ describe('ConversionWorkerRunner', () => {
       jobs as unknown as ConversionJobRepository,
       engine as unknown as ConversionEnginePort,
       screens as unknown as ScreenRepository,
+      queue as unknown as ConversionQueuePort,
     );
     jobs.markProcessing.mockResolvedValue(null);
 
     runner.start();
-    await capturedProcessor!({ data: { conversionJobId: 'job-1' } });
+    await capturedProcessor!({ data: { conversionJobId: '0123456789abcdef01234567' } });
 
     expect(engine.execute).not.toHaveBeenCalled();
     expect(jobs.markCompleted).not.toHaveBeenCalled();

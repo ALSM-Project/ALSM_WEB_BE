@@ -210,6 +210,8 @@ describe('ConversionJobService - convert on behalf of partner (UC-47)', () => {
         'job-1',
         'CONVERSION_QUEUE_UNAVAILABLE',
         'Conversion job could not be queued',
+        undefined,
+        0,
       );
       expect(audit.append).not.toHaveBeenCalled();
     });
