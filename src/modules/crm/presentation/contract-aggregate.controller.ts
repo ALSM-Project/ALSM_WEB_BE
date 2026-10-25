@@ -7,6 +7,7 @@ import { JwtAuthGuard } from '../../../shared/security/jwt-auth.guard';
 import { PermissionsGuard } from '../../../shared/security/permissions.guard';
 import { RequirePermissions } from '../../../shared/security/require-permissions.decorator';
 import { ContractAggregateService } from '../application/contract-aggregate.service';
+import { OrganizationContextService } from '../../organizations/application/organization-context.service';
 import { CreateContractDto } from './sales.dto';
 import { CustomerContractDecisionDto, ReviewContractDto } from './contract-aggregate.dto';
 
@@ -15,7 +16,10 @@ import { CustomerContractDecisionDto, ReviewContractDto } from './contract-aggre
 @UseGuards(JwtAuthGuard, CurrentSessionGuard, PermissionsGuard)
 @Controller()
 export class ContractAggregateController {
-  constructor(private readonly contracts: ContractAggregateService) {}
+  constructor(
+    private readonly contracts: ContractAggregateService,
+    private readonly orgContext: OrganizationContextService,
+  ) {}
 
   @Post('sales/crm/leads/:leadId/legal-contracts')
   @RequirePermissions('sales.leads.manage')
@@ -200,7 +204,17 @@ export class ContractAggregateController {
 
   @Get('customer/contracts')
   @ApiOperation({ summary: 'List approved contracts and the authenticated customer’s recorded decisions for active Lead invitations' })
-  async listForCustomer(@CurrentUser() actor: AuthenticatedUser) {
-    return this.contracts.listForCustomer(actor);
+  async listForCustomer(
+    @CurrentUser() actor: AuthenticatedUser,
+    @Headers('x-organization-id') organizationHeader?: string,
+  ) {
+    const list = await this.contracts.listForCustomer(actor);
+    if (list && list.length > 0) return list;
+    try {
+      const org = await this.orgContext.resolve(actor.userId, organizationHeader);
+      return this.contracts.listForOrganization(org.id);
+    } catch {
+      return [];
+    }
   }
 }
