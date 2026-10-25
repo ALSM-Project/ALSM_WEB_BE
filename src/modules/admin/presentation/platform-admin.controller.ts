@@ -1,5 +1,5 @@
 import { Body, Controller, Get, Param, Patch, Post, Query, Res, UseGuards } from '@nestjs/common';
-import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
+import { ApiBearerAuth, ApiOperation, ApiServiceUnavailableResponse, ApiTags } from '@nestjs/swagger';
 import { Response } from 'express';
 import { CurrentUser } from '../../../shared/security/current-user.decorator';
 import { JwtAuthGuard } from '../../../shared/security/jwt-auth.guard';
@@ -69,7 +69,13 @@ export class PlatformAdminController {
   }
 
   @Post('organizations/:id/impersonate')
-  @ApiOperation({ summary: 'Impersonate customer organisation in read-only mode (3.10.4)' })
+  @ApiOperation({
+    summary: 'Organisation Support View unavailable pending security prerequisites (3.10.4)',
+    description: 'Authenticated requests fail closed. No support session or customer access is granted.',
+  })
+  @ApiServiceUnavailableResponse({
+    description: 'SUPPORT_IMPERSONATION_UNAVAILABLE: Support View is currently unavailable.',
+  })
   async impersonate(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string) {
     return this.adminService.impersonateOrganization(user.userId, id);
   }

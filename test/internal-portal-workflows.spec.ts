@@ -50,7 +50,8 @@ describe('Internal Staff Portal & Platform Administration Workflows', () => {
       );
     });
 
-    it('3.10.4: support impersonates customer organisation with read-only context and audit trail', async () => {
+    it('3.10.4: blocks impersonation without a verified support session and never audits success', async () => {
+      auditRepo.append.mockClear();
       const mockOrg = {
         id: 'org-cust-1',
         _id: new Types.ObjectId(),
@@ -73,16 +74,15 @@ describe('Internal Staff Portal & Platform Administration Workflows', () => {
         auditRepo as never,
       );
 
-      const result = await adminService.impersonateOrganization('support-user-1', 'org-cust-1');
-
-      expect(result.readOnly).toBe(true);
-      expect(result.organizationName).toBe('Acme Bank Enterprise');
-      expect(auditRepo.append).toHaveBeenCalledWith(
-        expect.objectContaining({
-          action: 'ORGANISATION_IMPERSONATED',
-          metadata: expect.objectContaining({ readOnly: 'true' }),
-        }),
-      );
+      await expect(
+        adminService.impersonateOrganization('support-user-1', 'org-cust-1'),
+      ).rejects.toMatchObject({
+        status: 503,
+        response: { code: 'SUPPORT_IMPERSONATION_UNAVAILABLE' },
+      });
+      expect(orgModel.findById).not.toHaveBeenCalled();
+      expect(orgModel.findOne).not.toHaveBeenCalled();
+      expect(auditRepo.append).not.toHaveBeenCalled();
     });
   });
 

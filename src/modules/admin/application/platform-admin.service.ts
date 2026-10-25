@@ -4,6 +4,7 @@ import {
   Inject,
   Injectable,
   NotFoundException,
+  ServiceUnavailableException,
 } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { FilterQuery, Model, Types } from 'mongoose';
@@ -228,25 +229,17 @@ export class PlatformAdminService {
   }
 
   // ─── 3.10.4 Impersonate Organisation ─────────────────────────────
-  async impersonateOrganization(actorUserId: string, id: string) {
-    const org = await this.findOrgById(id);
-
-    await this.audit.append({
-      actorUserId,
-      organizationId: org._id.toString(),
-      action: 'ORGANISATION_IMPERSONATED',
-      resourceType: 'ORGANIZATION',
-      resourceId: org._id.toString(),
-      metadata: { orgName: org.name, readOnly: 'true' },
+  async impersonateOrganization(actorUserId: string, id: string): Promise<never> {
+    // Fail before tenant lookup or audit: ordinary authentication cannot admit a
+    // support session. See docs/engineering/IMPERSONATION_SECURITY_BLOCKER_20261017.md.
+    // Do not add an enable flag until the full security chain is independently verified.
+    // Retain the compatibility signature without using either value as authorization.
+    void actorUserId;
+    void id;
+    throw new ServiceUnavailableException({
+      code: 'SUPPORT_IMPERSONATION_UNAVAILABLE',
+      message: 'Support View is currently unavailable.',
     });
-
-    return {
-      organizationId: org.id || org._id.toString(),
-      organizationName: org.name,
-      organizationType: org.type,
-      readOnly: true,
-      impersonatedAt: new Date().toISOString(),
-    };
   }
 
   // ─── 3.13.6 View Total Revenue ───────────────────────────────────
