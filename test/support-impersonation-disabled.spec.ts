@@ -11,6 +11,9 @@ import { RequireCurrentSessionService } from '../src/modules/auth/application/re
 import { SessionRepository } from '../src/modules/auth/domain/session.repository';
 import { UserRepository } from '../src/modules/users/domain/user.repository';
 import { ApiExceptionFilter } from '../src/shared/errors/api-exception.filter';
+import { PlatformAdminAccessService } from '../src/modules/admin/application/platform-admin-access.service';
+import { EffectivePermissionsService } from '../src/modules/rbac/application/effective-permissions.service';
+import { IRbacRepository } from '../src/modules/rbac/domain/rbac.repository.interface';
 
 const userId = '111111111111111111111111';
 const sessionId = '222222222222222222222222';
@@ -83,6 +86,7 @@ describe('disabled support impersonation HTTP boundary', () => {
   };
   const users = { findById: jest.fn() };
   const sessions = { findActiveByUserId: jest.fn() };
+  const rbac = { findUserById: jest.fn() };
 
   beforeAll(async () => {
     f = fixture();
@@ -94,6 +98,10 @@ describe('disabled support impersonation HTTP boundary', () => {
     const moduleRef = await Test.createTestingModule({
       controllers: [PlatformAdminController],
       providers: [
+        { provide: PlatformAdminAccessService, useValue: new PlatformAdminAccessService(
+          rbac as unknown as IRbacRepository,
+          new EffectivePermissionsService(rbac as unknown as IRbacRepository),
+        ) },
         { provide: PlatformAdminService, useValue: f.service },
         { provide: LockUserService, useValue: {} },
         { provide: JwtService, useValue: jwt },
@@ -121,6 +129,7 @@ describe('disabled support impersonation HTTP boundary', () => {
   });
 
   afterEach(() => {
+    expect(rbac.findUserById).not.toHaveBeenCalled();
     for (const method of Object.values(f.model)) expect(method).not.toHaveBeenCalled();
     expect(f.audit.append).not.toHaveBeenCalled();
   });
