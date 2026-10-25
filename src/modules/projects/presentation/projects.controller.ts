@@ -24,6 +24,8 @@ import { CreateProjectDto, UpdateProjectDto } from './project.dto';
 import { JwtAuthGuard } from '../../../shared/security/jwt-auth.guard';
 import { CurrentUser } from '../../../shared/security/current-user.decorator';
 import { AuthenticatedUser } from '../../../shared/logging/request-id.middleware';
+import { RequirePermissions } from '../../../shared/security/require-permissions.decorator';
+import { PlatformAdminAuthorizationGuard } from '../../admin/presentation/platform-admin-authorization.guard';
 
 @ApiTags('Projects')
 @ApiBearerAuth()
@@ -71,9 +73,11 @@ export class ProjectsController {
   }
 
   @Post(':id/assign-team-lead')
+  @UseGuards(PlatformAdminAuthorizationGuard)
+  @RequirePermissions('organizations.manage', 'resources.transfer', 'resources.transfer.confirm')
   @ApiOperation({
     summary: 'Assign project to a Team Lead',
-    description: 'Assigns an enterprise conversion project to a specific Team Lead (UC-3.13.3).',
+    description: 'Global assignment requires persisted Platform Admin status, organizations.manage and both resource transfer execution permissions (UC-3.13.3).',
   })
   @ApiResponse({ status: HttpStatus.OK, description: 'Project assigned to Team Lead' })
   async assignTeamLead(

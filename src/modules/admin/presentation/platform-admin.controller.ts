@@ -1,15 +1,19 @@
 import { Body, Controller, Get, Param, Patch, Post, Query, Res, UseGuards } from '@nestjs/common';
-import { ApiBearerAuth, ApiOperation, ApiServiceUnavailableResponse, ApiTags } from '@nestjs/swagger';
+import { ApiBearerAuth, ApiForbiddenResponse, ApiOperation, ApiServiceUnavailableResponse, ApiTags } from '@nestjs/swagger';
 import { Response } from 'express';
 import { CurrentUser } from '../../../shared/security/current-user.decorator';
 import { JwtAuthGuard } from '../../../shared/security/jwt-auth.guard';
 import { AuthenticatedUser } from '../../../shared/logging/request-id.middleware';
 import { PlatformAdminService } from '../application/platform-admin.service';
 import { LockUserService } from '../application/lock-user.service';
+import { RequirePermissions } from '../../../shared/security/require-permissions.decorator';
+import { CheckOffboardingTransfer, DisabledSupportImpersonation, PlatformAdminAuthorizationGuard } from './platform-admin-authorization.guard';
 
 @ApiTags('Platform Administration (Sections 3.10, 3.13 & 3.14)')
 @ApiBearerAuth()
-@UseGuards(JwtAuthGuard)
+@UseGuards(JwtAuthGuard, PlatformAdminAuthorizationGuard)
+@ApiForbiddenResponse({ description: 'Global administration requires persisted active Platform Admin status and every operation permission.' })
+@ApiServiceUnavailableResponse({ description: 'Mandatory session or platform administration authorization could not be verified.' })
 @Controller('admin')
 export class PlatformAdminController {
   constructor(
@@ -18,6 +22,7 @@ export class PlatformAdminController {
   ) {}
 
   @Get('organizations')
+  @RequirePermissions('organizations.view')
   @ApiOperation({ summary: 'View all organisations (3.13.1)' })
   async listOrganizations(
     @Query('search') search?: string,
@@ -28,12 +33,14 @@ export class PlatformAdminController {
   }
 
   @Get('organizations/:id')
+  @RequirePermissions('organizations.view')
   @ApiOperation({ summary: 'View organisation details (3.13.2)' })
   async getOrganizationDetails(@Param('id') id: string) {
     return this.adminService.getOrganizationDetails(id);
   }
 
   @Post('organizations/enterprise')
+  @RequirePermissions('organizations.manage')
   @ApiOperation({ summary: 'Create new Enterprise organisation with Trial (3.13.4)' })
   async createEnterprise(
     @CurrentUser() user: AuthenticatedUser,
@@ -53,6 +60,7 @@ export class PlatformAdminController {
   }
 
   @Patch('organizations/:id/engagement')
+  @RequirePermissions('organizations.manage')
   @ApiOperation({ summary: 'Update organisation engagement limits (3.13.5)' })
   async updateEngagement(
     @CurrentUser() user: AuthenticatedUser,
@@ -69,6 +77,7 @@ export class PlatformAdminController {
   }
 
   @Post('organizations/:id/impersonate')
+  @DisabledSupportImpersonation()
   @ApiOperation({
     summary: 'Organisation Support View unavailable pending security prerequisites (3.10.4)',
     description: 'Authenticated requests fail closed. No support session or customer access is granted.',
@@ -81,6 +90,7 @@ export class PlatformAdminController {
   }
 
   @Get('revenue/summary')
+  @RequirePermissions('revenue.view')
   @ApiOperation({
     summary: 'View platform total revenue derived from contracts & payments (3.13.6)',
   })
@@ -89,12 +99,14 @@ export class PlatformAdminController {
   }
 
   @Get('engagement-types')
+  @RequirePermissions('engagement-types.manage')
   @ApiOperation({ summary: 'List engagement types (3.13.7)' })
   async listEngagementTypes() {
     return this.adminService.listEngagementTypes();
   }
 
   @Post('engagement-types')
+  @RequirePermissions('engagement-types.manage')
   @ApiOperation({ summary: 'Create new engagement type (3.13.7)' })
   async createEngagementType(
     @CurrentUser() user: AuthenticatedUser,
@@ -104,6 +116,7 @@ export class PlatformAdminController {
   }
 
   @Patch('engagement-types/:id')
+  @RequirePermissions('engagement-types.manage')
   @ApiOperation({ summary: 'Edit engagement type (3.13.8)' })
   async editEngagementType(
     @CurrentUser() user: AuthenticatedUser,
@@ -114,6 +127,7 @@ export class PlatformAdminController {
   }
 
   @Post('users/:id/lock')
+  @RequirePermissions('users.lock')
   @ApiOperation({ summary: 'Lock user account and revoke sessions (3.13.9)' })
   async lockUser(
     @CurrentUser() user: AuthenticatedUser,
@@ -130,18 +144,22 @@ export class PlatformAdminController {
   }
 
   @Post('users/:id/unlock')
+  @RequirePermissions('users.lock')
   @ApiOperation({ summary: 'Unlock user account (3.13.9)' })
   async unlockUser(@CurrentUser() user: AuthenticatedUser, @Param('id') id: string) {
     return this.lockUserService.unlock(user.userId, id);
   }
 
   @Get('users/:id/offboarding-summary')
+  @RequirePermissions('users.offboard.review')
   @ApiOperation({ summary: 'Get user offboarding resource review summary (3.14.2)' })
   async getOffboardingSummary(@Param('id') id: string) {
     return this.adminService.getOffboardingSummary(id);
   }
 
   @Post('users/:id/offboard')
+  @RequirePermissions('users.offboard')
+  @CheckOffboardingTransfer()
   @ApiOperation({ summary: 'Execute user offboarding workflow (3.14.2)' })
   async offboardUser(
     @CurrentUser() user: AuthenticatedUser,
@@ -152,6 +170,7 @@ export class PlatformAdminController {
   }
 
   @Post('resources/transfer')
+  @RequirePermissions('resources.transfer', 'resources.transfer.confirm')
   @ApiOperation({ summary: 'Transfer resource ownership (3.14.3)' })
   async transferResource(
     @CurrentUser() user: AuthenticatedUser,
@@ -161,6 +180,7 @@ export class PlatformAdminController {
   }
 
   @Get('audit-logs')
+  @RequirePermissions('audit.view')
   @ApiOperation({ summary: 'View immutable system audit logs (3.13.10)' })
   async listAuditLogs(
     @Query('page') page?: string,
@@ -177,6 +197,7 @@ export class PlatformAdminController {
   }
 
   @Get('audit-logs/export')
+  @RequirePermissions('audit.view')
   @ApiOperation({ summary: 'Export audit logs to CSV (3.13.10)' })
   async exportAuditLogs(@Res() res: Response) {
     const csv = await this.adminService.exportAuditLogsCsv();

@@ -21,9 +21,13 @@ import { SmtpEmailAdapter } from '../auth/infrastructure/smtp-email.adapter';
 import { PlatformAdminService } from './application/platform-admin.service';
 import { LockUserService } from './application/lock-user.service';
 import { PlatformAdminController } from './presentation/platform-admin.controller';
+import { RbacModule } from '../rbac/rbac.module';
+import { PlatformAdminAccessService } from './application/platform-admin-access.service';
+import { PlatformAdminAuthorizationGuard } from './presentation/platform-admin-authorization.guard';
 
 @Module({
   imports: [
+    RbacModule,
     MongooseModule.forFeature([
       { name: Organization.name, schema: OrganizationSchema },
       { name: User.name, schema: UserSchema },
@@ -36,10 +40,12 @@ import { PlatformAdminController } from './presentation/platform-admin.controlle
   ],
   controllers: [PlatformAdminController],
   providers: [
+    PlatformAdminAccessService,
+    PlatformAdminAuthorizationGuard,
     PlatformAdminService,
     LockUserService,
     { provide: EMAIL_PORT, useClass: SmtpEmailAdapter },
   ],
-  exports: [PlatformAdminService, LockUserService],
+  exports: [PlatformAdminService, LockUserService, PlatformAdminAccessService, PlatformAdminAuthorizationGuard],
 })
 export class AdminModule {}
