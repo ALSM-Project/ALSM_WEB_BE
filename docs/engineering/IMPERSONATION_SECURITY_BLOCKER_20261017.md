@@ -19,3 +19,63 @@ Exact protected evidence: `src/modules/support/README.md`, `src/modules/auth/AUT
 Safe local action is to retain the disabled feature and document prerequisites. No support route, token, MFA claim, principal assignment, approval grant or customer read bypass is introduced. The existing tenant-scoped queue/review APIs remain independent. An owner product decision alone does not remove this security block.
 
 Before operational implementation: complete and independently review the trusted personnel/governance bootstrap, AUTH-H2/H3 and P1C-B2/B3/B4 work; integrate selected reviewed prerequisites without automatically copying the full branch; implement approval-generation and read-only session admission plus containment. Require isolated real database concurrency/replay/revocation/rollback tests, session and credential invalidation tests, cross-tenant denials, read-only enforcement, attributed audit, and session termination across instances. A pure-policy unit test or authenticated browser fixture cannot certify this chain.
+
+## Re-evaluation on synchronized develop — 25 October 2026 (ALSMV2-1050)
+
+Backend `develop` and `origin/develop` were verified at
+`19a76ef5b642108442a8d72d1b66aef6d34134e6`; Web 2 at
+`174ab19c4a8c88f5f06f8cb334612b43e504ccff`. The historical table above describes
+the 17 October demo baseline, not the current implementation. Jira calls this
+UC-56; the available Report 3 SRS calls the same business flow UC-54. Match by
+feature name and actor, and retain the task's read-only boundary.
+
+| Prerequisite | Current develop evidence and remaining work |
+| --- | --- |
+| Ordinary current session | Improved: `JwtAuthGuard` now invokes `RequireCurrentSessionService` and verifies an active account plus a persisted, unexpired, unrevoked owner session and current access version. Sessionless/stale tokens fail closed. Refresh/logout transaction hardening is present (`5dc825f`, `8b476aa`, `f6c87c3`). This is not command MFA, trusted support authorization or fencing of support effects against concurrent revocation. |
+| Trusted support staff / governance | Still missing. `INTERNAL_SUPPORT` and `organizations.impersonate` are seeded ordinary RBAC data. `EffectivePermissionsService` grants all ordinary permissions to platform admins. Neither proves trusted personnel provenance or approval authority. Owner module: RBAC/personnel governance, P1C-A and B2/B3/B4 prerequisites. |
+| Support approvals / command-bound step-up | No support module in this develop tree. Approval persistence, trusted step-up issuer/verifier, replay consumption and generation-bound admission are unavailable. Owner modules: support P1A/P1B/P1C-C, auth/RBAC P1C-B2/B3/B4. These are design identifiers in protected documentation, not verified additional Jira issue keys. |
+| Support lifecycle / tenant reads / read-only enforcement | No scoped support-session persistence or protected read pipeline exists. `OrganizationContextService` still resolves membership and must not be bypassed. There is no support expiry, exit/revoke or enforcement against uploads, conversions, writes, deletes or exports. Owner: support session P2/P3 plus each downstream resource module. |
+| Audit / concurrent revocation / containment | The ordinary audit repository exists, but support admission/use/rejection/termination is not transactionally bound to support authority and protected effects. Cross-instance containment and recovery remain absent (P1C-C/D). No real database support concurrency, replay or revocation guarantee is verified. |
+
+The preserved security branch remains at
+`50f14b7106ac2f1dbba1fddf99069bb1e446e3c9`. Read-only Git inspection confirms
+its personnel/root, session/generation, command proof and atomic proof-consumption
+providers still explicitly return unavailable/deny. It was not checked out,
+modified, activated, merged or cherry-picked.
+
+### Safe changes while operational access remains blocked
+
+Current develop had acquired `POST /api/v1/admin/organizations/:id/impersonate`,
+which looked up a tenant, appended `ORGANISATION_IMPERSONATED`, and returned
+`readOnly: true` without establishing a secure session. ALSMV2-1050 replaces that
+false success with unconditional `503 SUPPORT_IMPERSONATION_UNAVAILABLE` after
+ordinary authentication, before tenant lookup or audit writes. No feature flag,
+alternate role path, customer identity, token or support capability is issued.
+Invalid/nonexistent tenant identifiers receive the same unavailable response;
+tenant eligibility validation belongs to future authorized admission. Ordinary
+authentication failures retain their existing 401/503 responses.
+
+Web 2 disables both Support View entry points, removes the simulated confirmation
+and unused success/token DTO, and removes storage-driven entry/restoration.
+Legacy `alsm_support_view` / `alsm_impersonation` values are only cleared on mount
+or local cleanup; they cannot activate context, including when storage fails or
+forged events arrive. That cleanup is not server session termination. Organisation
+directory/detail reads no longer substitute demo organisations on API failures.
+
+`test/support-impersonation-disabled.spec.ts` exercises the real controller,
+JWT guard, current-session service and error filter with fixture persistence ports.
+It verifies closure, ordinary-session denials, spoofed claims and no false success
+audit. Web 2 tests verify disabled entry and storage forgery resistance. These
+tests certify only the disabled boundary; they do not certify operational support
+authorization, lifecycle, revocation races, read-only enforcement or containment.
+
+Adjacent admin directory/detail and other administration routes currently have
+JWT authentication without trusted support authorization. Disabling impersonation
+does not certify or repair those separate access policies. Review them before any
+customer support rollout; no unrelated RBAC/authentication system is added here.
+
+Verdict: **BLOCKED / REQUEST CHANGES** for operational ALSMV2-1050/1051/1052/1053.
+Complete and independently review the dependencies above, then implement and
+verify the full workflow with isolated database and cross-instance tests. The
+external implementation/review reports and exact test evidence are stored under
+`E:\ALSM\alsmv2-1050-evidence\` for owner review.
