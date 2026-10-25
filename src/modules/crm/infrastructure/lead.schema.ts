@@ -21,12 +21,24 @@ export class Lead {
   // Compatibility fields retained for lead records created by the earlier CRM schema.
   @Prop({ trim: true }) companyName?: string;
   @Prop({ trim: true }) phone?: string;
+  @Prop({ trim: true }) taxId?: string;
+  @Prop({ trim: true }) address?: string;
+  @Prop({ trim: true }) representativeName?: string;
+  @Prop({ trim: true }) representativeTitle?: string;
+  @Prop({ trim: true }) signatoryEmail?: string;
   @Prop({ trim: true, default: 'Website' }) source?: string;
-  @Prop({ default: 'NEW', index: true }) stage!: 'NEW' | 'CONTACTED' | 'QUALIFIED' | 'PROPOSAL' | 'WON' | 'LOST';
+  @Prop({ default: 'NEW', index: true }) stage!: 'NEW' | 'CONTACTED' | 'QUALIFIED' | 'PROPOSAL' | 'NEGOTIATION' | 'WON' | 'LOST';
   @Prop({ default: 50 }) score!: number;
   @Prop({ type: Number, min: 0 }) dealValue?: number;
   @Prop({ type: Number, min: 0 }) estimatedValue?: number;
   @Prop({ type: String, trim: true, uppercase: true, default: 'VND' }) currency?: string;
+  @Prop({ type: MongoSchema.Types.ObjectId, ref: 'CrmConversation', index: true }) conversationId?: Types.ObjectId;
+  @Prop({ type: Number, default: 0 }) estimatedScreens?: number;
+  @Prop({ type: Number, default: 0 }) estimatedPrograms?: number;
+  @Prop({ trim: true, default: 'MEDIUM' }) priority?: 'LOW' | 'MEDIUM' | 'HIGH' | 'URGENT';
+  @Prop() expectedCloseDate?: Date;
+  @Prop() followUpDate?: Date;
+  @Prop({ trim: true }) businessRequirements?: string;
   @Prop({ type: MongoSchema.Types.ObjectId }) assignedToUserId?: Types.ObjectId;
   @Prop({ trim: true }) assignedToName?: string;
   @Prop({ type: MongoSchema.Types.ObjectId }) convertedOrganizationId?: Types.ObjectId;
@@ -65,6 +77,20 @@ export class Lead {
   }>;
   @Prop({ type: [Object], default: [] }) quotes!: Array<{
     id: string;
+    quoteNumber?: string;
+    serviceType?: 'ALSM_MANAGED' | 'CUSTOMER_SELF_SERVICE';
+    servicePackage?: string;
+    capacityConfig?: any;
+    durationMonths?: number;
+    startDate?: string;
+    endDate?: string;
+    autoRenewal?: boolean;
+    paymentTerms?: string;
+    additionalServices?: string[];
+    salesOwner?: string;
+    validUntil?: Date;
+    contractId?: string;
+    contractNumber?: string;
     planName: string;
     projectScope?: string;
     amount: number;

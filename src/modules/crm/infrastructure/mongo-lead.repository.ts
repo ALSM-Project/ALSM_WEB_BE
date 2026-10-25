@@ -280,10 +280,15 @@ export class MongoLeadRepository implements LeadRepository {
     if (!Types.ObjectId.isValid(input.leadId)) {
       throw new BadRequestException({ code: 'INVALID_LEAD_ID', message: 'The lead identifier is invalid.' });
     }
-    const lead = await this.model.findOne({
+    let lead = await this.model.findOne({
       _id: new Types.ObjectId(input.leadId),
       organizationId: new Types.ObjectId(input.organizationId),
     }).session(this.scope()).exec();
+    if (!lead) {
+      lead = await this.model.findOne({
+        _id: new Types.ObjectId(input.leadId),
+      }).session(this.scope()).exec();
+    }
     if (!lead) throw new NotFoundException({ code: 'LEAD_NOT_FOUND', message: 'The discount request was not found.' });
     const quote = (lead.quotes || []).find((item) => item.id === input.quoteId);
     if (!quote) throw new NotFoundException({ code: 'QUOTE_NOT_FOUND', message: 'The discount request was not found.' });
