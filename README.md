@@ -51,6 +51,11 @@ npm run worker
 
 Important commands: `npm run build`, `npm run lint`, `npm run test`, `npm run test:e2e`, `npm run format`, `npm run start:prod`, and `npm run worker:prod`.
 
+Startup initializes RBAC roles/permissions only and never creates demo accounts or
+resets existing users, even in development/test. Seed flags do not enable accounts.
+The legacy actor script is retired. See [RBAC startup and legacy account response](./docs/security/RBAC_BOOTSTRAP.md)
+for developer setup, isolated fixtures and authorized incident-response steps.
+
 ## Continuous integration
 
 GitHub Actions validates pushes to `feature/**`, `fix/**`, `chore/**`, `refactor/**`, and `develop`, plus pull requests targeting `develop`. Checks cover linting, Jest tests, TypeScript type checking, the NestJS build, and a Docker image build.
