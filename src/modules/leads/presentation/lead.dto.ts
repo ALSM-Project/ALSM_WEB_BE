@@ -46,3 +46,15 @@ export class ListLeadsQueryDto {
   @IsString()
   sortOrder?: 'asc' | 'desc';
 }
+
+export class UpdateLeadStatusDto {
+  @ApiPropertyOptional({ enum: LeadStatus, description: 'New lead status' })
+  @IsEnum(LeadStatus, { message: 'status must be a valid LeadStatus value' })
+  status!: LeadStatus;
+
+  @ApiPropertyOptional({ description: 'Optional internal notes or reason for status update', maxLength: 2000 })
+  @IsOptional()
+  @IsString()
+  notes?: string;
+}
+

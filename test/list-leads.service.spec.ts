@@ -43,9 +43,11 @@ describe('ListLeadsService (UC-58)', () => {
         [LeadStatus.NEW]: 0,
         [LeadStatus.WON]: 0,
       }),
+      updateStatus: jest.fn(),
     };
     service = new ListLeadsService(repository);
   });
+
 
   it('lists leads with pagination and status counts', async () => {
     const result = await service.execute({ page: 1, limit: 10 });

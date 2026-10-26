@@ -33,4 +33,10 @@ export class ListLeadsService {
       statusCounts,
     };
   }
+
+  async findById(id: string): Promise<LeadRecord | null> {
+    if (!id || !id.match(/^[a-f\d]{24}$/i)) return null;
+    return this.leads.findById(id);
+  }
 }
+

@@ -1,18 +1,40 @@
-import { Controller, Get, Query, UseGuards } from '@nestjs/common';
-import { ApiBearerAuth, ApiOperation, ApiQuery, ApiResponse, ApiTags } from '@nestjs/swagger';
+import {
+  Body,
+  Controller,
+  Get,
+  NotFoundException,
+  Param,
+  Patch,
+  Query,
+  UseGuards,
+} from '@nestjs/common';
+import {
+  ApiBearerAuth,
+  ApiOperation,
+  ApiParam,
+  ApiQuery,
+  ApiResponse,
+  ApiTags,
+} from '@nestjs/swagger';
 import { JwtAuthGuard } from '../../../shared/security/jwt-auth.guard';
 import { PermissionsGuard } from '../../../shared/security/permissions.guard';
 import { RequirePermissions } from '../../../shared/security/require-permissions.decorator';
+import { CurrentUser } from '../../../shared/security/current-user.decorator';
+import { AuthenticatedUser } from '../../../shared/logging/request-id.middleware';
 import { ListLeadsService } from '../application/list-leads.service';
-import { ListLeadsQueryDto } from './lead.dto';
+import { UpdateLeadStatusService } from '../application/update-lead-status.service';
+import { ListLeadsQueryDto, UpdateLeadStatusDto } from './lead.dto';
 import { LeadStatus, LeadSource, LeadPriority } from '../domain/lead.types';
 
-@ApiTags('Leads (UC-58)')
+@ApiTags('Leads (UC-58, UC-66)')
 @ApiBearerAuth()
 @UseGuards(JwtAuthGuard, PermissionsGuard)
 @Controller('leads')
 export class LeadController {
-  constructor(private readonly listLeadsService: ListLeadsService) {}
+  constructor(
+    private readonly listLeadsService: ListLeadsService,
+    private readonly updateLeadStatusService: UpdateLeadStatusService,
+  ) {}
 
   @Get()
   @RequirePermissions('sales.leads.view')
@@ -47,4 +69,49 @@ export class LeadController {
       sortOrder: query.sortOrder,
     });
   }
+
+  @Get(':id')
+  @RequirePermissions('sales.leads.view')
+  @ApiOperation({
+    summary: 'Get lead by ID',
+    description: 'Requires sales.leads.view permission. Retrieves single lead details.',
+  })
+  @ApiParam({ name: 'id', description: 'Lead ID (24-hex ObjectId)' })
+  @ApiResponse({ status: 200, description: 'Lead retrieved successfully' })
+  @ApiResponse({ status: 401, description: 'Unauthorized' })
+  @ApiResponse({ status: 403, description: 'Forbidden' })
+  @ApiResponse({ status: 404, description: 'Lead not found' })
+  async getById(@Param('id') id: string) {
+    const lead = await this.listLeadsService.findById(id);
+    if (!lead) {
+      throw new NotFoundException({
+        code: 'LEAD_NOT_FOUND',
+        message: `Lead with ID ${id} not found`,
+      });
+    }
+    return lead;
+  }
+
+  @Patch(':id/status')
+  @RequirePermissions('sales.leads.manage')
+  @ApiOperation({
+    summary: 'Update lead status (UC-66)',
+    description:
+      'Requires sales.leads.manage permission. Validates allowed status transitions and business rules, ' +
+      'persists changes, and logs audit events. Accessible by internal_sales staff.',
+  })
+  @ApiParam({ name: 'id', description: 'Lead ID (24-hex ObjectId)' })
+  @ApiResponse({ status: 200, description: 'Lead status updated successfully' })
+  @ApiResponse({ status: 400, description: 'Bad request – invalid ID, invalid status, or disallowed transition' })
+  @ApiResponse({ status: 401, description: 'Unauthorized – invalid or missing token' })
+  @ApiResponse({ status: 403, description: 'Forbidden – missing sales.leads.manage permission' })
+  @ApiResponse({ status: 404, description: 'Lead not found' })
+  async updateStatus(
+    @Param('id') id: string,
+    @Body() dto: UpdateLeadStatusDto,
+    @CurrentUser() user: AuthenticatedUser,
+  ) {
+    return this.updateLeadStatusService.execute(id, dto.status, dto.notes, user);
+  }
 }
+
