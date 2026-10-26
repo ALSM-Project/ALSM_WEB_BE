@@ -491,12 +491,12 @@ describe('UC-32: Enterprise Quote Request', () => {
     });
 
     it.each([
-      [{ page: 0 }, 'page'],
-      [{ page: 1.5 }, 'page'],
-      [{ limit: 0 }, 'limit'],
-      [{ limit: 101 }, 'limit'],
-      [{ limit: 1.5 }, 'limit'],
-    ])('rejects invalid pagination %s', async (filters, _field) => {
+      [{ page: 0 }],
+      [{ page: 1.5 }],
+      [{ limit: 0 }],
+      [{ limit: 101 }],
+      [{ limit: 1.5 }],
+    ])('rejects invalid pagination %s', async (filters) => {
       await expect(service.listQuoteRequests(adminUser, filters)).rejects.toThrow(BadRequestException);
       expect(quoteRequestRepo.findAll).not.toHaveBeenCalled();
     });
