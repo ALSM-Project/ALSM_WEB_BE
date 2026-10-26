@@ -12,9 +12,10 @@ import {
   ErrorLogStatus,
 } from '../domain/error-log.types';
 import { CopybookDependencyBlockedError } from '../domain/copybook-dependency-blocked.error';
-import type { DependencyEntry } from '../domain/copybook-dependency.types';
+import { findCopybookBlockers } from '../domain/copybook-dependency-resolver';
 import { SCREEN_REPOSITORY, ScreenRepository } from '../../screens/domain/screen.types';
 import { runConversionTool } from './conversion-tool-runner.util';
+import { normalizeBundle } from './cics-source-normalizer';
 
 interface ParsedToolError {
   fileName: string;
@@ -45,24 +46,37 @@ export class CobolJavaConversionAdapter {
 
     if (input.screenId) {
       const screen = await this.screens.findById(input.screenId, input.organizationId);
-      if (screen?.dependencyStatus === 'BLOCKED') {
+      // Re-derive blockers from the stored tree rather than trusting the stored flag alone:
+      // screens analyzed before system copybooks (DFH*/CMQ*) were recognized still carry
+      // BLOCKED purely because of those, and should convert without a re-upload.
+      const blockers =
+        screen?.dependencyStatus === 'BLOCKED'
+          ? findCopybookBlockers(screen.dependencies ?? [])
+          : [];
+      if (blockers.length > 0) {
         throw new CopybookDependencyBlockedError(
-          this.buildBlockedMessage(screen.dependencies ?? []),
+          `Blocked by unresolved copybook dependencies: ${blockers.join(' | ')}`,
         );
       }
     }
 
     let jarPath = this.config.get<string>('TOOL2JAVA_JAR_PATH');
-    if (!jarPath) {
-      const autoPath = path.resolve(
-        process.cwd(),
-        '../ALSM_TOOL/tool2java/target/akaBatch-1.0.jar',
-      );
-      if (fs.existsSync(autoPath)) {
-        jarPath = autoPath;
-      } else {
+    if (jarPath) {
+      jarPath = path.isAbsolute(jarPath) ? jarPath : path.resolve(process.cwd(), jarPath);
+    } else {
+      const candidatePaths = [
+        path.resolve(process.cwd(), '../ALSM_TOOL_BE/target/akaBatch-1.0.jar'),
+        path.resolve(process.cwd(), '../ALSM_TOOL/tool2java/target/akaBatch-1.0.jar'),
+      ];
+      for (const candidate of candidatePaths) {
+        if (fs.existsSync(candidate)) {
+          jarPath = candidate;
+          break;
+        }
+      }
+      if (!jarPath) {
         throw new Error(
-          'TOOL2JAVA_JAR_PATH is not configured and ../ALSM_TOOL/tool2java/target/akaBatch-1.0.jar was not found',
+          'TOOL2JAVA_JAR_PATH is not configured and neither ../ALSM_TOOL_BE/target/akaBatch-1.0.jar nor ../ALSM_TOOL/tool2java/target/akaBatch-1.0.jar was found',
         );
       }
     }
@@ -70,13 +84,14 @@ export class CobolJavaConversionAdapter {
     const sourceDir = this.storage.resolvePath(input.inputReference);
     // Each job gets its own working directory: the tool writes a hard-coded temp file
     // ($temporary.file) into its CWD, so concurrent jobs must never share one.
-    const jobWorkDir = path.join(os.tmpdir(), 'alsm-conversions', input.conversionJobId);
+    const jobWorkDir = await fs.promises.mkdtemp(path.join(os.tmpdir(), 'alsm-conversion-'));
     const outDir = path.join(jobWorkDir, 'out');
     await fs.promises.mkdir(outDir, { recursive: true });
     const timeoutMs = this.config.get<number>('CONVERSION_TOOL_TIMEOUT_MS') ?? 120000;
     const javaExecutable = this.config.get<string>('JAVA_EXECUTABLE') || 'java';
 
     try {
+      const toolSourceDir = await this.prepareSources(sourceDir, path.join(jobWorkDir, 'src'));
       const result = await runConversionTool(
         javaExecutable,
         [
@@ -109,7 +124,7 @@ export class CobolJavaConversionAdapter {
           '-fixed',
           '-c2',
           '-overwrite',
-          sourceDir,
+          toolSourceDir,
         ],
         { cwd: jobWorkDir, timeoutMs },
       );
@@ -124,8 +139,11 @@ export class CobolJavaConversionAdapter {
       // it). Search the whole job working directory rather than trusting -odir alone.
       const generatedFiles = await this.listJavaFiles(jobWorkDir);
       if (generatedFiles.length === 0) {
+        const toolOutput = [result.stdout.trim(), result.stderr.trim()]
+          .filter(Boolean)
+          .join('\n');
         throw new Error(
-          `No Java files were generated. Tool output: ${result.stdout.slice(0, 2000)}`,
+          `No Java files were generated. Tool output: ${toolOutput.slice(0, 2000)}`,
         );
       }
 
@@ -143,27 +161,76 @@ export class CobolJavaConversionAdapter {
       );
       return { resultReference, toolVersion: 'tool2java' };
     } finally {
-      await fs.promises.rm(jobWorkDir, { recursive: true, force: true }).catch((error: unknown) => {
-        this.logger.warn(`Failed to clean up workspace ${jobWorkDir}: ${String(error)}`);
-      });
+      if (path.dirname(path.resolve(jobWorkDir)) === path.resolve(os.tmpdir())) {
+        await fs.promises
+          .rm(jobWorkDir, { recursive: true, force: true })
+          .catch((error: unknown) => {
+            this.logger.warn(`Failed to clean up workspace ${jobWorkDir}: ${String(error)}`);
+          });
+      } else {
+        this.logger.error('Refused to clean up an unsafe conversion workspace');
+      }
     }
   }
 
-  /** Flattens the unresolved entries (top-level and nested) of a BLOCKED dependency tree into
-   * one clear, actionable message — surfaced as the job's errorMessage. */
-  private buildBlockedMessage(dependencies: DependencyEntry[]): string {
-    const unresolved: string[] = [];
-    const collect = (entries: DependencyEntry[]) => {
-      for (const entry of entries) {
-        if (entry.status !== 'RESOLVED') {
-          unresolved.push(entry.message ?? `${entry.copyName}: ${entry.status}`);
-        } else if (entry.dependencies) {
-          collect(entry.dependencies);
+  /**
+   * Copies the uploaded bundle into the job workspace and rewrites EXEC CICS blocks (plus a
+   * few other constructs) into the dialect tool2java can parse, adding stand-ins for the
+   * IBM system copybooks (DFHAID, DFHBMSCA, EIB) next to every program. The stored upload
+   * is never modified. If normalization itself fails, the original sources are used so the
+   * job behaves exactly as before.
+   */
+  private async prepareSources(sourceDir: string, targetDir: string): Promise<string> {
+    try {
+      const relativePaths = await this.listFilesRecursive(sourceDir);
+      const files = await Promise.all(
+        relativePaths.map(async (relativePath) => ({
+          name: relativePath,
+          // latin1 round-trips every byte, so untouched content is copied unchanged.
+          content: await fs.promises.readFile(path.join(sourceDir, relativePath), 'latin1'),
+        })),
+      );
+      const normalized = normalizeBundle(files);
+
+      const programDirs = new Set<string>();
+      for (const file of files) {
+        const target = path.join(targetDir, file.name);
+        await fs.promises.mkdir(path.dirname(target), { recursive: true });
+        await fs.promises.writeFile(
+          target,
+          normalized.rewritten.get(file.name) ?? file.content,
+          'latin1',
+        );
+        if (/\.(cbl|cob)$/i.test(file.name)) programDirs.add(path.dirname(target));
+      }
+      for (const dir of programDirs) {
+        for (const [stubName, content] of normalized.stubs) {
+          await fs.promises.writeFile(path.join(dir, stubName), content, 'latin1');
         }
       }
-    };
-    collect(dependencies);
-    return `Blocked by unresolved copybook dependencies: ${unresolved.join(' | ')}`;
+
+      const changeCount = [...normalized.changes.values()].reduce((n, list) => n + list.length, 0);
+      if (changeCount > 0) {
+        this.logger.log(
+          `Normalized ${normalized.rewritten.size} source file(s) for tool2java (${changeCount} change(s); stubs: ${[...normalized.stubs.keys()].join(', ') || 'none'})`,
+        );
+      }
+      return targetDir;
+    } catch (error) {
+      this.logger.warn(`Source normalization failed, using original sources: ${String(error)}`);
+      return sourceDir;
+    }
+  }
+
+  private async listFilesRecursive(root: string, prefix = ''): Promise<string[]> {
+    const entries = await fs.promises.readdir(path.join(root, prefix), { withFileTypes: true });
+    const result: string[] = [];
+    for (const entry of entries) {
+      const relative = path.join(prefix, entry.name);
+      if (entry.isDirectory()) result.push(...(await this.listFilesRecursive(root, relative)));
+      else if (entry.isFile()) result.push(relative);
+    }
+    return result;
   }
 
   private async listJavaFiles(dir: string): Promise<string[]> {

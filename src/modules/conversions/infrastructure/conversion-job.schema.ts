@@ -15,6 +15,9 @@ export class ConversionJob {
   @Prop({ enum: ConversionPriority, required: true }) priority!: ConversionPriority;
   @Prop({ default: 0 }) attemptCount!: number;
   @Prop({ default: 3 }) maxAttempts!: number;
+  @Prop({ default: 0 }) executionGeneration!: number;
+  @Prop() processingToken?: string;
+  @Prop() processingLeaseExpiresAt?: Date;
   @Prop() inputReference?: string;
   @Prop() resultReference?: string;
   @Prop() errorCode?: string;
@@ -29,3 +32,5 @@ export class ConversionJob {
 export const ConversionJobSchema = SchemaFactory.createForClass(ConversionJob);
 ConversionJobSchema.index({ organizationId: 1, projectId: 1, createdAt: -1 });
 ConversionJobSchema.index({ organizationId: 1, projectId: 1, screenId: 1, createdAt: -1 });
+ConversionJobSchema.index({ status: 1, updatedAt: 1 });
+ConversionJobSchema.index({ status: 1, processingLeaseExpiresAt: 1 });

@@ -45,7 +45,10 @@ export class MongoRbacRepository implements IRbacRepository {
   }
 
   async findRoleById(id: string): Promise<IRole | null> {
-    const d = await this.roleModel.findOne({ id }).exec();
+    const normalized = id.trim().toUpperCase().replace(/\s+/g, '_');
+    const d = await this.roleModel.findOne({
+      $or: [{ id }, { id: normalized }],
+    }).exec();
     if (!d) return null;
     const ts = d as unknown as TimestampsDoc;
     return {
@@ -245,13 +248,14 @@ export class MongoRbacRepository implements IRbacRepository {
       fullName: u.fullName,
       isPlatformAdmin: u.isPlatformAdmin,
       isActive: u.isActive,
+      isLocked: u.isLocked ?? false,
     };
   }
 
   async findAllUsers(): Promise<IRbacUser[]> {
     const users = await this.userModel
       .find()
-      .select('email fullName isPlatformAdmin isActive')
+      .select('email fullName isPlatformAdmin isActive isLocked')
       .exec();
     return users.map((u) => ({
       id: u.id || u._id.toString(),
@@ -259,6 +263,7 @@ export class MongoRbacRepository implements IRbacRepository {
       fullName: u.fullName,
       isPlatformAdmin: u.isPlatformAdmin,
       isActive: u.isActive,
+      isLocked: u.isLocked ?? false,
     }));
   }
 
@@ -271,8 +276,10 @@ export class MongoRbacRepository implements IRbacRepository {
   }
 
   async findValidRoles(ids: string[]): Promise<string[]> {
+    const upperIds = ids.map((i) => i.trim().toUpperCase().replace(/\s+/g, '_'));
+    const allCandidates = Array.from(new Set([...ids, ...upperIds]));
     const docs = await this.roleModel
-      .find({ id: { $in: ids } })
+      .find({ id: { $in: allCandidates } })
       .select('id')
       .exec();
     return docs.map((d) => d.id);

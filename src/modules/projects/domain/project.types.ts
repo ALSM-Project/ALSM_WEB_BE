@@ -5,6 +5,8 @@ export enum ConversionType {
 export enum ProjectStatus {
   DRAFT = 'DRAFT',
   ACTIVE = 'ACTIVE',
+  /** The converted code bundle has been released to the partner (UC-48). */
+  COMPLETED = 'COMPLETED',
   ARCHIVED = 'ARCHIVED',
 }
 export interface ProjectRecord {
@@ -15,6 +17,11 @@ export interface ProjectRecord {
   conversionType: ConversionType;
   status: ProjectStatus;
   createdBy: string;
+  isDemo?: boolean;
+  assignedTeamLeadId?: string;
+  isExported?: boolean;
+  exportedAt?: Date;
+  exportedBundleName?: string;
   createdAt: Date;
   updatedAt: Date;
   deletedAt?: Date;
@@ -23,13 +30,14 @@ export interface ProjectRepository {
   create(
     input: Omit<ProjectRecord, 'id' | 'createdAt' | 'updatedAt'> & { id?: string },
   ): Promise<ProjectRecord>;
-  findById(id: string, organizationId: string): Promise<ProjectRecord | null>;
-  findAll(organizationId: string): Promise<ProjectRecord[]>;
+  findById(id: string, organizationId?: string): Promise<ProjectRecord | null>;
+  findAll(organizationId?: string): Promise<ProjectRecord[]>;
   update(
     id: string,
     organizationId: string,
-    input: Partial<Pick<ProjectRecord, 'name' | 'description' | 'status'>>,
+    input: Partial<Pick<ProjectRecord, 'name' | 'description' | 'status' | 'assignedTeamLeadId'>>,
   ): Promise<ProjectRecord | null>;
+  assignTeamLead(id: string, teamLeadId: string): Promise<ProjectRecord | null>;
   softDelete(id: string, organizationId: string): Promise<boolean>;
 }
 export const PROJECT_REPOSITORY = Symbol('PROJECT_REPOSITORY');

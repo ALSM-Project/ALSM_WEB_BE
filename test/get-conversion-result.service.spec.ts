@@ -6,15 +6,20 @@ import {
 } from '../src/modules/conversions/domain/conversion-job.types';
 import { StoragePort } from '../src/shared/storage/storage.port';
 import { OrganizationContextService } from '../src/modules/organizations/application/organization-context.service';
+import { ProjectService } from '../src/modules/projects/application/project.service';
+import { ConversionProjectAccessService } from '../src/modules/conversions/application/conversion-project-access.service';
 
 describe('GetConversionResultService', () => {
   const jobs = { findById: jest.fn() };
   const storage = { readFiles: jest.fn(), writeFiles: jest.fn(), resolvePath: jest.fn() };
   const organizationContext = { resolve: jest.fn() };
+  const projects = { getForOrganization: jest.fn() };
   const service = new GetConversionResultService(
     jobs as unknown as ConversionJobRepository,
     storage as unknown as StoragePort,
     organizationContext as unknown as OrganizationContextService,
+    projects as unknown as ProjectService,
+    { requireAssignment: jest.fn() } as unknown as ConversionProjectAccessService,
   );
 
   beforeEach(() => {
@@ -52,5 +57,27 @@ describe('GetConversionResultService', () => {
       toolVersion: 'convert2fe',
       files: [{ relativePath: 'Login.tsx', content: 'export const Login = () => null;' }],
     });
+  });
+  it('rejects missing output rather than returning a successful empty result', async () => {
+    jobs.findById.mockResolvedValue({
+      id: 'job-1',
+      status: ConversionJobStatus.COMPLETED,
+      resultReference: 'missing',
+    });
+    storage.readFiles.mockResolvedValue([]);
+    await expect(service.execute('u1', 'org-1', 'job-1')).rejects.toMatchObject({
+      response: expect.objectContaining({ code: 'CONVERSION_RESULT_UNAVAILABLE' }),
+    });
+  });
+  it('rejects output access through a soft-deleted or inaccessible project', async () => {
+    jobs.findById.mockResolvedValue({
+      id: 'job-1',
+      projectId: 'deleted',
+      status: ConversionJobStatus.COMPLETED,
+      resultReference: 'result',
+    });
+    projects.getForOrganization.mockRejectedValueOnce(new NotFoundException());
+    await expect(service.execute('u1', 'org-1', 'job-1')).rejects.toBeInstanceOf(NotFoundException);
+    expect(storage.readFiles).not.toHaveBeenCalled();
   });
 });

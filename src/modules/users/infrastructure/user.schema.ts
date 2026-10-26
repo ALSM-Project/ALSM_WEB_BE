@@ -10,6 +10,11 @@ export class User {
   @Prop({ default: true }) isActive!: boolean;
   @Prop({ default: true }) isEmailVerified!: boolean;
   @Prop({ default: false }) mustChangePassword!: boolean;
+  @Prop({ default: false }) isLocked!: boolean;
+  @Prop({ trim: true }) lockReason?: string;
+  @Prop() lockedAt?: Date;
+  @Prop() lockedBy?: string;
+  @Prop() lockDuration?: string;
   @Prop({
     type: {
       enabled: { type: Boolean, default: false },

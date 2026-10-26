@@ -22,6 +22,8 @@ export interface ConversionJobRecord {
   priority: ConversionPriority;
   attemptCount: number;
   maxAttempts: number;
+  /** New manual retries get a distinct execution identity; missing legacy values mean zero. */
+  executionGeneration?: number;
   inputReference?: string;
   resultReference?: string;
   errorCode?: string;
@@ -46,13 +48,37 @@ export interface ConversionJobRepository {
     organizationId: string,
   ): Promise<ConversionJobRecord[]>;
   retry(id: string, organizationId: string): Promise<ConversionJobRecord | null>;
-  markProcessing(id: string): Promise<ConversionJobRecord | null>;
+  markProcessing(
+    id: string,
+    token: string,
+    leaseExpiresAt: Date,
+    executionGeneration: number,
+  ): Promise<ConversionJobRecord | null>;
+  renewProcessingLease(id: string, token: string, leaseExpiresAt: Date): Promise<boolean>;
+  releaseProcessingForRetry(id: string, token: string): Promise<boolean>;
+  markAbandonedFailed(id: string, executionGeneration: number): Promise<boolean>;
+  listDeliveryRecoveryCandidates(
+    queuedBefore: Date,
+    afterId?: string,
+  ): Promise<ConversionJobRecord[]>;
+  markUndeliveredFailed(
+    id: string,
+    executionGeneration: number,
+    queuedBefore: Date,
+  ): Promise<boolean>;
   markCompleted(
     id: string,
     resultReferenceOrOutput: string | { resultReference: string; toolVersion?: string },
     toolVersion?: string,
+    processingToken?: string,
   ): Promise<ConversionJobRecord | null>;
-  markFailed(id: string, code: string, message: string): Promise<void>;
+  markFailed(
+    id: string,
+    code: string,
+    message: string,
+    processingToken?: string,
+    executionGeneration?: number,
+  ): Promise<boolean>;
   /** Points an already-completed job at a new result location — used when the generated
    * output is amended in place after completion (e.g. a manual method-mapping rename),
    * rather than through a fresh conversion run. */
@@ -60,7 +86,15 @@ export interface ConversionJobRepository {
 }
 export const CONVERSION_JOB_REPOSITORY = Symbol('CONVERSION_JOB_REPOSITORY');
 export interface ConversionQueuePort {
-  enqueue(conversionJobId: string, priority: ConversionPriority): Promise<void>;
+  deliveryState(
+    conversionJobId: string,
+    executionGeneration: number,
+  ): Promise<'pending' | 'terminal' | 'missing'>;
+  enqueue(
+    conversionJobId: string,
+    priority: ConversionPriority,
+    executionGeneration?: number,
+  ): Promise<void>;
 }
 export const CONVERSION_QUEUE = Symbol('CONVERSION_QUEUE');
 export interface ConversionEngineInput {

@@ -39,7 +39,17 @@ export class MenuItem {
 
   @Prop({ required: true, enum: MenuItemStatus, default: MenuItemStatus.ACTIVE })
   status!: MenuItemStatus;
+
+  @Prop({ default: false })
+  openInNewTab!: boolean;
+
+  @Prop({ default: false })
+  hideParentLabel!: boolean;
+
+  createdAt?: Date;
+  updatedAt?: Date;
 }
 
 export const MenuItemSchema = SchemaFactory.createForClass(MenuItem);
 MenuItemSchema.index({ application: 1, parentId: 1, order: 1 });
+MenuItemSchema.index({ application: 1, key: 1 }, { unique: true });

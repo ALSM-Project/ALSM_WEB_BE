@@ -12,11 +12,16 @@ export interface IMenuItemData {
   order: number;
   visibility: boolean;
   status: MenuItemStatus;
+  openInNewTab?: boolean;
+  hideParentLabel?: boolean;
+  createdAt?: Date;
+  updatedAt?: Date;
 }
 
 export interface IMenuBuilderRepository {
   findMenuItemsByApp(app: ApplicationContext): Promise<IMenuItemData[]>;
   findMenuItemById(id: string): Promise<IMenuItemData | null>;
+  findMenuItemByKey(key: string, app: ApplicationContext): Promise<IMenuItemData | null>;
   findMenuItemPermissionsByItemIds(itemIds: string[]): Promise<Map<string, string[]>>;
   findMenuItemPermissions(menuItemId: string): Promise<string[]>;
   createMenuItem(data: Partial<IMenuItemData>, permissions?: string[]): Promise<IMenuItemData>;

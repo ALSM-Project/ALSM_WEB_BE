@@ -1,6 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
-import { Model } from 'mongoose';
+import { FilterQuery, Model } from 'mongoose';
 import { Project, ProjectDocument } from './project.schema';
 import { ProjectRecord, ProjectRepository } from '../domain/project.types';
 import { toValidObjectId } from '../../../shared/utils/object-id.util';
@@ -24,41 +24,29 @@ export class MongoProjectRepository implements ProjectRepository {
   }
 
   async findById(id: string, organizationId: string): Promise<ProjectRecord | null> {
+    if (!organizationId?.trim()) return null;
+
     const projObjId = toValidObjectId(id);
     const orgObjId = toValidObjectId(organizationId);
 
-    let doc = await this.model
+    const doc = await this.model
       .findOne({
         $or: [{ _id: projObjId }, { name: id }],
-        ...(organizationId ? { organizationId: { $in: [orgObjId, organizationId] } } : {}),
+        organizationId: { $in: [orgObjId, organizationId] },
         deletedAt: { $exists: false },
       })
       .exec();
 
-    // Fallback: if not found with org filter, find by project _id or name directly
-    if (!doc && id) {
-      doc = await this.model
-        .findOne({
-          $or: [{ _id: projObjId }, { name: id }],
-          deletedAt: { $exists: false },
-        })
-        .exec();
-    }
-
     return doc ? this.map(doc) : null;
   }
 
-  async findAll(organizationId: string): Promise<ProjectRecord[]> {
-    const orgObjId = toValidObjectId(organizationId);
-    return (
-      await this.model
-        .find({
-          organizationId: { $in: [orgObjId, organizationId] },
-          deletedAt: { $exists: false },
-        })
-        .sort({ createdAt: -1 })
-        .exec()
-    ).map((doc) => this.map(doc));
+  async findAll(organizationId?: string): Promise<ProjectRecord[]> {
+    const filter: FilterQuery<ProjectDocument> = { deletedAt: { $exists: false } };
+    if (organizationId?.trim()) {
+      const orgObjId = toValidObjectId(organizationId);
+      filter.organizationId = { $in: [orgObjId, organizationId] };
+    }
+    return (await this.model.find(filter).sort({ createdAt: -1 }).exec()).map((doc) => this.map(doc));
   }
 
   async update(
@@ -76,6 +64,18 @@ export class MongoProjectRepository implements ProjectRepository {
           deletedAt: { $exists: false },
         },
         { $set: input },
+        { new: true },
+      )
+      .exec();
+    return doc ? this.map(doc) : null;
+  }
+
+  async assignTeamLead(id: string, teamLeadId: string): Promise<ProjectRecord | null> {
+    const projObjId = toValidObjectId(id);
+    const doc = await this.model
+      .findOneAndUpdate(
+        { _id: projObjId, deletedAt: { $exists: false } },
+        { $set: { assignedTeamLeadId: toValidObjectId(teamLeadId) } },
         { new: true },
       )
       .exec();
@@ -107,6 +107,11 @@ export class MongoProjectRepository implements ProjectRepository {
       conversionType: doc.conversionType,
       status: doc.status,
       createdBy: doc.createdBy.toString(),
+      isDemo: doc.isDemo,
+      assignedTeamLeadId: doc.assignedTeamLeadId?.toString(),
+      isExported: doc.isExported,
+      exportedAt: doc.exportedAt,
+      exportedBundleName: doc.exportedBundleName,
       createdAt: doc.createdAt,
       updatedAt: doc.updatedAt,
       deletedAt: doc.deletedAt,

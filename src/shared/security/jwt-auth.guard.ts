@@ -2,12 +2,15 @@ import { CanActivate, ExecutionContext, Injectable, UnauthorizedException } from
 import { JwtService } from '@nestjs/jwt';
 import { ConfigService } from '@nestjs/config';
 import { RequestWithContext } from '../logging/request-id.middleware';
+import { RequireCurrentSessionService } from '../../modules/auth/application/require-current-session.service';
+import { PASSWORD_REMEDIATION } from './password-remediation.decorator';
 
 @Injectable()
 export class JwtAuthGuard implements CanActivate {
   constructor(
     private readonly jwt: JwtService,
     private readonly config: ConfigService,
+    private readonly sessions: RequireCurrentSessionService,
   ) {}
 
   async canActivate(context: ExecutionContext): Promise<boolean> {
@@ -15,63 +18,40 @@ export class JwtAuthGuard implements CanActivate {
     const token = request.headers.authorization?.replace(/^Bearer\s+/i, '');
 
     if (!token) {
-      if (process.env.NODE_ENV !== 'production') {
-        request.user = {
-          userId: '65f1a2b3c4d5e6f7a8b9c0d1',
-          email: 'dev@alsm.local',
-          isPlatformAdmin: true,
-        };
-        return true;
-      }
       throw new UnauthorizedException({
         code: 'UNAUTHORIZED',
         message: 'Access token is required',
       });
     }
 
+    let payload: {
+      sub: string;
+      email: string;
+      isPlatformAdmin: boolean;
+      sid?: string;
+      sv?: string;
+    };
     try {
-      const payload = await this.jwt.verifyAsync<{
-        sub: string;
-        email: string;
-        isPlatformAdmin: boolean;
-        sid?: string;
-      }>(token, { secret: this.config.getOrThrow('JWT_ACCESS_SECRET') });
-      request.user = {
-        userId: payload.sub,
-        email: payload.email,
-        isPlatformAdmin: payload.isPlatformAdmin,
-        sessionId: payload.sid,
-      };
-      return true;
+      payload = await this.jwt.verifyAsync<typeof payload>(token, {
+        secret: this.config.getOrThrow('JWT_ACCESS_SECRET'),
+      });
     } catch {
-      if (process.env.NODE_ENV !== 'production') {
-        // In dev, decode token without verification to preserve real user identity
-        try {
-          const decoded = this.jwt.decode<{
-            sub?: string;
-            email?: string;
-            isPlatformAdmin?: boolean;
-            sid?: string;
-          }>(token);
-          if (decoded && decoded.sub) {
-            request.user = {
-              userId: decoded.sub,
-              email: decoded.email || 'dev@alsm.local',
-              isPlatformAdmin: decoded.isPlatformAdmin ?? false,
-              sessionId: decoded.sid,
-            };
-            return true;
-          }
-        } catch {
-          // decode failed — fall through to hardcoded dev user
-        }
-        request.user = { userId: '65f1a2b3c4d5e6f7a8b9c0d1', email: 'dev@alsm.local', isPlatformAdmin: true };
-        return true;
-      }
       throw new UnauthorizedException({
         code: 'UNAUTHORIZED',
         message: 'Invalid or expired access token',
       });
     }
+    // A signed user token is not proof of a live session. Keep authoritative
+    // assurance outside the JWT catch so storage outages retain their safe 503.
+    const remediation = Reflect.getMetadata(PASSWORD_REMEDIATION, context.getHandler()) === true;
+    await this.sessions.execute(payload.sub, payload.sid, payload.sv, remediation);
+    request.user = {
+      userId: payload.sub,
+      email: payload.email,
+      isPlatformAdmin: payload.isPlatformAdmin,
+      sessionId: payload.sid,
+      sessionVersion: payload.sv,
+    };
+    return true;
   }
 }

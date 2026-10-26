@@ -58,7 +58,10 @@ export class MongoConversionJobRepository implements ConversionJobRepository {
     const orgObjId = toValidObjectId(organizationId);
 
     const clean = screenId ? screenId.replace(/\.(bms|dspf|cob|cbl|cpy)$/i, '') : '';
-    const nameRegex = clean ? new RegExp(`^${clean}(\\.(bms|dspf|cob|cbl|cpy))?$`, 'i') : null;
+    const escapedName = clean.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const nameRegex = clean
+      ? new RegExp(`^${escapedName}(\\.(bms|dspf|cob|cbl|cpy))?$`, 'i')
+      : null;
 
     const screenConditions: Record<string, unknown>[] = [{ screenId }];
     if (clean) screenConditions.push({ screenId: clean });
@@ -90,12 +93,17 @@ export class MongoConversionJobRepository implements ConversionJobRepository {
         {
           $set: {
             status: ConversionJobStatus.QUEUED,
-            errorCode: undefined,
-            errorMessage: undefined,
-            completedAt: undefined,
-            startedAt: undefined,
+            attemptCount: 0,
           },
-          $inc: { attemptCount: 1 },
+          $unset: {
+            errorCode: 1,
+            errorMessage: 1,
+            completedAt: 1,
+            startedAt: 1,
+            processingToken: 1,
+            processingLeaseExpiresAt: 1,
+          },
+          $inc: { executionGeneration: 1 },
         },
         { new: true },
       )
@@ -103,25 +111,156 @@ export class MongoConversionJobRepository implements ConversionJobRepository {
     return doc ? this.map(doc) : null;
   }
 
-  async markProcessing(id: string): Promise<ConversionJobRecord | null> {
+  async markProcessing(
+    id: string,
+    token: string,
+    leaseExpiresAt: Date,
+    executionGeneration: number,
+  ): Promise<ConversionJobRecord | null> {
     const jobObjId = toValidObjectId(id);
     const doc = await this.model
       .findOneAndUpdate(
         {
           _id: jobObjId,
-          status: { $in: [ConversionJobStatus.QUEUED, ConversionJobStatus.PROCESSING] },
+          $expr: { $lt: [{ $ifNull: ['$attemptCount', 0] }, { $ifNull: ['$maxAttempts', 3] }] },
+          $and: [
+            executionGeneration === 0
+              ? { $or: [{ executionGeneration: 0 }, { executionGeneration: { $exists: false } }] }
+              : { executionGeneration },
+            {
+              $or: [
+                { status: ConversionJobStatus.QUEUED },
+                {
+                  status: ConversionJobStatus.PROCESSING,
+                  processingLeaseExpiresAt: { $lte: new Date() },
+                },
+              ],
+            },
+          ],
         },
-        { $set: { status: ConversionJobStatus.PROCESSING, startedAt: new Date() } },
+        {
+          $set: {
+            status: ConversionJobStatus.PROCESSING,
+            startedAt: new Date(),
+            processingToken: token,
+            processingLeaseExpiresAt: leaseExpiresAt,
+          },
+          $inc: { attemptCount: 1 },
+          $unset: { errorCode: 1, errorMessage: 1, completedAt: 1 },
+        },
         { new: true },
       )
       .exec();
     return doc ? this.map(doc) : null;
+  }
+
+  async renewProcessingLease(id: string, token: string, leaseExpiresAt: Date): Promise<boolean> {
+    const result = await this.model
+      .updateOne(this.processingFilter(id, token), {
+        $set: { processingLeaseExpiresAt: leaseExpiresAt },
+      })
+      .exec();
+    return result.modifiedCount === 1;
+  }
+
+  async releaseProcessingForRetry(id: string, token: string): Promise<boolean> {
+    const result = await this.model
+      .updateOne(this.processingFilter(id, token), {
+        $set: { status: ConversionJobStatus.QUEUED },
+        $unset: { processingToken: 1, processingLeaseExpiresAt: 1 },
+      })
+      .exec();
+    return result.modifiedCount === 1;
+  }
+
+  private processingFilter(id: string, token: string): Record<string, unknown> {
+    return {
+      _id: toValidObjectId(id),
+      status: ConversionJobStatus.PROCESSING,
+      processingToken: token,
+      processingLeaseExpiresAt: { $gt: new Date() },
+    };
+  }
+
+  async markAbandonedFailed(id: string, executionGeneration: number): Promise<boolean> {
+    const result = await this.model
+      .updateOne(
+        {
+          _id: toValidObjectId(id),
+          status: ConversionJobStatus.PROCESSING,
+          processingLeaseExpiresAt: { $lte: new Date() },
+          ...(executionGeneration === 0
+            ? { $or: [{ executionGeneration: 0 }, { executionGeneration: { $exists: false } }] }
+            : { executionGeneration }),
+        },
+        {
+          $set: {
+            status: ConversionJobStatus.FAILED,
+            errorCode: 'CONVERSION_WORKER_STALLED',
+            errorMessage: 'Conversion worker stopped before completion; retry is required',
+            completedAt: new Date(),
+          },
+          $unset: { processingToken: 1, processingLeaseExpiresAt: 1 },
+        },
+      )
+      .exec();
+    return result.modifiedCount === 1;
+  }
+
+  async listDeliveryRecoveryCandidates(
+    queuedBefore: Date,
+    afterId?: string,
+  ): Promise<ConversionJobRecord[]> {
+    const docs = await this.model
+      .find({
+        ...(afterId ? { _id: { $gt: toValidObjectId(afterId) } } : {}),
+        $or: [
+          { status: ConversionJobStatus.QUEUED, updatedAt: { $lte: queuedBefore } },
+          {
+            status: ConversionJobStatus.PROCESSING,
+            processingLeaseExpiresAt: { $lte: new Date() },
+          },
+        ],
+      })
+      .sort({ _id: 1 })
+      .limit(100)
+      .exec();
+    return docs.map((doc) => this.map(doc));
+  }
+
+  async markUndeliveredFailed(
+    id: string,
+    executionGeneration: number,
+    queuedBefore: Date,
+  ): Promise<boolean> {
+    const result = await this.model
+      .updateOne(
+        {
+          _id: toValidObjectId(id),
+          status: ConversionJobStatus.QUEUED,
+          updatedAt: { $lte: queuedBefore },
+          ...(executionGeneration === 0
+            ? { $or: [{ executionGeneration: 0 }, { executionGeneration: { $exists: false } }] }
+            : { executionGeneration }),
+        },
+        {
+          $set: {
+            status: ConversionJobStatus.FAILED,
+            errorCode: 'CONVERSION_QUEUE_DELIVERY_LOST',
+            errorMessage: 'Conversion queue delivery was lost; retry is required',
+            completedAt: new Date(),
+          },
+        },
+      )
+      .exec();
+    return result.modifiedCount === 1;
   }
 
   async markCompleted(
     id: string,
     resultReferenceOrOutput: string | { resultReference: string; toolVersion?: string },
     toolVersion?: string,
+    processingToken?: string,
   ): Promise<ConversionJobRecord | null> {
     const jobObjId = toValidObjectId(id);
     const resultRef =
@@ -135,14 +274,17 @@ export class MongoConversionJobRepository implements ConversionJobRepository {
 
     const doc = await this.model
       .findOneAndUpdate(
-        { _id: jobObjId },
+        processingToken
+          ? this.processingFilter(id, processingToken)
+          : { _id: jobObjId, status: ConversionJobStatus.PROCESSING },
         {
           $set: {
             status: ConversionJobStatus.COMPLETED,
             resultReference: resultRef,
-            toolVersion: version ?? 'v1.0.0-alsm-conversion-engine',
+            ...(version !== undefined ? { toolVersion: version } : {}),
             completedAt: new Date(),
           },
+          $unset: { processingToken: 1, processingLeaseExpiresAt: 1 },
         },
         { new: true },
       )
@@ -150,11 +292,32 @@ export class MongoConversionJobRepository implements ConversionJobRepository {
     return doc ? this.map(doc) : null;
   }
 
-  async markFailed(id: string, code: string, message: string): Promise<void> {
+  async markFailed(
+    id: string,
+    code: string,
+    message: string,
+    processingToken?: string,
+    executionGeneration?: number,
+  ): Promise<boolean> {
     const jobObjId = toValidObjectId(id);
-    await this.model
+    const result = await this.model
       .updateOne(
-        { _id: jobObjId },
+        processingToken
+          ? this.processingFilter(id, processingToken)
+          : {
+              _id: jobObjId,
+              status: ConversionJobStatus.QUEUED,
+              ...(executionGeneration === undefined
+                ? {}
+                : executionGeneration === 0
+                  ? {
+                      $or: [
+                        { executionGeneration: 0 },
+                        { executionGeneration: { $exists: false } },
+                      ],
+                    }
+                  : { executionGeneration }),
+            },
         {
           $set: {
             status: ConversionJobStatus.FAILED,
@@ -162,9 +325,11 @@ export class MongoConversionJobRepository implements ConversionJobRepository {
             errorMessage: message,
             completedAt: new Date(),
           },
+          $unset: { processingToken: 1, processingLeaseExpiresAt: 1 },
         },
       )
       .exec();
+    return result.modifiedCount === 1;
   }
 
   async updateResultReference(id: string, resultReference: string): Promise<void> {
@@ -183,6 +348,7 @@ export class MongoConversionJobRepository implements ConversionJobRepository {
       priority: doc.priority,
       attemptCount: doc.attemptCount,
       maxAttempts: doc.maxAttempts,
+      executionGeneration: doc.executionGeneration ?? 0,
       inputReference: doc.inputReference,
       resultReference: doc.resultReference,
       errorCode: doc.errorCode,

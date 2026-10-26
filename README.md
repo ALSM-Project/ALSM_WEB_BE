@@ -10,16 +10,16 @@ Before creating, modifying, refactoring, reviewing, or deleting backend code, ev
 
 ## Engineering Documentation
 
-| Document | Purpose |
-|---|---|
-| [RULE.md](./RULE.md) | Mandatory backend engineering rules |
-| [Coding Standards](./docs/engineering/CODING_STANDARDS.md) | Coding conventions and implementation standards |
-| [Project Structure Guidelines](./docs/engineering/PROJECT_STRUCTURE_GUIDELINES.md) | Folder, module, and layer structure |
-| [Naming Conventions](./docs/engineering/NAMING_CONVENTIONS.md) | Naming rules for files, types, APIs, and Git branches |
-| [Architecture Decisions](./docs/engineering/ADR_INDEX.md) | Approved architecture decisions and rationale |
-| [Developer Handbook](./docs/engineering/DEVELOPER_HANDBOOK.md) | Developer onboarding and daily workflow |
-| [Contribution Guidelines](./docs/engineering/CONTRIBUTING.md) | Git, branch, pull-request, and review workflow |
-| [Folder README Guidelines](./docs/engineering/FOLDER_README_GUIDELINES.md) | Documentation requirements for important folders |
+| Document                                                                           | Purpose                                               |
+| ---------------------------------------------------------------------------------- | ----------------------------------------------------- |
+| [RULE.md](./RULE.md)                                                               | Mandatory backend engineering rules                   |
+| [Coding Standards](./docs/engineering/CODING_STANDARDS.md)                         | Coding conventions and implementation standards       |
+| [Project Structure Guidelines](./docs/engineering/PROJECT_STRUCTURE_GUIDELINES.md) | Folder, module, and layer structure                   |
+| [Naming Conventions](./docs/engineering/NAMING_CONVENTIONS.md)                     | Naming rules for files, types, APIs, and Git branches |
+| [Architecture Decisions](./docs/engineering/ADR_INDEX.md)                          | Approved architecture decisions and rationale         |
+| [Developer Handbook](./docs/engineering/DEVELOPER_HANDBOOK.md)                     | Developer onboarding and daily workflow               |
+| [Contribution Guidelines](./docs/engineering/CONTRIBUTING.md)                      | Git, branch, pull-request, and review workflow        |
+| [Folder README Guidelines](./docs/engineering/FOLDER_README_GUIDELINES.md)         | Documentation requirements for important folders      |
 
 ## Architecture and stack
 
@@ -51,6 +51,11 @@ npm run worker
 
 Important commands: `npm run build`, `npm run lint`, `npm run test`, `npm run test:e2e`, `npm run format`, `npm run start:prod`, and `npm run worker:prod`.
 
+Startup initializes RBAC roles/permissions only and never creates demo accounts or
+resets existing users, even in development/test. Seed flags do not enable accounts.
+The legacy actor script is retired. See [RBAC startup and legacy account response](./docs/security/RBAC_BOOTSTRAP.md)
+for developer setup, isolated fixtures and authorized incident-response steps.
+
 ## Continuous integration
 
 GitHub Actions validates pushes to `feature/**`, `fix/**`, `chore/**`, `refactor/**`, and `develop`, plus pull requests targeting `develop`. Checks cover linting, Jest tests, TypeScript type checking, the NestJS build, and a Docker image build.
@@ -69,6 +74,17 @@ Copy `.env.example`. Required values include `MONGODB_URI`, `REDIS_HOST`, `REDIS
 Protected project/conversion requests can send `x-organization-id`; it is checked against the authenticated user’s membership and defaults to their first organization. IDs from request bodies are never used as organization authorization proof.
 
 Registration creates a SELF_SERVICE organization with the registrant as OWNER. Refresh JWTs are rotated and their hashes are stored in `user_sessions`. Important events append to `audit_logs`.
+
+Protected routes require a verified JWT and organization role checks in every
+environment. Organization lookups never create a workspace or fall back to a
+different organization: missing membership returns `ORGANIZATION_ACCESS_DENIED`
+(403). Accounts without membership need explicit authorized provisioning.
+
+Project reads never create data. An empty project list returns `[]`; a missing,
+deleted, or inaccessible project returns `PROJECT_NOT_FOUND` (404). Use the
+authorized `POST /projects` operation to create a project before using its
+screens, conversions, validation, or exports. Project ID and name lookups remain
+scoped to the resolved organization.
 
 ## Future conversion tool integration
 

@@ -19,6 +19,8 @@ export interface NavNode {
   visibility: boolean;
   status: string;
   requiredPermissions: string[];
+  openInNewTab?: boolean;
+  hideParentLabel?: boolean;
   children?: NavNode[];
 }
 
@@ -58,11 +60,37 @@ export class NavigationService {
           visibility: item.visibility,
           status: item.status,
           requiredPermissions: required,
+          openInNewTab: item.openInNewTab ?? false,
+          hideParentLabel: item.hideParentLabel ?? false,
         });
       }
     }
 
-    return this.buildTree(permittedItems);
+    const tree = this.buildTree(permittedItems);
+
+    // SRS Default Menu Policy: When no menu exists for a user/role, provide safe default navigation
+    if (tree.length === 0) {
+      return [
+        {
+          id: 'default_dashboard',
+          key: 'dashboard',
+          application: app,
+          label: 'Dashboard',
+          type: 'PAGE',
+          icon: 'LayoutDashboard',
+          route: '/',
+          parentId: null,
+          order: 1,
+          visibility: true,
+          status: 'ACTIVE',
+          requiredPermissions: [],
+          openInNewTab: false,
+          children: [],
+        },
+      ];
+    }
+
+    return tree;
   }
 
   private buildTree(nodes: NavNode[]): NavNode[] {
@@ -97,13 +125,34 @@ export class NavigationService {
         if (item.children && item.children.length > 0) {
           item.children = pruneEmptyGroups(item.children);
         }
-        if (item.type === 'GROUP' && (!item.children || item.children.length === 0)) {
+        const hasNoNavigablePage = !item.route || item.route.trim() === '' || item.type === 'GROUP';
+        if (hasNoNavigablePage && (!item.children || item.children.length === 0)) {
           return false;
         }
         return true;
       });
     };
 
-    return pruneEmptyGroups(roots);
+    const pruned = pruneEmptyGroups(roots);
+
+    const applyHideParentLabel = (items: NavNode[]): NavNode[] => {
+      const result: NavNode[] = [];
+      for (const item of items) {
+        if (item.children && item.children.length > 0) {
+          item.children = applyHideParentLabel(item.children);
+        }
+        // Requirement: If hideParentLabel is true on grouping container, render authorized child items without parent label
+        if (item.type === 'GROUP' && item.hideParentLabel && item.children && item.children.length > 0) {
+          for (const child of item.children) {
+            result.push(child);
+          }
+        } else {
+          result.push(item);
+        }
+      }
+      return result;
+    };
+
+    return applyHideParentLabel(pruned);
   }
 }

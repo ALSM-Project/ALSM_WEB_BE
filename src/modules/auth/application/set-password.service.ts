@@ -23,5 +23,6 @@ export class SetPasswordService {
     }
 
     await this.users.updatePassword(user.id, await bcrypt.hash(newPassword, 12));
+    await this.users.clearMustChangePassword(user.id);
   }
 }

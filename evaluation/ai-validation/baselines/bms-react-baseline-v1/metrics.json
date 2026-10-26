@@ -1,0 +1,49 @@
+{
+  "totalCases": 10,
+  "cleanCases": 2,
+  "mutatedCases": 8,
+  "tp": 8,
+  "fp": 0,
+  "fn": 0,
+  "precision": 1,
+  "recall": 1,
+  "f1Score": 1,
+  "cleanAccuracy": 1,
+  "categoryBreakdown": {
+    "MISSING_FIELD": {
+      "expected": 2,
+      "detected": 2,
+      "precision": 1,
+      "recall": 1,
+      "f1": 1
+    },
+    "ATTRIBUTE_MISMATCH": {
+      "expected": 3,
+      "detected": 3,
+      "precision": 1,
+      "recall": 1,
+      "f1": 1
+    },
+    "LAYOUT_DISCREPANCY": {
+      "expected": 1,
+      "detected": 1,
+      "precision": 1,
+      "recall": 1,
+      "f1": 1
+    },
+    "PF_KEY_MISMATCH": {
+      "expected": 1,
+      "detected": 1,
+      "precision": 1,
+      "recall": 1,
+      "f1": 1
+    },
+    "SEMANTIC_LOGIC": {
+      "expected": 1,
+      "detected": 1,
+      "precision": 1,
+      "recall": 1,
+      "f1": 1
+    }
+  }
+}

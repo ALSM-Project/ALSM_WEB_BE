@@ -18,6 +18,7 @@ const ALLOWED_TRANSITIONS: Readonly<
     ValidationFindingStatus.NEEDS_CORRECTION,
     ValidationFindingStatus.MANUAL_REVIEW,
     ValidationFindingStatus.NOT_APPLICABLE,
+    ValidationFindingStatus.RESOLVED,
   ],
   [ValidationFindingStatus.NEEDS_CORRECTION]: [
     ValidationFindingStatus.RESOLVED,

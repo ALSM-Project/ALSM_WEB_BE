@@ -5,8 +5,13 @@ import { AiValidationCodeFile, AiValidationInput } from '../domain/ai-validator.
 import { ValidationCodeFile, ValidationContext } from '../domain/validation-context.types';
 import { ValidationSecretRedactorService } from './validation-secret-redactor.service';
 
-const SOURCE_EXTENSIONS = new Set(['.cob', '.cbl', '.cpy']);
-const TARGET_EXTENSIONS = new Set(['.java']);
+import { ConversionType } from '../../projects/domain/project.types';
+
+const COBOL_SOURCE_EXTENSIONS = new Set(['.cob', '.cbl', '.cpy']);
+const JAVA_TARGET_EXTENSIONS = new Set(['.java']);
+
+const BMS_SOURCE_EXTENSIONS = new Set(['.bms', '.mac', '.txt', '.dspf', '.dds']);
+const REACT_TARGET_EXTENSIONS = new Set(['.tsx', '.jsx', '.ts', '.js', '.json']);
 
 export interface PreparedAiValidationContext {
   input: AiValidationInput;
@@ -30,8 +35,11 @@ export class PrepareAiValidationContextService {
 
   execute(context: ValidationContext): PreparedAiValidationContext {
     const limits = this.getLimits();
-    const sourceFiles = this.select(context.sourceFiles, SOURCE_EXTENSIONS, 'source');
-    const targetFiles = this.select(context.targetFiles, TARGET_EXTENSIONS, 'target');
+    const isBms = context.conversionType === ConversionType.BMS_DSPF_TO_FRONTEND;
+    const sourceExts = isBms ? BMS_SOURCE_EXTENSIONS : COBOL_SOURCE_EXTENSIONS;
+    const targetExts = isBms ? REACT_TARGET_EXTENSIONS : JAVA_TARGET_EXTENSIONS;
+    const sourceFiles = this.select(context.sourceFiles, sourceExts, 'source');
+    const targetFiles = this.select(context.targetFiles, targetExts, 'target');
     const selectedFileCount = sourceFiles.length + targetFiles.length;
 
     if (selectedFileCount > limits.maxFiles) {

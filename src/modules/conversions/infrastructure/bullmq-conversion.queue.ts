@@ -4,6 +4,7 @@ import { Queue } from 'bullmq';
 import { ConversionPriority, ConversionQueuePort } from '../domain/conversion-job.types';
 
 export const CONVERSION_QUEUE_NAME = 'conversion';
+export const CONVERSION_QUEUE_READY_TIMEOUT_MS = 3000;
 export const BULLMQ_PRIORITY: Record<ConversionPriority, number> = {
   [ConversionPriority.HIGH]: 1,
   [ConversionPriority.NORMAL]: 5,
@@ -13,7 +14,7 @@ export const BULLMQ_PRIORITY: Record<ConversionPriority, number> = {
 @Injectable()
 export class BullMqConversionQueue implements ConversionQueuePort, OnModuleDestroy {
   private readonly logger = new Logger(BullMqConversionQueue.name);
-  private queue?: Queue<{ conversionJobId: string }>;
+  private queue?: Queue<{ conversionJobId: string; executionGeneration: number }>;
 
   constructor(private readonly config: ConfigService) {
     // CONVERSION_WORKER_ENABLED is declared as Joi.boolean() in environment.validation.ts,
@@ -30,7 +31,10 @@ export class BullMqConversionQueue implements ConversionQueuePort, OnModuleDestr
           host: config.getOrThrow('REDIS_HOST'),
           port: config.getOrThrow<number>('REDIS_PORT'),
           password: config.get<string>('REDIS_PASSWORD') || undefined,
-          maxRetriesPerRequest: null,
+          // HTTP producers must fail in bounded time when Redis is unavailable.
+          maxRetriesPerRequest: 1,
+          connectTimeout: 3000,
+          commandTimeout: 5000,
           enableOfflineQueue: false,
         },
       });
@@ -45,16 +49,24 @@ export class BullMqConversionQueue implements ConversionQueuePort, OnModuleDestr
   // surfaces as an error, it just hangs forever. Swallowing this error used to do exactly
   // that (confirmed by reproduction: jobs sitting in Mongo as QUEUED with zero trace in
   // Redis). Let it propagate so the caller can fail the request instead.
-  async enqueue(conversionJobId: string, priority: ConversionPriority): Promise<void> {
+  async enqueue(
+    conversionJobId: string,
+    priority: ConversionPriority,
+    executionGeneration = 0,
+  ): Promise<void> {
     if (!this.queue || !this.config.get<boolean>('CONVERSION_WORKER_ENABLED')) {
       throw new Error(
         'Conversion queue is not configured (CONVERSION_WORKER_ENABLED is not enabled)',
       );
     }
+    // Bound readiness separately: BullMQ awaits its first connection before it
+    // issues a command, so commandTimeout alone cannot bound a cold start.
+    await this.waitForReady(this.queue);
     await this.queue.add(
       'execute-conversion',
-      { conversionJobId },
+      { conversionJobId, executionGeneration },
       {
+        jobId: `${conversionJobId}-${executionGeneration}`,
         attempts: 3,
         backoff: { type: 'exponential', delay: 1000 },
         priority: BULLMQ_PRIORITY[priority],
@@ -71,6 +83,36 @@ export class BullMqConversionQueue implements ConversionQueuePort, OnModuleDestr
       } catch {
         // Ignore shutdown error if Redis is down
       }
+    }
+  }
+
+  async deliveryState(
+    conversionJobId: string,
+    executionGeneration: number,
+  ): Promise<'pending' | 'terminal' | 'missing'> {
+    if (!this.queue) throw new Error('Conversion queue is not configured');
+    await this.waitForReady(this.queue);
+    const job = await this.queue.getJob(`${conversionJobId}-${executionGeneration}`);
+    if (!job) return 'missing';
+    const state = await job.getState();
+    if (state === 'unknown') return 'missing';
+    return state === 'failed' || state === 'completed' ? 'terminal' : 'pending';
+  }
+
+  private async waitForReady(queue: Queue): Promise<void> {
+    let timer: NodeJS.Timeout | undefined;
+    try {
+      await Promise.race([
+        queue.waitUntilReady(),
+        new Promise<never>((_resolve, reject) => {
+          timer = setTimeout(
+            () => reject(new Error('Conversion queue Redis readiness timed out')),
+            CONVERSION_QUEUE_READY_TIMEOUT_MS,
+          );
+        }),
+      ]);
+    } finally {
+      clearTimeout(timer);
     }
   }
 }

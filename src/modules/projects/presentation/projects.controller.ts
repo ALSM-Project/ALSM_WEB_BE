@@ -24,6 +24,8 @@ import { CreateProjectDto, UpdateProjectDto } from './project.dto';
 import { JwtAuthGuard } from '../../../shared/security/jwt-auth.guard';
 import { CurrentUser } from '../../../shared/security/current-user.decorator';
 import { AuthenticatedUser } from '../../../shared/logging/request-id.middleware';
+import { RequirePermissions } from '../../../shared/security/require-permissions.decorator';
+import { PlatformAdminAuthorizationGuard } from '../../admin/presentation/platform-admin-authorization.guard';
 
 @ApiTags('Projects')
 @ApiBearerAuth()
@@ -54,6 +56,36 @@ export class ProjectsController {
     @Body() dto: CreateProjectDto,
   ) {
     return this.projects.create(user.userId, organizationId, dto);
+  }
+
+  @Post('demo')
+  @ApiOperation({
+    summary: 'Create a pre-configured demo project',
+    description: 'Creates a demo modernization project for customer presentations (UC-3.10.3).',
+  })
+  @ApiResponse({ status: HttpStatus.CREATED, description: 'Demo project created' })
+  async createDemo(
+    @CurrentUser() user: AuthenticatedUser,
+    @Headers('x-organization-id') organizationId: string | undefined,
+    @Body() dto: { name?: string; description?: string },
+  ) {
+    return this.projects.createDemo(user.userId, organizationId, dto);
+  }
+
+  @Post(':id/assign-team-lead')
+  @UseGuards(PlatformAdminAuthorizationGuard)
+  @RequirePermissions('organizations.manage', 'resources.transfer', 'resources.transfer.confirm')
+  @ApiOperation({
+    summary: 'Assign project to a Team Lead',
+    description: 'Global assignment requires persisted Platform Admin status, organizations.manage and both resource transfer execution permissions (UC-3.13.3).',
+  })
+  @ApiResponse({ status: HttpStatus.OK, description: 'Project assigned to Team Lead' })
+  async assignTeamLead(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('id') id: string,
+    @Body() dto: { teamLeadId: string },
+  ) {
+    return this.projects.assignTeamLead(user.userId, id, dto.teamLeadId);
   }
 
   @Get()

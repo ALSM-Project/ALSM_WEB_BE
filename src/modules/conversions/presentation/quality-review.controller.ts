@@ -50,6 +50,7 @@ export class QualityReviewController {
   @ApiResponse({ status: 200, description: 'Quality review details returned successfully' })
   @ApiResponse({ status: 400, description: 'Conversion not completed' })
   @ApiResponse({ status: 404, description: 'Conversion job not found' })
+  @ApiResponse({ status: 503, description: 'Generated result files unavailable' })
   async getQualityReview(
     @CurrentUser() user: AuthenticatedUser,
     @Headers('x-organization-id') organizationId: string | undefined,
@@ -78,6 +79,7 @@ export class QualityReviewController {
   @ApiResponse({ status: 403, description: 'Forbidden - Insufficient permissions' })
   @ApiResponse({ status: 404, description: 'Conversion job not found' })
   @ApiResponse({ status: 409, description: 'Conflict - concurrent modification detected' })
+  @ApiResponse({ status: 503, description: 'Generated result files unavailable' })
   async submitQualityReview(
     @CurrentUser() user: AuthenticatedUser,
     @Headers('x-organization-id') organizationId: string | undefined,

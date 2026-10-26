@@ -1,21 +1,26 @@
-import { BadRequestException, ConflictException, Inject, Injectable, Logger, NotFoundException } from '@nestjs/common';
-import { AUDIT_REPOSITORY, AuditRepository } from '../../audit/domain/audit.repository';
 import {
-  MEETING_REPOSITORY,
-  MeetingRecord,
-  MeetingRepository,
-} from '../domain/meeting.types';
+  BadRequestException,
+  ConflictException,
+  Inject,
+  Injectable,
+  Logger,
+  NotFoundException,
+} from '@nestjs/common';
+import { AUDIT_REPOSITORY, AuditRepository } from '../../audit/domain/audit.repository';
+import { MEETING_REPOSITORY, MeetingRecord, MeetingRepository } from '../domain/meeting.types';
 import { PROJECT_REPOSITORY, ProjectRepository } from '../../projects/domain/project.types';
 import { MailService } from '../../../shared/mail/mail.service';
 import { GoogleCalendarService } from '../../../shared/google/google-calendar.service';
+import { OrganizationContextService } from '../../organizations/application/organization-context.service';
 
 // Google Meet code format: 3-4-3 lowercase letters (e.g. abc-defg-hij)
 const MEET_CODE_PART_CHARS = 'abcdefghijklmnopqrstuvwxyz';
 
 function generateMeetCode(): string {
   const rand = (len: number): string =>
-    Array.from({ length: len }, () =>
-      MEET_CODE_PART_CHARS[Math.floor(Math.random() * MEET_CODE_PART_CHARS.length)],
+    Array.from(
+      { length: len },
+      () => MEET_CODE_PART_CHARS[Math.floor(Math.random() * MEET_CODE_PART_CHARS.length)],
     ).join('');
   return `${rand(3)}-${rand(4)}-${rand(3)}`;
 }
@@ -32,6 +37,7 @@ export class CreateMeetingService {
     @Inject(PROJECT_REPOSITORY) private readonly projects: ProjectRepository,
     private readonly mail: MailService,
     private readonly googleCalendar: GoogleCalendarService,
+    private readonly organizationContext: OrganizationContextService,
   ) {}
 
   async execute(
@@ -49,20 +55,30 @@ export class CreateMeetingService {
   ): Promise<MeetingRecord> {
     const title = input.title?.trim();
     if (!title || title.length < 3) {
-      throw new BadRequestException({ code: 'MEETING_TITLE_REQUIRED', message: 'Meeting title is required and must be at least 3 characters' });
+      throw new BadRequestException({
+        code: 'MEETING_TITLE_REQUIRED',
+        message: 'Meeting title is required and must be at least 3 characters',
+      });
     }
 
     const description = input.description?.trim();
     if (!description || description.length < 5) {
-      throw new BadRequestException({ code: 'MEETING_DESCRIPTION_REQUIRED', message: 'Meeting description/agenda is required (at least 5 characters)' });
+      throw new BadRequestException({
+        code: 'MEETING_DESCRIPTION_REQUIRED',
+        message: 'Meeting description/agenda is required (at least 5 characters)',
+      });
     }
 
     const projectId = input.projectId?.trim();
     if (!projectId) {
-      throw new BadRequestException({ code: 'PROJECT_ID_REQUIRED', message: 'Related project ID is required' });
+      throw new BadRequestException({
+        code: 'PROJECT_ID_REQUIRED',
+        message: 'Related project ID is required',
+      });
     }
 
-    const project = await this.projects.findById(projectId, '');
+    const organization = await this.organizationContext.resolve(userId);
+    const project = await this.projects.findById(projectId, organization.id);
     if (!project) {
       throw new NotFoundException({
         code: 'PROJECT_NOT_FOUND',
@@ -74,10 +90,16 @@ export class CreateMeetingService {
     const end = new Date(input.scheduledEndTime);
 
     if (isNaN(start.getTime())) {
-      throw new BadRequestException({ code: 'INVALID_START_TIME', message: 'scheduledStartTime is not a valid date' });
+      throw new BadRequestException({
+        code: 'INVALID_START_TIME',
+        message: 'scheduledStartTime is not a valid date',
+      });
     }
     if (isNaN(end.getTime())) {
-      throw new BadRequestException({ code: 'INVALID_END_TIME', message: 'scheduledEndTime is not a valid date' });
+      throw new BadRequestException({
+        code: 'INVALID_END_TIME',
+        message: 'scheduledEndTime is not a valid date',
+      });
     }
 
     // scheduledStartTime must be now or in the future (allow 1-minute tolerance)
@@ -98,7 +120,10 @@ export class CreateMeetingService {
 
     const attendeeEmails = (input.attendeeEmails ?? []).map((e) => e.trim().toLowerCase());
     if (attendeeEmails.length === 0) {
-      throw new BadRequestException({ code: 'ATTENDEES_REQUIRED', message: 'At least one attendee email is required' });
+      throw new BadRequestException({
+        code: 'ATTENDEES_REQUIRED',
+        message: 'At least one attendee email is required',
+      });
     }
     const invalidEmail = attendeeEmails.find((e) => !EMAIL_PATTERN.test(e));
     if (invalidEmail) {
@@ -124,11 +149,14 @@ export class CreateMeetingService {
 
     if (input.customMeetingUrl) {
       // User provided a custom link — validate and use it
-      const urlMatch = input.customMeetingUrl.match(/https:\/\/meet\.google\.com\/([a-z0-9][a-z0-9-]*)/);
+      const urlMatch = input.customMeetingUrl.match(
+        /https:\/\/meet\.google\.com\/([a-z0-9][a-z0-9-]*)/,
+      );
       if (!urlMatch) {
         throw new BadRequestException({
           code: 'INVALID_MEET_URL',
-          message: 'customMeetingUrl must be a valid Google Meet link (https://meet.google.com/xxx-yyyy-zzz)',
+          message:
+            'customMeetingUrl must be a valid Google Meet link (https://meet.google.com/xxx-yyyy-zzz)',
         });
       }
       meetingUrl = input.customMeetingUrl;
@@ -147,7 +175,9 @@ export class CreateMeetingService {
       meetingUrl = gcalResult.meetingUrl;
       meetingCode = gcalResult.meetingCode;
       calendarEventId = gcalResult.calendarEventId;
-      this.logger.log(`Real Google Meet created via Calendar API: ${meetingUrl} | Project: ${projectName}`);
+      this.logger.log(
+        `Real Google Meet created via Calendar API: ${meetingUrl} | Project: ${projectName}`,
+      );
     } else {
       // Fallback: random code (for dev/demo only — links won't be joinable)
       this.logger.warn(
@@ -188,19 +218,21 @@ export class CreateMeetingService {
     const projectName = (project as { name?: string }).name ?? projectId;
     void Promise.allSettled(
       attendeeEmails.map((to) =>
-        this.mail.sendMeetingInvite({
-          to,
-          hostName: userEmail,
-          hostEmail: userEmail,
-          meetingTitle: meeting.title,
-          meetingUrl: meeting.meetingUrl,
-          scheduledStartTime: meeting.scheduledStartTime,
-          scheduledEndTime: meeting.scheduledEndTime,
-          description: meeting.description ?? '',
-          projectName,
-        }).catch((err: unknown) =>
-          this.logger.error(`Failed to send invite to ${to}: ${(err as Error).message}`),
-        ),
+        this.mail
+          .sendMeetingInvite({
+            to,
+            hostName: userEmail,
+            hostEmail: userEmail,
+            meetingTitle: meeting.title,
+            meetingUrl: meeting.meetingUrl,
+            scheduledStartTime: meeting.scheduledStartTime,
+            scheduledEndTime: meeting.scheduledEndTime,
+            description: meeting.description ?? '',
+            projectName,
+          })
+          .catch((err: unknown) =>
+            this.logger.error(`Failed to send invite to ${to}: ${(err as Error).message}`),
+          ),
       ),
     );
 

@@ -4,12 +4,15 @@ import {
   Inject,
   Injectable,
   NotFoundException,
+  ServiceUnavailableException,
 } from '@nestjs/common';
+import { STORAGE_PORT, StoragePort } from '../../../shared/storage/storage.port';
 import { AUDIT_REPOSITORY, AuditRepository } from '../../audit/domain/audit.repository';
 import { OrganizationAuthorizationService } from '../../organizations/application/organization-authorization.service';
 import { OrganizationContextService } from '../../organizations/application/organization-context.service';
 import { OrganizationRole } from '../../organizations/domain/organization.types';
 import { ProjectService } from '../../projects/application/project.service';
+import { ConversionProjectAccessService } from './conversion-project-access.service';
 import {
   CONVERSION_JOB_REPOSITORY,
   ConversionJobRepository,
@@ -49,6 +52,8 @@ export class SubmitConversionQualityReviewService {
     private readonly authorization: OrganizationAuthorizationService,
     private readonly projects: ProjectService,
     @Inject(AUDIT_REPOSITORY) private readonly audit: AuditRepository,
+    @Inject(STORAGE_PORT) private readonly storage: StoragePort,
+    private readonly access: ConversionProjectAccessService,
   ) {}
 
   async execute(input: SubmitQualityReviewCommand): Promise<ConversionQualityReviewRecord> {
@@ -63,6 +68,7 @@ export class SubmitConversionQualityReviewService {
       OrganizationRole.MEMBER,
     ]);
 
+    await this.access.requireAssignment(input.userId, organization.id, input.projectId);
     await this.projects.getForOrganization(input.projectId, organization.id);
 
     const job = await this.jobs.findById(input.conversionJobId, organization.id);
@@ -77,6 +83,20 @@ export class SubmitConversionQualityReviewService {
       throw new BadRequestException({
         code: 'CONVERSION_NOT_COMPLETED',
         message: 'Conversion job has not completed successfully yet',
+      });
+    }
+
+    try {
+      if (
+        !job.resultReference ||
+        (await this.storage.readFiles(job.resultReference)).length === 0
+      ) {
+        throw new Error('Missing conversion result');
+      }
+    } catch {
+      throw new ServiceUnavailableException({
+        code: 'CONVERSION_RESULT_UNAVAILABLE',
+        message: 'Conversion result files are unavailable',
       });
     }
 

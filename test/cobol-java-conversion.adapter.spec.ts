@@ -62,7 +62,15 @@ describe('CobolJavaConversionAdapter', () => {
   it('translates COBOL and stores the generated .java files even though exit code is always 0', async () => {
     await fs.promises.writeFile(path.join(sourceDir, 'BUBBLESORT.cob'), 'COBOL SOURCE');
     (toolRunner.runConversionTool as jest.Mock).mockImplementation(
-      async (_exe: string, _args: string[], options: { cwd: string }) => {
+      async (_exe: string, args: string[], options: { cwd: string }) => {
+        expect(args.slice(args.indexOf('-pp'), args.indexOf('-pp') + 2)).toEqual([
+          '-pp',
+          'cobolprogramclasses',
+        ]);
+        expect(args.slice(args.indexOf('-dp'), args.indexOf('-dp') + 2)).toEqual([
+          '-dp',
+          'cobolprogramclasses',
+        ]);
         // tool2java only reliably honors -odir for the first file it writes; real runs show
         // subsequent programs land under "<cwd>/cobolprogramclasses/<program>/..." instead —
         // reproduce that here rather than writing into the (unused, from the tool's own
@@ -92,6 +100,21 @@ describe('CobolJavaConversionAdapter', () => {
       ]),
     );
     expect(errorLogs.create).not.toHaveBeenCalled();
+  });
+
+  it('isolates overlapping attempts of the same job in distinct working directories', async () => {
+    const workingDirectories: string[] = [];
+    (toolRunner.runConversionTool as jest.Mock).mockImplementation(
+      async (_exe: string, _args: string[], options: { cwd: string }) => {
+        workingDirectories.push(options.cwd);
+        await fs.promises.writeFile(path.join(options.cwd, 'Result.java'), 'class Result {}');
+        await new Promise((resolve) => setTimeout(resolve, 20));
+        return { code: 0, stdout: '', stderr: '', timedOut: false };
+      },
+    );
+    await Promise.all([buildAdapter().execute(baseInput), buildAdapter().execute(baseInput)]);
+    expect(new Set(workingDirectories).size).toBe(2);
+    expect(storage.writeFiles).toHaveBeenCalledTimes(2);
   });
 
   it('records an ErrorLogRecord parsed from a ParseException block', async () => {
@@ -183,6 +206,30 @@ describe('CobolJavaConversionAdapter', () => {
     expect(toolRunner.runConversionTool).not.toHaveBeenCalled();
   });
 
+  it('does not block a legacy BLOCKED screen whose only MISSING entries are IBM system copybooks', async () => {
+    (screens.findById as jest.Mock).mockResolvedValue({
+      id: 'scr-1',
+      dependencyStatus: 'BLOCKED',
+      dependencies: [
+        { copyName: 'COCOM01Y', status: 'RESOLVED', resolvedFile: 'COCOM01Y.cpy' },
+        { copyName: 'DFHAID', status: 'MISSING' },
+        { copyName: 'CMQV', status: 'MISSING' },
+      ],
+    });
+    await fs.promises.writeFile(path.join(sourceDir, 'OK.cob'), 'COBOL SOURCE');
+    (toolRunner.runConversionTool as jest.Mock).mockImplementation(
+      async (_exe: string, args: string[]) => {
+        const outDir = args[4];
+        await fs.promises.writeFile(path.join(outDir, 'Ok.java'), 'public class Ok {}');
+        return { code: 0, stdout: 'Done in 0s.', stderr: '', timedOut: false };
+      },
+    );
+
+    await buildAdapter().execute({ ...baseInput, screenId: 'scr-1' });
+
+    expect(toolRunner.runConversionTool).toHaveBeenCalled();
+  });
+
   it('proceeds to run tool2java when the screen is READY_FOR_CONVERSION', async () => {
     (screens.findById as jest.Mock).mockResolvedValue({
       id: 'scr-1',
@@ -200,5 +247,37 @@ describe('CobolJavaConversionAdapter', () => {
     await buildAdapter().execute({ ...baseInput, screenId: 'scr-1' });
 
     expect(toolRunner.runConversionTool).toHaveBeenCalled();
+  });
+
+  it('runs tool2java on a normalized copy of the bundle, leaving the stored upload untouched', async () => {
+    const original = [
+      '       PROCEDURE DIVISION.',
+      '           EXEC CICS RETURN TRANSID(WS-TRANID) RESP(WS-RESP) END-EXEC.',
+    ].join('\n');
+    await fs.promises.mkdir(path.join(sourceDir, 'app'));
+    await fs.promises.writeFile(path.join(sourceDir, 'app', 'PGM.cbl'), original);
+    let seen: { dir: string; program: string; stubs: string[] } | undefined;
+    (toolRunner.runConversionTool as jest.Mock).mockImplementation(
+      async (_exe: string, args: string[], options: { cwd: string }) => {
+        const dir = args[args.length - 1];
+        seen = {
+          dir,
+          program: await fs.promises.readFile(path.join(dir, 'app', 'PGM.cbl'), 'latin1'),
+          stubs: (await fs.promises.readdir(path.join(dir, 'app'))).filter((f) => f !== 'PGM.cbl'),
+        };
+        await fs.promises.writeFile(path.join(options.cwd, 'Pgm.java'), 'public class Pgm {}');
+        return { code: 0, stdout: 'Done in 0s.', stderr: '', timedOut: false };
+      },
+    );
+
+    await buildAdapter().execute(baseInput);
+
+    expect(seen?.dir).not.toBe(sourceDir);
+    expect(seen?.program).not.toMatch(/^ {7}.*RESP\(/m);
+    expect(seen?.program).toMatch(/^ +EXEC CICS RETURN TRANSID\(WS-TRANID\)$/m);
+    expect(seen?.stubs.sort()).toEqual(['DFHAID.cpy', 'DFHBMSCA.cpy']);
+    expect(await fs.promises.readFile(path.join(sourceDir, 'app', 'PGM.cbl'), 'latin1')).toBe(
+      original,
+    );
   });
 });

@@ -49,21 +49,55 @@ export class ProjectService {
     return project;
   }
 
+  async createDemo(
+    userId: string,
+    organizationHeader: string | undefined,
+    input?: { name?: string; description?: string },
+  ): Promise<ProjectRecord> {
+    const organization = await this.organizationContext.resolve(userId, organizationHeader);
+    const projectName = input?.name || `ALSM Demo Banking Modernization ${new Date().toISOString().slice(0, 10)}`;
+    const project = await this.projects.create({
+      organizationId: organization.id,
+      createdBy: userId,
+      name: projectName,
+      description:
+        input?.description ||
+        'Interactive demonstration project with pre-configured BMS screens and COBOL batch logic for customer presentations.',
+      conversionType: ConversionType.BMS_DSPF_TO_FRONTEND,
+      status: ProjectStatus.ACTIVE,
+      isDemo: true,
+    });
+    await this.audit.append({
+      actorUserId: userId,
+      organizationId: organization.id,
+      action: 'DEMO_PROJECT_CREATED',
+      resourceType: 'PROJECT',
+      resourceId: project.id,
+    });
+    return project;
+  }
+
+  async assignTeamLead(
+    userId: string,
+    projectId: string,
+    teamLeadId: string,
+  ): Promise<ProjectRecord> {
+    const project = await this.projects.assignTeamLead(projectId, teamLeadId);
+    if (!project) throw this.notFound();
+    await this.audit.append({
+      actorUserId: userId,
+      organizationId: project.organizationId,
+      action: 'PROJECT_ASSIGNED_TO_TEAM_LEAD',
+      resourceType: 'PROJECT',
+      resourceId: projectId,
+      metadata: { assignedTeamLeadId: teamLeadId },
+    });
+    return project;
+  }
+
   async list(userId: string, organizationHeader?: string): Promise<ProjectRecord[]> {
     const organization = await this.organizationContext.resolve(userId, organizationHeader);
-    const list = await this.projects.findAll(organization.id);
-    if (list.length === 0) {
-      const defaultProject = await this.projects.create({
-        organizationId: organization.id,
-        createdBy: userId,
-        name: 'ACME Enterprise Modernization',
-        description: 'Auto-provisioned Modernization Workspace',
-        conversionType: ConversionType.BMS_DSPF_TO_FRONTEND,
-        status: ProjectStatus.ACTIVE,
-      });
-      return [defaultProject];
-    }
-    return list;
+    return this.projects.findAll(organization.id);
   }
 
   async get(
@@ -72,7 +106,7 @@ export class ProjectService {
     id: string,
   ): Promise<ProjectRecord> {
     const organization = await this.organizationContext.resolve(userId, organizationHeader);
-    return this.requireProject(id, organization.id, userId);
+    return this.requireProject(id, organization.id);
   }
 
   async update(
@@ -119,32 +153,9 @@ export class ProjectService {
     return this.requireProject(id, organizationId);
   }
 
-  private async requireProject(
-    id: string,
-    organizationId: string,
-    userId: string = '000000000000000000000001',
-  ): Promise<ProjectRecord> {
-    let project = await this.projects.findById(id, organizationId);
-    if (!project) {
-      try {
-        project = await this.projects.create({
-          id,
-          organizationId,
-          createdBy: userId,
-          name: id && id !== 'proj-acme' ? id : 'ACME Enterprise Modernization',
-          description: 'Auto-provisioned Modernization Workspace',
-          conversionType: ConversionType.BMS_DSPF_TO_FRONTEND,
-          status: ProjectStatus.ACTIVE,
-        });
-      } catch (error: unknown) {
-        const err = error as { code?: number; message?: string };
-        if (err?.code === 11000 || err?.message?.includes('E11000')) {
-          project = await this.projects.findById(id, '');
-          if (project) return project;
-        }
-        throw error;
-      }
-    }
+  private async requireProject(id: string, organizationId: string): Promise<ProjectRecord> {
+    const project = await this.projects.findById(id, organizationId);
+    if (!project) throw this.notFound();
     return project;
   }
 
