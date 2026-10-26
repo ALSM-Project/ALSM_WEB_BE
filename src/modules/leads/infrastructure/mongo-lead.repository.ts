@@ -8,6 +8,7 @@ import {
   LeadRecord,
   LeadRepository,
   LeadStatus,
+  UpdateLeadStatusOptions,
 } from '../domain/lead.types';
 import { toValidObjectId } from '../../../shared/utils/object-id.util';
 
@@ -88,6 +89,35 @@ export class MongoLeadRepository implements LeadRepository {
       counts[r._id as string] = r.count as number;
     }
     return counts;
+  }
+
+  async updateStatus(
+    id: string,
+    status: LeadStatus,
+    options?: UpdateLeadStatusOptions,
+  ): Promise<LeadRecord | null> {
+    if (!id || !id.match(/^[a-f\d]{24}$/i)) return null;
+
+    const updateFields: Record<string, unknown> = {
+      status,
+      updatedAt: new Date(),
+    };
+
+    if (options?.notes !== undefined) {
+      updateFields.notes = options.notes;
+    }
+    if (options?.lastContactedAt !== undefined) {
+      updateFields.lastContactedAt = options.lastContactedAt;
+    }
+    if (options?.nextFollowUpAt !== undefined) {
+      updateFields.nextFollowUpAt = options.nextFollowUpAt;
+    }
+
+    const doc = await this.model
+      .findByIdAndUpdate(id, { $set: updateFields }, { new: true })
+      .exec();
+
+    return doc ? this.map(doc) : null;
   }
 
   private map(doc: LeadDocument): LeadRecord {
