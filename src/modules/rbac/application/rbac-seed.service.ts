@@ -1,9 +1,7 @@
 import { Injectable, Logger, OnApplicationBootstrap } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model } from 'mongoose';
-import * as bcrypt from 'bcrypt';
 import { RbacService } from './rbac.service';
-import { User, UserDocument } from '../../users/infrastructure/user.schema';
 import { Role, RoleDocument } from '../infrastructure/schemas/role.schema';
 
 @Injectable()
@@ -12,7 +10,6 @@ export class RbacSeedService implements OnApplicationBootstrap {
 
   constructor(
     private readonly rbacService: RbacService,
-    @InjectModel(User.name) private readonly userModel: Model<UserDocument>,
     @InjectModel(Role.name) private readonly roleModel: Model<RoleDocument>,
   ) {}
 
@@ -372,62 +369,7 @@ export class RbacSeedService implements OnApplicationBootstrap {
       'partner_portal.download',
     ]);
 
-    // 4. Seed Test Accounts
-    await this.ensureTestAccount({
-      email: 'admin@alsm.io',
-      fullName: 'System Administrator',
-      isPlatformAdmin: true,
-      roleId: 'SYSTEM_ADMIN',
-    });
-
-    await this.ensureTestAccount({
-      email: 'teamlead@alsm.io',
-      fullName: 'Team Lead Staff',
-      isPlatformAdmin: false,
-      roleId: 'TEAM_LEAD',
-    });
-
-    await this.ensureTestAccount({
-      email: 'sales@alsm.io',
-      fullName: 'Sales Executive Manager',
-      isPlatformAdmin: false,
-      roleId: 'SALES_MANAGER',
-    });
-
-    await this.ensureTestAccount({
-      email: 'sales_staff@alsm.io',
-      fullName: 'Internal Sales Staff',
-      isPlatformAdmin: false,
-      roleId: 'INTERNAL_SALES',
-    });
-
-    await this.ensureTestAccount({
-      email: 'support@alsm.io',
-      fullName: 'Internal Support Staff',
-      isPlatformAdmin: false,
-      roleId: 'INTERNAL_SUPPORT',
-    });
-
-    await this.ensureTestAccount({
-      email: 'converter@alsm.io',
-      fullName: 'Conversion Specialist',
-      isPlatformAdmin: false,
-      roleId: 'CONVERSION_STAFF',
-    });
-
-    await this.ensureTestAccount({
-      email: 'enterprise@company.com',
-      fullName: 'Enterprise Client Member',
-      isPlatformAdmin: false,
-      roleId: 'ENTERPRISE_MEMBER',
-    });
-
-    await this.ensureTestAccount({
-      email: 'partner@fintechnexus.io',
-      fullName: 'Marcus Vance (Partner Lead)',
-      isPlatformAdmin: false,
-      roleId: 'PARTNER',
-    });
+    // Startup initializes RBAC metadata only. Identity provisioning must never run here.
   }
 
   private async ensureRole(
@@ -471,46 +413,6 @@ export class RbacSeedService implements OnApplicationBootstrap {
     const missing = permissionKeys.filter((k) => !current.includes(k));
     if (missing.length > 0) {
       await this.rbacService.updateRolePermissions(roleId, [...current, ...missing]);
-    }
-  }
-
-  private async ensureTestAccount(input: {
-    email: string;
-    fullName: string;
-    isPlatformAdmin: boolean;
-    roleId: string;
-  }): Promise<void> {
-    let user = await this.userModel.findOne({ email: input.email }).exec();
-    const defaultPasswordHash = await bcrypt.hash('Password123!', 10);
-
-    if (!user) {
-      user = await this.userModel.create({
-        email: input.email,
-        fullName: input.fullName,
-        passwordHash: defaultPasswordHash,
-        isPlatformAdmin: input.isPlatformAdmin,
-        isActive: true,
-        isEmailVerified: true,
-        mustChangePassword: false,
-      });
-      this.logger.log(`Seeded test user account: ${input.email}`);
-    } else {
-      await this.userModel.updateOne(
-        { _id: user._id },
-        {
-          $set: {
-            isActive: true,
-            isEmailVerified: true,
-            isPlatformAdmin: input.isPlatformAdmin,
-            passwordHash: defaultPasswordHash,
-          },
-        },
-      );
-    }
-
-    const userRoles = await this.rbacService.getUserRoles(user.id);
-    if (!userRoles.includes(input.roleId)) {
-      await this.rbacService.updateUserRoles(user.id, [...userRoles, input.roleId]);
     }
   }
 }
