@@ -1,6 +1,6 @@
+import { ServiceUnavailableException, UnauthorizedException } from '@nestjs/common';
 import { JwtAuthGuard } from '../src/shared/security/jwt-auth.guard';
 import { RequestWithContext } from '../src/shared/logging/request-id.middleware';
-import { ServiceUnavailableException, UnauthorizedException } from '@nestjs/common';
 
 describe('JwtAuthGuard', () => {
   const jwt = { verifyAsync: jest.fn() };
@@ -111,6 +111,33 @@ describe('JwtAuthGuard', () => {
     });
     expect(sessions.execute).toHaveBeenCalledWith('user-1', undefined, undefined, false);
     expect(request.user).toBeUndefined();
+  });
+
+  it('rejects a missing token in production', async () => {
+    const previousNodeEnv = process.env.NODE_ENV;
+    process.env.NODE_ENV = 'production';
+    const request = { headers: {} } as RequestWithContext;
+
+    try {
+      await expect(guard.canActivate(contextFor(request))).rejects.toThrow(UnauthorizedException);
+    } finally {
+      if (previousNodeEnv === undefined) delete process.env.NODE_ENV;
+      else process.env.NODE_ENV = previousNodeEnv;
+    }
+  });
+
+  it('rejects an invalid token in production', async () => {
+    const previousNodeEnv = process.env.NODE_ENV;
+    process.env.NODE_ENV = 'production';
+    jwt.verifyAsync.mockRejectedValue(new Error('invalid token'));
+    const request = { headers: { authorization: 'Bearer invalid-token' } } as RequestWithContext;
+
+    try {
+      await expect(guard.canActivate(contextFor(request))).rejects.toThrow(UnauthorizedException);
+    } finally {
+      if (previousNodeEnv === undefined) delete process.env.NODE_ENV;
+      else process.env.NODE_ENV = previousNodeEnv;
+    }
   });
 
   it.each([

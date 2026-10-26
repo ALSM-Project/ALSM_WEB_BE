@@ -26,7 +26,7 @@
   "scripts": {
     "build": "nest build",
     "start": "node dist/main",
-    "start:dev": "nest start --watch",
+    "start:dev": "node --max-old-space-size=4096 node_modules/@nestjs/cli/bin/nest.js start --watch",
     "start:prod": "node dist/main",
     "worker": "ts-node -r tsconfig-paths/register src/worker.ts",
     "worker:dev": "node --watch -r ts-node/register -r tsconfig-paths/register src/worker.ts",
@@ -37,7 +37,7 @@
     "docker:logs": "docker compose logs -f",
     "lint": "eslint \"{src,test,evaluation}/**/*.ts\" --max-warnings=0",
     "format": "prettier --write \"{src,test,evaluation}/**/*.ts\"",
-    "test": "jest --runInBand",
+    "test": "node --max-old-space-size=4096 node_modules/jest/bin/jest.js --runInBand",
     "test:watch": "jest --watch",
     "test:e2e": "jest --config ./test/jest-e2e.json --passWithNoTests",
     "eval:ai:validate": "ts-node evaluation/ai-validation/src/validate-dataset.cli.ts",

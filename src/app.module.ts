@@ -85,6 +85,10 @@ import { MongoMeetingRepository } from './modules/meetings/infrastructure/mongo-
 import { CreateMeetingService } from './modules/meetings/application/create-meeting.service';
 import { ListMeetingsService } from './modules/meetings/application/list-meetings.service';
 import { MeetingController } from './modules/meetings/presentation/meeting.controller';
+import { LEAD_REPOSITORY as UC58_LEAD_REPOSITORY } from './modules/leads/domain/lead.types';
+import { MongoLeadRepository as MongoUc58LeadRepository } from './modules/leads/infrastructure/mongo-lead.repository';
+import { ListLeadsService } from './modules/leads/application/list-leads.service';
+import { LeadController } from './modules/leads/presentation/lead.controller';
 import { Partner, PartnerSchema } from './modules/partners/infrastructure/partner.schema';
 import { PARTNER_REPOSITORY } from './modules/partners/domain/partner.types';
 import { MongoPartnerRepository } from './modules/partners/infrastructure/mongo-partner.repository';
@@ -310,6 +314,7 @@ import { AuditModule } from './modules/audit/audit.module';
       { name: FieldMapping.name, schema: FieldMappingSchema },
       { name: MethodMapping.name, schema: MethodMappingSchema },
       { name: Meeting.name, schema: MeetingSchema },
+      { name: Lead.name, schema: LeadSchema },
       { name: Partner.name, schema: PartnerSchema },
       { name: ErrorLog.name, schema: ErrorLogSchema },
       { name: ScreenDocument.name, schema: ConversionScreenSchema },
@@ -342,6 +347,7 @@ import { AuditModule } from './modules/audit/audit.module';
     FieldMappingController,
     MethodMappingController,
     MeetingController,
+    LeadController,
     PartnerController,
     UsersController,
     ExportController,
@@ -542,6 +548,8 @@ import { AuditModule } from './modules/audit/audit.module';
     ListPartnersService,
     CreateMeetingService,
     ListMeetingsService,
+    { provide: UC58_LEAD_REPOSITORY, useClass: MongoUc58LeadRepository },
+    ListLeadsService,
     MailService,
     GoogleCalendarService,
     { provide: ERROR_LOG_REPOSITORY, useExisting: MongoErrorLogRepository },
