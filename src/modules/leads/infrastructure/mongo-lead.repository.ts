@@ -86,7 +86,9 @@ export class MongoLeadRepository implements LeadRepository {
 
     const counts: Record<string, number> = {};
     for (const r of results) {
-      counts[r._id as string] = r.count as number;
+      if (r._id) {
+        counts[r._id as string] = r.count as number;
+      }
     }
     return counts;
   }
@@ -121,28 +123,29 @@ export class MongoLeadRepository implements LeadRepository {
   }
 
   private map(doc: LeadDocument): LeadRecord {
+    const raw = (doc.toObject ? doc.toObject() : doc) as any;
     return {
-      id: doc.id as string,
-      companyName: doc.companyName,
-      contactName: doc.contactName,
-      contactEmail: doc.contactEmail,
-      contactPhone: doc.contactPhone,
-      jobTitle: doc.jobTitle,
-      status: doc.status,
-      source: doc.source,
-      priority: doc.priority,
-      estimatedValue: doc.estimatedValue,
-      currency: doc.currency,
-      notes: doc.notes,
-      assignedToUserId: doc.assignedToUserId?.toString(),
-      assignedToEmail: doc.assignedToEmail,
-      tags: doc.tags,
-      lastContactedAt: doc.lastContactedAt,
-      nextFollowUpAt: doc.nextFollowUpAt,
-      createdByUserId: doc.createdByUserId.toString(),
-      createdByEmail: doc.createdByEmail,
-      createdAt: doc.createdAt,
-      updatedAt: doc.updatedAt,
+      id: (doc.id as string) || doc._id?.toString() || '',
+      companyName: doc.companyName || raw.companyName || raw.company || raw.title || 'Unknown Company',
+      contactName: doc.contactName || raw.contactName || 'Unknown Contact',
+      contactEmail: doc.contactEmail || raw.contactEmail || '',
+      contactPhone: doc.contactPhone || raw.contactPhone || raw.phone,
+      jobTitle: doc.jobTitle || raw.jobTitle,
+      status: (doc.status || raw.status || raw.stage || LeadStatus.NEW) as LeadStatus,
+      source: (doc.source || raw.source || LeadSource.WEBSITE) as LeadSource,
+      priority: (doc.priority || raw.priority || LeadPriority.MEDIUM) as LeadPriority,
+      estimatedValue: doc.estimatedValue ?? raw.estimatedValue ?? raw.dealValue,
+      currency: doc.currency || raw.currency || 'USD',
+      notes: doc.notes || raw.notes,
+      assignedToUserId: doc.assignedToUserId?.toString() || raw.assignedToUserId?.toString() || raw.assignedTo,
+      assignedToEmail: doc.assignedToEmail || raw.assignedToEmail || raw.assignedToName,
+      tags: doc.tags || raw.tags || [],
+      lastContactedAt: doc.lastContactedAt || raw.lastContactedAt || raw.lastContactAt,
+      nextFollowUpAt: doc.nextFollowUpAt || raw.nextFollowUpAt,
+      createdByUserId: doc.createdByUserId?.toString() || raw.createdByUserId?.toString() || raw.organizationId?.toString() || 'system',
+      createdByEmail: doc.createdByEmail || raw.createdByEmail || 'system@alsm.io',
+      createdAt: doc.createdAt || raw.createdAt || new Date(),
+      updatedAt: doc.updatedAt || raw.updatedAt || new Date(),
     };
   }
 }
