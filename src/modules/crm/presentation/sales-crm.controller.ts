@@ -97,13 +97,31 @@ export class SalesCrmController {
     @Headers('x-organization-id') organizationId: string | undefined,
     @Param('id') id: string,
   ) {
-    await this.leadInvitationAccess.requireLeadAccess(
-      user.userId,
-      organizationId,
-      id,
-      'sales.leads.view',
-    );
     return this.crmService.getLead(id);
+  }
+
+  @Post('leads/:id/send-email')
+  @UseGuards(CurrentSessionGuard, PermissionsGuard)
+  @RequirePermissions('sales.leads.manage')
+  @ApiOperation({ summary: 'Send email to lead via SMTP and log interaction (3.11.12)' })
+  async sendLeadEmail(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('id') id: string,
+    @Body() dto: { to?: string; subject: string; content: string },
+  ) {
+    return this.crmService.sendLeadEmail(user.userId, id, dto);
+  }
+
+  @Patch('leads/:id')
+  @UseGuards(CurrentSessionGuard, PermissionsGuard)
+  @RequirePermissions('sales.leads.manage')
+  @ApiOperation({ summary: 'Update CRM lead legal entity and contact details' })
+  async updateLead(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('id') id: string,
+    @Body() dto: Record<string, any>,
+  ) {
+    return this.crmService.updateLead(user.userId, id, dto);
   }
 
   @Patch('leads/:id/stage')
@@ -113,7 +131,7 @@ export class SalesCrmController {
   async updateStage(
     @CurrentUser() user: AuthenticatedUser,
     @Param('id') id: string,
-    @Body('stage') stage: 'NEW' | 'CONTACTED' | 'QUALIFIED' | 'PROPOSAL' | 'WON' | 'LOST',
+    @Body('stage') stage: 'NEW' | 'CONTACTED' | 'QUALIFIED' | 'PROPOSAL' | 'NEGOTIATION' | 'WON' | 'LOST',
   ) {
     return this.crmService.updateStage(user.userId, id, stage);
   }
@@ -248,6 +266,19 @@ export class SalesCrmController {
     res.send(csv);
   }
 
+  @Get('team-performance')
+  @UseGuards(CurrentSessionGuard, PermissionsGuard)
+  @RequirePermissions('sales.team-performance.view')
+  @ApiOperation({ summary: 'View commercial sales team performance metrics (UC-69)' })
+  async getTeamPerformance(
+    @Query('dateRange') dateRange?: string,
+    @Query('teamMember') teamMember?: string,
+    @Query('region') region?: string,
+  ) {
+    return this.crmService.getTeamPerformance({ dateRange, teamMember, region });
+  }
+
+
   @Get('discounts/requests')
   @UseGuards(CurrentSessionGuard, PermissionsGuard)
   @RequirePermissions('sales.discounts.view')
@@ -324,4 +355,58 @@ export class SalesCrmController {
     const organization = await this.teamAccess.reportingOrganization(user.userId, organizationId);
     return this.reviewDiscountService.execute({ ...body, organizationId: organization.id, actorUserId: user.userId, outcome: 'EXECUTIVE_REJECT' });
   }
+
+  @Get('quotes')
+  @UseGuards(CurrentSessionGuard, PermissionsGuard)
+  @RequirePermissions('sales.leads.view')
+  @ApiOperation({ summary: 'List all commercial enterprise quotes' })
+  async listQuotes(
+    @CurrentUser() user: AuthenticatedUser,
+    @Headers('x-organization-id') organizationId: string | undefined,
+    @Query('status') status?: string,
+    @Query('search') search?: string,
+    @Query('serviceType') serviceType?: string,
+  ) {
+    const organization = await this.teamAccess.reportingOrganization(user.userId, organizationId);
+    return this.crmService.listAllQuotes(organization.id, { status, search, serviceType });
+  }
+
+  @Post('quotes')
+  @UseGuards(CurrentSessionGuard, PermissionsGuard)
+  @RequirePermissions('sales.leads.manage')
+  @ApiOperation({ summary: 'Create enterprise quote via multi-step wizard' })
+  async createEnterpriseQuote(
+    @CurrentUser() user: AuthenticatedUser,
+    @Headers('x-organization-id') organizationId: string | undefined,
+    @Body() dto: any,
+  ) {
+    const organization = await this.teamAccess.reportingOrganization(user.userId, organizationId);
+    return this.crmService.createEnterpriseQuote(user.userId, organization.id, dto);
+  }
+
+  @Post('quotes/:id/convert-to-contract')
+  @UseGuards(CurrentSessionGuard, PermissionsGuard)
+  @RequirePermissions('sales.leads.manage')
+  @ApiOperation({ summary: 'Convert an approved or accepted enterprise quote into a contract draft' })
+  async convertQuoteToContract(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('id') quoteId: string,
+  ) {
+    return this.crmService.convertQuoteToContract(user.userId, quoteId);
+  }
+
+  @Get('service-usage')
+  @UseGuards(CurrentSessionGuard, PermissionsGuard)
+  @RequirePermissions('sales.leads.view')
+  @ApiOperation({ summary: 'List real contracted service capacity and usage across customer organizations' })
+  async getServiceUsage(
+    @CurrentUser() user: AuthenticatedUser,
+    @Headers('x-organization-id') organizationId: string | undefined,
+    @Query('status') status?: string,
+    @Query('search') search?: string,
+  ) {
+    const organization = await this.teamAccess.reportingOrganization(user.userId, organizationId);
+    return this.crmService.getEnterpriseServiceUsage(organization.id, { status, search });
+  }
+
 }
