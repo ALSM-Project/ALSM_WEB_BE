@@ -33,8 +33,14 @@ export class MongoMeetingRepository implements MeetingRepository {
   }
 
   async findById(id: string): Promise<MeetingRecord | null> {
-    if (!id || !id.match(/^[a-f\d]{24}$/i)) return null;
-    const doc = await this.model.findById(id).exec();
+    if (!id) return null;
+    let doc: MeetingDocument | null = null;
+    if (id.match(/^[a-f\d]{24}$/i)) {
+      doc = await this.model.findById(id).exec();
+    }
+    if (!doc) {
+      doc = await this.model.findOne({ _id: id }).exec();
+    }
     return doc ? this.map(doc) : null;
   }
 
@@ -72,6 +78,34 @@ export class MongoMeetingRepository implements MeetingRepository {
     ]);
 
     return { items: docs.map((d) => this.map(d)), total };
+  }
+
+  async update(id: string, input: any): Promise<MeetingRecord | null> {
+    if (!id) return null;
+    const filter = id.match(/^[a-f\d]{24}$/i) ? { _id: id } : { _id: id };
+    const updateData: Record<string, unknown> = {};
+    if (input.title !== undefined) updateData.title = input.title;
+    if (input.description !== undefined) updateData.description = input.description;
+    if (input.meetingUrl !== undefined) updateData.meetingUrl = input.meetingUrl;
+    if (input.meetingCode !== undefined) updateData.meetingCode = input.meetingCode;
+    if (input.calendarEventId !== undefined) updateData.calendarEventId = input.calendarEventId;
+    if (input.projectId !== undefined) updateData.projectId = input.projectId;
+    if (input.attendeeEmails !== undefined) {
+      updateData.attendeeEmails = (input.attendeeEmails as string[]).map((e) => e.toLowerCase());
+    }
+    if (input.scheduledStartTime !== undefined) updateData.scheduledStartTime = input.scheduledStartTime;
+    if (input.scheduledEndTime !== undefined) updateData.scheduledEndTime = input.scheduledEndTime;
+    if (input.status !== undefined) updateData.status = input.status;
+
+    const doc = await this.model.findOneAndUpdate(filter, { $set: updateData }, { new: true }).exec();
+    return doc ? this.map(doc) : null;
+  }
+
+  async delete(id: string): Promise<boolean> {
+    if (!id) return false;
+    const filter = id.match(/^[a-f\d]{24}$/i) ? { _id: id } : { _id: id };
+    const res = await this.model.findOneAndDelete(filter).exec();
+    return Boolean(res);
   }
 
   private map(doc: MeetingDocument): MeetingRecord {
