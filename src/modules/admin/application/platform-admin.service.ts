@@ -76,7 +76,10 @@ export class PlatformAdminService {
 
   // ─── 3.13.2 View Organisation Details ───────────────────────────
   async getOrganizationDetails(id: string) {
-    const org = await this.findOrgById(id);
+    if (!id || !id.trim()) {
+      throw new BadRequestException('Organization ID cannot be empty');
+    }
+    const org = await this.findOrgById(id.trim());
     const orgObjId = toValidObjectId(id);
 
     const projectCount = await this.projectModel.countDocuments({
@@ -104,6 +107,25 @@ export class PlatformAdminService {
       };
     });
 
+    // Populate projects list
+    const projects = await this.projectModel
+      .find({
+        organizationId: { $in: [orgObjId, id] },
+        deletedAt: { $exists: false },
+      })
+      .sort({ createdAt: -1 })
+      .limit(10)
+      .exec();
+
+    const populatedProjects = projects.map((p) => ({
+      id: p.id || p._id.toString(),
+      name: p.name,
+      conversionType: p.conversionType,
+      status: p.status,
+      isDemo: Boolean(p.isDemo),
+      createdAt: p.createdAt,
+    }));
+
     return {
       id: org.id || org._id.toString(),
       name: org.name,
@@ -116,6 +138,13 @@ export class PlatformAdminService {
       limits: org.limits,
       projectCount,
       conversionJobCount: jobCount,
+      usageStats: {
+        totalScreensConverted: jobCount,
+        activeProjects: projectCount,
+        storageUsedGb: 0,
+        conversionsThisMonth: jobCount,
+      },
+      projects: populatedProjects,
       members: populatedMembers,
       createdAt: org.createdAt,
       updatedAt: org.updatedAt,
