@@ -3,6 +3,7 @@ import {
   ConflictException,
   ForbiddenException,
   NotFoundException,
+  ServiceUnavailableException,
 } from '@nestjs/common';
 import { Test, TestingModule } from '@nestjs/testing';
 import { validate } from 'class-validator';
@@ -38,6 +39,9 @@ describe('UC-32: Enterprise Quote Request', () => {
   let subscriptionRepo: {
     findActiveByUser: jest.Mock;
     findLatestByUser: jest.Mock;
+    updatePlan: jest.Mock;
+    updateStatus: jest.Mock;
+    create: jest.Mock;
   };
   let invoiceRepo: {
     findRecentByUser: jest.Mock;
@@ -71,6 +75,7 @@ describe('UC-32: Enterprise Quote Request', () => {
   };
 
   beforeEach(async () => {
+    jest.clearAllMocks();
     quoteRequestRepo = {
       findPendingByUser: jest.fn(),
       findLatestByUser: jest.fn(),
@@ -90,6 +95,9 @@ describe('UC-32: Enterprise Quote Request', () => {
         planTier: PlanTier.PROFESSIONAL,
         status: 'ACTIVE',
       }),
+      updatePlan: jest.fn().mockResolvedValue({ id: 'sub-1', planTier: PlanTier.ENTERPRISE, status: 'ACTIVE' }),
+      updateStatus: jest.fn().mockResolvedValue({ id: 'sub-1', planTier: PlanTier.ENTERPRISE, status: 'ACTIVE' }),
+      create: jest.fn().mockResolvedValue({ id: 'sub-enterprise', planTier: PlanTier.ENTERPRISE, status: 'ACTIVE' }),
     };
     invoiceRepo = {
       findRecentByUser: jest.fn(),
@@ -245,6 +253,101 @@ describe('UC-32: Enterprise Quote Request', () => {
 
       expect(quoteRequestRepo.create).not.toHaveBeenCalled();
     });
+
+    it('trims submitted values and accepts a request at the 1000 character message limit', async () => {
+      quoteRequestRepo.findPendingByUser.mockResolvedValue(null);
+      quoteRequestRepo.create.mockImplementation(async (request) => ({ id: 'quote-trimmed', ...request }));
+
+      await service.requestEnterpriseQuote(mockUser, {
+        fullName: '  Jane Doe  ',
+        companyName: '  ACME Enterprise  ',
+        email: ' jane@acme.com ',
+        phone: '  +84901234567  ',
+        message: ` ${'x'.repeat(1000)} `,
+      });
+
+      expect(quoteRequestRepo.create).toHaveBeenCalledWith(expect.objectContaining({
+        fullName: 'Jane Doe',
+        companyName: 'ACME Enterprise',
+        email: 'jane@acme.com',
+        phone: '+84901234567',
+        message: 'x'.repeat(1000),
+      }));
+    });
+
+    it.each([
+      ['one-character name', { fullName: 'J', companyName: 'ACME', email: 'jane@acme.com' }],
+      ['blank name', { fullName: '  ', companyName: 'ACME', email: 'jane@acme.com' }],
+      ['blank company', { fullName: 'Jane Doe', companyName: '  ', email: 'jane@acme.com' }],
+      ['blank email', { fullName: 'Jane Doe', companyName: 'ACME', email: '  ' }],
+      ['message over limit', { fullName: 'Jane Doe', companyName: 'ACME', email: 'jane@acme.com', message: 'x'.repeat(1001) }],
+    ])('rejects invalid %s before creating a request', async (_label, dto) => {
+      await expect(service.requestEnterpriseQuote(mockUser, dto)).rejects.toThrow(BadRequestException);
+      expect(quoteRequestRepo.findPendingByUser).not.toHaveBeenCalled();
+      expect(quoteRequestRepo.create).not.toHaveBeenCalled();
+    });
+
+    it('allows an organization admin to submit the request', async () => {
+      organizationContext.resolve.mockResolvedValueOnce({
+        id: 'org-123',
+        members: [{ userId: 'user-123', role: OrganizationRole.ADMIN }],
+      });
+      quoteRequestRepo.findPendingByUser.mockResolvedValue(null);
+      quoteRequestRepo.create.mockImplementation(async (request) => ({ id: 'quote-admin', ...request }));
+
+      const result = await service.requestEnterpriseQuote(mockUser, {
+        fullName: 'Jane Doe', companyName: 'ACME', email: 'jane@acme.com',
+      });
+
+      expect(result.id).toBe('quote-admin');
+      expect(quoteRequestRepo.create).toHaveBeenCalledWith(expect.objectContaining({ organizationId: 'org-123' }));
+    });
+
+    it.each([OrganizationRole.MEMBER, OrganizationRole.VIEWER])(
+      'denies organization role %s from requesting a migration quote', async (role) => {
+        organizationContext.resolve.mockResolvedValueOnce({
+          id: 'org-123',
+          members: [{ userId: 'user-123', role }],
+        });
+        quoteRequestRepo.findPendingByUser.mockResolvedValue(null);
+
+        await expect(service.requestEnterpriseQuote(mockUser, {
+          fullName: 'Jane Doe', companyName: 'ACME', email: 'jane@acme.com',
+        })).rejects.toThrow(ForbiddenException);
+        expect(quoteRequestRepo.create).not.toHaveBeenCalled();
+      },
+    );
+
+    it('rejects an account that already has an active Enterprise subscription', async () => {
+      quoteRequestRepo.findPendingByUser.mockResolvedValue(null);
+      subscriptionRepo.findLatestByUser.mockResolvedValue({
+        id: 'sub-enterprise', planTier: PlanTier.ENTERPRISE, status: 'ACTIVE',
+      });
+
+      await expect(service.requestEnterpriseQuote(mockUser, {
+        fullName: 'Jane Doe', companyName: 'ACME', email: 'jane@acme.com',
+      })).rejects.toThrow(ConflictException);
+      expect(organizationContext.resolve).not.toHaveBeenCalled();
+      expect(quoteRequestRepo.create).not.toHaveBeenCalled();
+    });
+
+    it('maps a duplicate-key race to a duplicate request conflict', async () => {
+      quoteRequestRepo.findPendingByUser.mockResolvedValue(null);
+      quoteRequestRepo.create.mockRejectedValue({ code: 11000 });
+
+      await expect(service.requestEnterpriseQuote(mockUser, {
+        fullName: 'Jane Doe', companyName: 'ACME', email: 'jane@acme.com',
+      })).rejects.toThrow(ConflictException);
+    });
+
+    it('surfaces request repository failures without persisting a false success', async () => {
+      quoteRequestRepo.findPendingByUser.mockResolvedValue(null);
+      quoteRequestRepo.create.mockRejectedValue(new Error('database unavailable'));
+
+      await expect(service.requestEnterpriseQuote(mockUser, {
+        fullName: 'Jane Doe', companyName: 'ACME', email: 'jane@acme.com',
+      })).rejects.toThrow('database unavailable');
+    });
   });
 
   describe('BillingController.requestEnterpriseQuote', () => {
@@ -386,6 +489,23 @@ describe('UC-32: Enterprise Quote Request', () => {
       expect(result.items.length).toBe(1);
       expect(result.total).toBe(1);
     });
+
+    it.each([
+      [{ page: 0 }, 'page'],
+      [{ page: 1.5 }, 'page'],
+      [{ limit: 0 }, 'limit'],
+      [{ limit: 101 }, 'limit'],
+      [{ limit: 1.5 }, 'limit'],
+    ])('rejects invalid pagination %s', async (filters, _field) => {
+      await expect(service.listQuoteRequests(adminUser, filters)).rejects.toThrow(BadRequestException);
+      expect(quoteRequestRepo.findAll).not.toHaveBeenCalled();
+    });
+
+    it('accepts the maximum page size of 100', async () => {
+      quoteRequestRepo.findAll.mockResolvedValue({ items: [], total: 0 });
+      await service.listQuoteRequests(adminUser, { page: 1, limit: 100 });
+      expect(quoteRequestRepo.findAll).toHaveBeenCalledWith({ page: 1, limit: 100 }, 1, 100);
+    });
   });
 
   describe('Admin: updateQuoteRequestStatus', () => {
@@ -429,6 +549,57 @@ describe('UC-32: Enterprise Quote Request', () => {
         QuoteRequestStatus.PENDING,
       );
       expect(result.status).toBe(QuoteRequestStatus.CONTACTED);
+    });
+
+    it('approves a pending request and upgrades the existing subscription inside a transaction', async () => {
+      subscriptionRepo.findActiveByUser.mockResolvedValueOnce({
+        id: 'sub-1', userId: 'user-123', organizationId: 'org-123', planTier: PlanTier.PROFESSIONAL,
+      });
+      quoteRequestRepo.findById.mockResolvedValue({
+        id: validQuoteId,
+        userId: 'user-123',
+        organizationId: 'org-123',
+        status: QuoteRequestStatus.PENDING,
+      });
+      quoteRequestRepo.updateStatus.mockResolvedValue({ id: validQuoteId, status: QuoteRequestStatus.APPROVED });
+
+      const result = await service.updateQuoteRequestStatus(adminUser, validQuoteId, QuoteRequestStatus.APPROVED);
+
+      expect(subscriptionRepo.updatePlan).toHaveBeenCalledWith('sub-1', expect.objectContaining({
+        planTier: PlanTier.ENTERPRISE,
+        status: 'ACTIVE',
+        amountVnd: 0,
+      }), mockSession);
+      expect(quoteRequestRepo.updateStatus).toHaveBeenCalledWith(
+        validQuoteId, QuoteRequestStatus.APPROVED, undefined, mockSession, QuoteRequestStatus.PENDING,
+      );
+      expect(result.status).toBe(QuoteRequestStatus.APPROVED);
+      expect(mockSession.withTransaction).toHaveBeenCalled();
+      expect(mockSession.endSession).toHaveBeenCalled();
+    });
+
+    it('does not update the request if Enterprise subscription activation fails', async () => {
+      subscriptionRepo.findActiveByUser.mockResolvedValueOnce({
+        id: 'sub-1', userId: 'user-123', organizationId: 'org-123', planTier: PlanTier.PROFESSIONAL,
+      });
+      quoteRequestRepo.findById.mockResolvedValue({
+        id: validQuoteId,
+        userId: 'user-123',
+        organizationId: 'org-123',
+        status: QuoteRequestStatus.PENDING,
+      });
+      subscriptionRepo.updatePlan.mockRejectedValue(new Error('subscription repository unavailable'));
+
+      await expect(service.updateQuoteRequestStatus(adminUser, validQuoteId, QuoteRequestStatus.APPROVED))
+        .rejects.toThrow(ServiceUnavailableException);
+      expect(quoteRequestRepo.updateStatus).not.toHaveBeenCalled();
+      expect(mockSession.endSession).toHaveBeenCalled();
+    });
+
+    it('rejects malformed request ids without opening a transaction', async () => {
+      await expect(service.updateQuoteRequestStatus(adminUser, 'bad-id', QuoteRequestStatus.APPROVED))
+        .rejects.toThrow(BadRequestException);
+      expect(mockConnection.startSession).not.toHaveBeenCalled();
     });
 
     it('should throw BadRequestException on invalid transition from CONTACTED to PENDING', async () => {

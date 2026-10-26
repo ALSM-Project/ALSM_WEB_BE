@@ -40,6 +40,11 @@ import { MongoMeetingRepository } from './modules/meetings/infrastructure/mongo-
 import { CreateMeetingService } from './modules/meetings/application/create-meeting.service';
 import { ListMeetingsService } from './modules/meetings/application/list-meetings.service';
 import { MeetingController } from './modules/meetings/presentation/meeting.controller';
+import { Lead, LeadSchema } from './modules/leads/infrastructure/lead.schema';
+import { LEAD_REPOSITORY } from './modules/leads/domain/lead.types';
+import { MongoLeadRepository } from './modules/leads/infrastructure/mongo-lead.repository';
+import { ListLeadsService } from './modules/leads/application/list-leads.service';
+import { LeadController } from './modules/leads/presentation/lead.controller';
 import { MailService } from './shared/mail/mail.service';
 import { GoogleCalendarService } from './shared/google/google-calendar.service';
 import { ErrorLog, ErrorLogSchema } from './modules/conversions/infrastructure/error-log.schema';
@@ -235,6 +240,7 @@ import { QualityReviewController } from './modules/conversions/presentation/qual
       { name: FieldMapping.name, schema: FieldMappingSchema },
       { name: MethodMapping.name, schema: MethodMappingSchema },
       { name: Meeting.name, schema: MeetingSchema },
+      { name: Lead.name, schema: LeadSchema },
       { name: ErrorLog.name, schema: ErrorLogSchema },
       { name: ScreenDocument.name, schema: ConversionScreenSchema },
       { name: Screen.name, schema: ScreenSchema },
@@ -259,6 +265,7 @@ import { QualityReviewController } from './modules/conversions/presentation/qual
     FieldMappingController,
     MethodMappingController,
     MeetingController,
+    LeadController,
     UsersController,
     ExportController,
     ErrorLogController,
@@ -354,6 +361,8 @@ import { QualityReviewController } from './modules/conversions/presentation/qual
     { provide: MEETING_REPOSITORY, useClass: MongoMeetingRepository },
     CreateMeetingService,
     ListMeetingsService,
+    { provide: LEAD_REPOSITORY, useClass: MongoLeadRepository },
+    ListLeadsService,
     MailService,
     GoogleCalendarService,
     { provide: ERROR_LOG_REPOSITORY, useExisting: MongoErrorLogRepository },
