@@ -13,4 +13,15 @@ export class AuditLog {
   @Prop({ type: Object }) metadata?: Record<string, string>;
 }
 export const AuditLogSchema = SchemaFactory.createForClass(AuditLog);
+
+// ─── Indexes ──────────────────────────────────────────────────────
+// Primary listing sort & org-scoped queries
 AuditLogSchema.index({ organizationId: 1, createdAt: -1 });
+// Filter by actor
+AuditLogSchema.index({ actorUserId: 1, createdAt: -1 });
+// Filter by action type
+AuditLogSchema.index({ action: 1, createdAt: -1 });
+// Filter by resource type + id
+AuditLogSchema.index({ resourceType: 1, resourceId: 1, createdAt: -1 });
+// Global chronological listing (admin view)
+AuditLogSchema.index({ createdAt: -1 });
