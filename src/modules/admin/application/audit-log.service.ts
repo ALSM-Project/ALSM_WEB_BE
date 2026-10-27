@@ -1,6 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { FilterQuery, Model } from 'mongoose';
+import PDFDocument from 'pdfkit';
 import { AuditLog, AuditLogDocument } from '../../audit/infrastructure/audit-log.schema';
 
 export interface AuditLogListQuery {
@@ -76,5 +77,61 @@ export class AuditLogService {
     });
 
     return headers + rows.join('\n');
+  }
+
+  async exportPdf(): Promise<Buffer> {
+    const logs = await this.auditModel
+      .find()
+      .populate('actorUserId', 'fullName email')
+      .sort({ createdAt: -1 })
+      .limit(1000)
+      .exec();
+
+    const doc = new PDFDocument({ size: 'A4', layout: 'landscape', margin: 24 });
+    const chunks: Buffer[] = [];
+    doc.on('data', (chunk: Buffer) => chunks.push(chunk));
+
+    doc.fontSize(14).text('Audit Logs', { align: 'center' });
+    doc.moveDown(0.5);
+
+    const columns = ['Timestamp', 'Actor', 'Action', 'ResourceType', 'ResourceId', 'IP Address'];
+    const colWidths = [120, 120, 140, 100, 100, 90];
+    const startX = doc.page.margins.left;
+    let y = doc.y;
+
+    columns.forEach((col, i) => {
+      const x = startX + colWidths.slice(0, i).reduce((a, b) => a + b, 0);
+      doc.font('Helvetica-Bold').fontSize(8).text(col, x, y, { width: colWidths[i] });
+    });
+    doc.font('Helvetica').fontSize(7);
+    y += 18;
+
+    for (const l of logs) {
+      const actor = l.actorUserId as unknown as { fullName?: string; email?: string } | undefined;
+      const actorStr = actor?.fullName || actor?.email || String(l.actorUserId || 'SYSTEM');
+      const row = [
+        l.createdAt ? (l.createdAt as Date).toISOString() : '',
+        actorStr,
+        l.action,
+        l.resourceType,
+        l.resourceId || '',
+        l.ipAddress || '',
+      ];
+
+      if (y > doc.page.height - 40) {
+        doc.addPage();
+        y = doc.y;
+      }
+
+      row.forEach((cell, i) => {
+        const x = startX + colWidths.slice(0, i).reduce((a, b) => a + b, 0);
+        doc.text(cell, x, y, { width: colWidths[i], height: 12, ellipsis: true });
+      });
+      y += 14;
+    }
+
+    doc.end();
+    await new Promise<void>((resolve) => doc.on('end', () => resolve()));
+    return Buffer.concat(chunks);
   }
 }

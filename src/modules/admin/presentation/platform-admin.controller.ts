@@ -215,4 +215,14 @@ export class PlatformAdminController {
     res.setHeader('Content-Disposition', 'attachment; filename="audit-logs.csv"');
     res.send(csv);
   }
+
+  @Get('audit-logs/export/pdf')
+  @RequirePermissions('audit.view')
+  @ApiOperation({ summary: 'Export audit logs to PDF (3.13.10)' })
+  async exportAuditLogsPdf(@Res() res: Response) {
+    const pdf = await this.auditLogService.exportPdf();
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('Content-Disposition', 'attachment; filename="audit-logs.pdf"');
+    res.send(pdf);
+  }
 }
