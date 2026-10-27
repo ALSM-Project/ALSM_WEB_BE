@@ -6,6 +6,7 @@ import { JwtAuthGuard } from '../../../shared/security/jwt-auth.guard';
 import { AuthenticatedUser } from '../../../shared/logging/request-id.middleware';
 import { PlatformAdminService } from '../application/platform-admin.service';
 import { LockUserService } from '../application/lock-user.service';
+import { AuditLogService } from '../application/audit-log.service';
 import { RequirePermissions } from '../../../shared/security/require-permissions.decorator';
 import { CheckOffboardingTransfer, DisabledSupportImpersonation, PlatformAdminAuthorizationGuard } from './platform-admin-authorization.guard';
 
@@ -19,6 +20,7 @@ export class PlatformAdminController {
   constructor(
     private readonly adminService: PlatformAdminService,
     private readonly lockUserService: LockUserService,
+    private readonly auditLogService: AuditLogService,
   ) {}
 
   @Get('organizations')
@@ -188,7 +190,7 @@ export class PlatformAdminController {
     @Query('action') action?: string,
     @Query('resourceType') resourceType?: string,
   ) {
-    return this.adminService.listAuditLogs({
+    return this.auditLogService.list({
       page: page ? parseInt(page, 10) : 1,
       limit: limit ? parseInt(limit, 10) : 20,
       action,
@@ -200,7 +202,7 @@ export class PlatformAdminController {
   @RequirePermissions('audit.view')
   @ApiOperation({ summary: 'Export audit logs to CSV (3.13.10)' })
   async exportAuditLogs(@Res() res: Response) {
-    const csv = await this.adminService.exportAuditLogsCsv();
+    const csv = await this.auditLogService.exportCsv();
     res.setHeader('Content-Type', 'text/csv');
     res.setHeader('Content-Disposition', 'attachment; filename="audit-logs.csv"');
     res.send(csv);
