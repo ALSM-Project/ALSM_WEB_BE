@@ -189,12 +189,20 @@ export class PlatformAdminController {
     @Query('limit') limit?: string,
     @Query('action') action?: string,
     @Query('resourceType') resourceType?: string,
+    @Query('resourceId') resourceId?: string,
+    @Query('actorUserId') actorUserId?: string,
+    @Query('from') from?: string,
+    @Query('to') to?: string,
   ) {
     return this.auditLogService.list({
       page: page ? parseInt(page, 10) : 1,
       limit: limit ? parseInt(limit, 10) : 20,
       action,
       resourceType,
+      resourceId,
+      actorUserId,
+      from,
+      to,
     });
   }
 

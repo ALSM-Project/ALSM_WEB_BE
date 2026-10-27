@@ -8,6 +8,10 @@ export interface AuditLogListQuery {
   limit?: number;
   action?: string;
   resourceType?: string;
+  resourceId?: string;
+  actorUserId?: string;
+  from?: string;
+  to?: string;
 }
 
 // UC 3.13.10 — View Audit Logs.
@@ -26,6 +30,14 @@ export class AuditLogService {
     const filter: FilterQuery<AuditLogDocument> = {};
     if (query?.action) filter.action = new RegExp(query.action, 'i');
     if (query?.resourceType) filter.resourceType = query.resourceType;
+    if (query?.resourceId) filter.resourceId = query.resourceId;
+    if (query?.actorUserId) filter.actorUserId = query.actorUserId;
+
+    if (query?.from || query?.to) {
+      filter.createdAt = {};
+      if (query?.from) filter.createdAt.$gte = new Date(query.from);
+      if (query?.to) filter.createdAt.$lte = new Date(query.to);
+    }
 
     const [items, total] = await Promise.all([
       this.auditModel
