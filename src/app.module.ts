@@ -219,6 +219,7 @@ import { ExportController } from './modules/conversions/presentation/export.cont
 import { PartnerExportController } from './modules/conversions/presentation/partner-export.controller';
 import { SupportPatchController } from './modules/conversions/presentation/support-patch.controller';
 import { ConversionSupportPatchService } from './modules/conversions/application/conversion-support-patch.service';
+import { SupportPatchApplier } from './modules/conversions/application/support-patch-applier.service';
 import {
   SupportPatch,
   SupportPatchSchema,
@@ -479,6 +480,7 @@ import { AuditModule } from './modules/audit/audit.module';
     ExportCodeService,
     PartnerBundleService,
     ConversionSupportPatchService,
+    SupportPatchApplier,
     { provide: SUPPORT_PATCH_REPOSITORY, useClass: MongoSupportPatchRepository },
     PublishPartnerExportService,
     { provide: EXPORT_BUNDLE_REPOSITORY, useClass: MongoExportBundleRepository },

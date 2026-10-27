@@ -1,4 +1,4 @@
-import { Inject, Injectable, Logger } from '@nestjs/common';
+import { Inject, Injectable, Logger, Optional } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import * as fs from 'fs';
 import * as os from 'os';
@@ -12,6 +12,7 @@ import {
   ErrorLogStatus,
 } from '../domain/error-log.types';
 import { runConversionTool } from './conversion-tool-runner.util';
+import { SupportPatchApplier } from '../application/support-patch-applier.service';
 
 const SCRIPT_BY_EXTENSION: Record<string, { script: string; flag: string }> = {
   '.bms': { script: 'bms2react.py', flag: '-bms' },
@@ -27,6 +28,7 @@ export class BmsDspfConversionAdapter {
     private readonly config: ConfigService,
     @Inject(STORAGE_PORT) private readonly storage: StoragePort,
     @Inject(ERROR_LOG_REPOSITORY) private readonly errorLogs: ErrorLogRepository,
+    @Optional() private readonly supportPatches?: SupportPatchApplier,
   ) {}
 
   async execute(input: ConversionEngineInput): Promise<ConversionEngineOutput> {
@@ -92,12 +94,16 @@ export class BmsDspfConversionAdapter {
 
       await this.recordFailedFiles(input, sourceFiles, extensions, generatedComponents);
 
-      const files = await Promise.all(
+      const generated = await Promise.all(
         outputFiles.map(async (name) => ({
           relativePath: name,
           content: await fs.promises.readFile(path.join(outDir, name)),
         })),
       );
+      // A job re-run after a support patch gets the corrected field mapping applied here.
+      const files = this.supportPatches
+        ? await this.supportPatches.applyToScreenOutput(input, generated)
+        : generated;
       const resultReference = await this.storage.writeFiles(
         `results/${input.projectId}/${input.conversionJobId}`,
         files,
