@@ -49,6 +49,7 @@ import { JwtModule } from '@nestjs/jwt';
 import { getConnectionToken, getModelToken, MongooseModule } from '@nestjs/mongoose';
 import { environmentValidationSchema } from './config/environment.validation';
 import { RequestIdMiddleware } from './shared/logging/request-id.middleware';
+import { RequestIpMiddleware } from './shared/logging/request-ip.middleware';
 import { JwtAuthGuard } from './shared/security/jwt-auth.guard';
 import { PermissionsGuard } from './shared/security/permissions.guard';
 import { User, UserSchema } from './modules/users/infrastructure/user.schema';
@@ -587,6 +588,6 @@ import { AuditModule } from './modules/audit/audit.module';
 })
 export class AppModule implements NestModule {
   configure(consumer: MiddlewareConsumer): void {
-    consumer.apply(RequestIdMiddleware).forRoutes('*');
+    consumer.apply(RequestIpMiddleware, RequestIdMiddleware).forRoutes('*');
   }
 }
