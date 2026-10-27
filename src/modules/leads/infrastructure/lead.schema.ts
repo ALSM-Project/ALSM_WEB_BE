@@ -60,6 +60,24 @@ export class Lead {
   @Prop({ required: true, trim: true, lowercase: true })
   createdByEmail!: string;
 
+  @Prop({ type: [Object], default: [] })
+  quotes!: Array<{
+    id: string;
+    quoteNumber: string;
+    planName: string;
+    projectScope?: string;
+    amount: number;
+    discountPercent?: number;
+    discountApproved?: boolean;
+    discountReason?: string;
+    status: 'DRAFT' | 'PENDING_APPROVAL' | 'SENT' | 'ACCEPTED' | 'REJECTED';
+    recipientEmail?: string;
+    expiresAt?: Date;
+    sentAt?: Date;
+    pdfUrl?: string;
+    createdAt: Date;
+  }>;
+
   createdAt!: Date;
   updatedAt!: Date;
 }

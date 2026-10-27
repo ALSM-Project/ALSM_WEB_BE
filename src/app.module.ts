@@ -89,6 +89,7 @@ import { LEAD_REPOSITORY as UC58_LEAD_REPOSITORY } from './modules/leads/domain/
 import { MongoLeadRepository as MongoUc58LeadRepository } from './modules/leads/infrastructure/mongo-lead.repository';
 import { ListLeadsService } from './modules/leads/application/list-leads.service';
 import { UpdateLeadStatusService } from './modules/leads/application/update-lead-status.service';
+import { SendQuoteService } from './modules/leads/application/send-quote.service';
 import { LeadController } from './modules/leads/presentation/lead.controller';
 import { Partner, PartnerSchema } from './modules/partners/infrastructure/partner.schema';
 import { PARTNER_REPOSITORY } from './modules/partners/domain/partner.types';
@@ -552,6 +553,7 @@ import { AuditModule } from './modules/audit/audit.module';
     { provide: UC58_LEAD_REPOSITORY, useClass: MongoUc58LeadRepository },
     ListLeadsService,
     UpdateLeadStatusService,
+    SendQuoteService,
     MailService,
     GoogleCalendarService,
     { provide: ERROR_LOG_REPOSITORY, useExisting: MongoErrorLogRepository },
