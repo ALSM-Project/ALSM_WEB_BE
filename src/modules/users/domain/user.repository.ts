@@ -37,6 +37,8 @@ export interface UserRepository {
   findById(id: string): Promise<UserRecord | null>;
   updatePassword(id: string, passwordHash: string): Promise<void>;
   markEmailVerified(userId: string): Promise<void>;
+  /** Conditional transition after consumed email proof; null means admission lost. */
+  markEmailVerifiedIfUnverified(userId: string, email: string): Promise<UserRecord | null>;
   updateStatus(id: string, isActive: boolean): Promise<void>;
   clearMustChangePassword(userId: string): Promise<void>;
   findByIdForMfa(id: string): Promise<UserRecord | null>;

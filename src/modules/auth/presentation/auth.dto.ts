@@ -49,7 +49,9 @@ export class VerifyEmailDto {
   @ApiProperty({ example: 'alex@example.com' }) @IsEmail() email!: string;
   @ApiProperty({ example: '123456', description: 'Six-digit OTP code or plain verification token' })
   @IsString()
-  @MinLength(1)
+  @Matches(/^(?:\d{6}|[a-f0-9]{64})$/, {
+    message: 'code must be six digits or a verification token',
+  })
   code!: string;
 }
 

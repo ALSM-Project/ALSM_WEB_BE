@@ -485,11 +485,13 @@ describe('real AdminModule authorization HTTP boundary', () => {
     'expired session',
     'revoked session',
     'inactive account',
+    'locked account',
     'stale session',
   ])('retains 401 for %s', async (state) => {
     if (state === 'expired session') session.expiresAt = new Date(0);
     if (state === 'revoked session') session.revokedAt = new Date();
     if (state === 'inactive account') account.isActive = false;
+    if (state === 'locked account') account.isLocked = true;
     if (state === 'stale session') session.accessVersion = 'rotated';
     const req = request(app.getHttpServer()).get('/api/v1/admin/organizations');
     if (state !== 'missing JWT')
@@ -504,6 +506,15 @@ describe('real AdminModule authorization HTTP boundary', () => {
     expect(rbac.findUserById).not.toHaveBeenCalled();
     noBusinessReads();
   });
+  it.each(routeCases)(
+    'denies a locked persisted admin with signed claims on %s %s',
+    async (method, path) => {
+      account.isLocked = true;
+      expect((await call(method, path, { isPlatformAdmin: true })).status).toBe(401);
+      expect(rbac.findUserById).not.toHaveBeenCalled();
+      noBusinessReads();
+    },
+  );
   it('keeps impersonation unavailable without requiring admin/RBAC availability', async () => {
     account.isPlatformAdmin = false;
     rbac.findUserById.mockRejectedValue(new Error('unavailable'));

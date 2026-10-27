@@ -22,6 +22,7 @@ import { EffectivePermissionsService } from '../../rbac/application/effective-pe
 
 import { EmailVerificationService } from './email-verification.service';
 import { getSessionClientMetadata } from './session-client-metadata';
+import { isAccountAdmitted } from '../domain/account-admission';
 
 export interface AuthTokens {
   accessToken: string;
@@ -87,7 +88,7 @@ export class AuthService {
     const user = await this.users.findByEmail(email.trim().toLowerCase());
     if (
       !user ||
-      !user.isActive ||
+      user.isActive !== true ||
       !user.passwordHash ||
       !(await bcrypt.compare(password, user.passwordHash))
     ) {
@@ -108,24 +109,26 @@ export class AuthService {
         message: 'Your account has been locked. Please contact your administrator.',
       });
     }
+    const tokens = await this.createSessionTokens(user, userAgent);
     await this.audit.append({
       actorUserId: user.id,
       action: 'USER_LOGIN',
       resourceType: 'USER',
       resourceId: user.id,
     });
-    return this.createSessionTokens(user, userAgent);
+    return tokens;
   }
 
   async verifyEmail(email: string, codeOrToken: string, userAgent?: string): Promise<AuthTokens> {
     const user = await this.emailVerificationService.verify(email, codeOrToken);
+    const tokens = await this.createSessionTokens(user, userAgent, true);
     await this.audit.append({
       actorUserId: user.id,
       action: 'USER_EMAIL_VERIFIED',
       resourceType: 'USER',
       resourceId: user.id,
     });
-    return this.createSessionTokens(user, userAgent);
+    return tokens;
   }
 
   async resendVerification(email: string): Promise<void> {
@@ -137,6 +140,7 @@ export class AuthService {
     const email = (payload.email ?? '').trim().toLowerCase();
 
     let user = await this.users.findByEmail(email);
+    const existingUser = !!user;
     if (!user) {
       user = await this.createUserCatchingDuplicate({
         email,
@@ -156,7 +160,7 @@ export class AuthService {
         resourceId: user.id,
       });
     } else {
-      if (!user.isActive) {
+      if (user.isActive !== true) {
         throw new UnauthorizedException({
           code: 'INVALID_CREDENTIALS',
           message: 'Account is inactive',
@@ -171,6 +175,10 @@ export class AuthService {
       if (!user.isEmailVerified) {
         await this.users.markEmailVerified(user.id);
       }
+    }
+
+    const tokens = await this.createSessionTokens(user, userAgent);
+    if (existingUser) {
       await this.audit.append({
         actorUserId: user.id,
         action: 'USER_LOGIN_GOOGLE',
@@ -178,8 +186,7 @@ export class AuthService {
         resourceId: user.id,
       });
     }
-
-    return this.createSessionTokens(user, userAgent);
+    return tokens;
   }
 
   async refresh(refreshToken: string, userAgent?: string): Promise<AuthTokens> {
@@ -207,7 +214,13 @@ export class AuthService {
       }
       if (!matches) throw invalidRefresh();
       const user = await this.users.findById(payload.sub);
-      if (!user || user.id !== payload.sub || !user.isActive) throw invalidRefresh();
+      if (
+        !user ||
+        user.id !== payload.sub ||
+        !isAccountAdmitted(user) ||
+        user.isEmailVerified !== true
+      )
+        throw invalidRefresh();
       const tokenId = randomUUID();
       const familyId = session.familyId ?? randomUUID();
       const tokens = await this.signSessionTokens(user, session.id, tokenId, familyId);
@@ -225,6 +238,14 @@ export class AuthService {
         ...getSessionClientMetadata(userAgent),
       });
       if (!rotated) throw invalidRefresh();
+      try {
+        await this.requireIssuableAccount(user);
+      } catch (error) {
+        // Close the observed lock/rotation race before publishing credentials.
+        await this.sessions.revoke(session.id);
+        if (error instanceof UnauthorizedException) throw invalidRefresh();
+        throw error;
+      }
       // Only a confirmed single-document winner may publish its prepared credentials.
       return tokens;
     } catch (error) {
@@ -279,7 +300,7 @@ export class AuthService {
 
   async me(userId: string) {
     const user = await this.users.findById(userId);
-    if (!user || !user.isActive) {
+    if (!user || user.id !== userId || !isAccountAdmitted(user)) {
       throw new UnauthorizedException({ code: 'UNAUTHORIZED', message: 'User is unavailable' });
     }
 
@@ -330,25 +351,75 @@ export class AuthService {
     }
   }
 
-  private async createSessionTokens(user: UserRecord, userAgent?: string): Promise<AuthTokens> {
-    const tokenId = randomUUID();
-    const familyId = randomUUID();
-    const sessionMetadata = getSessionClientMetadata(userAgent);
-    const lastActiveAt = new Date();
-    const expiresAt = new Date(Date.now() + this.durationMs('JWT_REFRESH_EXPIRES_IN'));
-    const session = await this.sessions.create({
-      tokenId,
-      userId: user.id,
-      refreshTokenHash: 'pending',
-      familyId,
-      accessVersion: tokenId,
-      expiresAt,
-      ...sessionMetadata,
-      lastActiveAt,
-    });
-    const tokens = await this.signSessionTokens(user, session.id, tokenId, familyId);
-    await this.sessions.updateTokenHash(session.id, await bcrypt.hash(tokens.refreshToken, 12));
-    return tokens;
+  private async requireIssuableAccount(
+    proved: UserRecord,
+    emailVerification = false,
+  ): Promise<UserRecord> {
+    const current = await this.users.findById(proved.id);
+    if (
+      !current ||
+      current.id !== proved.id ||
+      current.email !== proved.email ||
+      !isAccountAdmitted(current) ||
+      current.isEmailVerified !== true ||
+      (emailVerification && current.mfa?.enabled !== false)
+    ) {
+      throw new UnauthorizedException({
+        code: 'INVALID_CREDENTIALS',
+        message: 'Account is unavailable',
+      });
+    }
+    return current;
+  }
+
+  private async createSessionTokens(
+    proved: UserRecord,
+    userAgent?: string,
+    emailVerification = false,
+  ): Promise<AuthTokens> {
+    let createdSessionId: string | undefined;
+    try {
+      // Re-read after password/Google/email proof processing; do not sign stale state.
+      const user = await this.requireIssuableAccount(proved, emailVerification);
+      const tokenId = randomUUID();
+      const familyId = randomUUID();
+      const sessionMetadata = getSessionClientMetadata(userAgent);
+      const lastActiveAt = new Date();
+      const expiresAt = new Date(Date.now() + this.durationMs('JWT_REFRESH_EXPIRES_IN'));
+      const session = await this.sessions.create({
+        tokenId,
+        userId: user.id,
+        refreshTokenHash: 'pending',
+        familyId,
+        accessVersion: tokenId,
+        expiresAt,
+        ...sessionMetadata,
+        lastActiveAt,
+      });
+      if (
+        !isSessionId(session.id) ||
+        session.userId !== user.id ||
+        session.tokenId !== tokenId ||
+        session.accessVersion !== tokenId
+      ) {
+        throw new Error('SESSION_CREATION_UNCONFIRMED');
+      }
+      createdSessionId = session.id;
+      const tokens = await this.signSessionTokens(user, session.id, tokenId, familyId);
+      await this.sessions.updateTokenHash(session.id, await bcrypt.hash(tokens.refreshToken, 12));
+      await this.requireIssuableAccount(user, emailVerification);
+      return tokens;
+    } catch (error) {
+      if (createdSessionId) {
+        try {
+          await this.sessions.revoke(createdSessionId);
+        } catch {
+          throw sessionIssuanceUnavailable();
+        }
+      }
+      if (error instanceof UnauthorizedException) throw error;
+      throw sessionIssuanceUnavailable();
+    }
   }
 
   private async signSessionTokens(
@@ -488,6 +559,13 @@ function invalidRefresh(): UnauthorizedException {
   return new UnauthorizedException({
     code: 'INVALID_REFRESH_TOKEN',
     message: 'Refresh token is invalid or revoked',
+  });
+}
+
+function sessionIssuanceUnavailable(): ServiceUnavailableException {
+  return new ServiceUnavailableException({
+    code: 'SESSION_ISSUANCE_UNAVAILABLE',
+    message: 'Session creation could not be confirmed. Please sign in again.',
   });
 }
 
