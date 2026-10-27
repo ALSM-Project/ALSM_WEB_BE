@@ -1,7 +1,8 @@
 import { Injectable } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { FilterQuery, Model } from 'mongoose';
-import PDFDocument from 'pdfkit';
+import * as PDFDoc from 'pdfkit';
+const PDFDocument: typeof PDFDoc = ((PDFDoc as any).default || PDFDoc) as any;
 import { AuditLog, AuditLogDocument } from '../../audit/infrastructure/audit-log.schema';
 
 export interface AuditLogListQuery {

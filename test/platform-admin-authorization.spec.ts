@@ -62,6 +62,7 @@ const routeCases = [
   ['post', 'resources/transfer', 'resources.transfer', 'transferResource'],
   ['get', 'audit-logs', 'audit.view', 'listAuditLogs'],
   ['get', 'audit-logs/export', 'audit.view', 'exportAuditLogs'],
+  ['get', 'audit-logs/export/pdf', 'audit.view', 'exportAuditLogsPdf'],
 ] as const;
 const catalog = [
   ...new Set([...routeCases.map((c) => c[2]), 'resources.transfer.confirm', 'users.manage']),
