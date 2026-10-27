@@ -9,6 +9,7 @@ export class AuditLog {
   @Prop({ required: true }) action!: string;
   @Prop({ required: true }) resourceType!: string;
   @Prop() resourceId?: string;
+  @Prop() ipAddress?: string;
   @Prop({ type: Object }) metadata?: Record<string, string>;
 }
 export const AuditLogSchema = SchemaFactory.createForClass(AuditLog);
