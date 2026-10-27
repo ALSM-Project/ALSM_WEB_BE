@@ -76,7 +76,7 @@ describe('disabled support impersonation HTTP boundary', () => {
   let app: INestApplication;
   let jwt: JwtService;
   let f: ReturnType<typeof fixture>;
-  let account: { id: string; isActive: boolean; mustChangePassword: boolean };
+  let account: { id: string; isActive: boolean; isLocked: boolean; mustChangePassword: boolean };
   let session: {
     id: string;
     userId: string;
@@ -98,10 +98,13 @@ describe('disabled support impersonation HTTP boundary', () => {
     const moduleRef = await Test.createTestingModule({
       controllers: [PlatformAdminController],
       providers: [
-        { provide: PlatformAdminAccessService, useValue: new PlatformAdminAccessService(
-          rbac as unknown as IRbacRepository,
-          new EffectivePermissionsService(rbac as unknown as IRbacRepository),
-        ) },
+        {
+          provide: PlatformAdminAccessService,
+          useValue: new PlatformAdminAccessService(
+            rbac as unknown as IRbacRepository,
+            new EffectivePermissionsService(rbac as unknown as IRbacRepository),
+          ),
+        },
         { provide: PlatformAdminService, useValue: f.service },
         { provide: LockUserService, useValue: {} },
         { provide: JwtService, useValue: jwt },
@@ -117,7 +120,7 @@ describe('disabled support impersonation HTTP boundary', () => {
 
   beforeEach(() => {
     jest.clearAllMocks();
-    account = { id: userId, isActive: true, mustChangePassword: false };
+    account = { id: userId, isActive: true, isLocked: false, mustChangePassword: false };
     session = {
       id: sessionId,
       userId,
