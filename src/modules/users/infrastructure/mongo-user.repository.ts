@@ -15,12 +15,12 @@ export class MongoUserRepository implements UserRepository {
   }
 
   async findByEmail(email: string): Promise<UserRecord | null> {
-    const doc = await this.model.findOne({ email }).select('+passwordHash').exec();
+    const doc = await this.model.findOne({ email }).select('+passwordHash').read('primary').exec();
     return doc ? this.map(doc) : null;
   }
 
   async findById(id: string): Promise<UserRecord | null> {
-    const doc = await this.model.findById(id).select('+passwordHash').exec();
+    const doc = await this.model.findById(id).select('+passwordHash').read('primary').exec();
     return doc ? this.map(doc) : null;
   }
 
@@ -30,6 +30,25 @@ export class MongoUserRepository implements UserRepository {
 
   async markEmailVerified(userId: string): Promise<void> {
     await this.model.updateOne({ _id: userId }, { $set: { isEmailVerified: true } }).exec();
+  }
+
+  async markEmailVerifiedIfUnverified(userId: string, email: string): Promise<UserRecord | null> {
+    const doc = await this.model
+      .findOneAndUpdate(
+        {
+          _id: userId,
+          email,
+          isEmailVerified: false,
+          isActive: true,
+          isLocked: false,
+          'mfa.enabled': false,
+        },
+        { $set: { isEmailVerified: true } },
+        { new: true, writeConcern: { w: 'majority', wtimeoutMS: 10000 } },
+      )
+      .select('+passwordHash')
+      .exec();
+    return doc ? this.map(doc) : null;
   }
 
   async updateStatus(id: string, isActive: boolean): Promise<void> {

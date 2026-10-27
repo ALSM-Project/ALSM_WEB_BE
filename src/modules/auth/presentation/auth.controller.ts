@@ -73,6 +73,18 @@ export class AuthController {
 
   @HttpCode(HttpStatus.OK)
   @Post('verify-email')
+  @ApiOkResponse({
+    description: 'Valid unconsumed proof verified; active unlocked account session issued',
+  })
+  @ApiResponse({
+    status: 400,
+    description: 'INVALID_VERIFICATION_CODE; includes already-verified accounts and replay',
+  })
+  @ApiUnauthorizedResponse({ description: 'Account admission changed before session issuance' })
+  @ApiResponse({
+    status: 503,
+    description: 'Verification or session persistence could not be confirmed',
+  })
   async verifyEmail(
     @Body() dto: VerifyEmailDto,
     @Headers('user-agent') userAgent?: string,

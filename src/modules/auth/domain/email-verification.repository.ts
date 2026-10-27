@@ -15,7 +15,10 @@ export interface EmailVerificationRepository {
     expiresAt: Date;
   }): Promise<EmailVerificationRecord>;
   findLatestActiveByUserId(userId: string): Promise<EmailVerificationRecord | null>;
-  markConsumed(id: string): Promise<void>;
+  /** One confirmed winner only, bound to the identity and exact proof snapshot. */
+  consumeActive(
+    input: Pick<EmailVerificationRecord, 'id' | 'userId' | 'tokenHash' | 'code'>,
+  ): Promise<boolean>;
   revokeAllForUser(userId: string): Promise<void>;
 }
 
