@@ -6,6 +6,7 @@ import {
   ConversionJobRecord,
   ConversionJobRepository,
   ConversionJobStatus,
+  ConversionPriority,
 } from '../domain/conversion-job.types';
 import { toValidObjectId } from '../../../shared/utils/object-id.util';
 
@@ -80,7 +81,11 @@ export class MongoConversionJobRepository implements ConversionJobRepository {
     return docs.map((doc) => this.map(doc));
   }
 
-  async retry(id: string, organizationId: string): Promise<ConversionJobRecord | null> {
+  async retry(
+    id: string,
+    organizationId: string,
+    options: { priority?: ConversionPriority } = {},
+  ): Promise<ConversionJobRecord | null> {
     const jobObjId = toValidObjectId(id);
     const orgObjId = toValidObjectId(organizationId);
     const doc = await this.model
@@ -94,6 +99,7 @@ export class MongoConversionJobRepository implements ConversionJobRepository {
           $set: {
             status: ConversionJobStatus.QUEUED,
             attemptCount: 0,
+            ...(options.priority ? { priority: options.priority } : {}),
           },
           $unset: {
             errorCode: 1,
