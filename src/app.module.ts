@@ -217,6 +217,14 @@ import { ConversionWorkerRunner } from './modules/conversions/infrastructure/con
 import { ExportCodeService } from './modules/conversions/application/export-code.service';
 import { ExportController } from './modules/conversions/presentation/export.controller';
 import { PartnerExportController } from './modules/conversions/presentation/partner-export.controller';
+import { SupportPatchController } from './modules/conversions/presentation/support-patch.controller';
+import { ConversionSupportPatchService } from './modules/conversions/application/conversion-support-patch.service';
+import {
+  SupportPatch,
+  SupportPatchSchema,
+} from './modules/conversions/infrastructure/support-patch.schema';
+import { MongoSupportPatchRepository } from './modules/conversions/infrastructure/mongo-support-patch.repository';
+import { SUPPORT_PATCH_REPOSITORY } from './modules/conversions/domain/support-patch.types';
 import { PartnerBundleService } from './modules/conversions/application/partner-bundle.service';
 import { PublishPartnerExportService } from './modules/conversions/application/publish-partner-export.service';
 import {
@@ -328,6 +336,7 @@ import { AuditModule } from './modules/audit/audit.module';
       { name: QuoteRequest.name, schema: QuoteRequestSchema },
       { name: ConversionQualityReview.name, schema: ConversionQualityReviewSchema },
       { name: ExportBundle.name, schema: ExportBundleSchema },
+      { name: SupportPatch.name, schema: SupportPatchSchema },
     ]),
     RbacModule,
     MenuModule,
@@ -354,6 +363,7 @@ import { AuditModule } from './modules/audit/audit.module';
     UsersController,
     ExportController,
     PartnerExportController,
+    SupportPatchController,
     ErrorLogController,
     ValidationController,
     RuleValidationController,
@@ -468,6 +478,8 @@ import { AuditModule } from './modules/audit/audit.module';
     LegacyValidationService,
     ExportCodeService,
     PartnerBundleService,
+    ConversionSupportPatchService,
+    { provide: SUPPORT_PATCH_REPOSITORY, useClass: MongoSupportPatchRepository },
     PublishPartnerExportService,
     { provide: EXPORT_BUNDLE_REPOSITORY, useClass: MongoExportBundleRepository },
     {
