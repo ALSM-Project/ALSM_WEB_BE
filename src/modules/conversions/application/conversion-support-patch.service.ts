@@ -11,6 +11,7 @@ import { OrganizationAuthorizationService } from '../../organizations/applicatio
 import { OrganizationContextService } from '../../organizations/application/organization-context.service';
 import { OrganizationRole } from '../../organizations/domain/organization.types';
 import { ProjectService } from '../../projects/application/project.service';
+import { ConversionType } from '../../projects/domain/project.types';
 import {
   CONVERSION_JOB_REPOSITORY,
   CONVERSION_QUEUE,
@@ -46,6 +47,10 @@ export interface ApplySupportPatchResult {
 }
 
 const RETRYABLE = new Set([ConversionJobStatus.FAILED, ConversionJobStatus.DEAD]);
+
+/** tool2java's output has no data model class to hold field types, so the rules cannot reach the Java code. */
+export const COBOL_PATCH_NOT_APPLIED_WARNING =
+  'The rules were saved and the job re-queued, but the COBOL to Java converter cannot apply mapping rules yet: its output does not include the data model class where field names and types are declared.';
 
 /**
  * Conversion Support Patch (Web 2): Conversion Staff correct the field-mapping rules of a
@@ -160,7 +165,14 @@ export class ConversionSupportPatchService {
       },
     });
 
-    return { job: requeued, patch, warnings };
+    return {
+      job: requeued,
+      patch,
+      warnings:
+        job.conversionType === ConversionType.COBOL_TO_JAVA
+          ? [...warnings, COBOL_PATCH_NOT_APPLIED_WARNING]
+          : warnings,
+    };
   }
 
   private async requireJob(userId: string, organizationHeader: string | undefined, jobId: string) {

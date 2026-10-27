@@ -1,5 +1,6 @@
 import { BadRequestException, ConflictException, NotFoundException } from '@nestjs/common';
 import {
+  COBOL_PATCH_NOT_APPLIED_WARNING,
   CONVERSION_SUPPORT_PATCH_APPLIED,
   ConversionSupportPatchService,
 } from '../src/modules/conversions/application/conversion-support-patch.service';
@@ -150,6 +151,16 @@ describe('ConversionSupportPatchService', () => {
       },
     });
     expect(result.job).toMatchObject({ status: 'QUEUED', attemptCount: 0, priority: 'HIGH' });
+  });
+
+  it('warns that COBOL to Java jobs do not apply the rules yet', async () => {
+    jobs.findById.mockResolvedValue(job(ConversionJobStatus.FAILED, { conversionType: 'COBOL_TO_JAVA' }));
+    const cobol = await service.apply(STAFF, undefined, JOB, { rules: RULES, note: 'x' });
+    expect(cobol.warnings).toEqual([COBOL_PATCH_NOT_APPLIED_WARNING]);
+
+    jobs.findById.mockResolvedValue(job(ConversionJobStatus.FAILED, { conversionType: 'BMS_DSPF_TO_FRONTEND' }));
+    const bms = await service.apply(STAFF, undefined, JOB, { rules: RULES, note: 'x' });
+    expect(bms.warnings).toEqual([]);
   });
 
   it('counts changes against the previous patch of the job', async () => {
