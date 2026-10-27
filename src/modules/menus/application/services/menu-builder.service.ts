@@ -45,6 +45,11 @@ export class MenuBuilderService {
       visibility: item.visibility,
       status: item.status,
       openInNewTab: item.openInNewTab ?? false,
+      hideParentLabel: item.hideParentLabel ?? false,
+      contractTypeVisibility: item.contractTypeVisibility || 'ALL',
+      featureKey: item.featureKey || null,
+      description: item.description || null,
+      requiredRoles: item.requiredRoles || [],
       requiredPermissions: itemPermsMap.get(item.id) || [],
     }));
 
@@ -75,6 +80,11 @@ export class MenuBuilderService {
       visibility: item.visibility,
       status: item.status,
       openInNewTab: item.openInNewTab ?? false,
+      hideParentLabel: item.hideParentLabel ?? false,
+      contractTypeVisibility: item.contractTypeVisibility || 'ALL',
+      featureKey: item.featureKey || null,
+      description: item.description || null,
+      requiredRoles: item.requiredRoles || [],
       requiredPermissions: perms,
     };
   }
@@ -90,6 +100,18 @@ export class MenuBuilderService {
         code: 'MENU_KEY_ALREADY_EXISTS',
         message: `Menu item with key '${normalizedKey}' already exists in application '${dto.application}'`,
       });
+    }
+
+    // Check duplicate route if specified
+    if (this.menuBuilderRepo.findMenuItemsByApp && dto.route && dto.route.trim() && dto.type !== MenuItemType.GROUP) {
+      const appItems = await this.menuBuilderRepo.findMenuItemsByApp(dto.application);
+      const duplicate = (appItems || []).find((m) => m.route && m.route.trim() === dto.route!.trim());
+      if (duplicate) {
+        throw new ConflictException({
+          code: 'DUPLICATE_MENU_ROUTE',
+          message: `Route '${dto.route}' is already configured for menu '${duplicate.label}' (${duplicate.id})`,
+        });
+      }
     }
 
     if (dto.parentId) {
@@ -133,6 +155,10 @@ export class MenuBuilderService {
         status: dto.status || MenuItemStatus.ACTIVE,
         openInNewTab: dto.openInNewTab ?? false,
         hideParentLabel: dto.hideParentLabel ?? false,
+        contractTypeVisibility: dto.contractTypeVisibility || 'ALL',
+        featureKey: dto.featureKey || null,
+        description: dto.description || null,
+        requiredRoles: dto.requiredRoles || [],
       },
       dto.permissions,
     );
@@ -164,6 +190,11 @@ export class MenuBuilderService {
       visibility: menuItem.visibility,
       status: menuItem.status,
       openInNewTab: menuItem.openInNewTab ?? false,
+      hideParentLabel: menuItem.hideParentLabel ?? false,
+      contractTypeVisibility: menuItem.contractTypeVisibility || 'ALL',
+      featureKey: menuItem.featureKey || null,
+      description: menuItem.description || null,
+      requiredRoles: menuItem.requiredRoles || [],
       requiredPermissions: dto.permissions || [],
     };
   }
@@ -184,6 +215,18 @@ export class MenuBuilderService {
         throw new ConflictException({
           code: 'MENU_KEY_ALREADY_EXISTS',
           message: `Menu item with key '${normalizedKey}' already exists in application '${item.application}'`,
+        });
+      }
+    }
+
+    // Check duplicate route if updated
+    if (this.menuBuilderRepo.findMenuItemsByApp && dto.route && dto.route.trim() && dto.type !== MenuItemType.GROUP) {
+      const appItems = await this.menuBuilderRepo.findMenuItemsByApp(item.application);
+      const duplicate = (appItems || []).find((m) => m.id !== id && m.route && m.route.trim() === dto.route!.trim());
+      if (duplicate) {
+        throw new ConflictException({
+          code: 'DUPLICATE_MENU_ROUTE',
+          message: `Route '${dto.route}' is already configured for menu '${duplicate.label}' (${duplicate.id})`,
         });
       }
     }
@@ -242,9 +285,20 @@ export class MenuBuilderService {
         parentId: newParentId,
         order: dto.order,
         visibility: dto.visibility,
-        status: dto.status,
+        status:
+          dto.status !== undefined
+            ? dto.status
+            : dto.visibility !== undefined
+            ? dto.visibility
+              ? MenuItemStatus.ACTIVE
+              : MenuItemStatus.INACTIVE
+            : undefined,
         openInNewTab: dto.openInNewTab,
         hideParentLabel: dto.hideParentLabel,
+        contractTypeVisibility: dto.contractTypeVisibility,
+        featureKey: dto.featureKey,
+        description: dto.description,
+        requiredRoles: dto.requiredRoles,
       },
       dto.permissions,
     );
@@ -279,6 +333,10 @@ export class MenuBuilderService {
       status: updated!.status,
       openInNewTab: updated!.openInNewTab ?? false,
       hideParentLabel: updated!.hideParentLabel ?? false,
+      contractTypeVisibility: updated!.contractTypeVisibility || 'ALL',
+      featureKey: updated!.featureKey || null,
+      description: updated!.description || null,
+      requiredRoles: updated!.requiredRoles || [],
       requiredPermissions: currentPerms,
     };
   }
@@ -318,6 +376,14 @@ export class MenuBuilderService {
   }
 
   async reorderMenuItems(items: Array<{ id: string; order: number }>, actorId?: string): Promise<void> {
+    const uniqueOrders = new Set(items.map((i) => i.order));
+    if (uniqueOrders.size !== items.length) {
+      throw new BadRequestException({
+        code: 'DUPLICATE_ORDERS',
+        message: 'Reordered items must contain unique sequential orders',
+      });
+    }
+
     await this.menuBuilderRepo.reorderMenuItems(items);
 
     if (this.audit) {
@@ -325,14 +391,15 @@ export class MenuBuilderService {
         actorUserId: actorId,
         action: 'MENU_ITEMS_REORDERED',
         resourceType: 'menu_item',
-        metadata: { count: items.length.toString() },
+        resourceId: 'bulk',
+        metadata: { count: String(items.length) },
       });
     }
   }
 
   async moveMenuItem(
     id: string,
-    parentId: string | null,
+    newParentId: string | null,
     targetOrder?: number,
     targetId?: string,
     placement?: 'before' | 'after' | 'inside',
@@ -346,93 +413,71 @@ export class MenuBuilderService {
       });
     }
 
-    const oldParentId = item.parentId;
-    let newParentId: string | null = parentId;
+    if (newParentId === id) {
+      throw new BadRequestException({
+        code: 'SELF_PARENTING_FORBIDDEN',
+        message: 'An item cannot be its own parent',
+      });
+    }
 
-    if (targetId) {
-      const targetItem = await this.menuBuilderRepo.findMenuItemById(targetId);
-      if (!targetItem) {
+    if (newParentId !== null) {
+      const parent = await this.menuBuilderRepo.findMenuItemById(newParentId);
+      if (!parent) {
         throw new NotFoundException({
-          code: 'TARGET_NOT_FOUND',
-          message: `Target menu item '${targetId}' not found`,
+          code: 'PARENT_NOT_FOUND',
+          message: `Parent menu item '${newParentId}' not found`,
         });
       }
-
-      if (targetItem.application !== item.application) {
+      if (parent.application !== item.application) {
         throw new BadRequestException({
           code: 'CROSS_APPLICATION_PARENT_FORBIDDEN',
-          message: 'Cannot move item across different applications',
+          message: `Parent menu item belongs to '${parent.application}' and cannot be parent of a '${item.application}' item`,
         });
       }
-
-      if (placement === 'inside') {
-        newParentId = targetId;
-      } else {
-        newParentId = targetItem.parentId;
-      }
-    }
-
-    if (newParentId !== undefined) {
-      if (newParentId === id) {
+      const descendants = await this.menuBuilderRepo.getDescendantIds(id);
+      if (descendants.includes(newParentId)) {
         throw new BadRequestException({
-          code: 'SELF_PARENTING_FORBIDDEN',
-          message: 'An item cannot be its own parent',
+          code: 'DESCENDANT_PARENTING_FORBIDDEN',
+          message: 'An item cannot become a child of its own descendant',
         });
-      }
-      if (newParentId !== null) {
-        const parent = await this.menuBuilderRepo.findMenuItemById(newParentId);
-        if (!parent) {
-          throw new NotFoundException({
-            code: 'PARENT_NOT_FOUND',
-            message: `Parent menu item '${newParentId}' not found`,
-          });
-        }
-        if (parent.application !== item.application) {
-          throw new BadRequestException({
-            code: 'CROSS_APPLICATION_PARENT_FORBIDDEN',
-            message: `Parent menu item belongs to '${parent.application}' and cannot be parent of a '${item.application}' item`,
-          });
-        }
-        const descendants = await this.menuBuilderRepo.getDescendantIds(id);
-        if (descendants.includes(newParentId)) {
-          throw new BadRequestException({
-            code: 'DESCENDANT_PARENTING_FORBIDDEN',
-            message: 'An item cannot become a child of its own descendant',
-          });
-        }
       }
     }
 
-    // Persist parent update
-    await this.menuBuilderRepo.updateMenuItem(id, { parentId: newParentId });
-
-    // Re-sequence siblings in destination
     const siblings = await this.menuBuilderRepo.findSiblings(item.application, newParentId);
-    const otherSiblings = siblings.filter((s) => s.id !== id);
+    const filteredSiblings = siblings.filter((s) => s.id !== id);
 
-    let insertIndex = otherSiblings.length;
+    let insertIndex = 0;
 
-    if (targetId) {
-      const targetIdx = otherSiblings.findIndex((s) => s.id === targetId);
+    if (targetId && placement) {
+      const targetIdx = filteredSiblings.findIndex((s) => s.id === targetId);
       if (targetIdx !== -1) {
-        if (placement === 'before') insertIndex = targetIdx;
-        else if (placement === 'after') insertIndex = targetIdx + 1;
-        else if (placement === 'inside') insertIndex = otherSiblings.length;
+        if (placement === 'before') {
+          insertIndex = targetIdx;
+        } else if (placement === 'after') {
+          insertIndex = targetIdx + 1;
+        } else if (placement === 'inside') {
+          insertIndex = filteredSiblings.length;
+        }
+      } else {
+        insertIndex = filteredSiblings.length;
       }
     } else if (targetOrder !== undefined) {
-      insertIndex = Math.max(0, Math.min(targetOrder, otherSiblings.length));
+      insertIndex = Math.max(0, Math.min(targetOrder, filteredSiblings.length));
+    } else {
+      insertIndex = filteredSiblings.length;
     }
 
-    otherSiblings.splice(insertIndex, 0, item);
+    filteredSiblings.splice(insertIndex, 0, item);
 
-    const ordersToUpdate = otherSiblings.map((s, i) => ({ id: s.id, order: i }));
-    await this.menuBuilderRepo.updateOrders(ordersToUpdate);
+    const reordered: Array<{ id: string; order: number }> = filteredSiblings.map((s, idx) => ({
+      id: s.id,
+      order: idx + 1,
+    }));
 
-    // Normalize order for oldParentId siblings if parent changed
-    if (oldParentId !== newParentId) {
-      const oldSiblings = await this.menuBuilderRepo.findSiblings(item.application, oldParentId);
-      const oldOrdersToUpdate = oldSiblings.map((s, i) => ({ id: s.id, order: i }));
-      await this.menuBuilderRepo.updateOrders(oldOrdersToUpdate);
+    await this.menuBuilderRepo.updateOrders(reordered);
+
+    if (item.parentId !== newParentId) {
+      await this.menuBuilderRepo.updateMenuItem(id, { parentId: newParentId });
     }
 
     const currentPerms = await this.menuBuilderRepo.findMenuItemPermissions(id);
@@ -444,8 +489,10 @@ export class MenuBuilderService {
         resourceType: 'menu_item',
         resourceId: id,
         metadata: {
-          fromParentId: oldParentId || 'root',
-          toParentId: newParentId || 'root',
+          key: item.key,
+          previousParentId: item.parentId || 'root',
+          newParentId: newParentId || 'root',
+          newOrder: String(insertIndex + 1),
         },
       });
     }
@@ -459,10 +506,15 @@ export class MenuBuilderService {
       icon: item.icon,
       route: item.route,
       parentId: newParentId,
-      order: insertIndex,
+      order: insertIndex + 1,
       visibility: item.visibility,
       status: item.status,
       openInNewTab: item.openInNewTab ?? false,
+      hideParentLabel: item.hideParentLabel ?? false,
+      contractTypeVisibility: item.contractTypeVisibility || 'ALL',
+      featureKey: item.featureKey || null,
+      description: item.description || null,
+      requiredRoles: item.requiredRoles || [],
       requiredPermissions: currentPerms,
     };
   }
@@ -494,5 +546,90 @@ export class MenuBuilderService {
 
     sortNodes(roots);
     return roots;
+  }
+
+  async saveMenuTree(application: ApplicationContext, tree: any[], actorId?: string): Promise<void> {
+    const flatIncoming: Array<{
+      id: string;
+      label: string;
+      icon?: string;
+      path?: string | null;
+      parentId: string | null;
+      order: number;
+      isVisible?: boolean;
+    }> = [];
+
+    const flatten = (items: any[], parentId: string | null = null) => {
+      if (!Array.isArray(items)) return;
+      items.forEach((item, index) => {
+        if (!item || !item.id) return;
+        flatIncoming.push({
+          id: String(item.id),
+          label: String(item.label || 'Untitled'),
+          icon: item.icon ? String(item.icon) : undefined,
+          path: item.path || item.route || null,
+          parentId,
+          order: typeof item.order === 'number' ? item.order : index + 1,
+          isVisible: item.isVisible !== false,
+        });
+        if (item.children && Array.isArray(item.children)) {
+          flatten(item.children, String(item.id));
+        }
+      });
+    };
+
+    flatten(tree);
+
+    const incomingIds = new Set(flatIncoming.map((i) => i.id));
+    const existingItems = await this.menuBuilderRepo.findMenuItemsByApp(application);
+
+    // 1. Delete items that were removed
+    for (const existing of existingItems) {
+      if (!incomingIds.has(existing.id)) {
+        await this.menuBuilderRepo.deleteMenuItem(existing.id);
+        if (this.audit) {
+          await this.audit.append({
+            actorUserId: actorId,
+            action: 'MENU_ITEM_DELETED',
+            resourceType: 'menu_item',
+            resourceId: existing.id,
+            metadata: {
+              key: existing.key,
+              label: existing.label,
+              application,
+            },
+          });
+        }
+      }
+    }
+
+    // 2. Update existing or create newly added items
+    for (const item of flatIncoming) {
+      const existing = existingItems.find((e) => e.id === item.id);
+      if (existing) {
+        await this.menuBuilderRepo.updateMenuItem(item.id, {
+          label: item.label,
+          icon: item.icon,
+          route: item.path,
+          parentId: item.parentId,
+          order: item.order,
+          visibility: item.isVisible,
+        });
+      } else {
+        await this.menuBuilderRepo.createMenuItem({
+          id: item.id,
+          key: `${application.toLowerCase()}.${item.id}`,
+          application,
+          label: item.label,
+          type: item.path ? MenuItemType.PAGE : MenuItemType.GROUP,
+          icon: item.icon || 'Folder',
+          route: item.path,
+          parentId: item.parentId,
+          order: item.order,
+          visibility: item.isVisible,
+          status: MenuItemStatus.ACTIVE,
+        });
+      }
+    }
   }
 }
