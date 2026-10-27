@@ -10,6 +10,8 @@ export interface AuditLogListQuery {
   action?: string;
   resourceType?: string;
   resourceId?: string;
+  target?: string;
+  actor?: string;
   actorUserId?: string;
   from?: string;
   to?: string;
@@ -23,16 +25,28 @@ export class AuditLogService {
     @InjectModel(AuditLog.name) private readonly auditModel: Model<AuditLogDocument>,
   ) {}
 
-  async list(query?: AuditLogListQuery) {
-    const page = Math.max(1, query?.page || 1);
-    const limit = Math.min(100, Math.max(1, query?.limit || 20));
-    const skip = (page - 1) * limit;
-
+  private buildFilter(query?: AuditLogListQuery): FilterQuery<AuditLogDocument> {
     const filter: FilterQuery<AuditLogDocument> = {};
-    if (query?.action) filter.action = new RegExp(query.action, 'i');
-    if (query?.resourceType) filter.resourceType = query.resourceType;
-    if (query?.resourceId) filter.resourceId = query.resourceId;
-    if (query?.actorUserId) filter.actorUserId = query.actorUserId;
+
+    if (query?.action) {
+      filter.action = new RegExp(query.action, 'i');
+    }
+
+    if (query?.target) {
+      filter.$or = [
+        { resourceType: new RegExp(query.target, 'i') },
+        { resourceId: new RegExp(query.target, 'i') },
+      ];
+    } else {
+      if (query?.resourceType) filter.resourceType = query.resourceType;
+      if (query?.resourceId) filter.resourceId = query.resourceId;
+    }
+
+    if (query?.actorUserId) {
+      filter.actorUserId = query.actorUserId;
+    } else if (query?.actor) {
+      filter.actorUserId = query.actor;
+    }
 
     if (query?.from || query?.to) {
       filter.createdAt = {};
@@ -40,7 +54,17 @@ export class AuditLogService {
       if (query?.to) filter.createdAt.$lte = new Date(query.to);
     }
 
-    const [items, total] = await Promise.all([
+    return filter;
+  }
+
+  async list(query?: AuditLogListQuery) {
+    const page = Math.max(1, query?.page || 1);
+    const limit = Math.min(100, Math.max(1, query?.limit || 20));
+    const skip = (page - 1) * limit;
+
+    const filter = this.buildFilter(query);
+
+    const [rawItems, total] = await Promise.all([
       this.auditModel
         .find(filter)
         .populate('actorUserId', 'fullName email')
@@ -51,6 +75,20 @@ export class AuditLogService {
       this.auditModel.countDocuments(filter),
     ]);
 
+    const items = rawItems.map((item) => {
+      const doc = typeof (item as any)?.toObject === 'function' ? (item as any).toObject() : item;
+      const actor = doc.actorUserId as { fullName?: string; email?: string } | undefined;
+      const actorStr = actor?.fullName || actor?.email || String(doc.actorUserId || 'SYSTEM');
+      const targetStr = doc.resourceId ? `${doc.resourceType}:${doc.resourceId}` : doc.resourceType;
+      return {
+        ...doc,
+        timestamp: doc.createdAt,
+        actor: actorStr,
+        target: targetStr,
+        ipAddress: doc.ipAddress || '',
+      };
+    });
+
     return {
       items,
       total,
@@ -60,31 +98,37 @@ export class AuditLogService {
     };
   }
 
-  async exportCsv(): Promise<string> {
+  async exportCsv(query?: AuditLogListQuery): Promise<string> {
+    const filter = this.buildFilter(query);
+    const maxLimit = query?.limit ? Math.min(query.limit, 10000) : 1000;
+
     const logs = await this.auditModel
-      .find()
+      .find(filter)
       .populate('actorUserId', 'fullName email')
       .sort({ createdAt: -1 })
-      .limit(1000)
+      .limit(maxLimit)
       .exec();
 
-    const headers = 'Timestamp,Actor,Action,ResourceType,ResourceId,Metadata\n';
+    const headers = 'Timestamp,Actor,Action,ResourceType,ResourceId,IP Address,Metadata\n';
     const rows = logs.map((l) => {
       const actor = l.actorUserId as unknown as { fullName?: string; email?: string } | undefined;
       const actorStr = actor?.fullName || actor?.email || String(l.actorUserId || 'SYSTEM');
       const metaStr = JSON.stringify(l.metadata || {}).replace(/"/g, '""');
-      return `"${l.createdAt ? (l.createdAt as Date).toISOString() : ''}","${actorStr}","${l.action}","${l.resourceType}","${l.resourceId || ''}","${metaStr}"`;
+      return `"${l.createdAt ? (l.createdAt as Date).toISOString() : ''}","${actorStr}","${l.action}","${l.resourceType}","${l.resourceId || ''}","${l.ipAddress || ''}","${metaStr}"`;
     });
 
     return headers + rows.join('\n');
   }
 
-  async exportPdf(): Promise<Buffer> {
+  async exportPdf(query?: AuditLogListQuery): Promise<Buffer> {
+    const filter = this.buildFilter(query);
+    const maxLimit = query?.limit ? Math.min(query.limit, 1000) : 1000;
+
     const logs = await this.auditModel
-      .find()
+      .find(filter)
       .populate('actorUserId', 'fullName email')
       .sort({ createdAt: -1 })
-      .limit(1000)
+      .limit(maxLimit)
       .exec();
 
     const doc = new PDFDocument({ size: 'A4', layout: 'landscape', margin: 24 });

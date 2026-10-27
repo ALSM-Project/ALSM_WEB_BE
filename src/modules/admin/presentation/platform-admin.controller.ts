@@ -190,6 +190,8 @@ export class PlatformAdminController {
     @Query('action') action?: string,
     @Query('resourceType') resourceType?: string,
     @Query('resourceId') resourceId?: string,
+    @Query('target') target?: string,
+    @Query('actor') actor?: string,
     @Query('actorUserId') actorUserId?: string,
     @Query('from') from?: string,
     @Query('to') to?: string,
@@ -200,6 +202,8 @@ export class PlatformAdminController {
       action,
       resourceType,
       resourceId,
+      target,
+      actor,
       actorUserId,
       from,
       to,
@@ -209,8 +213,29 @@ export class PlatformAdminController {
   @Get('audit-logs/export')
   @RequirePermissions('audit.view')
   @ApiOperation({ summary: 'Export audit logs to CSV (3.13.10)' })
-  async exportAuditLogs(@Res() res: Response) {
-    const csv = await this.auditLogService.exportCsv();
+  async exportAuditLogs(
+    @Res() res: Response,
+    @Query('action') action?: string,
+    @Query('resourceType') resourceType?: string,
+    @Query('resourceId') resourceId?: string,
+    @Query('target') target?: string,
+    @Query('actor') actor?: string,
+    @Query('actorUserId') actorUserId?: string,
+    @Query('from') from?: string,
+    @Query('to') to?: string,
+    @Query('limit') limit?: string,
+  ) {
+    const csv = await this.auditLogService.exportCsv({
+      action,
+      resourceType,
+      resourceId,
+      target,
+      actor,
+      actorUserId,
+      from,
+      to,
+      limit: limit ? parseInt(limit, 10) : undefined,
+    });
     res.setHeader('Content-Type', 'text/csv');
     res.setHeader('Content-Disposition', 'attachment; filename="audit-logs.csv"');
     res.send(csv);
@@ -219,8 +244,29 @@ export class PlatformAdminController {
   @Get('audit-logs/export/pdf')
   @RequirePermissions('audit.view')
   @ApiOperation({ summary: 'Export audit logs to PDF (3.13.10)' })
-  async exportAuditLogsPdf(@Res() res: Response) {
-    const pdf = await this.auditLogService.exportPdf();
+  async exportAuditLogsPdf(
+    @Res() res: Response,
+    @Query('action') action?: string,
+    @Query('resourceType') resourceType?: string,
+    @Query('resourceId') resourceId?: string,
+    @Query('target') target?: string,
+    @Query('actor') actor?: string,
+    @Query('actorUserId') actorUserId?: string,
+    @Query('from') from?: string,
+    @Query('to') to?: string,
+    @Query('limit') limit?: string,
+  ) {
+    const pdf = await this.auditLogService.exportPdf({
+      action,
+      resourceType,
+      resourceId,
+      target,
+      actor,
+      actorUserId,
+      from,
+      to,
+      limit: limit ? parseInt(limit, 10) : undefined,
+    });
     res.setHeader('Content-Type', 'application/pdf');
     res.setHeader('Content-Disposition', 'attachment; filename="audit-logs.pdf"');
     res.send(pdf);
