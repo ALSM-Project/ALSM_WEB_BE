@@ -46,8 +46,26 @@ export interface LeadRecord {
   nextFollowUpAt?: Date;
   createdByUserId: string;
   createdByEmail: string;
+  quotes?: LeadQuoteItem[];
   createdAt: Date;
   updatedAt: Date;
+}
+
+export interface LeadQuoteItem {
+  id: string;
+  quoteNumber: string;
+  planName: string;
+  projectScope?: string;
+  amount: number;
+  discountPercent?: number;
+  discountApproved?: boolean;
+  discountReason?: string;
+  status: 'DRAFT' | 'PENDING_APPROVAL' | 'SENT' | 'ACCEPTED' | 'REJECTED';
+  recipientEmail?: string;
+  expiresAt?: Date;
+  sentAt?: Date;
+  pdfUrl?: string;
+  createdAt: Date;
 }
 
 export interface CreateLeadInput {
@@ -113,6 +131,11 @@ export interface LeadRepository {
     id: string,
     status: LeadStatus,
     options?: UpdateLeadStatusOptions,
+  ): Promise<LeadRecord | null>;
+  addQuote(
+    id: string,
+    quote: LeadQuoteItem,
+    newStatus?: LeadStatus,
   ): Promise<LeadRecord | null>;
 }
 

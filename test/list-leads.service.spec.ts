@@ -44,6 +44,7 @@ describe('ListLeadsService (UC-58)', () => {
         [LeadStatus.WON]: 0,
       }),
       updateStatus: jest.fn(),
+      addQuote: jest.fn(),
     };
     service = new ListLeadsService(repository);
   });

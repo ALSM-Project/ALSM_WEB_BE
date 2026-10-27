@@ -52,6 +52,7 @@ describe('UpdateLeadStatusService (UC-66)', () => {
       list: jest.fn(),
       countByStatus: jest.fn(),
       updateStatus: jest.fn(),
+      addQuote: jest.fn(),
     };
     audit = { append: jest.fn().mockResolvedValue(undefined) };
     service = new UpdateLeadStatusService(repository, audit);

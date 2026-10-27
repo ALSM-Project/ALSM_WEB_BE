@@ -8,6 +8,7 @@ import {
   LeadRecord,
   LeadRepository,
   LeadStatus,
+  LeadQuoteItem,
   UpdateLeadStatusOptions,
 } from '../domain/lead.types';
 import { toValidObjectId } from '../../../shared/utils/object-id.util';
@@ -120,6 +121,32 @@ export class MongoLeadRepository implements LeadRepository {
     return doc ? this.map(doc) : null;
   }
 
+  async addQuote(
+    id: string,
+    quote: LeadQuoteItem,
+    newStatus?: LeadStatus,
+  ): Promise<LeadRecord | null> {
+    if (!id || !id.match(/^[a-f\d]{24}$/i)) return null;
+
+    const update: Record<string, unknown> = {
+      $push: { quotes: quote },
+      $set: {
+        updatedAt: new Date(),
+        lastContactedAt: new Date(),
+      },
+    };
+
+    if (newStatus) {
+      (update.$set as Record<string, unknown>)['status'] = newStatus;
+    }
+
+    const doc = await this.model
+      .findByIdAndUpdate(id, update, { new: true })
+      .exec();
+
+    return doc ? this.map(doc) : null;
+  }
+
   private map(doc: LeadDocument): LeadRecord {
     return {
       id: doc.id as string,
@@ -141,6 +168,22 @@ export class MongoLeadRepository implements LeadRepository {
       nextFollowUpAt: doc.nextFollowUpAt,
       createdByUserId: doc.createdByUserId.toString(),
       createdByEmail: doc.createdByEmail,
+      quotes: (doc.quotes || []).map((q) => ({
+        id: q.id,
+        quoteNumber: q.quoteNumber,
+        planName: q.planName,
+        projectScope: q.projectScope,
+        amount: q.amount,
+        discountPercent: q.discountPercent,
+        discountApproved: q.discountApproved,
+        discountReason: q.discountReason,
+        status: q.status,
+        recipientEmail: q.recipientEmail,
+        expiresAt: q.expiresAt,
+        sentAt: q.sentAt,
+        pdfUrl: q.pdfUrl,
+        createdAt: q.createdAt,
+      })),
       createdAt: doc.createdAt,
       updatedAt: doc.updatedAt,
     };

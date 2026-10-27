@@ -5,6 +5,7 @@ import {
   NotFoundException,
   Param,
   Patch,
+  Post,
   Query,
   UseGuards,
 } from '@nestjs/common';
@@ -23,10 +24,11 @@ import { CurrentUser } from '../../../shared/security/current-user.decorator';
 import { AuthenticatedUser } from '../../../shared/logging/request-id.middleware';
 import { ListLeadsService } from '../application/list-leads.service';
 import { UpdateLeadStatusService } from '../application/update-lead-status.service';
-import { ListLeadsQueryDto, UpdateLeadStatusDto } from './lead.dto';
+import { SendQuoteService } from '../application/send-quote.service';
+import { ListLeadsQueryDto, UpdateLeadStatusDto, SendQuoteDto } from './lead.dto';
 import { LeadStatus, LeadSource, LeadPriority } from '../domain/lead.types';
 
-@ApiTags('Leads (UC-58, UC-66)')
+@ApiTags('Leads (UC-58, UC-62, UC-66)')
 @ApiBearerAuth()
 @UseGuards(JwtAuthGuard, PermissionsGuard)
 @Controller('leads')
@@ -34,6 +36,7 @@ export class LeadController {
   constructor(
     private readonly listLeadsService: ListLeadsService,
     private readonly updateLeadStatusService: UpdateLeadStatusService,
+    private readonly sendQuoteService: SendQuoteService,
   ) {}
 
   @Get()
@@ -112,6 +115,41 @@ export class LeadController {
     @CurrentUser() user: AuthenticatedUser,
   ) {
     return this.updateLeadStatusService.execute(id, dto.status, dto.notes, user);
+  }
+
+  @Post(':id/quotes')
+  @RequirePermissions('sales.leads.manage')
+  @ApiOperation({
+    summary: 'Send modernization quote to lead (UC-62)',
+    description:
+      'Requires sales.leads.manage permission. Validates quote parameters, creates quote record, ' +
+      'transitions lead status to PROPOSAL, and audits action. Accessible by internal_sales staff.',
+  })
+  @ApiParam({ name: 'id', description: 'Lead ID (24-hex ObjectId)' })
+  @ApiResponse({ status: 201, description: 'Quote sent successfully and lead updated' })
+  @ApiResponse({ status: 400, description: 'Bad request – invalid amount, discount, or missing discount reason' })
+  @ApiResponse({ status: 401, description: 'Unauthorized – invalid or missing token' })
+  @ApiResponse({ status: 403, description: 'Forbidden – missing sales.leads.manage permission' })
+  @ApiResponse({ status: 404, description: 'Lead not found' })
+  async sendQuote(
+    @Param('id') id: string,
+    @Body() dto: SendQuoteDto,
+    @CurrentUser() user: AuthenticatedUser,
+  ) {
+    return this.sendQuoteService.execute(id, dto, user);
+  }
+
+  @Post(':id/send-quote')
+  @RequirePermissions('sales.leads.manage')
+  @ApiOperation({
+    summary: 'Send modernization quote to lead – alias endpoint (UC-62)',
+  })
+  async sendQuoteAlias(
+    @Param('id') id: string,
+    @Body() dto: SendQuoteDto,
+    @CurrentUser() user: AuthenticatedUser,
+  ) {
+    return this.sendQuoteService.execute(id, dto, user);
   }
 }
 
