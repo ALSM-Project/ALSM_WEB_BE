@@ -6,6 +6,7 @@ import { JwtAuthGuard } from '../../../shared/security/jwt-auth.guard';
 import { AuthenticatedUser } from '../../../shared/logging/request-id.middleware';
 import { PlatformAdminService } from '../application/platform-admin.service';
 import { LockUserService } from '../application/lock-user.service';
+import { AuditLogService } from '../application/audit-log.service';
 import { RequirePermissions } from '../../../shared/security/require-permissions.decorator';
 import { CheckOffboardingTransfer, DisabledSupportImpersonation, PlatformAdminAuthorizationGuard } from './platform-admin-authorization.guard';
 
@@ -19,6 +20,7 @@ export class PlatformAdminController {
   constructor(
     private readonly adminService: PlatformAdminService,
     private readonly lockUserService: LockUserService,
+    private readonly auditLogService: AuditLogService,
   ) {}
 
   @Get('organizations')
@@ -187,22 +189,86 @@ export class PlatformAdminController {
     @Query('limit') limit?: string,
     @Query('action') action?: string,
     @Query('resourceType') resourceType?: string,
+    @Query('resourceId') resourceId?: string,
+    @Query('target') target?: string,
+    @Query('actor') actor?: string,
+    @Query('actorUserId') actorUserId?: string,
+    @Query('from') from?: string,
+    @Query('to') to?: string,
   ) {
-    return this.adminService.listAuditLogs({
+    return this.auditLogService.list({
       page: page ? parseInt(page, 10) : 1,
       limit: limit ? parseInt(limit, 10) : 20,
       action,
       resourceType,
+      resourceId,
+      target,
+      actor,
+      actorUserId,
+      from,
+      to,
     });
   }
 
   @Get('audit-logs/export')
   @RequirePermissions('audit.view')
   @ApiOperation({ summary: 'Export audit logs to CSV (3.13.10)' })
-  async exportAuditLogs(@Res() res: Response) {
-    const csv = await this.adminService.exportAuditLogsCsv();
+  async exportAuditLogs(
+    @Res() res: Response,
+    @Query('action') action?: string,
+    @Query('resourceType') resourceType?: string,
+    @Query('resourceId') resourceId?: string,
+    @Query('target') target?: string,
+    @Query('actor') actor?: string,
+    @Query('actorUserId') actorUserId?: string,
+    @Query('from') from?: string,
+    @Query('to') to?: string,
+    @Query('limit') limit?: string,
+  ) {
+    const csv = await this.auditLogService.exportCsv({
+      action,
+      resourceType,
+      resourceId,
+      target,
+      actor,
+      actorUserId,
+      from,
+      to,
+      limit: limit ? parseInt(limit, 10) : undefined,
+    });
     res.setHeader('Content-Type', 'text/csv');
     res.setHeader('Content-Disposition', 'attachment; filename="audit-logs.csv"');
     res.send(csv);
+  }
+
+  @Get('audit-logs/export/pdf')
+  @RequirePermissions('audit.view')
+  @ApiOperation({ summary: 'Export audit logs to PDF (3.13.10)' })
+  async exportAuditLogsPdf(
+    @Res() res: Response,
+    @Query('action') action?: string,
+    @Query('resourceType') resourceType?: string,
+    @Query('resourceId') resourceId?: string,
+    @Query('target') target?: string,
+    @Query('actor') actor?: string,
+    @Query('actorUserId') actorUserId?: string,
+    @Query('from') from?: string,
+    @Query('to') to?: string,
+    @Query('limit') limit?: string,
+  ) {
+    const pdf = await this.auditLogService.exportPdf({
+      action,
+      resourceType,
+      resourceId,
+      target,
+      actor,
+      actorUserId,
+      from,
+      to,
+      limit: limit ? parseInt(limit, 10) : undefined,
+    });
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('Content-Disposition', 'attachment; filename="audit-logs.pdf"');
+    res.send(pdf);
   }
 }
