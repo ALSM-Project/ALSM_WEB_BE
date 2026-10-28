@@ -23,6 +23,7 @@ describe('ProjectService organization isolation', () => {
     findById: jest.fn(),
     findAll: jest.fn(),
     findByAssignedStaff: jest.fn(),
+    findByAssignedTeamLead: jest.fn(),
     update: jest.fn(),
     softDelete: jest.fn(),
   };
@@ -71,6 +72,16 @@ describe('ProjectService organization isolation', () => {
     const result = await service.list('staff', undefined, false);
     expect(result.map((p) => p.id)).toEqual(['project-a', 'project-x']);
     expect(projects.findByAssignedStaff).toHaveBeenCalledWith('staff');
+  });
+  it('shows a Team Lead the projects the Platform Admin assigned to them from any organization (UC 3.13.3)', async () => {
+    organizations.resolve.mockResolvedValue({ id: 'org-lead' });
+    const assigned = { ...project, id: 'project-y', organizationId: 'org-partner' };
+    projects.findAll.mockResolvedValue([]);
+    projects.findByAssignedStaff.mockResolvedValue([]);
+    projects.findByAssignedTeamLead.mockResolvedValue([assigned]);
+    const result = await service.list('lead', undefined, false);
+    expect(result.map((p) => p.id)).toEqual(['project-y']);
+    expect(projects.findByAssignedTeamLead).toHaveBeenCalledWith('lead');
   });
   it('never widens the list for a user who is not a Platform Admin', async () => {
     organizations.resolve.mockResolvedValue({ id: 'org-a' });

@@ -45,6 +45,8 @@ export interface ProjectRepository {
     input: Partial<Pick<ProjectRecord, 'name' | 'description' | 'status' | 'assignedTeamLeadId'>>,
   ): Promise<ProjectRecord | null>;
   assignTeamLead(id: string, teamLeadId: string): Promise<ProjectRecord | null>;
+  /** Projects the Platform Admin assigned to this Team Lead (UC 3.13.3), from any organization. */
+  findByAssignedTeamLead(teamLeadId: string): Promise<ProjectRecord[]>;
   /** Projects a Team Lead allocated to this staff member (UC-86), optionally within one organization. */
   findByAssignedStaff(staffId: string, organizationId?: string): Promise<ProjectRecord[]>;
   assignStaff(

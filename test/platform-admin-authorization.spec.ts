@@ -153,6 +153,7 @@ describe('real AdminModule authorization HTTP boundary', () => {
     assignTeamLead: jest.fn(),
     findAll: jest.fn(),
     findByAssignedStaff: jest.fn().mockResolvedValue([]),
+    findByAssignedTeamLead: jest.fn().mockResolvedValue([]),
   };
   const organizationRepository = { findFirstForMember: jest.fn(), findForMember: jest.fn() };
   // Actual module, guards, RBAC resolver, current-session service and business

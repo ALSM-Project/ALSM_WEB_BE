@@ -108,9 +108,20 @@ export class ProjectService {
     const organization = await this.organizationContext.resolve(userId, organizationHeader);
     const own = await this.projects.findAll(organization.id);
     // Projects a Team Lead allocated to this person belong in their list wherever they live (UC-86).
-    const allocated = (await this.projects.findByAssignedStaff(userId)) ?? [];
+    // The same goes for projects the Platform Admin assigned to this Team Lead (UC 3.13.3):
+    // they come from any organization, so they are not in the organization list.
+    const allocated = [
+      ...((await this.projects.findByAssignedStaff(userId)) ?? []),
+      ...((await this.projects.findByAssignedTeamLead(userId)) ?? []),
+    ];
     const known = new Set(own.map((p) => p.id));
-    return [...own, ...allocated.filter((p) => !known.has(p.id))];
+    const extra: ProjectRecord[] = [];
+    for (const project of allocated) {
+      if (known.has(project.id)) continue;
+      known.add(project.id);
+      extra.push(project);
+    }
+    return [...own, ...extra];
   }
 
   async get(
