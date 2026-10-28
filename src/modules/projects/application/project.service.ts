@@ -45,6 +45,10 @@ export class ProjectService {
       action: 'PROJECT_CREATED',
       resourceType: 'PROJECT',
       resourceId: project.id,
+      metadata: {
+        projectName: project.name,
+        conversionType: project.conversionType,
+      },
     });
     return project;
   }
