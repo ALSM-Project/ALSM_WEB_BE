@@ -46,6 +46,18 @@ export class MenuItem {
   @Prop({ default: false })
   hideParentLabel!: boolean;
 
+  @Prop({ type: String, default: 'ALL', enum: ['ALL', 'SELF_SERVICE', 'WE_CONVERT_FOR_YOU', 'HYBRID'] })
+  contractTypeVisibility!: string;
+
+  @Prop({ type: String, default: null })
+  featureKey?: string | null;
+
+  @Prop({ type: String, default: null })
+  description?: string | null;
+
+  @Prop({ type: [String], default: [] })
+  requiredRoles!: string[];
+
   createdAt?: Date;
   updatedAt?: Date;
 }
