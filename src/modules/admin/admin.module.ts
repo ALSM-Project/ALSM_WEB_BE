@@ -20,6 +20,7 @@ import { EMAIL_PORT } from '../auth/domain/email.port';
 import { SmtpEmailAdapter } from '../auth/infrastructure/smtp-email.adapter';
 import { PlatformAdminService } from './application/platform-admin.service';
 import { LockUserService } from './application/lock-user.service';
+import { AuditLogService } from './application/audit-log.service';
 import { PlatformAdminController } from './presentation/platform-admin.controller';
 import { RbacModule } from '../rbac/rbac.module';
 import { PlatformAdminAccessService } from './application/platform-admin-access.service';
@@ -44,8 +45,9 @@ import { PlatformAdminAuthorizationGuard } from './presentation/platform-admin-a
     PlatformAdminAuthorizationGuard,
     PlatformAdminService,
     LockUserService,
+    AuditLogService,
     { provide: EMAIL_PORT, useClass: SmtpEmailAdapter },
   ],
-  exports: [PlatformAdminService, LockUserService, PlatformAdminAccessService, PlatformAdminAuthorizationGuard],
+  exports: [PlatformAdminService, LockUserService, AuditLogService, PlatformAdminAccessService, PlatformAdminAuthorizationGuard],
 })
 export class AdminModule {}
