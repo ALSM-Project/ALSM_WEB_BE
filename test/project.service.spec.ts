@@ -49,6 +49,26 @@ describe('ProjectService organization isolation', () => {
       expect.objectContaining({ organizationId: 'org-a', createdBy: 'user-a' }),
     );
   });
+  it('lets a Platform Admin list the projects of every organization', async () => {
+    projects.findAll.mockResolvedValue([project, { ...project, id: 'project-b', organizationId: 'org-b' }]);
+    const all = await service.list('admin', undefined, true);
+    expect(all.map((p) => p.id)).toEqual(['project-a', 'project-b']);
+    expect(projects.findAll).toHaveBeenCalledWith();
+    expect(organizations.resolve).not.toHaveBeenCalled();
+  });
+  it('keeps a Platform Admin to one organization when the request names it', async () => {
+    organizations.resolve.mockResolvedValue({ id: 'org-a' });
+    projects.findAll.mockResolvedValue([project]);
+    await service.list('admin', 'org-a', true);
+    expect(projects.findAll).toHaveBeenCalledWith('org-a');
+  });
+  it('never widens the list for a user who is not a Platform Admin', async () => {
+    organizations.resolve.mockResolvedValue({ id: 'org-a' });
+    projects.findAll.mockResolvedValue([project]);
+    await service.list('user-a', undefined, false);
+    expect(organizations.resolve).toHaveBeenCalledWith('user-a', undefined);
+    expect(projects.findAll).toHaveBeenCalledWith('org-a');
+  });
   it('returns an empty list without creating a project or audit record', async () => {
     organizations.resolve.mockResolvedValue({ id: 'org-a' });
     projects.findAll.mockResolvedValue([]);

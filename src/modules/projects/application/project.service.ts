@@ -95,7 +95,16 @@ export class ProjectService {
     return project;
   }
 
-  async list(userId: string, organizationHeader?: string): Promise<ProjectRecord[]> {
+  async list(
+    userId: string,
+    organizationHeader?: string,
+    isPlatformAdmin = false,
+  ): Promise<ProjectRecord[]> {
+    // A Platform Admin assigns projects of any organisation to a Team Lead (UC 3.13.3), so
+    // without a specific organization in the request they see every project in the system.
+    if (isPlatformAdmin && !organizationHeader?.trim()) {
+      return this.projects.findAll();
+    }
     const organization = await this.organizationContext.resolve(userId, organizationHeader);
     return this.projects.findAll(organization.id);
   }
