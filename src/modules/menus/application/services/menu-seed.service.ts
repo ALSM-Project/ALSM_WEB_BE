@@ -21,6 +21,8 @@ interface DefaultMenuItemSeed {
   permissions: string[];
 }
 
+import { runStartupSeed } from '../../../../shared/startup/run-startup-seed';
+
 @Injectable()
 export class MenuSeedService implements OnApplicationBootstrap {
   private readonly logger = new Logger(MenuSeedService.name);
@@ -31,9 +33,11 @@ export class MenuSeedService implements OnApplicationBootstrap {
   ) {}
 
   async onApplicationBootstrap(): Promise<void> {
-    await this.cleanupLegacyOrphanedItems();
-    await this.seedWeb2DefaultMenus();
-    await this.seedWeb3DefaultMenus();
+    await runStartupSeed(this.logger, 'Menu', async () => {
+      await this.cleanupLegacyOrphanedItems();
+      await this.seedWeb2DefaultMenus();
+      await this.seedWeb3DefaultMenus();
+    });
   }
 
   private async cleanupLegacyOrphanedItems(): Promise<void> {

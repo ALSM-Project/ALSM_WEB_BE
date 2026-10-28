@@ -13,7 +13,21 @@ export class RbacSeedService implements OnApplicationBootstrap {
     @InjectModel(Role.name) private readonly roleModel: Model<RoleDocument>,
   ) {}
 
+  /** Permissions that already exist, read once per seed instead of once per permission. */
+  private existingPermissions = new Map<string, { label?: string; group?: string; description?: string }>();
+
+  // The permission catalogue gates every request, so startup waits for it (and fails if it cannot
+  // be written) instead of opening the port with an incomplete catalogue.
   async onApplicationBootstrap(): Promise<void> {
+    const started = Date.now();
+    await this.seed();
+    this.logger.log(`RBAC seed finished in ${((Date.now() - started) / 1000).toFixed(1)}s`);
+  }
+
+  private async seed(): Promise<void> {
+    this.existingPermissions = new Map(
+      (await this.rbacService.getPermissions()).map((p) => [p.key, p]),
+    );
     // 1. System Roles
     await this.ensureRole('SYSTEM_ADMIN', 'Platform Admin', 'Platform administrator with unrestricted access', true);
     await this.ensureRole('ADMIN', 'Platform Administrator', 'Platform administrator with unrestricted access', true);
@@ -399,9 +413,10 @@ export class RbacSeedService implements OnApplicationBootstrap {
     description: string,
   ): Promise<void> {
     const normalizedKey = key.trim().toLowerCase().replace(/\s+/g, '.');
-    const existing = await this.rbacService.getPermissions();
-    if (!existing.some((p) => p.key === normalizedKey || p.key === key)) {
+    const existing = this.existingPermissions.get(normalizedKey) ?? this.existingPermissions.get(key);
+    if (!existing) {
       await this.rbacService.createPermission(normalizedKey, label, group, description);
+      this.existingPermissions.set(normalizedKey, { label, group, description });
       this.logger.log(`Seeded permission ${normalizedKey}`);
     } else {
       await this.rbacService.updatePermission(normalizedKey, label, group, description);
