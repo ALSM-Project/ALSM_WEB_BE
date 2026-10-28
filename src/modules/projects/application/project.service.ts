@@ -106,7 +106,11 @@ export class ProjectService {
       return this.projects.findAll();
     }
     const organization = await this.organizationContext.resolve(userId, organizationHeader);
-    return this.projects.findAll(organization.id);
+    const own = await this.projects.findAll(organization.id);
+    // Projects a Team Lead allocated to this person belong in their list wherever they live (UC-86).
+    const allocated = (await this.projects.findByAssignedStaff(userId)) ?? [];
+    const known = new Set(own.map((p) => p.id));
+    return [...own, ...allocated.filter((p) => !known.has(p.id))];
   }
 
   async get(

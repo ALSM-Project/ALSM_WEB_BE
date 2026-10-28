@@ -277,6 +277,7 @@ import { MenuModule } from './modules/menus/menu.module';
 
 import { VALIDATION_REPOSITORY } from './modules/conversions/domain/validation.types';
 import { MongoValidationRepository } from './modules/conversions/infrastructure/mongo-validation.repository';
+import { ProjectStaffAllocationService } from './modules/projects/application/project-staff-allocation.service';
 import { RuleValidatorService } from './modules/conversions/application/rule-validator.service';
 import { LegacyValidationService } from './modules/conversions/application/legacy-validation.service';
 import {
@@ -460,6 +461,7 @@ import { AuditModule } from './modules/audit/audit.module';
     OrganizationContextService,
     OrganizationAuthorizationService,
     ProjectService,
+    ProjectStaffAllocationService,
     ConversionJobService,
     ConversionProjectAccessService,
     UploadConversionSourceService,

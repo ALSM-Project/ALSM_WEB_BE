@@ -22,6 +22,7 @@ describe('ProjectService organization isolation', () => {
     create: jest.fn(),
     findById: jest.fn(),
     findAll: jest.fn(),
+    findByAssignedStaff: jest.fn(),
     update: jest.fn(),
     softDelete: jest.fn(),
   };
@@ -61,6 +62,15 @@ describe('ProjectService organization isolation', () => {
     projects.findAll.mockResolvedValue([project]);
     await service.list('admin', 'org-a', true);
     expect(projects.findAll).toHaveBeenCalledWith('org-a');
+  });
+  it('adds the projects a Team Lead allocated to the user, even from another organization (UC-86)', async () => {
+    organizations.resolve.mockResolvedValue({ id: 'org-a' });
+    const foreign = { ...project, id: 'project-x', organizationId: 'org-partner' };
+    projects.findAll.mockResolvedValue([project]);
+    projects.findByAssignedStaff.mockResolvedValue([project, foreign]);
+    const result = await service.list('staff', undefined, false);
+    expect(result.map((p) => p.id)).toEqual(['project-a', 'project-x']);
+    expect(projects.findByAssignedStaff).toHaveBeenCalledWith('staff');
   });
   it('never widens the list for a user who is not a Platform Admin', async () => {
     organizations.resolve.mockResolvedValue({ id: 'org-a' });

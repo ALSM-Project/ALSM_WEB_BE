@@ -10,7 +10,7 @@ describe('Conversion Staff project authorization', () => {
   const permissions = { getUserRoles: jest.fn(), getEffectivePermissions: jest.fn() };
   const teams = { listForMember: jest.fn() };
   const organizations = { findForMember: jest.fn() };
-  const projects = { findById: jest.fn(), findAll: jest.fn() };
+  const projects = { findById: jest.fn(), findAll: jest.fn(), findByAssignedStaff: jest.fn() };
   const context = { resolve: jest.fn() };
   const service = new ConversionProjectAccessService(
     permissions as unknown as EffectivePermissionsService,
@@ -38,6 +38,8 @@ describe('Conversion Staff project authorization', () => {
     projects.findById.mockImplementation((id: string, organizationId: string) =>
       Promise.resolve({ id, organizationId, name: id }),
     );
+    projects.findAll.mockResolvedValue([]);
+    projects.findByAssignedStaff.mockResolvedValue([]);
     context.resolve.mockResolvedValue({ id: 'org-a' });
   });
   it('requires an explicit project assignment even for an organization owner', async () => {
@@ -138,6 +140,30 @@ describe('Conversion Staff project authorization', () => {
     projects.findAll.mockResolvedValue([{ id: 'project-a' }]);
     expect(await service.listQueueProjects('admin', 'org-a')).toEqual([{ id: 'project-a' }]);
     expect(projects.findAll).toHaveBeenCalledWith('org-a');
+  });
+  describe('project allocated to a staff member by a Team Lead (UC-86)', () => {
+    it('lets the allocated staff member in without any team assignment, and lists the project', async () => {
+      teams.listForMember.mockResolvedValue([]);
+      projects.findById.mockResolvedValue({ id: 'project-z', organizationId: 'org-a', assignedStaffId: 'staff' });
+      await expect(service.requireAssignment('staff', 'org-a', 'project-z')).resolves.toBeUndefined();
+
+      const allocated = { id: 'project-z', organizationId: 'org-a', name: 'Z', assignedStaffId: 'staff' };
+      projects.findByAssignedStaff.mockResolvedValue([allocated]);
+      expect(await service.listQueueProjects('staff')).toEqual([allocated]);
+    });
+
+    it('takes the project away from the previous owner, even if their team still lists it', async () => {
+      projects.findById.mockResolvedValue({
+        id: 'project-a',
+        organizationId: 'org-a',
+        name: 'A',
+        assignedStaffId: 'new-owner',
+      });
+      await expect(service.requireAssignment('staff', 'org-a', 'project-a')).rejects.toMatchObject({
+        response: { code: 'CONVERSION_PROJECT_ASSIGNMENT_REQUIRED' },
+      });
+      expect(await service.listQueueProjects('staff')).toEqual([]);
+    });
   });
   it('propagates persistence failures instead of falling back to membership or sample data', async () => {
     teams.listForMember.mockRejectedValue(new Error('storage unavailable'));
