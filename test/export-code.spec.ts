@@ -183,6 +183,52 @@ describe('ExportCodeService & ExportController', () => {
     expect(asJson).not.toContain('package.json');
   });
 
+  it('wraps a Java-only Scaffold export in a Spring Boot Maven project around the real Java', async () => {
+    jobs.listByScreen.mockResolvedValue([
+      {
+        id: 'job-cobol-1',
+        status: ConversionJobStatus.COMPLETED,
+        resultReference: 'results/proj-acme/job-cobol-1/abc',
+        completedAt: new Date('2024-01-02'),
+        toolVersion: 'tool2java',
+      },
+    ]);
+    storage.readFiles.mockResolvedValue([
+      {
+        relativePath: 'cobolprogramclasses/cbact01c/Cbact01cTasklet.java',
+        content: Buffer.from('package cobolprogramclasses.cbact01c;\npublic class Cbact01cTasklet {}'),
+      },
+    ]);
+
+    const config: ExportConfiguration = {
+      projectId: 'proj-acme',
+      projectName: 'Acme Corp',
+      outputOption: 'scaffold',
+      frameworkTarget: 'react-19',
+      stylingOption: 'tailwind',
+      includeTypeScriptStrict: true,
+      includeUnitTests: true,
+      includeStorybook: false,
+      includeDocumentation: true,
+      selectedScreenIds: ['scr-cobol'],
+    };
+
+    const result = await service.generateExportPreview('user-1', undefined, 'proj-acme', config);
+    const asJson = JSON.stringify(result.fileTree);
+    expect(asJson).toContain('pom.xml');
+    expect(asJson).toContain('application.yml');
+    expect(asJson).toContain('ModernizedApplication.java');
+    expect(asJson).toContain('public class Cbact01cTasklet');
+    expect(asJson).not.toContain('package.json');
+
+    // The plain Standalone format keeps the source-only layout.
+    const standalone = await service.generateExportPreview('user-1', undefined, 'proj-acme', {
+      ...config,
+      outputOption: 'standalone',
+    });
+    expect(JSON.stringify(standalone.fileTree)).not.toContain('ModernizedApplication.java');
+  });
+
   it('should package real Java files (not just .tsx) into the downloadable zip', async () => {
     jobs.listByScreen.mockResolvedValue([
       {
