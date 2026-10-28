@@ -16,6 +16,68 @@ export interface SpringBootScaffoldInput {
 const APPLICATION_PACKAGE = 'com.alsm.modernized';
 const SPRING_BOOT_VERSION = '3.3.5';
 
+/**
+ * Generated code written against the converter's own runtime (Common) uses Spring Batch 4
+ * (JobBuilderFactory, StepBuilderFactory) and javax.persistence, which only exist up to
+ * Spring Boot 2.x. Such code is built on Spring Boot 2.4 / Java 11 instead of 3.3 / Java 21.
+ */
+const LEGACY_SPRING_BOOT_VERSION = '2.4.2';
+const LEGACY_JAVA_VERSION = '11';
+const LEGACY_RUNTIME_PREFIX = 'jp.co.alsm';
+const LEGACY_RUNTIME = { groupId: 'C2J', artifactId: 'Common', version: '0.0.1' };
+
+interface BuildProfile {
+  legacy: boolean;
+  springBoot: string;
+  java: string;
+  label: string;
+}
+
+const JOB_LISTENER_IMPORT = 'jp.co.alsm.config.BaseJobExecutionListener';
+const JOB_LISTENER_PATH = 'src/main/java/jp/co/alsm/config/BaseJobExecutionListener.java';
+const JOB_LISTENER_SOURCE = `package jp.co.alsm.config;
+
+import org.springframework.batch.core.JobExecution;
+import org.springframework.batch.core.JobExecutionListener;
+import org.springframework.batch.core.configuration.annotation.JobScope;
+import org.springframework.context.annotation.Primary;
+import org.springframework.stereotype.Component;
+
+/** Listener the generated jobs register; it does nothing by default - add job-level hooks here. */
+@Primary
+@Component
+@JobScope
+public class BaseJobExecutionListener implements JobExecutionListener {
+
+  @Override
+  public void beforeJob(JobExecution jobExecution) {
+  }
+
+  @Override
+  public void afterJob(JobExecution jobExecution) {
+  }
+}
+`;
+
+function needsJobListener(files: JavaSourceFile[], placed: PlacedJavaFile[]): boolean {
+  const provided = placed.some((f) => f.packageName === 'jp.co.alsm.config' && f.className === 'BaseJobExecutionListener');
+  return !provided && files.some((f) => f.content.includes(JOB_LISTENER_IMPORT));
+}
+
+function detectProfile(files: JavaSourceFile[]): BuildProfile {
+  const legacy = files.some((f) =>
+    /\b(?:JobBuilderFactory|StepBuilderFactory)\b|javax\.persistence|\bjp\.co\.alsm\./.test(f.content),
+  );
+  return legacy
+    ? {
+        legacy,
+        springBoot: LEGACY_SPRING_BOOT_VERSION,
+        java: LEGACY_JAVA_VERSION,
+        label: `Spring Boot 2.4 (Java ${LEGACY_JAVA_VERSION})`,
+      }
+    : { legacy, springBoot: SPRING_BOOT_VERSION, java: '21', label: 'Spring Boot 3.3 (Java 21)' };
+}
+
 /** Packages the generated code may import without anything extra on the classpath. */
 const PROVIDED_PACKAGE_PREFIXES = [
   'java.',
@@ -65,7 +127,9 @@ function basename(relativePath: string): string {
 /** Places each file where javac expects it: under the folder of its declared package. */
 function placeJavaFile(file: JavaSourceFile): PlacedJavaFile {
   const packageName = packageOf(file.content);
-  const fileName = basename(file.relativePath);
+  // javac needs the file to be named after its public class; the converter may name it after another one.
+  const declaredClass = publicClassOf(file.content);
+  const fileName = declaredClass ? `${declaredClass}.java` : basename(file.relativePath);
   const folder = packageName
     ? packageName.replace(/\./g, '/')
     : file.relativePath.replace(/\\/g, '/').split('/').slice(0, -1).join('/');
@@ -108,12 +172,33 @@ function xmlEscape(value: string): string {
   return value.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 }
 
-function pomXml(projectName: string, includeUnitTests: boolean, externalImports: string[]): string {
-  const externalNote = externalImports.length
+function pomXml(
+  projectName: string,
+  includeUnitTests: boolean,
+  externalImports: string[],
+  profile: BuildProfile,
+): string {
+  const runtimeProvided = profile.legacy && externalImports.some((p) => p.startsWith(LEGACY_RUNTIME_PREFIX));
+  const stillExternal = externalImports.filter((p) => !(runtimeProvided && p.startsWith(LEGACY_RUNTIME_PREFIX)));
+  const runtimeDependency = runtimeProvided
+    ? `
+    <!-- The converter runtime (Console, Record, Compare, ...). Install it first: run "mvn install" in its Common project. -->
+    <dependency>
+      <groupId>${LEGACY_RUNTIME.groupId}</groupId>
+      <artifactId>${LEGACY_RUNTIME.artifactId}</artifactId>
+      <version>${LEGACY_RUNTIME.version}</version>
+    </dependency>`
+    : '';
+  const legacyProperty = profile.legacy
+    ? `
+    <!-- Spring Boot 2.4 manages a Lombok too old for JDK 17 and newer. -->
+    <lombok.version>1.18.30</lombok.version>`
+    : '';
+  const externalNote = stillExternal.length
     ? `
     <!--
       The generated sources import these packages, which are not part of this bundle:
-        ${externalImports.join('\n        ')}
+        ${stillExternal.join('\n        ')}
       Add the library that provides them (for example the conversion runtime jar) here
       before running "mvn package" - the build fails to compile until they resolve.
     -->`
@@ -135,7 +220,7 @@ function pomXml(projectName: string, includeUnitTests: boolean, externalImports:
   <parent>
     <groupId>org.springframework.boot</groupId>
     <artifactId>spring-boot-starter-parent</artifactId>
-    <version>${SPRING_BOOT_VERSION}</version>
+    <version>${profile.springBoot}</version>
     <relativePath/>
   </parent>
 
@@ -146,7 +231,7 @@ function pomXml(projectName: string, includeUnitTests: boolean, externalImports:
   <description>COBOL programs modernized to Java by ALSM</description>
 
   <properties>
-    <java.version>21</java.version>
+    <java.version>${profile.java}</java.version>${legacyProperty}
   </properties>
 
   <dependencies>
@@ -164,7 +249,7 @@ function pomXml(projectName: string, includeUnitTests: boolean, externalImports:
       <groupId>org.projectlombok</groupId>
       <artifactId>lombok</artifactId>
       <optional>true</optional>
-    </dependency>${testDependency}${externalNote}
+    </dependency>${runtimeDependency}${testDependency}${externalNote}
   </dependencies>
 
   <build>
@@ -187,13 +272,12 @@ function pomXml(projectName: string, includeUnitTests: boolean, externalImports:
 `;
 }
 
-function applicationYml(projectName: string): string {
+function applicationYml(projectName: string, profile: BuildProfile): string {
   return `spring:
   application:
     name: ${artifactIdOf(projectName)}
   batch:
-    jdbc:
-      initialize-schema: always
+${profile.legacy ? '    initialize-schema: always' : '    jdbc:\n      initialize-schema: always'}
     job:
       # Converted programs are Spring Batch tasklets; wire them into jobs before enabling this.
       enabled: false
@@ -204,7 +288,52 @@ function applicationYml(projectName: string): string {
 `;
 }
 
-function applicationClass(scanPackages: string[]): string {
+/**
+ * Spring Batch 4 jobs (JobBuilderFactory) need @EnableBatchProcessing, and the app runs the job
+ * named by its first argument: `java -jar app.jar Model01`.
+ */
+function legacyApplicationClass(scanPackages: string[]): string {
+  const packages = [APPLICATION_PACKAGE, ...scanPackages.filter((p) => p !== APPLICATION_PACKAGE)];
+  return `package ${APPLICATION_PACKAGE};
+
+import org.springframework.batch.core.Job;
+import org.springframework.batch.core.JobParametersBuilder;
+import org.springframework.batch.core.configuration.annotation.EnableBatchProcessing;
+import org.springframework.batch.core.launch.JobLauncher;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.CommandLineRunner;
+import org.springframework.boot.SpringApplication;
+import org.springframework.boot.autoconfigure.SpringBootApplication;
+import org.springframework.context.ApplicationContext;
+
+@SpringBootApplication(scanBasePackages = {${packages.map((p) => `"${p}"`).join(', ')}})
+@EnableBatchProcessing
+public class ModernizedApplication implements CommandLineRunner {
+
+  @Autowired
+  private JobLauncher jobLauncher;
+
+  @Autowired
+  private ApplicationContext context;
+
+  public static void main(String[] args) {
+    SpringApplication.run(ModernizedApplication.class, args);
+  }
+
+  @Override
+  public void run(String... args) throws Exception {
+    if (args.length == 0) {
+      return;
+    }
+    Job job = context.getBean(args[0], Job.class);
+    jobLauncher.run(job, new JobParametersBuilder().addLong("run.id", System.currentTimeMillis()).toJobParameters());
+  }
+}
+`;
+}
+
+function applicationClass(scanPackages: string[], profile: BuildProfile): string {
+  if (profile.legacy) return legacyApplicationClass(scanPackages);
   const packages = [APPLICATION_PACKAGE, ...scanPackages.filter((p) => p !== APPLICATION_PACKAGE)];
   return `package ${APPLICATION_PACKAGE};
 
@@ -241,7 +370,7 @@ class ${file.className}Test {
   return fileItem(['src/test/java', folder, `${file.className}Test.java`].filter(Boolean).join('/'), content, 'java');
 }
 
-function readme(input: SpringBootScaffoldInput, externalImports: string[], classCount: number): string {
+function readme(input: SpringBootScaffoldInput, externalImports: string[], classCount: number, profile: BuildProfile): string {
   const programList = input.programs.map((p) => `- ${p.name}`).join('\n') || '- none';
   const excluded = input.excludedItems.length
     ? `\n## Not included\n\n${input.excludedItems.map((i) => `- ${i.name}: ${i.reason}`).join('\n')}\n`
@@ -256,13 +385,13 @@ function readme(input: SpringBootScaffoldInput, externalImports: string[], class
     : '';
   return `# ${input.projectName}
 
-Spring Boot 3.3 (Java 21) project generated by ALSM from the COBOL programs converted in this project. The files under \`src/main/java\` (other than \`${APPLICATION_PACKAGE.replace(/\./g, '/')}/ModernizedApplication.java\`) are the real conversion output - ${classCount} class(es) from:
+${profile.label} project generated by ALSM from the COBOL programs converted in this project. The files under \`src/main/java\` (other than \`${APPLICATION_PACKAGE.replace(/\./g, '/')}/ModernizedApplication.java\`) are the real conversion output - ${classCount} class(es) from:
 
 ${programList}
 ${excluded}${external}
 ## Requirements
 
-- JDK 21
+- JDK ${profile.java} or newer
 - Maven 3.9 or newer
 
 ## Build
@@ -284,23 +413,34 @@ ${tests}`;
 /** Runnable Spring Boot 3.3 project around real tool2java output (UC-48). */
 export function buildSpringBootProjectTree(input: SpringBootScaffoldInput): ExportFileItem[] {
   const allFiles = input.programs.flatMap((p) => p.files);
+  const profile = detectProfile(allFiles);
   // Programs converted in the same bundle can each carry a copy of a shared class; keep one.
   const placed = [...new Map(allFiles.map(placeJavaFile).map((f) => [f.path, f])).values()];
   const externalImports = findExternalImports(allFiles);
+  const addListener = profile.legacy && needsJobListener(allFiles, placed);
   const scanPackages = [
-    ...new Set(placed.map((f) => f.packageName?.split('.')[0]).filter(Boolean) as string[]),
+    ...new Set([
+      ...(placed.map((f) => f.packageName?.split('.')[0]).filter(Boolean) as string[]),
+      // The listener and the runtime's own components live under jp.co.alsm.
+      ...(addListener ? ['jp.co.alsm'] : []),
+    ]),
   ].sort();
 
   const children: ExportFileItem[] = [
-    fileItem('pom.xml', pomXml(input.projectName, input.includeUnitTests, externalImports)),
-    fileItem('src/main/resources/application.yml', applicationYml(input.projectName)),
+    fileItem('pom.xml', pomXml(input.projectName, input.includeUnitTests, externalImports, profile)),
+    fileItem('src/main/resources/application.yml', applicationYml(input.projectName, profile)),
     fileItem(
       `src/main/java/${APPLICATION_PACKAGE.replace(/\./g, '/')}/ModernizedApplication.java`,
-      applicationClass(scanPackages),
+      applicationClass(scanPackages, profile),
       'java',
     ),
     ...placed.map((f) => fileItem(f.path, f.content, 'java')),
   ];
+  // The generated job classes hook into BaseJobExecutionListener, which belongs to the batch
+  // runner rather than the runtime library, so a bundle that uses it has to carry it.
+  if (addListener) {
+    children.push(fileItem(JOB_LISTENER_PATH, JOB_LISTENER_SOURCE, 'java'));
+  }
   if (input.includeUnitTests) {
     for (const file of placed) {
       const test = classTest(file);
@@ -309,7 +449,7 @@ export function buildSpringBootProjectTree(input: SpringBootScaffoldInput): Expo
   }
   children.push(fileItem('.gitignore', 'target/\n.idea/\n*.iml\n.vscode/\n'));
   if (input.includeDocumentation) {
-    children.push(fileItem('README.md', readme(input, externalImports, placed.length), 'markdown'));
+    children.push(fileItem('README.md', readme(input, externalImports, placed.length, profile), 'markdown'));
   }
 
   return [
