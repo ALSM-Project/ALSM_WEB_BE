@@ -2,7 +2,9 @@ import { Injectable } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { FilterQuery, Model } from 'mongoose';
 import * as PDFDoc from 'pdfkit';
-const PDFDocument: typeof PDFDoc = ((PDFDoc as any).default || PDFDoc) as any;
+type PDFDocConstructor = typeof PDFDoc;
+const PDFDocument: PDFDocConstructor =
+  (PDFDoc as unknown as { default?: PDFDocConstructor }).default || PDFDoc;
 import { AuditLog, AuditLogDocument } from '../../audit/infrastructure/audit-log.schema';
 
 export interface AuditLogListQuery {
@@ -77,16 +79,21 @@ export class AuditLogService {
     ]);
 
     const items = rawItems.map((item) => {
-      const doc = typeof (item as any)?.toObject === 'function' ? (item as any).toObject() : item;
+      const hasToObject = item as unknown as { toObject?: () => Record<string, unknown> };
+      const doc = (
+        typeof hasToObject?.toObject === 'function' ? hasToObject.toObject() : item
+      ) as Record<string, unknown>;
       const actor = doc.actorUserId as { fullName?: string; email?: string } | undefined;
       const actorStr = actor?.fullName || actor?.email || String(doc.actorUserId || 'SYSTEM');
-      const targetStr = doc.resourceId ? `${doc.resourceType}:${doc.resourceId}` : doc.resourceType;
+      const targetStr = doc.resourceId
+        ? `${String(doc.resourceType)}:${String(doc.resourceId)}`
+        : String(doc.resourceType || '');
       return {
         ...doc,
         timestamp: doc.createdAt,
         actor: actorStr,
         target: targetStr,
-        ipAddress: doc.ipAddress || '',
+        ipAddress: (doc.ipAddress as string) || '',
       };
     });
 
