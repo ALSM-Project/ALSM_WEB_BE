@@ -91,7 +91,8 @@ export class ProjectsController {
   @Get()
   @ApiOperation({
     summary: 'List projects',
-    description: 'Retrieve all modernization projects for the authenticated user and organization.',
+    description:
+      'Retrieve the modernization projects of the organization of the authenticated user. A Platform Admin who does not name an organization gets the projects of every organization.',
   })
   @ApiResponse({ status: HttpStatus.OK, description: 'List of projects retrieved successfully' })
   @ApiResponse({
@@ -102,7 +103,7 @@ export class ProjectsController {
     @CurrentUser() user: AuthenticatedUser,
     @Headers('x-organization-id') organizationId: string | undefined,
   ) {
-    return this.projects.list(user.userId, organizationId);
+    return this.projects.list(user.userId, organizationId, user.isPlatformAdmin);
   }
 
   @Get(':id')
