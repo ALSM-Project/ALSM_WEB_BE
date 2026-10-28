@@ -82,6 +82,39 @@ export class MongoProjectRepository implements ProjectRepository {
     return doc ? this.map(doc) : null;
   }
 
+  async findByAssignedStaff(staffId: string, organizationId?: string): Promise<ProjectRecord[]> {
+    const filter: FilterQuery<ProjectDocument> = {
+      deletedAt: { $exists: false },
+      assignedStaffId: toValidObjectId(staffId),
+    };
+    if (organizationId?.trim()) {
+      filter.organizationId = { $in: [toValidObjectId(organizationId), organizationId] };
+    }
+    return (await this.model.find(filter).sort({ createdAt: -1 }).exec()).map((doc) => this.map(doc));
+  }
+
+  async assignStaff(
+    id: string,
+    staff: { staffId: string; staffName: string; note?: string; assignedBy: string },
+  ): Promise<ProjectRecord | null> {
+    const doc = await this.model
+      .findOneAndUpdate(
+        { _id: toValidObjectId(id), deletedAt: { $exists: false } },
+        {
+          $set: {
+            assignedStaffId: toValidObjectId(staff.staffId),
+            assignedStaffName: staff.staffName,
+            staffAssignmentNote: staff.note ?? '',
+            staffAssignedBy: toValidObjectId(staff.assignedBy),
+            staffAssignedAt: new Date(),
+          },
+        },
+        { new: true },
+      )
+      .exec();
+    return doc ? this.map(doc) : null;
+  }
+
   async softDelete(id: string, organizationId: string): Promise<boolean> {
     const projObjId = toValidObjectId(id);
     const orgObjId = toValidObjectId(organizationId);
@@ -109,6 +142,11 @@ export class MongoProjectRepository implements ProjectRepository {
       createdBy: doc.createdBy.toString(),
       isDemo: doc.isDemo,
       assignedTeamLeadId: doc.assignedTeamLeadId?.toString(),
+      assignedStaffId: doc.assignedStaffId?.toString(),
+      assignedStaffName: doc.assignedStaffName,
+      staffAssignmentNote: doc.staffAssignmentNote,
+      staffAssignedBy: doc.staffAssignedBy?.toString(),
+      staffAssignedAt: doc.staffAssignedAt,
       isExported: doc.isExported,
       exportedAt: doc.exportedAt,
       exportedBundleName: doc.exportedBundleName,
