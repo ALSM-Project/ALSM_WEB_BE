@@ -20,7 +20,9 @@ import {
   ApiTags,
 } from '@nestjs/swagger';
 import { ProjectService } from '../application/project.service';
-import { CreateProjectDto, UpdateProjectDto } from './project.dto';
+import { ProjectStaffAllocationService } from '../application/project-staff-allocation.service';
+import { PermissionsGuard } from '../../../shared/security/permissions.guard';
+import { AssignProjectStaffDto, CreateProjectDto, UpdateProjectDto } from './project.dto';
 import { JwtAuthGuard } from '../../../shared/security/jwt-auth.guard';
 import { CurrentUser } from '../../../shared/security/current-user.decorator';
 import { AuthenticatedUser } from '../../../shared/logging/request-id.middleware';
@@ -37,7 +39,10 @@ import { PlatformAdminAuthorizationGuard } from '../../admin/presentation/platfo
 @UseGuards(JwtAuthGuard)
 @Controller('projects')
 export class ProjectsController {
-  constructor(private readonly projects: ProjectService) {}
+  constructor(
+    private readonly projects: ProjectService,
+    private readonly staffAllocation: ProjectStaffAllocationService,
+  ) {}
 
   @Post()
   @ApiOperation({
@@ -70,6 +75,34 @@ export class ProjectsController {
     @Body() dto: { name?: string; description?: string },
   ) {
     return this.projects.createDemo(user.userId, organizationId, dto);
+  }
+
+  @Get('assignable-staff')
+  @UseGuards(PermissionsGuard)
+  @RequirePermissions('teams.manage')
+  @ApiOperation({
+    summary: 'List Conversion Staff a project can be allocated to',
+    description:
+      'Active Conversion Staff accounts with the number of projects each carries (UC-86). Requires teams.manage.',
+  })
+  assignableStaff() {
+    return this.staffAllocation.listAssignableStaff();
+  }
+
+  @Post(':id/assign-staff')
+  @UseGuards(PermissionsGuard)
+  @RequirePermissions('teams.manage')
+  @ApiOperation({
+    summary: 'Allocate a project to a Conversion Staff member',
+    description:
+      'Stores the allocation on the project so it appears in that person work queue, replaces any previous owner, and audits PROJECT_STAFF_ALLOCATED. Requires teams.manage (UC-86).',
+  })
+  async assignStaff(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('id') id: string,
+    @Body() dto: AssignProjectStaffDto,
+  ) {
+    return this.staffAllocation.assign(user.userId, id, dto.staffId, dto.note);
   }
 
   @Post(':id/assign-team-lead')

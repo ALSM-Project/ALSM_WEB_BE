@@ -31,6 +31,7 @@ import { OnboardUserService } from '../src/modules/users/application/onboard-use
 import { RbacModule } from '../src/modules/rbac/rbac.module';
 import { ProjectsController } from '../src/modules/projects/presentation/projects.controller';
 import { ProjectService } from '../src/modules/projects/application/project.service';
+import { ProjectStaffAllocationService } from '../src/modules/projects/application/project-staff-allocation.service';
 import { ProjectRepository } from '../src/modules/projects/domain/project.types';
 import { OrganizationContextService } from '../src/modules/organizations/application/organization-context.service';
 import { OrganizationAuthorizationService } from '../src/modules/organizations/application/organization-authorization.service';
@@ -148,7 +149,11 @@ describe('real AdminModule authorization HTTP boundary', () => {
   };
   const audit = { append: jest.fn() };
   const email = { send: jest.fn() };
-  const projectRepository = { assignTeamLead: jest.fn(), findAll: jest.fn() };
+  const projectRepository = {
+    assignTeamLead: jest.fn(),
+    findAll: jest.fn(),
+    findByAssignedStaff: jest.fn().mockResolvedValue([]),
+  };
   const organizationRepository = { findFirstForMember: jest.fn(), findForMember: jest.fn() };
   // Actual module, guards, RBAC resolver, current-session service and business
   // services. Only database/email ports and bootstrap side effects are fixtures.
@@ -268,6 +273,8 @@ describe('real AdminModule authorization HTTP boundary', () => {
       controllers: [UsersController, ProjectsController],
       providers: [
         { provide: OnboardUserService, useValue: {} },
+        // ProjectsController also serves staff allocation (UC-86); these tests never call it.
+        { provide: ProjectStaffAllocationService, useValue: {} },
         {
           provide: ProjectService,
           useValue: new ProjectService(
