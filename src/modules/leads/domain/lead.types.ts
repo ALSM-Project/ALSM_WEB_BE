@@ -71,6 +71,9 @@ export interface LeadQuoteItem {
 }
 
 export interface CreateLeadInput {
+  id: string;
+  creationFingerprint: string;
+  dedupeKey: string;
   companyName: string;
   contactName: string;
   contactEmail: string;
@@ -86,6 +89,11 @@ export interface CreateLeadInput {
   tags?: string[];
   createdByUserId: string;
   createdByEmail: string;
+}
+
+export interface CreateLeadResult {
+  lead: LeadRecord;
+  replayed: boolean;
 }
 
 export interface LeadListParams {
@@ -125,7 +133,7 @@ export interface UpdateLeadStatusOptions {
 }
 
 export interface LeadRepository {
-  create(input: CreateLeadInput): Promise<LeadRecord>;
+  create(input: CreateLeadInput): Promise<CreateLeadResult>;
   findById(id: string): Promise<LeadRecord | null>;
   list(params?: LeadListParams): Promise<{ items: LeadRecord[]; total: number }>;
   countByStatus(): Promise<Record<string, number>>;

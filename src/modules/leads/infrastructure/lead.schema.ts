@@ -3,6 +3,7 @@ import { Document, Types } from 'mongoose';
 import { LeadStatus, LeadSource, LeadPriority } from '../domain/lead.types';
 
 export type LeadDocument = Lead & Document;
+export const UC58_LEAD_MODEL = 'Uc58Lead';
 
 @Schema({ collection: 'leads', timestamps: true })
 export class Lead {
@@ -60,6 +61,12 @@ export class Lead {
   @Prop({ required: true, trim: true, lowercase: true })
   createdByEmail!: string;
 
+  @Prop({ select: false })
+  creationFingerprint?: string;
+
+  @Prop({ select: false })
+  dedupeKey?: string;
+
   @Prop({ type: [Object], default: [] })
   quotes!: Array<{
     id: string;
@@ -93,3 +100,11 @@ LeadSchema.index({ priority: 1 });
 LeadSchema.index({ assignedToUserId: 1 });
 LeadSchema.index({ companyName: 'text', contactName: 'text', contactEmail: 'text' });
 LeadSchema.index({ createdAt: -1 });
+LeadSchema.index(
+  { dedupeKey: 1 },
+  {
+    unique: true,
+    name: 'one_lead_per_normalized_email',
+    partialFilterExpression: { dedupeKey: { $type: 'string' } },
+  },
+);

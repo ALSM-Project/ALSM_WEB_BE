@@ -2,6 +2,7 @@ import {
   Body,
   Controller,
   Get,
+  Headers,
   NotFoundException,
   Param,
   Patch,
@@ -11,6 +12,7 @@ import {
 } from '@nestjs/common';
 import {
   ApiBearerAuth,
+  ApiHeader,
   ApiOperation,
   ApiParam,
   ApiQuery,
@@ -25,11 +27,12 @@ import { AuthenticatedUser } from '../../../shared/logging/request-id.middleware
 import { ListLeadsService } from '../application/list-leads.service';
 import { UpdateLeadStatusService } from '../application/update-lead-status.service';
 import { SendQuoteService } from '../application/send-quote.service';
-import { ListLeadsQueryDto, UpdateLeadStatusDto, SendQuoteDto } from './lead.dto';
+import { CreateLeadService } from '../application/create-lead.service';
+import { CreateLeadDto, ListLeadsQueryDto, UpdateLeadStatusDto, SendQuoteDto } from './lead.dto';
 import { LeadStatus, LeadSource, LeadPriority, LeadRecord, LeadQuoteItem } from '../domain/lead.types';
 import { SendQuoteResult } from '../application/send-quote.service';
 
-@ApiTags('Leads (UC-58, UC-62, UC-66)')
+@ApiTags('Leads (UC-58, UC-59, UC-62, UC-66)')
 @ApiBearerAuth()
 @UseGuards(JwtAuthGuard, PermissionsGuard)
 @Controller('leads')
@@ -38,7 +41,34 @@ export class LeadController {
     private readonly listLeadsService: ListLeadsService,
     private readonly updateLeadStatusService: UpdateLeadStatusService,
     private readonly sendQuoteService: SendQuoteService,
+    private readonly createLeadService: CreateLeadService,
   ) {}
+
+  @Post()
+  @RequirePermissions('sales.leads.manage')
+  @ApiOperation({
+    summary: 'Create a new sales lead (UC-59)',
+    description: 'Requires sales.leads.manage. Creates the lead, assigns it to the authenticated sales user, and writes an audit event atomically.',
+  })
+  @ApiHeader({
+    name: 'Idempotency-Key',
+    required: true,
+    description: 'Stable UUID reused when retrying the same lead creation request',
+  })
+  @ApiResponse({ status: 201, description: 'Lead created or an identical retry reconciled' })
+  @ApiResponse({ status: 400, description: 'Invalid lead details or missing idempotency key' })
+  @ApiResponse({ status: 401, description: 'Authentication is required' })
+  @ApiResponse({ status: 403, description: 'The user lacks sales.leads.manage permission' })
+  @ApiResponse({ status: 409, description: 'Duplicate email or idempotency key reused with different details' })
+  @ApiResponse({ status: 503, description: 'The database transaction could not be completed' })
+  async create(
+    @Body() dto: CreateLeadDto,
+    @CurrentUser() user: AuthenticatedUser,
+    @Headers('idempotency-key') requestId?: string,
+  ) {
+    const result = await this.createLeadService.execute(dto, user, requestId);
+    return { ...result, lead: this.publicLead(result.lead) };
+  }
 
   @Get()
   @RequirePermissions('sales.leads.view')
