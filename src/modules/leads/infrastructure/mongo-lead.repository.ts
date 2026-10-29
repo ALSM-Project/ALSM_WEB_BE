@@ -15,6 +15,7 @@ import {
   LeadSource,
   LeadEmailNotificationStatus,
   LeadPhoneCall,
+  LeadDemo,
   UpdateLeadStatusOptions,
 } from '../domain/lead.types';
 import { toValidObjectId } from '../../../shared/utils/object-id.util';
@@ -53,6 +54,7 @@ type LegacyLeadDocument = {
   assignments?: Array<{ actorUserId?: MongoIdentifier }>;
   quotes?: LeadQuoteItem[];
   phoneCalls?: LeadPhoneCall[];
+  demos?: LeadDemo[];
   createdAt: Date;
   updatedAt: Date;
 };
@@ -324,6 +326,35 @@ export class MongoLeadRepository implements LeadRepository {
     return doc ? this.map(doc) : null;
   }
 
+  async addDemoOnce(
+    id: string,
+    demo: LeadDemo,
+    expectedStatus: LeadStatus,
+    newStatus: LeadStatus,
+  ): Promise<LeadRecord | null> {
+    if (!id || !/^[a-f\d]{24}$/i.test(id)) return null;
+    const doc = await this.model.findOneAndUpdate(
+      {
+        _id: new Types.ObjectId(id),
+        $or: [
+          { status: expectedStatus },
+          { status: { $exists: false }, stage: expectedStatus },
+        ],
+        'demos.requestId': { $ne: demo.requestId },
+      },
+      {
+        $push: { demos: demo },
+        $set: {
+          status: newStatus,
+          lastContactedAt: demo.createdAt,
+          updatedAt: demo.createdAt,
+        },
+      },
+      { new: true, session: this.scope() },
+    ).exec();
+    return doc ? this.map(doc) : null;
+  }
+
   async claimEmailNotification(id: string, requestId: string): Promise<LeadRecord | null> {
     if (!id || !/^[a-f\d]{24}$/i.test(id)) return null;
     const doc = await this.model.findOneAndUpdate(
@@ -444,6 +475,21 @@ export class MongoLeadRepository implements LeadRepository {
         performedByUserId: call.performedByUserId,
         performedByEmail: call.performedByEmail,
         createdAt: call.createdAt,
+      })),
+      demos: (Array.isArray(raw.demos) ? raw.demos : []).map((demo) => ({
+        id: demo.id,
+        requestId: demo.requestId,
+        requestFingerprint: demo.requestFingerprint,
+        title: demo.title,
+        scheduledAt: demo.scheduledAt,
+        durationMinutes: demo.durationMinutes,
+        attendeeEmails: Array.isArray(demo.attendeeEmails) ? demo.attendeeEmails : [],
+        agenda: demo.agenda,
+        internalNotes: demo.internalNotes,
+        status: demo.status,
+        scheduledByUserId: demo.scheduledByUserId,
+        scheduledByEmail: demo.scheduledByEmail,
+        createdAt: demo.createdAt,
       })),
       createdAt: raw.createdAt,
       updatedAt: raw.updatedAt,
