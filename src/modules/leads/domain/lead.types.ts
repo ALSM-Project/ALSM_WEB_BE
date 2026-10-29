@@ -97,7 +97,7 @@ export interface LeadRecord {
   source: LeadSource;
   priority: LeadPriority;
   estimatedValue?: number;
-  currency: string;
+  currency: 'VND';
   notes?: string;
   assignedToUserId?: string;
   assignedToEmail?: string;
@@ -146,7 +146,7 @@ export interface CreateLeadInput {
   source: LeadSource;
   priority: LeadPriority;
   estimatedValue?: number;
-  currency?: string;
+  currency?: 'VND';
   notes?: string;
   assignedToUserId?: string;
   assignedToEmail?: string;

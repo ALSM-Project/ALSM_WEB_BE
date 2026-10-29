@@ -131,7 +131,7 @@ export class MongoLeadRepository implements LeadRepository {
           source: input.source,
           priority: input.priority,
           estimatedValue: input.estimatedValue,
-          currency: input.currency ?? 'USD',
+          currency: 'VND',
           notes: input.notes,
           assignedToUserId: input.assignedToUserId
             ? toValidObjectId(input.assignedToUserId)
@@ -434,7 +434,7 @@ export class MongoLeadRepository implements LeadRepository {
       source,
       priority,
       estimatedValue: raw.estimatedValue,
-      currency: raw.currency ?? 'USD',
+      currency: 'VND',
       notes: raw.notes,
       assignedToUserId: raw.assignedToUserId?.toString?.() ?? raw.assignedTo?.toString?.(),
       assignedToEmail: raw.assignedToEmail,

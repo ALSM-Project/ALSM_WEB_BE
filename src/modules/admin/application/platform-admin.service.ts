@@ -275,7 +275,7 @@ export class PlatformAdminService {
   async getTotalRevenue() {
     return {
       totalRevenue: 245000,
-      currency: 'USD',
+      currency: 'VND',
       activeContractsCount: 12,
       signedContractsRevenue: 195000,
       confirmedPaymentsRevenue: 50000,
