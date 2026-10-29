@@ -1,10 +1,11 @@
-import { Injectable } from '@nestjs/common';
+import { ConflictException, Injectable } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
-import { ClientSession, Connection, Model } from 'mongoose';
+import { ClientSession, Connection, Model, Types } from 'mongoose';
 import { requireActiveTransaction } from '../../../shared/database/mongo-transaction-runner';
-import { Lead, LeadDocument } from './lead.schema';
+import { Lead, LeadDocument, UC58_LEAD_MODEL } from './lead.schema';
 import {
   CreateLeadInput,
+  CreateLeadResult,
   LeadListParams,
   LeadRecord,
   LeadRepository,
@@ -53,7 +54,7 @@ type LegacyLeadDocument = {
 
 @Injectable()
 export class MongoLeadRepository implements LeadRepository {
-  constructor(@InjectModel(Lead.name) private readonly model: Model<Lead>) {}
+  constructor(@InjectModel(UC58_LEAD_MODEL) private readonly model: Model<Lead>) {}
   private session?: ClientSession;
   private transaction?: object;
 
@@ -74,28 +75,70 @@ export class MongoLeadRepository implements LeadRepository {
     return this.session ?? null;
   }
 
-  async create(input: CreateLeadInput): Promise<LeadRecord> {
-    const doc = await this.model.create({
-      companyName: input.companyName,
-      contactName: input.contactName,
-      contactEmail: input.contactEmail.toLowerCase(),
-      contactPhone: input.contactPhone,
-      jobTitle: input.jobTitle,
-      source: input.source,
-      priority: input.priority,
-      estimatedValue: input.estimatedValue,
-      currency: input.currency ?? 'USD',
-      notes: input.notes,
-      assignedToUserId: input.assignedToUserId
-        ? toValidObjectId(input.assignedToUserId)
-        : undefined,
-      assignedToEmail: input.assignedToEmail?.toLowerCase(),
-      tags: input.tags ?? [],
-      status: LeadStatus.NEW,
-      createdByUserId: toValidObjectId(input.createdByUserId),
-      createdByEmail: input.createdByEmail.toLowerCase(),
-    });
-    return this.map(doc);
+  async create(input: CreateLeadInput): Promise<CreateLeadResult> {
+    const session = this.scope();
+    if (!session) throw new Error('Lead creation requires the audited unit of work');
+
+    const existingByRequest = await this.model
+      .findById(input.id)
+      .select('+creationFingerprint')
+      .session(session)
+      .exec();
+    if (existingByRequest) {
+      if (existingByRequest.creationFingerprint !== input.creationFingerprint) {
+        throw new ConflictException({
+          code: 'IDEMPOTENCY_KEY_REUSED',
+          message: 'This request ID was already used for different lead details',
+        });
+      }
+      return { lead: this.map(existingByRequest), replayed: true };
+    }
+
+    const duplicateEmail = await this.model
+      .findOne({
+        $or: [
+          { dedupeKey: input.dedupeKey },
+          { contactEmail: input.contactEmail.toLowerCase() },
+        ],
+      })
+      .session(session)
+      .exec();
+    if (duplicateEmail) {
+      throw new ConflictException({
+        code: 'LEAD_EMAIL_EXISTS',
+        message: 'A lead with this contact email already exists',
+      });
+    }
+
+    const [doc] = await this.model.create(
+      [
+        {
+          _id: new Types.ObjectId(input.id),
+          creationFingerprint: input.creationFingerprint,
+          dedupeKey: input.dedupeKey,
+          companyName: input.companyName,
+          contactName: input.contactName,
+          contactEmail: input.contactEmail.toLowerCase(),
+          contactPhone: input.contactPhone,
+          jobTitle: input.jobTitle,
+          source: input.source,
+          priority: input.priority,
+          estimatedValue: input.estimatedValue,
+          currency: input.currency ?? 'USD',
+          notes: input.notes,
+          assignedToUserId: input.assignedToUserId
+            ? toValidObjectId(input.assignedToUserId)
+            : undefined,
+          assignedToEmail: input.assignedToEmail?.toLowerCase(),
+          tags: input.tags ?? [],
+          status: LeadStatus.NEW,
+          createdByUserId: toValidObjectId(input.createdByUserId),
+          createdByEmail: input.createdByEmail.toLowerCase(),
+        },
+      ],
+      { session },
+    );
+    return { lead: this.map(doc), replayed: false };
   }
 
   async findById(id: string): Promise<LeadRecord | null> {

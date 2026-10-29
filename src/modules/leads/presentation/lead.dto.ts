@@ -1,16 +1,88 @@
 import {
-  IsOptional,
-  IsString,
   IsEnum,
   IsNotEmpty,
   IsNumber,
+  IsOptional,
+  IsString,
   Min,
   Max,
   IsEmail,
   IsUUID,
+  MaxLength,
+  Matches,
+  MinLength,
 } from 'class-validator';
+import { Transform, Type } from 'class-transformer';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { LeadStatus, LeadSource, LeadPriority } from '../domain/lead.types';
+
+export class CreateLeadDto {
+  @ApiProperty({ maxLength: 160 })
+  @Transform(({ value }) => (typeof value === 'string' ? value.trim() : value))
+  @IsString()
+  @MinLength(1)
+  @MaxLength(160)
+  companyName!: string;
+
+  @ApiProperty({ maxLength: 120 })
+  @Transform(({ value }) => (typeof value === 'string' ? value.trim() : value))
+  @IsString()
+  @MinLength(1)
+  @MaxLength(120)
+  contactName!: string;
+
+  @ApiProperty({ maxLength: 320 })
+  @Transform(({ value }) => (typeof value === 'string' ? value.trim().toLowerCase() : value))
+  @IsEmail()
+  @MaxLength(320)
+  contactEmail!: string;
+
+  @ApiPropertyOptional({ maxLength: 30 })
+  @IsOptional()
+  @Transform(({ value }) => (typeof value === 'string' ? value.trim() : value))
+  @IsString()
+  @Matches(/^[+()\d .-]{7,30}$/)
+  contactPhone?: string;
+
+  @ApiPropertyOptional({ maxLength: 100 })
+  @IsOptional()
+  @Transform(({ value }) => (typeof value === 'string' ? value.trim() : value))
+  @IsString()
+  @MaxLength(100)
+  jobTitle?: string;
+
+  @ApiPropertyOptional({ enum: LeadSource, default: LeadSource.WEBSITE })
+  @IsOptional()
+  @IsEnum(LeadSource)
+  source?: LeadSource;
+
+  @ApiPropertyOptional({ enum: LeadPriority, default: LeadPriority.MEDIUM })
+  @IsOptional()
+  @IsEnum(LeadPriority)
+  priority?: LeadPriority;
+
+  @ApiPropertyOptional({ minimum: 0, maximum: 1000000000000, type: Number })
+  @IsOptional()
+  @Type(() => Number)
+  @IsNumber({ maxDecimalPlaces: 2 })
+  @Min(0)
+  @Max(1000000000000)
+  estimatedValue?: number;
+
+  @ApiPropertyOptional({ default: 'USD', pattern: '^[A-Z]{3}$' })
+  @IsOptional()
+  @Transform(({ value }) => (typeof value === 'string' ? value.trim().toUpperCase() : value))
+  @IsString()
+  @Matches(/^[A-Z]{3}$/)
+  currency?: string;
+
+  @ApiPropertyOptional({ maxLength: 2000 })
+  @IsOptional()
+  @Transform(({ value }) => (typeof value === 'string' ? value.trim() : value))
+  @IsString()
+  @MaxLength(2000)
+  notes?: string;
+}
 
 export class ListLeadsQueryDto {
   @ApiPropertyOptional({ enum: LeadStatus })

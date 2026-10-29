@@ -88,8 +88,13 @@ import { ListMeetingsService } from './modules/meetings/application/list-meeting
 import { MeetingController } from './modules/meetings/presentation/meeting.controller';
 import { LEAD_REPOSITORY as UC58_LEAD_REPOSITORY } from './modules/leads/domain/lead.types';
 import { MongoLeadRepository as MongoUc58LeadRepository } from './modules/leads/infrastructure/mongo-lead.repository';
-import { Lead as Uc58Lead } from './modules/leads/infrastructure/lead.schema';
+import {
+  Lead as Uc58Lead,
+  LeadSchema as Uc58LeadSchema,
+  UC58_LEAD_MODEL,
+} from './modules/leads/infrastructure/lead.schema';
 import { ListLeadsService } from './modules/leads/application/list-leads.service';
+import { CreateLeadService } from './modules/leads/application/create-lead.service';
 import { UpdateLeadStatusService } from './modules/leads/application/update-lead-status.service';
 import { SendQuoteService } from './modules/leads/application/send-quote.service';
 import { SEND_QUOTE_UNIT_OF_WORK } from './modules/leads/application/send-quote-unit-of-work.port';
@@ -311,6 +316,7 @@ import { AuditModule } from './modules/audit/audit.module';
     AuditModule,
     MongooseModule.forFeature([
       { name: Lead.name, schema: LeadSchema },
+      { name: UC58_LEAD_MODEL, schema: Uc58LeadSchema },
       { name: User.name, schema: UserSchema },
       { name: Organization.name, schema: OrganizationSchema },
       { name: UserSession.name, schema: UserSessionSchema },
@@ -329,7 +335,6 @@ import { AuditModule } from './modules/audit/audit.module';
       { name: FieldMapping.name, schema: FieldMappingSchema },
       { name: MethodMapping.name, schema: MethodMappingSchema },
       { name: Meeting.name, schema: MeetingSchema },
-      { name: Lead.name, schema: LeadSchema },
       { name: Partner.name, schema: PartnerSchema },
       { name: ErrorLog.name, schema: ErrorLogSchema },
       { name: ScreenDocument.name, schema: ConversionScreenSchema },
@@ -571,16 +576,17 @@ import { AuditModule } from './modules/audit/audit.module';
     { provide: UC58_LEAD_REPOSITORY, useClass: MongoUc58LeadRepository },
     {
       provide: SEND_QUOTE_UNIT_OF_WORK,
-      inject: [getConnectionToken(), getModelToken(Lead.name), getModelToken(AuditLog.name)],
-      useFactory: (connection: Connection, leads: Model<Lead>, audits: Model<AuditLog>) =>
+      inject: [getConnectionToken(), getModelToken(UC58_LEAD_MODEL), getModelToken(AuditLog.name)],
+      useFactory: (connection: Connection, leads: Model<Uc58Lead>, audits: Model<AuditLog>) =>
         new MongoSendQuoteUnitOfWork(
           connection,
-          new MongoUc58LeadRepository(leads as unknown as Model<Uc58Lead>),
+          new MongoUc58LeadRepository(leads),
           (session, selectedConnection) =>
             new MongoAuditRepository(audits).inTransaction(session, selectedConnection),
         ),
     },
     ListLeadsService,
+    CreateLeadService,
     UpdateLeadStatusService,
     SendQuoteService,
     MailService,
