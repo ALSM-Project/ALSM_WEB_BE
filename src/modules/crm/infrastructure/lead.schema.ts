@@ -18,10 +18,17 @@ export class Lead {
   // Rich CRM attributes (Report 3 Section 3.11)
   @Prop({ trim: true }) contactName?: string;
   @Prop({ trim: true }) company?: string;
+  // Compatibility fields retained for lead records created by the earlier CRM schema.
+  @Prop({ trim: true }) companyName?: string;
   @Prop({ trim: true }) phone?: string;
   @Prop({ trim: true, default: 'Website' }) source?: string;
   @Prop({ default: 'NEW', index: true }) stage!: 'NEW' | 'CONTACTED' | 'QUALIFIED' | 'PROPOSAL' | 'WON' | 'LOST';
   @Prop({ default: 50 }) score!: number;
+  @Prop({ type: Number, min: 0 }) dealValue?: number;
+  @Prop({ type: Number, min: 0 }) estimatedValue?: number;
+  @Prop({ type: String, trim: true, uppercase: true, default: 'USD' }) currency?: string;
+  @Prop({ type: MongoSchema.Types.ObjectId }) assignedToUserId?: Types.ObjectId;
+  @Prop({ trim: true }) assignedToName?: string;
   @Prop() lastContactAt?: Date;
   @Prop() notes?: string;
   @Prop({ type: [Object], default: [] }) interactions!: Array<{
