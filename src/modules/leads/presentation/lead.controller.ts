@@ -26,7 +26,8 @@ import { ListLeadsService } from '../application/list-leads.service';
 import { UpdateLeadStatusService } from '../application/update-lead-status.service';
 import { SendQuoteService } from '../application/send-quote.service';
 import { ListLeadsQueryDto, UpdateLeadStatusDto, SendQuoteDto } from './lead.dto';
-import { LeadStatus, LeadSource, LeadPriority } from '../domain/lead.types';
+import { LeadStatus, LeadSource, LeadPriority, LeadRecord, LeadQuoteItem } from '../domain/lead.types';
+import { SendQuoteResult } from '../application/send-quote.service';
 
 @ApiTags('Leads (UC-58, UC-62, UC-66)')
 @ApiBearerAuth()
@@ -60,7 +61,7 @@ export class LeadController {
   @ApiResponse({ status: 401, description: 'Unauthorized – invalid or missing token' })
   @ApiResponse({ status: 403, description: 'Forbidden – missing leads.view permission' })
   async list(@Query() query: ListLeadsQueryDto) {
-    return this.listLeadsService.execute({
+    const result = await this.listLeadsService.execute({
       status: query.status as LeadStatus | undefined,
       source: query.source as LeadSource | undefined,
       priority: query.priority as LeadPriority | undefined,
@@ -71,6 +72,7 @@ export class LeadController {
       sortBy: query.sortBy,
       sortOrder: query.sortOrder,
     });
+    return { ...result, items: result.items.map((lead) => this.publicLead(lead)) };
   }
 
   @Get(':id')
@@ -92,7 +94,7 @@ export class LeadController {
         message: `Lead with ID ${id} not found`,
       });
     }
-    return lead;
+    return this.publicLead(lead);
   }
 
   @Patch(':id/status')
@@ -136,7 +138,7 @@ export class LeadController {
     @Body() dto: SendQuoteDto,
     @CurrentUser() user: AuthenticatedUser,
   ) {
-    return this.sendQuoteService.execute(id, dto, user);
+    return this.publicQuoteResult(await this.sendQuoteService.execute(id, dto, user));
   }
 
   @Post(':id/send-quote')
@@ -149,7 +151,17 @@ export class LeadController {
     @Body() dto: SendQuoteDto,
     @CurrentUser() user: AuthenticatedUser,
   ) {
-    return this.sendQuoteService.execute(id, dto, user);
+    return this.publicQuoteResult(await this.sendQuoteService.execute(id, dto, user));
+  }
+
+  private publicLead(lead: LeadRecord): Omit<LeadRecord, 'quotes'> & { quotes?: Array<Omit<LeadQuoteItem, 'requestFingerprint'>> } {
+    if (!lead.quotes) return lead as Omit<LeadRecord, 'quotes'> & { quotes?: Array<Omit<LeadQuoteItem, 'requestFingerprint'>> };
+    return { ...lead, quotes: lead.quotes.map(({ requestFingerprint: _fingerprint, ...quote }) => quote) };
+  }
+
+  private publicQuoteResult(result: SendQuoteResult) {
+    const { requestFingerprint: _fingerprint, ...quote } = result.quote;
+    return { ...result, quote, lead: this.publicLead(result.lead) };
   }
 }
 

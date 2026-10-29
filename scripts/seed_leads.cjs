@@ -1,7 +1,16 @@
 const mongoose = require('mongoose');
+require('dotenv').config();
 
 async function seed() {
-  const uri = 'mongodb://alsm_project:alsm2026@ac-nrgwzyp-shard-00-00.d23mpyz.mongodb.net:27017/alsm?ssl=true&authSource=admin';
+  if (process.env.NODE_ENV === 'production') {
+    throw new Error('Sample lead seeding is disabled in production');
+  }
+  if (process.env.ALLOW_SAMPLE_LEAD_SEED !== 'true') {
+    throw new Error('Set ALLOW_SAMPLE_LEAD_SEED=true to explicitly seed sample leads');
+  }
+
+  const uri = process.env.MONGODB_URI;
+  if (!uri) throw new Error('MONGODB_URI must be configured in the environment or .env file');
   await mongoose.connect(uri);
   const db = mongoose.connection.db;
 

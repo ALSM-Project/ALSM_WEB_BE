@@ -87,9 +87,12 @@ import { ListMeetingsService } from './modules/meetings/application/list-meeting
 import { MeetingController } from './modules/meetings/presentation/meeting.controller';
 import { LEAD_REPOSITORY as UC58_LEAD_REPOSITORY } from './modules/leads/domain/lead.types';
 import { MongoLeadRepository as MongoUc58LeadRepository } from './modules/leads/infrastructure/mongo-lead.repository';
+import { Lead as Uc58Lead } from './modules/leads/infrastructure/lead.schema';
 import { ListLeadsService } from './modules/leads/application/list-leads.service';
 import { UpdateLeadStatusService } from './modules/leads/application/update-lead-status.service';
 import { SendQuoteService } from './modules/leads/application/send-quote.service';
+import { SEND_QUOTE_UNIT_OF_WORK } from './modules/leads/application/send-quote-unit-of-work.port';
+import { MongoSendQuoteUnitOfWork } from './modules/leads/infrastructure/mongo-send-quote.unit-of-work';
 import { LeadController } from './modules/leads/presentation/lead.controller';
 import { Partner, PartnerSchema } from './modules/partners/infrastructure/partner.schema';
 import { PARTNER_REPOSITORY } from './modules/partners/domain/partner.types';
@@ -551,6 +554,17 @@ import { AuditModule } from './modules/audit/audit.module';
     CreateMeetingService,
     ListMeetingsService,
     { provide: UC58_LEAD_REPOSITORY, useClass: MongoUc58LeadRepository },
+    {
+      provide: SEND_QUOTE_UNIT_OF_WORK,
+      inject: [getConnectionToken(), getModelToken(Lead.name), getModelToken(AuditLog.name)],
+      useFactory: (connection: Connection, leads: Model<Lead>, audits: Model<AuditLog>) =>
+        new MongoSendQuoteUnitOfWork(
+          connection,
+          new MongoUc58LeadRepository(leads as unknown as Model<Uc58Lead>),
+          (session, selectedConnection) =>
+            new MongoAuditRepository(audits).inTransaction(session, selectedConnection),
+        ),
+    },
     ListLeadsService,
     UpdateLeadStatusService,
     SendQuoteService,
