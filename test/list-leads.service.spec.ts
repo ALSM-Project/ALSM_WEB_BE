@@ -47,6 +47,7 @@ describe('ListLeadsService (UC-58)', () => {
       addQuote: jest.fn(),
       addQuoteOnce: jest.fn(),
       addPhoneCallOnce: jest.fn(),
+      addDemoOnce: jest.fn(),
       claimEmailNotification: jest.fn(),
       completeEmailNotification: jest.fn(),
     };
