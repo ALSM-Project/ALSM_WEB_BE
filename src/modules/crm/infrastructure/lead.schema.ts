@@ -26,7 +26,7 @@ export class Lead {
   @Prop({ default: 50 }) score!: number;
   @Prop({ type: Number, min: 0 }) dealValue?: number;
   @Prop({ type: Number, min: 0 }) estimatedValue?: number;
-  @Prop({ type: String, trim: true, uppercase: true, default: 'USD' }) currency?: string;
+  @Prop({ type: String, trim: true, uppercase: true, default: 'VND' }) currency?: string;
   @Prop({ type: MongoSchema.Types.ObjectId }) assignedToUserId?: Types.ObjectId;
   @Prop({ trim: true }) assignedToName?: string;
   @Prop() lastContactAt?: Date;

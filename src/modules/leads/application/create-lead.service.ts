@@ -69,7 +69,7 @@ export class CreateLeadService {
       source: dto.source ?? LeadSource.WEBSITE,
       priority: dto.priority ?? LeadPriority.MEDIUM,
       estimatedValue: dto.estimatedValue,
-      currency: dto.currency?.trim().toUpperCase() || 'USD',
+      currency: 'VND' as const,
       notes: dto.notes?.trim() || undefined,
     };
 

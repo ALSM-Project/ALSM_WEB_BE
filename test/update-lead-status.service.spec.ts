@@ -33,7 +33,7 @@ describe('UpdateLeadStatusService (UC-66)', () => {
     source: LeadSource.WEBSITE,
     priority: LeadPriority.HIGH,
     estimatedValue: 120000,
-    currency: 'USD',
+    currency: 'VND',
     notes: undefined,
     assignedToUserId: undefined,
     assignedToEmail: undefined,

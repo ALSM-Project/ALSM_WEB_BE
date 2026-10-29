@@ -22,7 +22,7 @@ describe('SendQuoteService (UC-62)', () => {
     status: LeadStatus.QUALIFIED,
     source: LeadSource.WEBSITE,
     priority: LeadPriority.HIGH,
-    currency: 'USD',
+    currency: 'VND',
     tags: [],
     quotes: [],
     createdByUserId: '6a8d90b0569ea93e27ad862c',

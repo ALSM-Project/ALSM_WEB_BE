@@ -13,6 +13,7 @@ import {
   IsUUID,
   IsInt,
   IsDateString,
+  IsIn,
   MaxLength,
   Matches,
   MinLength,
@@ -74,12 +75,11 @@ export class CreateLeadDto {
   @Max(1000000000000)
   estimatedValue?: number;
 
-  @ApiPropertyOptional({ default: 'USD', pattern: '^[A-Z]{3}$' })
+  @ApiPropertyOptional({ default: 'VND', enum: ['VND'] })
   @IsOptional()
   @Transform(({ value }) => (typeof value === 'string' ? value.trim().toUpperCase() : value))
-  @IsString()
-  @Matches(/^[A-Z]{3}$/)
-  currency?: string;
+  @IsIn(['VND'], { message: 'currency must be VND' })
+  currency?: 'VND';
 
   @ApiPropertyOptional({ maxLength: 2000 })
   @IsOptional()
@@ -160,7 +160,7 @@ export class SendQuoteDto {
   @IsString()
   projectScope?: string;
 
-  @ApiProperty({ description: 'Quote base amount in USD' })
+  @ApiProperty({ description: 'Quote base amount in VND' })
   @IsNumber({}, { message: 'amount must be a valid number' })
   @Min(1, { message: 'amount must be greater than 0' })
   amount!: number;

@@ -22,7 +22,7 @@ describe('ListLeadsService (UC-58)', () => {
     source: LeadSource.WEBSITE,
     priority: LeadPriority.HIGH,
     estimatedValue: 120000,
-    currency: 'USD',
+    currency: 'VND',
     notes: 'Looking to modernize AS400 core banking screens.',
     assignedToUserId: '6a8d90b0569ea93e27ad862c',
     assignedToEmail: 'test.local@alsm.dev',

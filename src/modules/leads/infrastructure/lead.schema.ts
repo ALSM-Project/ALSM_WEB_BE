@@ -34,7 +34,7 @@ export class Lead {
   @Prop({ type: Number })
   estimatedValue?: number;
 
-  @Prop({ type: String, default: 'USD' })
+  @Prop({ type: String, default: 'VND' })
   currency!: string;
 
   @Prop({ trim: true })

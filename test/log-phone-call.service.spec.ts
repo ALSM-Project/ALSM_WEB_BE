@@ -29,7 +29,7 @@ describe('LogPhoneCallService (UC-60)', () => {
     status: LeadStatus.NEW,
     source: LeadSource.WEBSITE,
     priority: LeadPriority.MEDIUM,
-    currency: 'USD',
+    currency: 'VND',
     tags: [],
     phoneCalls: [],
     createdByUserId: ACTOR_ID,

@@ -191,7 +191,6 @@ export class SalesCrmService {
       : 'UNMAPPED';
     const assignedToId = this.pipelineAssigneeId(record);
     const dealValue = this.pipelineNumber(record.dealValue ?? record.estimatedValue);
-    const currencyValue = typeof record.currency === 'string' ? record.currency.trim().toUpperCase() : '';
 
     return {
       id: typeof record.id === 'string' ? record.id : String(record._id ?? ''),
@@ -201,7 +200,7 @@ export class SalesCrmService {
       stage,
       score: this.pipelineNumber(record.score),
       dealValue,
-      currency: /^[A-Z]{3}$/.test(currencyValue) ? currencyValue : 'USD',
+      currency: 'VND',
       assignedToName: this.pipelineText(record.assignedToName)
         ?? (assignedToId ? namesByUserId.get(assignedToId) : undefined),
       lastContactAt: this.pipelineDate(record.lastContactAt ?? record.lastContactedAt),
