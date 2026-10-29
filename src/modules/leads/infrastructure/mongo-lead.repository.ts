@@ -154,7 +154,14 @@ export class MongoLeadRepository implements LeadRepository {
     const filter: Record<string, unknown> = {};
     const clauses: Record<string, unknown>[] = [];
 
-    if (params?.status) clauses.push({ $or: [{ stage: params.status }, { status: params.status }] });
+    if (params?.status) {
+      clauses.push({
+        $or: [
+          { status: params.status },
+          { status: { $exists: false }, stage: params.status },
+        ],
+      });
+    }
     if (params?.source) {
       const sourceLabel = params.source === LeadSource.OTHER
         ? 'Other'
@@ -198,7 +205,7 @@ export class MongoLeadRepository implements LeadRepository {
 
   async countByStatus(): Promise<Record<string, number>> {
     const results = await this.model.aggregate([
-      { $project: { leadStage: { $ifNull: ['$stage', '$status'] } } },
+      { $project: { leadStage: { $ifNull: ['$status', '$stage'] } } },
       { $group: { _id: '$leadStage', count: { $sum: 1 } } },
     ]).exec();
 
@@ -217,7 +224,7 @@ export class MongoLeadRepository implements LeadRepository {
     if (!id || !id.match(/^[a-f\d]{24}$/i)) return null;
 
     const updateFields: Record<string, unknown> = {
-      stage: status,
+      status,
       updatedAt: new Date(),
     };
 
@@ -254,7 +261,7 @@ export class MongoLeadRepository implements LeadRepository {
     };
 
     if (newStatus) {
-      (update.$set as Record<string, unknown>)['stage'] = newStatus;
+      (update.$set as Record<string, unknown>).status = newStatus;
     }
 
     const doc = await this.model
@@ -272,7 +279,7 @@ export class MongoLeadRepository implements LeadRepository {
   ): Promise<LeadRecord | null> {
     if (!id || !id.match(/^[a-f\d]{24}$/i)) return null;
     const fields: Record<string, unknown> = { updatedAt: new Date(), lastContactAt: new Date() };
-    if (newStatus) fields.stage = newStatus;
+    if (newStatus) fields.status = newStatus;
     const doc = await this.model.findOneAndUpdate(
       {
         _id: id,
@@ -336,7 +343,7 @@ export class MongoLeadRepository implements LeadRepository {
   private map(doc: LeadDocument): LeadRecord {
     const raw = doc as unknown as LegacyLeadDocument;
     const allowedStatuses = Object.values(LeadStatus);
-    const statusValue = String(raw.stage ?? raw.status ?? '').toUpperCase();
+    const statusValue = String(raw.status ?? raw.stage ?? '').toUpperCase();
     const status = allowedStatuses.includes(statusValue as LeadStatus)
       ? statusValue as LeadStatus
       : LeadStatus.NEW;
