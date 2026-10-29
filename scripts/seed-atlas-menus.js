@@ -1,5 +1,7 @@
 const mongoose = require('mongoose');
-const uri = 'mongodb+srv://alsm_project:alsm2026@alsm-cluster.d23mpyz.mongodb.net/alsm?retryWrites=true&w=majority&appName=ALSM-Cluster';
+require('dotenv').config();
+const uri = process.env.MONGODB_URI;
+if (!uri) throw new Error('MONGODB_URI must be configured in the environment or .env file');
 
 async function seed() {
   await mongoose.connect(uri);

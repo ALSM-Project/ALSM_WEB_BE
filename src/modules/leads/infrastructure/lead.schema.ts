@@ -63,6 +63,8 @@ export class Lead {
   @Prop({ type: [Object], default: [] })
   quotes!: Array<{
     id: string;
+    requestId: string;
+    requestFingerprint: string;
     quoteNumber: string;
     planName: string;
     projectScope?: string;

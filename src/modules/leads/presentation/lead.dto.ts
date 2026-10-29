@@ -7,6 +7,7 @@ import {
   Min,
   Max,
   IsEmail,
+  IsUUID,
 } from 'class-validator';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { LeadStatus, LeadSource, LeadPriority } from '../domain/lead.types';
@@ -68,6 +69,10 @@ export class UpdateLeadStatusDto {
 }
 
 export class SendQuoteDto {
+  @ApiProperty({ description: 'Stable UUID used to make quote submission retries idempotent' })
+  @IsUUID()
+  requestId!: string;
+
   @ApiProperty({ description: 'Modernization plan name (e.g. Enterprise Tier 1)' })
   @IsNotEmpty({ message: 'planName cannot be empty' })
   @IsString()

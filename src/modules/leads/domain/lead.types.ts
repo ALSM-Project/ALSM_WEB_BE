@@ -44,8 +44,8 @@ export interface LeadRecord {
   tags: string[];
   lastContactedAt?: Date;
   nextFollowUpAt?: Date;
-  createdByUserId: string;
-  createdByEmail: string;
+  createdByUserId?: string;
+  createdByEmail?: string;
   quotes?: LeadQuoteItem[];
   createdAt: Date;
   updatedAt: Date;
@@ -53,6 +53,8 @@ export interface LeadRecord {
 
 export interface LeadQuoteItem {
   id: string;
+  requestId: string;
+  requestFingerprint: string;
   quoteNumber: string;
   planName: string;
   projectScope?: string;
@@ -135,6 +137,12 @@ export interface LeadRepository {
   addQuote(
     id: string,
     quote: LeadQuoteItem,
+    newStatus?: LeadStatus,
+  ): Promise<LeadRecord | null>;
+  addQuoteOnce(
+    id: string,
+    quote: LeadQuoteItem,
+    expectedStatus: LeadStatus,
     newStatus?: LeadStatus,
   ): Promise<LeadRecord | null>;
 }
