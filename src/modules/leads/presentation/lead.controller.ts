@@ -29,11 +29,12 @@ import { ListLeadsService } from '../application/list-leads.service';
 import { UpdateLeadStatusService } from '../application/update-lead-status.service';
 import { SendQuoteService } from '../application/send-quote.service';
 import { CreateLeadService } from '../application/create-lead.service';
-import { CreateLeadDto, ListLeadsQueryDto, UpdateLeadStatusDto, SendQuoteDto } from './lead.dto';
-import { LeadStatus, LeadSource, LeadPriority, LeadRecord, LeadQuoteItem } from '../domain/lead.types';
+import { LogPhoneCallService } from '../application/log-phone-call.service';
+import { CreateLeadDto, ListLeadsQueryDto, UpdateLeadStatusDto, SendQuoteDto, LogPhoneCallDto } from './lead.dto';
+import { LeadStatus, LeadSource, LeadPriority, LeadRecord, LeadQuoteItem, LeadPhoneCall } from '../domain/lead.types';
 import { SendQuoteResult } from '../application/send-quote.service';
 
-@ApiTags('Leads (UC-58, UC-59, UC-62, UC-66, UC-67)')
+@ApiTags('Leads (UC-58, UC-59, UC-60, UC-62, UC-66, UC-67)')
 @ApiBearerAuth()
 @UseGuards(JwtAuthGuard, PermissionsGuard)
 @Controller('leads')
@@ -43,6 +44,7 @@ export class LeadController {
     private readonly updateLeadStatusService: UpdateLeadStatusService,
     private readonly sendQuoteService: SendQuoteService,
     private readonly createLeadService: CreateLeadService,
+    private readonly logPhoneCallService: LogPhoneCallService,
   ) {}
 
   @Post()
@@ -145,6 +147,35 @@ export class LeadController {
     return this.publicLead(lead);
   }
 
+  @Post(':id/calls')
+  @HttpCode(HttpStatus.CREATED)
+  @RequirePermissions('sales.leads.manage')
+  @ApiOperation({
+    summary: 'Log a phone call for a sales lead (UC-60)',
+    description: 'Requires sales.leads.manage. Stores call activity, updates last contacted/follow-up dates, moves a New lead to Contacted, and writes an audit event atomically.',
+  })
+  @ApiParam({ name: 'id', description: 'Lead ID (24-hex ObjectId)' })
+  @ApiHeader({ name: 'Idempotency-Key', required: true, description: 'Stable UUID reused when retrying the same call submission' })
+  @ApiResponse({ status: 201, description: 'Call activity saved or an identical retry reconciled' })
+  @ApiResponse({ status: 400, description: 'Invalid lead ID, idempotency key, or call details' })
+  @ApiResponse({ status: 401, description: 'Authentication is required' })
+  @ApiResponse({ status: 403, description: 'The user lacks sales.leads.manage permission' })
+  @ApiResponse({ status: 404, description: 'Lead not found' })
+  @ApiResponse({ status: 409, description: 'Idempotency key reused or lead changed concurrently' })
+  @ApiResponse({ status: 503, description: 'Call logging could not be committed' })
+  async logPhoneCall(
+    @Param('id') id: string,
+    @Body() dto: LogPhoneCallDto,
+    @CurrentUser() user: AuthenticatedUser,
+    @Headers('idempotency-key') requestId?: string,
+  ) {
+    const result = await this.logPhoneCallService.execute(id, dto, user, requestId);
+    const { requestId: _requestId, requestFingerprint: _requestFingerprint, ...call } = result.call;
+    void _requestId;
+    void _requestFingerprint;
+    return { ...result, call, lead: this.publicLead(result.lead) };
+  }
+
   @Patch(':id/status')
   @RequirePermissions('sales.leads.manage')
   @ApiOperation({
@@ -202,14 +233,22 @@ export class LeadController {
     return this.publicQuoteResult(await this.sendQuoteService.execute(id, dto, user));
   }
 
-  private publicLead(lead: LeadRecord): Omit<LeadRecord, 'quotes'> & { quotes?: Array<Omit<LeadQuoteItem, 'requestFingerprint'>> } {
-    if (!lead.quotes) return lead as Omit<LeadRecord, 'quotes'> & { quotes?: Array<Omit<LeadQuoteItem, 'requestFingerprint'>> };
+  private publicLead(lead: LeadRecord): Omit<LeadRecord, 'quotes' | 'phoneCalls'> & {
+    quotes?: Array<Omit<LeadQuoteItem, 'requestFingerprint'>>;
+    phoneCalls?: Array<Omit<LeadPhoneCall, 'requestId' | 'requestFingerprint'>>;
+  } {
     return {
       ...lead,
-      quotes: lead.quotes.map((item) => {
+      quotes: lead.quotes?.map((item) => {
         const { requestFingerprint, ...quote } = item;
         void requestFingerprint;
         return quote;
+      }),
+      phoneCalls: lead.phoneCalls?.map((item) => {
+        const { requestId, requestFingerprint, ...call } = item;
+        void requestId;
+        void requestFingerprint;
+        return call;
       }),
     };
   }
