@@ -15,6 +15,8 @@ import { Response } from 'express';
 import { CurrentUser } from '../../../shared/security/current-user.decorator';
 import { JwtAuthGuard } from '../../../shared/security/jwt-auth.guard';
 import { AuthenticatedUser } from '../../../shared/logging/request-id.middleware';
+import { PermissionsGuard } from '../../../shared/security/permissions.guard';
+import { RequirePermissions } from '../../../shared/security/require-permissions.decorator';
 import {
   CreateCrmLeadDto,
   CreateContractDto,
@@ -23,6 +25,7 @@ import {
   ScheduleDemoDto,
   SendQuoteDto,
 } from '../application/sales-crm.service';
+import { SalesPipelineQueryDto } from './sales-pipeline-query.dto';
 
 @ApiTags('CRM & Sales (Sections 3.11 & 3.12)')
 @ApiBearerAuth()
@@ -31,6 +34,17 @@ import {
 @Controller('sales/crm')
 export class SalesCrmController {
   constructor(private readonly crmService: SalesCrmService) {}
+
+  @Get('pipeline')
+  @UseGuards(PermissionsGuard)
+  @RequirePermissions('sales.leads.view')
+  @ApiOperation({ summary: 'View the sales pipeline board (UC-65)' })
+  async getSalesPipeline(
+    @Headers('x-organization-id') organizationId: string | undefined,
+    @Query() query: SalesPipelineQueryDto,
+  ) {
+    return this.crmService.getSalesPipeline({ ...query, organizationId });
+  }
 
   @Get('leads')
   @ApiOperation({ summary: 'List CRM leads with filters (3.11.1)' })
