@@ -10,10 +10,46 @@ import {
   LeadRepository,
   LeadStatus,
   LeadQuoteItem,
+  LeadPriority,
   LeadSource,
   UpdateLeadStatusOptions,
 } from '../domain/lead.types';
 import { toValidObjectId } from '../../../shared/utils/object-id.util';
+
+type MongoIdentifier = string | { toString(): string };
+
+type LegacyLeadDocument = {
+  id?: MongoIdentifier;
+  _id?: MongoIdentifier;
+  companyName?: string;
+  company?: string;
+  title?: string;
+  contactName?: string;
+  contactEmail?: string;
+  contactPhone?: string;
+  phone?: string;
+  jobTitle?: string;
+  stage?: string;
+  status?: string;
+  source?: string;
+  priority?: string;
+  estimatedValue?: number;
+  currency?: string;
+  notes?: string;
+  assignedToUserId?: MongoIdentifier;
+  assignedTo?: MongoIdentifier;
+  assignedToEmail?: string;
+  tags?: unknown[];
+  lastContactedAt?: Date;
+  lastContactAt?: Date;
+  nextFollowUpAt?: Date;
+  createdByUserId?: MongoIdentifier;
+  createdByEmail?: string;
+  assignments?: Array<{ actorUserId?: MongoIdentifier }>;
+  quotes?: LeadQuoteItem[];
+  createdAt: Date;
+  updatedAt: Date;
+};
 
 @Injectable()
 export class MongoLeadRepository implements LeadRepository {
@@ -204,7 +240,7 @@ export class MongoLeadRepository implements LeadRepository {
   }
 
   private map(doc: LeadDocument): LeadRecord {
-    const raw = doc as unknown as Record<string, any>;
+    const raw = doc as unknown as LegacyLeadDocument;
     const allowedStatuses = Object.values(LeadStatus);
     const statusValue = String(raw.stage ?? raw.status ?? '').toUpperCase();
     const status = allowedStatuses.includes(statusValue as LeadStatus)
@@ -214,13 +250,17 @@ export class MongoLeadRepository implements LeadRepository {
     const source = Object.values(LeadSource).includes(rawSource as LeadSource)
       ? rawSource as LeadSource
       : LeadSource.OTHER;
+    const rawPriority = String(raw.priority ?? LeadPriority.MEDIUM).toUpperCase();
+    const priority = Object.values(LeadPriority).includes(rawPriority as LeadPriority)
+      ? rawPriority as LeadPriority
+      : LeadPriority.MEDIUM;
     const firstAssignment = Array.isArray(raw.assignments) ? raw.assignments[0] : undefined;
     const createdByUserId = raw.createdByUserId?.toString?.()
-      ?? firstAssignment?.actorUserId
-      ?? raw.assignedTo
+      ?? firstAssignment?.actorUserId?.toString?.()
+      ?? raw.assignedTo?.toString?.()
       ?? undefined;
     return {
-      id: raw.id ?? raw._id?.toString?.() ?? '',
+      id: raw.id?.toString?.() ?? raw._id?.toString?.() ?? '',
       companyName: raw.companyName ?? raw.company ?? raw.title ?? 'Unnamed company',
       contactName: raw.contactName ?? '',
       contactEmail: raw.contactEmail ?? '',
@@ -228,13 +268,13 @@ export class MongoLeadRepository implements LeadRepository {
       jobTitle: raw.jobTitle,
       status,
       source,
-      priority: raw.priority ?? 'MEDIUM',
+      priority,
       estimatedValue: raw.estimatedValue,
       currency: raw.currency ?? 'USD',
       notes: raw.notes,
-      assignedToUserId: raw.assignedToUserId?.toString?.() ?? raw.assignedTo,
+      assignedToUserId: raw.assignedToUserId?.toString?.() ?? raw.assignedTo?.toString?.(),
       assignedToEmail: raw.assignedToEmail,
-      tags: Array.isArray(raw.tags) ? raw.tags : [],
+      tags: Array.isArray(raw.tags) ? raw.tags.filter((tag): tag is string => typeof tag === 'string') : [],
       lastContactedAt: raw.lastContactedAt ?? raw.lastContactAt,
       nextFollowUpAt: doc.nextFollowUpAt,
       createdByUserId,

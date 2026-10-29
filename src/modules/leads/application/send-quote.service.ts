@@ -114,7 +114,7 @@ export class SendQuoteService {
         [LeadStatus.NEW, LeadStatus.CONTACTED, LeadStatus.QUALIFIED].includes(lead.status)
         ? LeadStatus.PROPOSAL
         : undefined;
-      let updatedLead = await leads.addQuoteOnce(id, quote, lead.status, targetStatus);
+      const updatedLead = await leads.addQuoteOnce(id, quote, lead.status, targetStatus);
       if (!updatedLead) {
         // A concurrent retry may have committed this request while this transaction was starting.
         const latest = await leads.findById(id);

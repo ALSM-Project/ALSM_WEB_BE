@@ -1,4 +1,4 @@
-import { BadRequestException, ConflictException, NotFoundException } from '@nestjs/common';
+import { BadRequestException, NotFoundException } from '@nestjs/common';
 import { SendQuoteService } from '../src/modules/leads/application/send-quote.service';
 import { SendQuoteRepositories, SendQuoteUnitOfWork } from '../src/modules/leads/application/send-quote-unit-of-work.port';
 import { LeadRecord, LeadRepository, LeadStatus, LeadSource, LeadPriority } from '../src/modules/leads/domain/lead.types';
@@ -73,7 +73,7 @@ describe('SendQuoteService (UC-62)', () => {
     const lead = makeLead();
     const updatedLead = makeLead({ status: LeadStatus.PROPOSAL });
     leads.findById.mockResolvedValue(lead);
-    leads.addQuoteOnce.mockImplementation(async (_id, quote, _expected, _target) => {
+    leads.addQuoteOnce.mockImplementation(async (_id, quote) => {
       updatedLead.quotes = [quote];
       return updatedLead;
     });

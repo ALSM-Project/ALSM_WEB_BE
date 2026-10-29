@@ -156,11 +156,19 @@ export class LeadController {
 
   private publicLead(lead: LeadRecord): Omit<LeadRecord, 'quotes'> & { quotes?: Array<Omit<LeadQuoteItem, 'requestFingerprint'>> } {
     if (!lead.quotes) return lead as Omit<LeadRecord, 'quotes'> & { quotes?: Array<Omit<LeadQuoteItem, 'requestFingerprint'>> };
-    return { ...lead, quotes: lead.quotes.map(({ requestFingerprint: _fingerprint, ...quote }) => quote) };
+    return {
+      ...lead,
+      quotes: lead.quotes.map((item) => {
+        const { requestFingerprint, ...quote } = item;
+        void requestFingerprint;
+        return quote;
+      }),
+    };
   }
 
   private publicQuoteResult(result: SendQuoteResult) {
-    const { requestFingerprint: _fingerprint, ...quote } = result.quote;
+    const { requestFingerprint, ...quote } = result.quote;
+    void requestFingerprint;
     return { ...result, quote, lead: this.publicLead(result.lead) };
   }
 }

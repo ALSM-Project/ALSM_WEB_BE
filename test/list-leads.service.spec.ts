@@ -45,6 +45,7 @@ describe('ListLeadsService (UC-58)', () => {
       }),
       updateStatus: jest.fn(),
       addQuote: jest.fn(),
+      addQuoteOnce: jest.fn(),
     };
     service = new ListLeadsService(repository);
   });
