@@ -1,6 +1,6 @@
 import { Prop, Schema, SchemaFactory } from '@nestjs/mongoose';
 import { Document, Types } from 'mongoose';
-import { LeadStatus, LeadSource, LeadPriority, LeadEmailNotificationStatus } from '../domain/lead.types';
+import { LeadStatus, LeadSource, LeadPriority, LeadEmailNotificationStatus, LeadPhoneCall } from '../domain/lead.types';
 
 export type LeadDocument = Lead & Document;
 export const UC58_LEAD_MODEL = 'Uc58Lead';
@@ -95,6 +95,9 @@ export class Lead {
     pdfUrl?: string;
     createdAt: Date;
   }>;
+
+  @Prop({ type: [Object], default: [] })
+  phoneCalls!: LeadPhoneCall[];
 
   createdAt!: Date;
   updatedAt!: Date;

@@ -97,6 +97,7 @@ import { ListLeadsService } from './modules/leads/application/list-leads.service
 import { CreateLeadService } from './modules/leads/application/create-lead.service';
 import { UpdateLeadStatusService } from './modules/leads/application/update-lead-status.service';
 import { SendQuoteService } from './modules/leads/application/send-quote.service';
+import { LogPhoneCallService } from './modules/leads/application/log-phone-call.service';
 import { SEND_QUOTE_UNIT_OF_WORK } from './modules/leads/application/send-quote-unit-of-work.port';
 import { MongoSendQuoteUnitOfWork } from './modules/leads/infrastructure/mongo-send-quote.unit-of-work';
 import { LeadController } from './modules/leads/presentation/lead.controller';
@@ -589,6 +590,7 @@ import { AuditModule } from './modules/audit/audit.module';
     CreateLeadService,
     UpdateLeadStatusService,
     SendQuoteService,
+    LogPhoneCallService,
     MailService,
     GoogleCalendarService,
     { provide: ERROR_LOG_REPOSITORY, useExisting: MongoErrorLogRepository },

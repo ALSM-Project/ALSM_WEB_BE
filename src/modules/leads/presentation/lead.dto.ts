@@ -8,13 +8,15 @@ import {
   Max,
   IsEmail,
   IsUUID,
+  IsInt,
+  IsDateString,
   MaxLength,
   Matches,
   MinLength,
 } from 'class-validator';
 import { Transform, Type } from 'class-transformer';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { LeadStatus, LeadSource, LeadPriority } from '../domain/lead.types';
+import { LeadStatus, LeadSource, LeadPriority, LeadPhoneCallOutcome } from '../domain/lead.types';
 
 export class CreateLeadDto {
   @ApiProperty({ maxLength: 160 })
@@ -188,5 +190,37 @@ export class SendQuoteDto {
   @IsOptional()
   @IsString()
   notes?: string;
+}
+
+export class LogPhoneCallDto {
+  @ApiProperty({ enum: LeadPhoneCallOutcome, description: 'Result of the phone call' })
+  @IsEnum(LeadPhoneCallOutcome)
+  outcome!: LeadPhoneCallOutcome;
+
+  @ApiProperty({ minimum: 1, maximum: 480, description: 'Call duration in minutes' })
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  @Max(480)
+  durationMinutes!: number;
+
+  @ApiProperty({ maxLength: 500, description: 'Short summary of the call' })
+  @Transform(({ value }) => (typeof value === 'string' ? value.trim() : value))
+  @IsString()
+  @MinLength(1)
+  @MaxLength(500)
+  summary!: string;
+
+  @ApiPropertyOptional({ maxLength: 2000, description: 'Additional internal notes' })
+  @IsOptional()
+  @Transform(({ value }) => (typeof value === 'string' ? value.trim() : value))
+  @IsString()
+  @MaxLength(2000)
+  notes?: string;
+
+  @ApiPropertyOptional({ description: 'Optional ISO 8601 follow-up date and time' })
+  @IsOptional()
+  @IsDateString()
+  followUpAt?: string;
 }
 

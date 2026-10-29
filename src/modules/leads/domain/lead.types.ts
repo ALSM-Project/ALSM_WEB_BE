@@ -27,6 +27,36 @@ export enum LeadPriority {
 }
 
 export type LeadEmailNotificationStatus = 'PENDING' | 'SENDING' | 'SENT' | 'FAILED';
+export enum LeadPhoneCallOutcome {
+  CONNECTED = 'CONNECTED',
+  NO_ANSWER = 'NO_ANSWER',
+  VOICEMAIL = 'VOICEMAIL',
+  CALLBACK_REQUESTED = 'CALLBACK_REQUESTED',
+  NOT_INTERESTED = 'NOT_INTERESTED',
+}
+
+/** Stored call activity. requestFingerprint is internal and must never be returned by the API. */
+export interface LeadPhoneCall {
+  id: string;
+  requestId: string;
+  requestFingerprint: string;
+  durationMinutes: number;
+  outcome: LeadPhoneCallOutcome;
+  summary: string;
+  notes?: string;
+  followUpAt?: Date;
+  performedByUserId: string;
+  performedByEmail: string;
+  createdAt: Date;
+}
+
+export interface LogPhoneCallInput {
+  outcome: LeadPhoneCallOutcome;
+  durationMinutes: number;
+  summary: string;
+  notes?: string;
+  followUpAt?: string;
+}
 
 export interface LeadRecord {
   id: string;
@@ -51,6 +81,7 @@ export interface LeadRecord {
   emailNotificationStatus?: LeadEmailNotificationStatus;
   emailNotifiedAt?: Date;
   quotes?: LeadQuoteItem[];
+  phoneCalls?: LeadPhoneCall[];
   createdAt: Date;
   updatedAt: Date;
 }
@@ -156,6 +187,12 @@ export interface LeadRepository {
     quote: LeadQuoteItem,
     expectedStatus: LeadStatus,
     newStatus?: LeadStatus,
+  ): Promise<LeadRecord | null>;
+  addPhoneCallOnce(
+    id: string,
+    call: LeadPhoneCall,
+    expectedStatus: LeadStatus,
+    newStatus: LeadStatus,
   ): Promise<LeadRecord | null>;
   claimEmailNotification(id: string, requestId: string): Promise<LeadRecord | null>;
   completeEmailNotification(

@@ -54,6 +54,7 @@ describe('UpdateLeadStatusService (UC-66)', () => {
       updateStatus: jest.fn(),
       addQuote: jest.fn(),
       addQuoteOnce: jest.fn(),
+      addPhoneCallOnce: jest.fn(),
       claimEmailNotification: jest.fn(),
       completeEmailNotification: jest.fn(),
     };

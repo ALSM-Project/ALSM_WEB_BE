@@ -14,6 +14,7 @@ import {
   LeadPriority,
   LeadSource,
   LeadEmailNotificationStatus,
+  LeadPhoneCall,
   UpdateLeadStatusOptions,
 } from '../domain/lead.types';
 import { toValidObjectId } from '../../../shared/utils/object-id.util';
@@ -51,6 +52,7 @@ type LegacyLeadDocument = {
   emailNotifiedAt?: Date;
   assignments?: Array<{ actorUserId?: MongoIdentifier }>;
   quotes?: LeadQuoteItem[];
+  phoneCalls?: LeadPhoneCall[];
   createdAt: Date;
   updatedAt: Date;
 };
@@ -292,6 +294,36 @@ export class MongoLeadRepository implements LeadRepository {
     return doc ? this.map(doc) : null;
   }
 
+  async addPhoneCallOnce(
+    id: string,
+    call: LeadPhoneCall,
+    expectedStatus: LeadStatus,
+    newStatus: LeadStatus,
+  ): Promise<LeadRecord | null> {
+    if (!id || !/^[a-f\d]{24}$/i.test(id)) return null;
+    const doc = await this.model.findOneAndUpdate(
+      {
+        _id: new Types.ObjectId(id),
+        $or: [
+          { status: expectedStatus },
+          { status: { $exists: false }, stage: expectedStatus },
+        ],
+        'phoneCalls.requestId': { $ne: call.requestId },
+      },
+      {
+        $push: { phoneCalls: call },
+        $set: {
+          status: newStatus,
+          lastContactedAt: call.createdAt,
+          ...(call.followUpAt ? { nextFollowUpAt: call.followUpAt } : {}),
+          updatedAt: call.createdAt,
+        },
+      },
+      { new: true, session: this.scope() },
+    ).exec();
+    return doc ? this.map(doc) : null;
+  }
+
   async claimEmailNotification(id: string, requestId: string): Promise<LeadRecord | null> {
     if (!id || !/^[a-f\d]{24}$/i.test(id)) return null;
     const doc = await this.model.findOneAndUpdate(
@@ -399,6 +431,19 @@ export class MongoLeadRepository implements LeadRepository {
         sentAt: q.sentAt,
         pdfUrl: q.pdfUrl,
         createdAt: q.createdAt,
+      })),
+      phoneCalls: (Array.isArray(raw.phoneCalls) ? raw.phoneCalls : []).map((call) => ({
+        id: call.id,
+        requestId: call.requestId,
+        requestFingerprint: call.requestFingerprint,
+        durationMinutes: call.durationMinutes,
+        outcome: call.outcome,
+        summary: call.summary,
+        notes: call.notes,
+        followUpAt: call.followUpAt,
+        performedByUserId: call.performedByUserId,
+        performedByEmail: call.performedByEmail,
+        createdAt: call.createdAt,
       })),
       createdAt: raw.createdAt,
       updatedAt: raw.updatedAt,
