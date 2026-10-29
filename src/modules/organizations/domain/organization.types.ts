@@ -2,10 +2,33 @@ export enum OrganizationType {
   SELF_SERVICE = 'SELF_SERVICE',
   INTERNAL = 'INTERNAL',
   ENTERPRISE = 'ENTERPRISE',
+  PARTNER = 'PARTNER',
+  CUSTOMER = 'CUSTOMER',
 }
+
 export enum OrganizationRole {
   OWNER = 'OWNER',
   ADMIN = 'ADMIN',
   MEMBER = 'MEMBER',
   VIEWER = 'VIEWER',
+}
+
+export enum WorkforceMemberType {
+  INTERNAL_EMPLOYEE = 'INTERNAL_EMPLOYEE',
+  PARTNER_EMPLOYEE = 'PARTNER_EMPLOYEE',
+  CUSTOMER_MEMBER = 'CUSTOMER_MEMBER',
+}
+
+export enum MembershipStatus {
+  ACTIVE = 'ACTIVE',
+  OFFBOARDED = 'OFFBOARDED',
+  SUSPENDED = 'SUSPENDED',
+  NEEDS_REVIEW = 'NEEDS_REVIEW',
+}
+
+export enum EmploymentStatus {
+  ACTIVE = 'ACTIVE',
+  ON_LEAVE = 'ON_LEAVE',
+  OFFBOARDED = 'OFFBOARDED',
+  TERMINATED = 'TERMINATED',
 }
