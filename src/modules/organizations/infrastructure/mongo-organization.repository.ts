@@ -47,11 +47,22 @@ export class MongoOrganizationRepository implements OrganizationRepository {
 
   async findFirstForMember(userId: string): Promise<OrganizationRecord | null> {
     const userObjId = toValidObjectId(userId);
-    const doc = await this.model
-      .findOne({
-        'members.userId': { $in: [userObjId, userId] },
-      })
-      .exec();
+    const doc =
+      (await this.model
+        .findOne({
+          members: {
+            $elemMatch: {
+              userId: { $in: [userObjId, userId] },
+              role: { $in: [OrganizationRole.OWNER, 'OWNER'] },
+            },
+          },
+        })
+        .exec()) ||
+      (await this.model
+        .findOne({
+          'members.userId': { $in: [userObjId, userId] },
+        })
+        .exec());
     return doc ? this.map(doc) : null;
   }
 
