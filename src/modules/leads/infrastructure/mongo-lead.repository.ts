@@ -13,6 +13,7 @@ import {
   LeadQuoteItem,
   LeadPriority,
   LeadSource,
+  LeadEmailNotificationStatus,
   UpdateLeadStatusOptions,
 } from '../domain/lead.types';
 import { toValidObjectId } from '../../../shared/utils/object-id.util';
@@ -46,6 +47,8 @@ type LegacyLeadDocument = {
   nextFollowUpAt?: Date;
   createdByUserId?: MongoIdentifier;
   createdByEmail?: string;
+  emailNotificationStatus?: LeadEmailNotificationStatus;
+  emailNotifiedAt?: Date;
   assignments?: Array<{ actorUserId?: MongoIdentifier }>;
   quotes?: LeadQuoteItem[];
   createdAt: Date;
@@ -282,6 +285,54 @@ export class MongoLeadRepository implements LeadRepository {
     return doc ? this.map(doc) : null;
   }
 
+  async claimEmailNotification(id: string, requestId: string): Promise<LeadRecord | null> {
+    if (!id || !/^[a-f\d]{24}$/i.test(id)) return null;
+    const doc = await this.model.findOneAndUpdate(
+      {
+        _id: new Types.ObjectId(id),
+        emailNotificationRequestId: { $ne: requestId },
+        $or: [
+          { emailNotificationStatus: { $in: ['PENDING', 'FAILED'] } },
+          { emailNotificationStatus: { $exists: false } },
+        ],
+      },
+      {
+        $set: {
+          emailNotificationRequestId: requestId,
+          emailNotificationStatus: 'SENDING',
+        },
+        $unset: { emailNotifiedAt: 1 },
+      },
+      { new: true, session: this.scope() },
+    ).exec();
+    return doc ? this.map(doc) : null;
+  }
+
+  async completeEmailNotification(
+    id: string,
+    requestId: string,
+    delivered: boolean,
+  ): Promise<LeadRecord | null> {
+    if (!id || !/^[a-f\d]{24}$/i.test(id)) return null;
+    const doc = await this.model.findOneAndUpdate(
+      {
+        _id: new Types.ObjectId(id),
+        emailNotificationRequestId: requestId,
+        emailNotificationStatus: 'SENDING',
+      },
+      delivered
+        ? {
+            $set: { emailNotificationStatus: 'SENT', emailNotifiedAt: new Date() },
+          }
+        : {
+            $set: { emailNotificationStatus: 'FAILED' },
+            $unset: { emailNotifiedAt: 1 },
+          },
+      { new: true, session: this.scope() },
+    ).exec();
+    return doc ? this.map(doc) : null;
+  }
+
   private map(doc: LeadDocument): LeadRecord {
     const raw = doc as unknown as LegacyLeadDocument;
     const allowedStatuses = Object.values(LeadStatus);
@@ -322,6 +373,8 @@ export class MongoLeadRepository implements LeadRepository {
       nextFollowUpAt: doc.nextFollowUpAt,
       createdByUserId,
       createdByEmail: raw.createdByEmail,
+      emailNotificationStatus: raw.emailNotificationStatus,
+      emailNotifiedAt: raw.emailNotifiedAt,
       quotes: (Array.isArray(raw.quotes) ? raw.quotes : []).map((q) => ({
         id: q.id,
         requestId: q.requestId,

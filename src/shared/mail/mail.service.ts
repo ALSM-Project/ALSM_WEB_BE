@@ -33,6 +33,72 @@ export class MailService {
     }
   }
 
+  /** Notify a new lead contact after the lead has been committed successfully. */
+  async sendLeadCreatedNotification(params: {
+    to: string;
+    contactName: string;
+    companyName: string;
+  }): Promise<boolean> {
+    const escapeHtml = (value: string) =>
+      value
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
+    const contactName = escapeHtml(params.contactName);
+    const companyName = escapeHtml(params.companyName);
+    const subject = '[ALSM] Đội ngũ tư vấn muốn liên hệ với bạn';
+    const text = [
+      `Chào ${params.contactName},`,
+      '',
+      `Đội ngũ tư vấn ALSM đã nhận được thông tin liên hệ về ${params.companyName}.`,
+      'Nhân viên tư vấn sẽ liên hệ để trao đổi về nhu cầu hiện đại hóa hệ thống của công ty.',
+      '',
+      'Nếu bạn không mong muốn nhận liên hệ này, vui lòng bỏ qua email.',
+      '',
+      'Trân trọng,',
+      'Đội ngũ ALSM',
+    ].join('\n');
+    const html = `
+      <!DOCTYPE html>
+      <html lang="vi">
+        <head><meta charset="UTF-8" /><meta name="viewport" content="width=device-width, initial-scale=1.0" /></head>
+        <body style="margin:0;padding:32px;background:#f5f7fa;font-family:Arial,sans-serif;color:#091E42;">
+          <table role="presentation" style="max-width:600px;margin:0 auto;background:#fff;border-radius:12px;padding:32px;width:100%;">
+            <tr><td>
+              <h1 style="font-size:22px;margin:0 0 24px;">ALSM</h1>
+              <p>Chào ${contactName},</p>
+              <p>Đội ngũ tư vấn ALSM đã nhận được thông tin liên hệ về <strong>${companyName}</strong>.</p>
+              <p>Nhân viên tư vấn sẽ liên hệ để trao đổi về nhu cầu hiện đại hóa hệ thống của công ty.</p>
+              <p>Nếu bạn không mong muốn nhận liên hệ này, vui lòng bỏ qua email.</p>
+              <p style="margin-top:28px;">Trân trọng,<br /><strong>Đội ngũ ALSM</strong></p>
+            </td></tr>
+          </table>
+        </body>
+      </html>`;
+
+    if (!this.transporter) {
+      this.logger.warn('Lead contact notification skipped because SMTP is not configured.');
+      return false;
+    }
+
+    try {
+      await this.transporter.sendMail({
+        from: this.fromAddress,
+        to: params.to,
+        subject,
+        html,
+        text,
+      });
+      this.logger.log('Lead contact notification email sent.');
+      return true;
+    } catch {
+      this.logger.error('Lead contact notification email could not be delivered.');
+      return false;
+    }
+  }
+
   /**
    * Send a Google Meet invitation email to a single attendee.
    */

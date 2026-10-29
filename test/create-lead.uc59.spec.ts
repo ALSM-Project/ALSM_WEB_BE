@@ -63,6 +63,11 @@ describe('CreateLeadService (UC-59)', () => {
   let append: jest.Mock;
   let run: jest.Mock;
   let service: CreateLeadService;
+  let sendLeadCreatedNotification: jest.Mock;
+  let findById: jest.Mock;
+  let claimEmailNotification: jest.Mock;
+  let completeEmailNotification: jest.Mock;
+  let notificationStatus: 'PENDING' | 'SENDING' | 'SENT' | 'FAILED';
 
   beforeEach(() => {
     create = jest.fn().mockResolvedValue({ lead, replayed: false });
@@ -73,13 +78,34 @@ describe('CreateLeadService (UC-59)', () => {
         audit: { append } as unknown as SendQuoteRepositories['audit'],
       }),
     );
-    service = new CreateLeadService({ run } as unknown as SendQuoteUnitOfWork);
+    sendLeadCreatedNotification = jest.fn().mockResolvedValue(true);
+    notificationStatus = 'PENDING';
+    findById = jest.fn().mockImplementation(async () => ({ ...lead, emailNotificationStatus: notificationStatus }));
+    claimEmailNotification = jest.fn().mockImplementation(async () => {
+      if (notificationStatus !== 'PENDING' && notificationStatus !== 'FAILED') return null;
+      notificationStatus = 'SENDING';
+      return { ...lead, emailNotificationStatus: notificationStatus };
+    });
+    completeEmailNotification = jest.fn().mockImplementation(async (_id, _requestId, delivered: boolean) => {
+      notificationStatus = delivered ? 'SENT' : 'FAILED';
+      return { ...lead, emailNotificationStatus: notificationStatus };
+    });
+    service = new CreateLeadService(
+      { run } as unknown as SendQuoteUnitOfWork,
+      { findById, claimEmailNotification, completeEmailNotification } as never,
+      { sendLeadCreatedNotification } as never,
+    );
   });
 
-  it('normalizes details, assigns the actor, commits one audit event, and returns the created lead', async () => {
+  it('normalizes details, assigns the actor, audits creation, and emails the lead contact after commit', async () => {
     const result = await service.execute(dto, actor, requestId);
 
-    expect(result).toEqual({ lead, replayed: false, message: 'Lead created successfully.' });
+    expect(result).toMatchObject({
+      lead: { ...lead, emailNotificationStatus: 'SENT' },
+      replayed: false,
+      notificationSent: true,
+      message: 'The contact notification email was sent.',
+    });
     expect(run).toHaveBeenCalledWith(expect.any(Function), expect.stringMatching(/^[a-f\d]{24}$/));
     expect(create).toHaveBeenCalledWith(expect.objectContaining({
       companyName: 'Example Bank',
@@ -101,15 +127,46 @@ describe('CreateLeadService (UC-59)', () => {
       resourceType: 'LEAD',
       resourceId: lead.id,
     }));
+    expect(sendLeadCreatedNotification).toHaveBeenCalledWith({
+      to: lead.contactEmail,
+      contactName: lead.contactName,
+      companyName: lead.companyName,
+    });
+    await service.notifyContact(lead.id, '35ec340b-f297-4dba-9f2e-25d3dd1af459');
+    expect(sendLeadCreatedNotification).toHaveBeenCalledTimes(1);
   });
 
-  it('does not create another audit event when the same request is replayed', async () => {
+  it('does not create another audit event or send a duplicate email when the same request is replayed', async () => {
     create.mockResolvedValue({ lead, replayed: true });
+    notificationStatus = 'SENT';
 
     const result = await service.execute(dto, actor, requestId);
 
     expect(result.replayed).toBe(true);
+    expect(result.notificationSent).toBe(true);
+    expect(result.message).toMatch(/already sent/i);
+    expect(sendLeadCreatedNotification).not.toHaveBeenCalled();
     expect(append).not.toHaveBeenCalled();
+  });
+
+  it('keeps the lead created when SMTP is unavailable and reports the missing notification', async () => {
+    sendLeadCreatedNotification.mockResolvedValue(false);
+
+    const result = await service.execute(dto, actor, requestId);
+
+    expect(result.lead.emailNotificationStatus).toBe('FAILED');
+    expect(result.notificationSent).toBe(false);
+    expect(result.message).toMatch(/contact email could not be sent/i);
+  });
+
+  it('does not turn an email transport exception into a failed lead creation', async () => {
+    sendLeadCreatedNotification.mockRejectedValue(new Error('SMTP connection details'));
+
+    const result = await service.execute(dto, actor, requestId);
+
+    expect(result.lead.emailNotificationStatus).toBe('FAILED');
+    expect(result.notificationSent).toBe(false);
+    expect(result.message).toMatch(/contact them manually/i);
   });
 
   it('rejects missing idempotency keys before any write', async () => {
@@ -122,6 +179,21 @@ describe('CreateLeadService (UC-59)', () => {
 
     await expect(service.execute(dto, actor, requestId)).rejects.toBeInstanceOf(ConflictException);
     expect(append).not.toHaveBeenCalled();
+  });
+
+  it('sends a notification for an existing lead and returns not-found without emailing for an invalid record', async () => {
+    const result = await service.notifyContact(lead.id, requestId);
+    expect(result.notificationSent).toBe(true);
+    expect(sendLeadCreatedNotification).toHaveBeenCalledWith({
+      to: lead.contactEmail,
+      contactName: lead.contactName,
+      companyName: lead.companyName,
+    });
+
+    findById.mockResolvedValueOnce(null);
+    await expect(service.notifyContact('64b000000000000000000011', requestId)).rejects.toMatchObject({
+      status: 404,
+    });
   });
 
   it('returns a safe dependency error without leaking transaction metadata', async () => {
@@ -186,6 +258,12 @@ describe('CreateLeadDto and UC-59 authorization', () => {
 
   it('requires sales.leads.manage on the create endpoint', () => {
     expect(Reflect.getMetadata(PERMISSIONS_KEY, LeadController.prototype.create)).toEqual([
+      'sales.leads.manage',
+    ]);
+  });
+
+  it('requires sales.leads.manage on the contact notification endpoint', () => {
+    expect(Reflect.getMetadata(PERMISSIONS_KEY, LeadController.prototype.notifyContact)).toEqual([
       'sales.leads.manage',
     ]);
   });
