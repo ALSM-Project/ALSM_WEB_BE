@@ -30,11 +30,12 @@ import { UpdateLeadStatusService } from '../application/update-lead-status.servi
 import { SendQuoteService } from '../application/send-quote.service';
 import { CreateLeadService } from '../application/create-lead.service';
 import { LogPhoneCallService } from '../application/log-phone-call.service';
-import { CreateLeadDto, ListLeadsQueryDto, UpdateLeadStatusDto, SendQuoteDto, LogPhoneCallDto } from './lead.dto';
-import { LeadStatus, LeadSource, LeadPriority, LeadRecord, LeadQuoteItem, LeadPhoneCall } from '../domain/lead.types';
+import { ScheduleDemoService } from '../application/schedule-demo.service';
+import { CreateLeadDto, ListLeadsQueryDto, UpdateLeadStatusDto, SendQuoteDto, LogPhoneCallDto, ScheduleDemoDto } from './lead.dto';
+import { LeadStatus, LeadSource, LeadPriority, LeadRecord, LeadQuoteItem, LeadPhoneCall, LeadDemo } from '../domain/lead.types';
 import { SendQuoteResult } from '../application/send-quote.service';
 
-@ApiTags('Leads (UC-58, UC-59, UC-60, UC-62, UC-66, UC-67)')
+@ApiTags('Leads (UC-58, UC-59, UC-60, UC-61, UC-62, UC-66, UC-67)')
 @ApiBearerAuth()
 @UseGuards(JwtAuthGuard, PermissionsGuard)
 @Controller('leads')
@@ -45,6 +46,7 @@ export class LeadController {
     private readonly sendQuoteService: SendQuoteService,
     private readonly createLeadService: CreateLeadService,
     private readonly logPhoneCallService: LogPhoneCallService,
+    private readonly scheduleDemoService: ScheduleDemoService,
   ) {}
 
   @Post()
@@ -176,6 +178,34 @@ export class LeadController {
     return { ...result, call, lead: this.publicLead(result.lead) };
   }
 
+  @Post(':id/demos')
+  @RequirePermissions('sales.leads.manage')
+  @ApiOperation({
+    summary: 'Schedule a product demo for a lead (UC-61)',
+    description: 'Requires sales.leads.manage. Saves the demo appointment and audit record atomically. Retrying with the same Idempotency-Key will not create a duplicate appointment.',
+  })
+  @ApiParam({ name: 'id', description: 'Lead ID (24-hex ObjectId)' })
+  @ApiHeader({ name: 'Idempotency-Key', required: true, description: 'Stable UUID reused when retrying the same demo submission' })
+  @ApiResponse({ status: 201, description: 'Demo scheduled or an identical retry reconciled' })
+  @ApiResponse({ status: 400, description: 'Invalid date, duration, attendees, lead status, or request ID' })
+  @ApiResponse({ status: 401, description: 'Authentication is required' })
+  @ApiResponse({ status: 403, description: 'The user lacks sales.leads.manage permission' })
+  @ApiResponse({ status: 404, description: 'Lead not found' })
+  @ApiResponse({ status: 409, description: 'Request ID reuse or concurrent lead change' })
+  @ApiResponse({ status: 503, description: 'The database transaction could not be completed' })
+  async scheduleDemo(
+    @Param('id') id: string,
+    @Body() dto: ScheduleDemoDto,
+    @CurrentUser() user: AuthenticatedUser,
+    @Headers('idempotency-key') requestId?: string,
+  ) {
+    const result = await this.scheduleDemoService.execute(id, dto, user, requestId);
+    const { requestId: _requestId, requestFingerprint: _requestFingerprint, ...demo } = result.demo;
+    void _requestId;
+    void _requestFingerprint;
+    return { ...result, demo, lead: this.publicLead(result.lead) };
+  }
+
   @Patch(':id/status')
   @RequirePermissions('sales.leads.manage')
   @ApiOperation({
@@ -233,9 +263,10 @@ export class LeadController {
     return this.publicQuoteResult(await this.sendQuoteService.execute(id, dto, user));
   }
 
-  private publicLead(lead: LeadRecord): Omit<LeadRecord, 'quotes' | 'phoneCalls'> & {
+  private publicLead(lead: LeadRecord): Omit<LeadRecord, 'quotes' | 'phoneCalls' | 'demos'> & {
     quotes?: Array<Omit<LeadQuoteItem, 'requestFingerprint'>>;
     phoneCalls?: Array<Omit<LeadPhoneCall, 'requestId' | 'requestFingerprint'>>;
+    demos?: Array<Omit<LeadDemo, 'requestId' | 'requestFingerprint'>>;
   } {
     return {
       ...lead,
@@ -249,6 +280,12 @@ export class LeadController {
         void requestId;
         void requestFingerprint;
         return call;
+      }),
+      demos: lead.demos?.map((item) => {
+        const { requestId, requestFingerprint, ...demo } = item;
+        void requestId;
+        void requestFingerprint;
+        return demo;
       }),
     };
   }

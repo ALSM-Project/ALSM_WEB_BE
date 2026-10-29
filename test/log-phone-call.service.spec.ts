@@ -42,7 +42,7 @@ describe('LogPhoneCallService (UC-60)', () => {
   beforeEach(() => {
     leads = {
       create: jest.fn(), findById: jest.fn(), list: jest.fn(), countByStatus: jest.fn(),
-      updateStatus: jest.fn(), addQuote: jest.fn(), addQuoteOnce: jest.fn(), addPhoneCallOnce: jest.fn(),
+      updateStatus: jest.fn(), addQuote: jest.fn(), addQuoteOnce: jest.fn(), addPhoneCallOnce: jest.fn(), addDemoOnce: jest.fn(),
       claimEmailNotification: jest.fn(), completeEmailNotification: jest.fn(),
     };
     audit = { append: jest.fn().mockResolvedValue(undefined) };

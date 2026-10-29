@@ -58,6 +58,34 @@ export interface LogPhoneCallInput {
   followUpAt?: string;
 }
 
+export type LeadDemoStatus = 'SCHEDULED' | 'COMPLETED' | 'CANCELLED';
+
+/** Stored demo appointment. Idempotency fields are internal and must never be returned by the API. */
+export interface LeadDemo {
+  id: string;
+  requestId: string;
+  requestFingerprint: string;
+  title: string;
+  scheduledAt: Date;
+  durationMinutes: number;
+  attendeeEmails: string[];
+  agenda?: string;
+  internalNotes?: string;
+  status: LeadDemoStatus;
+  scheduledByUserId: string;
+  scheduledByEmail: string;
+  createdAt: Date;
+}
+
+export interface ScheduleDemoInput {
+  title: string;
+  scheduledAt: string;
+  durationMinutes: number;
+  attendeeEmails: string[];
+  agenda?: string;
+  internalNotes?: string;
+}
+
 export interface LeadRecord {
   id: string;
   companyName: string;
@@ -82,6 +110,7 @@ export interface LeadRecord {
   emailNotifiedAt?: Date;
   quotes?: LeadQuoteItem[];
   phoneCalls?: LeadPhoneCall[];
+  demos?: LeadDemo[];
   createdAt: Date;
   updatedAt: Date;
 }
@@ -191,6 +220,12 @@ export interface LeadRepository {
   addPhoneCallOnce(
     id: string,
     call: LeadPhoneCall,
+    expectedStatus: LeadStatus,
+    newStatus: LeadStatus,
+  ): Promise<LeadRecord | null>;
+  addDemoOnce(
+    id: string,
+    demo: LeadDemo,
     expectedStatus: LeadStatus,
     newStatus: LeadStatus,
   ): Promise<LeadRecord | null>;

@@ -1,4 +1,7 @@
 import {
+  ArrayMaxSize,
+  ArrayMinSize,
+  IsArray,
   IsEnum,
   IsNotEmpty,
   IsNumber,
@@ -222,5 +225,49 @@ export class LogPhoneCallDto {
   @IsOptional()
   @IsDateString()
   followUpAt?: string;
+}
+
+export class ScheduleDemoDto {
+  @ApiProperty({ minLength: 3, maxLength: 200 })
+  @Transform(({ value }) => (typeof value === 'string' ? value.trim() : value))
+  @IsString()
+  @MinLength(3)
+  @MaxLength(200)
+  title!: string;
+
+  @ApiProperty({ description: 'ISO 8601 date and time; must be in the future' })
+  @IsDateString()
+  scheduledAt!: string;
+
+  @ApiProperty({ minimum: 15, maximum: 240, description: 'Demo duration in minutes' })
+  @Type(() => Number)
+  @IsInt()
+  @Min(15)
+  @Max(240)
+  durationMinutes!: number;
+
+  @ApiProperty({ type: [String], minItems: 1, maxItems: 50 })
+  @Transform(({ value }) => Array.isArray(value)
+    ? value.map((email) => typeof email === 'string' ? email.trim().toLowerCase() : email)
+    : value)
+  @IsArray()
+  @ArrayMinSize(1)
+  @ArrayMaxSize(50)
+  @IsEmail({}, { each: true })
+  attendeeEmails!: string[];
+
+  @ApiPropertyOptional({ maxLength: 2000 })
+  @IsOptional()
+  @Transform(({ value }) => (typeof value === 'string' ? value.trim() : value))
+  @IsString()
+  @MaxLength(2000)
+  agenda?: string;
+
+  @ApiPropertyOptional({ maxLength: 2000, description: 'Internal preparation notes; not sent to attendees' })
+  @IsOptional()
+  @Transform(({ value }) => (typeof value === 'string' ? value.trim() : value))
+  @IsString()
+  @MaxLength(2000)
+  internalNotes?: string;
 }
 
