@@ -5,7 +5,6 @@ import {
   Headers,
   HttpCode,
   HttpStatus,
-  NotFoundException,
   Param,
   Patch,
   Post,
@@ -34,7 +33,7 @@ import { CreateLeadDto, ListLeadsQueryDto, UpdateLeadStatusDto, SendQuoteDto } f
 import { LeadStatus, LeadSource, LeadPriority, LeadRecord, LeadQuoteItem } from '../domain/lead.types';
 import { SendQuoteResult } from '../application/send-quote.service';
 
-@ApiTags('Leads (UC-58, UC-59, UC-62, UC-66)')
+@ApiTags('Leads (UC-58, UC-59, UC-62, UC-66, UC-67)')
 @ApiBearerAuth()
 @UseGuards(JwtAuthGuard, PermissionsGuard)
 @Controller('leads')
@@ -132,22 +131,17 @@ export class LeadController {
   @Get(':id')
   @RequirePermissions('sales.leads.view')
   @ApiOperation({
-    summary: 'Get lead by ID',
-    description: 'Requires sales.leads.view permission. Retrieves single lead details.',
+    summary: 'View lead details (UC-67)',
+    description: 'Requires sales.leads.view permission. Returns the current full lead record without changing it.',
   })
   @ApiParam({ name: 'id', description: 'Lead ID (24-hex ObjectId)' })
   @ApiResponse({ status: 200, description: 'Lead retrieved successfully' })
+  @ApiResponse({ status: 400, description: 'Invalid lead identifier' })
   @ApiResponse({ status: 401, description: 'Unauthorized' })
   @ApiResponse({ status: 403, description: 'Forbidden' })
   @ApiResponse({ status: 404, description: 'Lead not found' })
   async getById(@Param('id') id: string) {
     const lead = await this.listLeadsService.findById(id);
-    if (!lead) {
-      throw new NotFoundException({
-        code: 'LEAD_NOT_FOUND',
-        message: `Lead with ID ${id} not found`,
-      });
-    }
     return this.publicLead(lead);
   }
 
