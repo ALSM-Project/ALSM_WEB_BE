@@ -3,6 +3,8 @@ import {
   Controller,
   Get,
   Headers,
+  HttpCode,
+  HttpStatus,
   NotFoundException,
   Param,
   Patch,
@@ -67,6 +69,28 @@ export class LeadController {
     @Headers('idempotency-key') requestId?: string,
   ) {
     const result = await this.createLeadService.execute(dto, user, requestId);
+    return { ...result, lead: this.publicLead(result.lead) };
+  }
+
+  @Post(':id/notification')
+  @HttpCode(HttpStatus.OK)
+  @RequirePermissions('sales.leads.manage')
+  @ApiOperation({
+    summary: 'Send or retry contact notification email (UC-59)',
+    description: 'Sends the lead contact a notification email. A successful notification is never sent twice.',
+  })
+  @ApiParam({ name: 'id', description: 'Lead ID (24-hex ObjectId)' })
+  @ApiHeader({ name: 'Idempotency-Key', required: true, description: 'UUID for this email send attempt' })
+  @ApiResponse({ status: 200, description: 'Notification status returned' })
+  @ApiResponse({ status: 400, description: 'Invalid lead ID or idempotency key' })
+  @ApiResponse({ status: 401, description: 'Authentication is required' })
+  @ApiResponse({ status: 403, description: 'The user lacks sales.leads.manage permission' })
+  @ApiResponse({ status: 404, description: 'Lead not found' })
+  async notifyContact(
+    @Param('id') id: string,
+    @Headers('idempotency-key') requestId?: string,
+  ) {
+    const result = await this.createLeadService.notifyContact(id, requestId);
     return { ...result, lead: this.publicLead(result.lead) };
   }
 

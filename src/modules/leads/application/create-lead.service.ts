@@ -3,13 +3,21 @@ import {
   Inject,
   Injectable,
   Logger,
+  NotFoundException,
   ServiceUnavailableException,
   UnauthorizedException,
 } from '@nestjs/common';
 import { createHash } from 'node:crypto';
 import { AuthenticatedUser } from '../../../shared/logging/request-id.middleware';
-import { LeadPriority, LeadRecord, LeadSource } from '../domain/lead.types';
+import {
+  LEAD_REPOSITORY,
+  LeadPriority,
+  LeadRecord,
+  LeadRepository,
+  LeadSource,
+} from '../domain/lead.types';
 import { CreateLeadDto } from '../presentation/lead.dto';
+import { MailService } from '../../../shared/mail/mail.service';
 import {
   SEND_QUOTE_UNIT_OF_WORK,
   SendQuoteUnitOfWork,
@@ -18,6 +26,7 @@ import {
 export interface CreateLeadResult {
   lead: LeadRecord;
   replayed: boolean;
+  notificationSent: boolean | null;
   message: string;
 }
 
@@ -29,6 +38,8 @@ export class CreateLeadService {
 
   constructor(
     @Inject(SEND_QUOTE_UNIT_OF_WORK) private readonly unitOfWork: SendQuoteUnitOfWork,
+    @Inject(LEAD_REPOSITORY) private readonly leads: LeadRepository,
+    private readonly mail: MailService,
   ) {}
 
   async execute(
@@ -120,10 +131,88 @@ export class CreateLeadService {
     }
 
     if (!outcome.replayed) this.logger.log(`Lead ${leadId} created by authenticated sales user`);
+    let notificationLead = outcome.lead;
+    try {
+      notificationLead = await this.deliverContactNotification(leadId, requestId) ?? outcome.lead;
+    } catch {
+      this.logger.warn(`Lead contact notification status could not be confirmed for lead ${leadId}.`);
+    }
+    const notificationSent = this.notificationSent(notificationLead);
     return {
-      lead: outcome.lead,
+      lead: notificationLead,
       replayed: outcome.replayed,
-      message: outcome.replayed ? 'This lead was already created.' : 'Lead created successfully.',
+      notificationSent,
+      message: this.notificationMessage(notificationLead, outcome.replayed),
     };
+  }
+
+  async notifyContact(id: string, requestId?: string): Promise<CreateLeadResult> {
+    if (!/^[a-f\d]{24}$/i.test(id)) {
+      throw new BadRequestException({ code: 'INVALID_LEAD_ID', message: 'Enter a valid lead identifier.' });
+    }
+    if (!requestId || !REQUEST_ID_PATTERN.test(requestId)) {
+      throw new BadRequestException({
+        code: 'INVALID_IDEMPOTENCY_KEY',
+        message: 'A valid Idempotency-Key is required to send the notification.',
+      });
+    }
+    const existing = await this.leads.findById(id);
+    if (!existing) {
+      throw new NotFoundException({ code: 'LEAD_NOT_FOUND', message: 'Lead was not found.' });
+    }
+    const lead = await this.deliverContactNotification(id, requestId) ?? existing;
+    const notificationSent = this.notificationSent(lead);
+    return {
+      lead,
+      replayed: notificationSent === true,
+      notificationSent,
+      message: this.notificationMessage(lead, notificationSent === true),
+    };
+  }
+
+  private async deliverContactNotification(id: string, requestId: string): Promise<LeadRecord | null> {
+    const claimed = await this.leads.claimEmailNotification(id, requestId);
+    if (!claimed) return this.leads.findById(id);
+
+    let delivered = false;
+    try {
+      delivered = await this.mail.sendLeadCreatedNotification({
+        to: claimed.contactEmail,
+        contactName: claimed.contactName,
+        companyName: claimed.companyName,
+      });
+    } catch {
+      delivered = false;
+    }
+
+    if (!delivered) this.logger.warn(`Lead contact notification was not sent for lead ${id}.`);
+    try {
+      const completed = await this.leads.completeEmailNotification(id, requestId, delivered);
+      if (delivered && completed?.emailNotificationStatus === 'SENT') {
+        this.logger.log(`Lead contact notification sent for lead ${id}.`);
+      }
+      return completed ?? claimed;
+    } catch {
+      this.logger.warn(`Lead contact notification status could not be saved for lead ${id}.`);
+      return claimed;
+    }
+  }
+
+  private notificationSent(lead: LeadRecord): boolean | null {
+    if (lead.emailNotificationStatus === 'SENT') return true;
+    if (lead.emailNotificationStatus === 'FAILED') return false;
+    return null;
+  }
+
+  private notificationMessage(lead: LeadRecord, replayed: boolean): string {
+    if (lead.emailNotificationStatus === 'SENT') {
+      return replayed
+        ? 'The contact notification email was already sent; no duplicate email was sent.'
+        : 'The contact notification email was sent.';
+    }
+    if (lead.emailNotificationStatus === 'FAILED') {
+      return 'The lead is saved, but the contact email could not be sent. Retry the email or contact them manually.';
+    }
+    return 'The lead is saved. Email delivery is still being processed; check the notification status shortly.';
   }
 }

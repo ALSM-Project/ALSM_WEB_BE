@@ -26,6 +26,8 @@ export enum LeadPriority {
   CRITICAL = 'CRITICAL',
 }
 
+export type LeadEmailNotificationStatus = 'PENDING' | 'SENDING' | 'SENT' | 'FAILED';
+
 export interface LeadRecord {
   id: string;
   companyName: string;
@@ -46,6 +48,8 @@ export interface LeadRecord {
   nextFollowUpAt?: Date;
   createdByUserId?: string;
   createdByEmail?: string;
+  emailNotificationStatus?: LeadEmailNotificationStatus;
+  emailNotifiedAt?: Date;
   quotes?: LeadQuoteItem[];
   createdAt: Date;
   updatedAt: Date;
@@ -152,6 +156,12 @@ export interface LeadRepository {
     quote: LeadQuoteItem,
     expectedStatus: LeadStatus,
     newStatus?: LeadStatus,
+  ): Promise<LeadRecord | null>;
+  claimEmailNotification(id: string, requestId: string): Promise<LeadRecord | null>;
+  completeEmailNotification(
+    id: string,
+    requestId: string,
+    delivered: boolean,
   ): Promise<LeadRecord | null>;
 }
 
