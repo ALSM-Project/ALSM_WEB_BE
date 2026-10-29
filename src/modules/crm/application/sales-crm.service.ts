@@ -1,4 +1,5 @@
 import {
+  BadRequestException,
   ConflictException,
   Inject,
   Injectable,
@@ -13,6 +14,13 @@ import { OrganizationRole, OrganizationType } from '../../organizations/domain/o
 import { User } from '../../users/infrastructure/user.schema';
 import { AUDIT_REPOSITORY, AuditRepository } from '../../audit/domain/audit.repository';
 import { LeadStatus } from '../domain/lead.types';
+import {
+  SALES_PIPELINE_STAGES,
+  SalesPipelineLead,
+  SalesPipelineQuery,
+  SalesPipelineStage,
+  SalesPipelineView,
+} from '../domain/sales-pipeline.types';
 
 export interface CreateCrmLeadDto {
   contactName: string;
@@ -87,6 +95,133 @@ export class SalesCrmService {
       .exec();
 
     return docs.map((doc) => this.mapLead(doc));
+  }
+
+  async getSalesPipeline(query: SalesPipelineQuery = {}): Promise<SalesPipelineView> {
+    if (query.organizationId && !Types.ObjectId.isValid(query.organizationId)) {
+      throw new BadRequestException({
+        code: 'INVALID_ORGANIZATION_ID',
+        message: 'The organization ID is invalid.',
+      });
+    }
+
+    const clauses: FilterQuery<LeadDocument>[] = [];
+    if (query.organizationId) {
+      clauses.push({ organizationId: new Types.ObjectId(query.organizationId) });
+    }
+    if (query.stage && query.stage !== 'ALL') {
+      const stageMatches: FilterQuery<LeadDocument>[] = [
+        { stage: query.stage },
+        { status: query.stage },
+      ];
+      if (query.stage === 'NEW') {
+        stageMatches.push({ stage: { $exists: false }, status: LeadStatus.ASSIGNED });
+      }
+      if (query.stage === 'WON') {
+        stageMatches.push({ stage: { $exists: false }, status: LeadStatus.CONVERTED });
+      }
+      clauses.push({ $or: stageMatches } as FilterQuery<LeadDocument>);
+    }
+    const search = query.search?.trim();
+    if (search) {
+      const safeSearch = search.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+      const searchRegex = new RegExp(safeSearch, 'i');
+      clauses.push({
+        $or: [
+          { contactName: searchRegex },
+          { company: searchRegex },
+          { companyName: searchRegex },
+          { contactEmail: searchRegex },
+          { title: searchRegex },
+        ],
+      } as FilterQuery<LeadDocument>);
+    }
+
+    const filter: FilterQuery<LeadDocument> = clauses.length > 0 ? { $and: clauses } : {};
+    const records = await this.leadModel
+      .find(filter)
+      .select('_id id company companyName title contactName source stage status score dealValue estimatedValue currency assignedTo assignedToUserId assignedToName assignments lastContactAt lastContactedAt createdAt updatedAt')
+      .sort({ score: -1, createdAt: -1 })
+      .lean()
+      .exec() as unknown as Array<Record<string, unknown>>;
+
+    const assignedUserIds = Array.from(new Set(records
+      .map((record) => this.pipelineAssigneeId(record))
+      .filter((id): id is string => !!id && Types.ObjectId.isValid(id))));
+    const users = assignedUserIds.length > 0
+      ? await this.userModel
+        .find({ _id: { $in: assignedUserIds.map((id) => new Types.ObjectId(id)) } })
+        .select('_id fullName')
+        .lean()
+        .exec()
+      : [];
+    const namesByUserId = new Map(users.map((user) => [String(user._id), user.fullName]));
+
+    const items = records.map((record) => this.mapPipelineLead(record, namesByUserId));
+    const stageCounts = Object.fromEntries(
+      SALES_PIPELINE_STAGES.map((stage) => [stage, 0]),
+    ) as Record<SalesPipelineStage, number>;
+    for (const item of items) stageCounts[item.stage] += 1;
+
+    return { items, total: items.length, stageCounts, lastUpdated: new Date() };
+  }
+
+  private pipelineAssigneeId(record: Record<string, unknown>): string | undefined {
+    const assignments = Array.isArray(record.assignments) ? record.assignments : [];
+    const latestAssignment = assignments.length > 0 && typeof assignments[assignments.length - 1] === 'object'
+      ? assignments[assignments.length - 1] as Record<string, unknown>
+      : undefined;
+    const assignedId = record.assignedToUserId ?? record.assignedTo ?? latestAssignment?.salespersonId;
+    if (typeof assignedId === 'string') return assignedId;
+    return assignedId instanceof Types.ObjectId ? assignedId.toString() : undefined;
+  }
+
+  private mapPipelineLead(
+    record: Record<string, unknown>,
+    namesByUserId: Map<string, string>,
+  ): SalesPipelineLead {
+    const stageValue = String(record.stage ?? record.status ?? '').trim().toUpperCase();
+    const normalizedStage = stageValue === LeadStatus.ASSIGNED
+      ? 'NEW'
+      : stageValue === LeadStatus.CONVERTED
+        ? 'WON'
+        : stageValue;
+    const stage = SALES_PIPELINE_STAGES.includes(normalizedStage as SalesPipelineStage)
+      ? normalizedStage as SalesPipelineStage
+      : 'UNMAPPED';
+    const assignedToId = this.pipelineAssigneeId(record);
+    const dealValue = this.pipelineNumber(record.dealValue ?? record.estimatedValue);
+    const currencyValue = typeof record.currency === 'string' ? record.currency.trim().toUpperCase() : '';
+
+    return {
+      id: typeof record.id === 'string' ? record.id : String(record._id ?? ''),
+      company: this.pipelineText(record.company) ?? this.pipelineText(record.companyName) ?? this.pipelineText(record.title) ?? 'Unnamed company',
+      contactName: this.pipelineText(record.contactName) ?? 'Contact not specified',
+      source: this.pipelineText(record.source) ?? 'Other',
+      stage,
+      score: this.pipelineNumber(record.score),
+      dealValue,
+      currency: /^[A-Z]{3}$/.test(currencyValue) ? currencyValue : 'USD',
+      assignedToName: this.pipelineText(record.assignedToName)
+        ?? (assignedToId ? namesByUserId.get(assignedToId) : undefined),
+      lastContactAt: this.pipelineDate(record.lastContactAt ?? record.lastContactedAt),
+      createdAt: this.pipelineDate(record.createdAt),
+      updatedAt: this.pipelineDate(record.updatedAt),
+    };
+  }
+
+  private pipelineText(value: unknown): string | undefined {
+    return typeof value === 'string' && value.trim() ? value.trim() : undefined;
+  }
+
+  private pipelineNumber(value: unknown): number | undefined {
+    const normalized = typeof value === 'number' ? value : typeof value === 'string' ? Number(value) : NaN;
+    return Number.isFinite(normalized) ? normalized : undefined;
+  }
+
+  private pipelineDate(value: unknown): Date | undefined {
+    const date = value instanceof Date ? value : typeof value === 'string' ? new Date(value) : undefined;
+    return date && !Number.isNaN(date.getTime()) ? date : undefined;
   }
 
   async getLead(id: string) {
