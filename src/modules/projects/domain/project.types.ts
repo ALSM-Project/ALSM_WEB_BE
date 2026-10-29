@@ -19,6 +19,13 @@ export interface ProjectRecord {
   createdBy: string;
   isDemo?: boolean;
   assignedTeamLeadId?: string;
+  /** The Conversion Staff member the Team Lead allocated the project to (UC-86). */
+  assignedStaffId?: string;
+  assignedStaffName?: string;
+  /** Technical briefing the Team Lead wrote when allocating. */
+  staffAssignmentNote?: string;
+  staffAssignedBy?: string;
+  staffAssignedAt?: Date;
   isExported?: boolean;
   exportedAt?: Date;
   exportedBundleName?: string;
@@ -38,6 +45,12 @@ export interface ProjectRepository {
     input: Partial<Pick<ProjectRecord, 'name' | 'description' | 'status' | 'assignedTeamLeadId'>>,
   ): Promise<ProjectRecord | null>;
   assignTeamLead(id: string, teamLeadId: string): Promise<ProjectRecord | null>;
+  /** Projects a Team Lead allocated to this staff member (UC-86), optionally within one organization. */
+  findByAssignedStaff(staffId: string, organizationId?: string): Promise<ProjectRecord[]>;
+  assignStaff(
+    id: string,
+    staff: { staffId: string; staffName: string; note?: string; assignedBy: string },
+  ): Promise<ProjectRecord | null>;
   softDelete(id: string, organizationId: string): Promise<boolean>;
 }
 export const PROJECT_REPOSITORY = Symbol('PROJECT_REPOSITORY');

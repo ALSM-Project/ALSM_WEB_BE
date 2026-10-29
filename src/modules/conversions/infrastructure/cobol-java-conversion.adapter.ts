@@ -92,6 +92,7 @@ export class CobolJavaConversionAdapter {
 
     try {
       const toolSourceDir = await this.prepareSources(sourceDir, path.join(jobWorkDir, 'src'));
+      await this.copyToolConfig(jarPath, jobWorkDir);
       const result = await runConversionTool(
         javaExecutable,
         [
@@ -231,6 +232,24 @@ export class CobolJavaConversionAdapter {
       else if (entry.isFile()) result.push(relative);
     }
     return result;
+  }
+
+  /**
+   * The tool reads Config.properties (package names, data model format) from its working
+   * directory, and every job runs in its own temp directory. Copy the tool's own file next to
+   * the jar (or one level up, where a source checkout keeps it) into the job directory.
+   */
+  private async copyToolConfig(jarPath: string, jobWorkDir: string): Promise<void> {
+    const jarDir = path.dirname(jarPath);
+    for (const candidate of [path.join(jarDir, 'Config.properties'), path.join(jarDir, '..', 'Config.properties')]) {
+      try {
+        await fs.promises.copyFile(candidate, path.join(jobWorkDir, 'Config.properties'));
+        return;
+      } catch {
+        // not there - try the next location
+      }
+    }
+    this.logger.warn(`No Config.properties found next to ${jarPath}; the tool will use its defaults`);
   }
 
   private async listJavaFiles(dir: string): Promise<string[]> {

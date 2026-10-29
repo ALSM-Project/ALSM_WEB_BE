@@ -35,13 +35,33 @@ export class MongoEmailVerificationRepository implements EmailVerificationReposi
         consumedAt: { $exists: false },
         expiresAt: { $gt: new Date() },
       })
+      .read('primary')
       .sort({ createdAt: -1 })
       .exec();
     return doc ? this.map(doc) : null;
   }
 
-  async markConsumed(id: string): Promise<void> {
-    await this.model.updateOne({ _id: id }, { $set: { consumedAt: new Date() } }).exec();
+  async consumeActive(
+    input: Pick<EmailVerificationRecord, 'id' | 'userId' | 'tokenHash' | 'code'>,
+  ): Promise<boolean> {
+    if (!/^[a-f0-9]{24}$/.test(input.id) || !/^[a-f0-9]{24}$/.test(input.userId)) return false;
+    const now = new Date();
+    const result = await this.model
+      .updateOne(
+        {
+          _id: new Types.ObjectId(input.id),
+          userId: new Types.ObjectId(input.userId),
+          tokenHash: input.tokenHash,
+          code: input.code,
+          consumedAt: { $exists: false },
+          expiresAt: { $gt: now },
+        },
+        { $set: { consumedAt: now } },
+        { writeConcern: { w: 'majority', wtimeoutMS: 10000 } },
+      )
+      .exec();
+    if (!result.acknowledged) throw new Error('VERIFICATION_CONSUMPTION_UNCONFIRMED');
+    return result.matchedCount === 1 && result.modifiedCount === 1;
   }
 
   async revokeAllForUser(userId: string): Promise<void> {

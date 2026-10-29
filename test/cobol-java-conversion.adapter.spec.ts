@@ -102,6 +102,34 @@ describe('CobolJavaConversionAdapter', () => {
     expect(errorLogs.create).not.toHaveBeenCalled();
   });
 
+  it("copies the tool's Config.properties into the job working directory before running it", async () => {
+    const toolDir = await fs.promises.mkdtemp(path.join(os.tmpdir(), 'alsm-test-tool-'));
+    await fs.promises.mkdir(path.join(toolDir, 'target'));
+    await fs.promises.writeFile(path.join(toolDir, 'Config.properties'), 'dataPackage = test.package');
+    const previousJar = configValues.TOOL2JAVA_JAR_PATH;
+    configValues.TOOL2JAVA_JAR_PATH = path.join(toolDir, 'target', 'akaBatch-1.0.jar');
+    let seenConfig: string | undefined;
+    (toolRunner.runConversionTool as jest.Mock).mockImplementation(
+      async (_exe: string, _args: string[], options: { cwd: string }) => {
+        seenConfig = await fs.promises.readFile(path.join(options.cwd, 'Config.properties'), 'utf8');
+        await fs.promises.writeFile(path.join(options.cwd, 'Result.java'), 'class Result {}');
+        return { code: 0, stdout: '', stderr: '', timedOut: false };
+      },
+    );
+    try {
+      await buildAdapter().execute(baseInput);
+    } finally {
+      configValues.TOOL2JAVA_JAR_PATH = previousJar;
+      await fs.promises.rm(toolDir, { recursive: true, force: true });
+    }
+    expect(seenConfig).toBe('dataPackage = test.package');
+    // The copied settings file is never mistaken for generated output.
+    expect(storage.writeFiles).toHaveBeenCalledWith(
+      'results/p1/job-2',
+      expect.not.arrayContaining([expect.objectContaining({ relativePath: 'Config.properties' })]),
+    );
+  });
+
   it('isolates overlapping attempts of the same job in distinct working directories', async () => {
     const workingDirectories: string[] = [];
     (toolRunner.runConversionTool as jest.Mock).mockImplementation(

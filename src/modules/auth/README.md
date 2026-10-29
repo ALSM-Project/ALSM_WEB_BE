@@ -34,4 +34,8 @@ so guards in the RBAC/menu modules enforce the same contract.
 
 ## Related Documentation
 
+[Email verification and account admission guarantees](../../../docs/security/AUTHENTICATION_ADMISSION.md)
+documents proof consumption, locked-account rejection, error compatibility and
+the remaining cross-document lock race.
+
 [`RULE.md`](../../../RULE.md) · [Coding Standards](../../../docs/engineering/CODING_STANDARDS.md) · [ADR-004](../../../docs/engineering/adr/ADR-004-single-backend-multi-portal-organization-isolation.md)

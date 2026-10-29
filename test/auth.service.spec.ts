@@ -55,43 +55,59 @@ describe('AuthService', () => {
 
   it('creates generation-bound credentials after email verification', async () => {
     emailVerificationService.verify.mockResolvedValue({
-      id: 'u1',
+      id: '507f1f77bcf86cd799439011',
       email: 'verified@example.invalid',
+      isEmailVerified: true,
+      mfa: { enabled: false },
       isActive: true,
+      isLocked: false,
       passwordHash: 'set',
       mustChangePassword: false,
     });
-    sessions.create.mockResolvedValue({ id: 's1' });
+    sessions.create.mockImplementation(async (input) => ({
+      ...input,
+      id: '507f1f77bcf86cd799439012',
+    }));
+    users.findById.mockImplementation(
+      async () => emailVerificationService.verify.mock.results.at(-1)?.value,
+    );
     await service.verifyEmail('verified@example.invalid', 'fixture-code');
     expect(jwt.signAsync).toHaveBeenCalledWith(
-      expect.objectContaining({ sid: 's1', sv: expect.any(String) }),
+      expect.objectContaining({ sid: '507f1f77bcf86cd799439012', sv: expect.any(String) }),
       expect.objectContaining({ secret: 'a' }),
     );
     expect(jwt.signAsync).toHaveBeenCalledWith(
-      expect.objectContaining({ sid: 's1', fid: expect.any(String), tid: expect.any(String) }),
+      expect.objectContaining({
+        sid: '507f1f77bcf86cd799439012',
+        fid: expect.any(String),
+        tid: expect.any(String),
+      }),
       expect.objectContaining({ secret: 'b' }),
     );
   });
 
   it('preserves Google session creation and forced set-password metadata without external calls', async () => {
-    const verify = jest
-      .spyOn(OAuth2Client.prototype, 'verifyIdToken')
-      .mockResolvedValue({
-        getPayload: () => ({
-          aud: 'fixture-google-client',
-          email_verified: true,
-          email: 'google@example.invalid',
-        }),
-      } as never);
+    const verify = jest.spyOn(OAuth2Client.prototype, 'verifyIdToken').mockResolvedValue({
+      getPayload: () => ({
+        aud: 'fixture-google-client',
+        email_verified: true,
+        email: 'google@example.invalid',
+      }),
+    } as never);
     try {
       users.findByEmail.mockResolvedValue({
-        id: 'u1',
+        id: '507f1f77bcf86cd799439011',
         email: 'google@example.invalid',
         isActive: true,
+        isLocked: false,
         isEmailVerified: true,
         mustChangePassword: true,
       });
-      sessions.create.mockResolvedValue({ id: 's1' });
+      sessions.create.mockImplementation(async (input) => ({
+        ...input,
+        id: '507f1f77bcf86cd799439012',
+      }));
+      users.findById.mockImplementation(async () => users.findByEmail.mock.results.at(-1)?.value);
       const result = await service.loginWithGoogle('fixture-google-token');
       expect(result).toMatchObject({ mustChangePassword: true, hasPassword: false });
       expect(sessions.create).toHaveBeenCalledWith(
@@ -109,22 +125,26 @@ describe('AuthService', () => {
   it('registers a user, self-service organization, owner membership, audit event, and sends verification email', async () => {
     users.findByEmail.mockResolvedValue(null);
     users.create.mockResolvedValue({
-      id: 'u1',
+      id: '507f1f77bcf86cd799439011',
       email: 'a@example.com',
       fullName: 'Ada',
       isPlatformAdmin: false,
       isActive: true,
+      isLocked: false,
       isEmailVerified: false,
     });
     organizations.create.mockResolvedValue({ id: 'o1' });
-    sessions.create.mockResolvedValue({ id: 's1' });
+    sessions.create.mockImplementation(async (input) => ({
+      ...input,
+      id: '507f1f77bcf86cd799439012',
+    }));
 
     const result = await service.register('A@Example.com', 'a-strong-password', 'Ada');
 
     expect(organizations.create).toHaveBeenCalledWith(
       expect.objectContaining({
         type: OrganizationType.SELF_SERVICE,
-        members: [{ userId: 'u1', role: 'OWNER' }],
+        members: [{ userId: '507f1f77bcf86cd799439011', role: 'OWNER' }],
       }),
     );
     expect(audit.append).toHaveBeenCalledWith(
@@ -157,16 +177,21 @@ describe('AuthService', () => {
 
   it('persists normalized session metadata instead of the raw User-Agent when creating a login session', async () => {
     users.findByEmail.mockResolvedValue({
-      id: 'u1',
+      id: '507f1f77bcf86cd799439011',
       email: 'a@example.com',
       fullName: 'Ada',
       passwordHash: await bcrypt.hash('a-strong-password', 4),
       isPlatformAdmin: false,
       isActive: true,
+      isLocked: false,
       isEmailVerified: true,
     });
-    sessions.create.mockResolvedValue({ id: 's1' });
+    sessions.create.mockImplementation(async (input) => ({
+      ...input,
+      id: '507f1f77bcf86cd799439012',
+    }));
 
+    users.findById.mockImplementation(async () => users.findByEmail.mock.results.at(-1)?.value);
     await service.login(
       'a@example.com',
       'a-strong-password',
@@ -183,10 +208,10 @@ describe('AuthService', () => {
     expect(sessions.create.mock.calls[0][0]).not.toHaveProperty('userAgent');
     expect(jwt.signAsync).toHaveBeenCalledWith(
       expect.objectContaining({
-        sub: 'u1',
+        sub: '507f1f77bcf86cd799439011',
         email: 'a@example.com',
         isPlatformAdmin: false,
-        sid: 's1',
+        sid: '507f1f77bcf86cd799439012',
       }),
       expect.objectContaining({ secret: 'a' }),
     );
@@ -206,7 +231,9 @@ describe('AuthService', () => {
       id: '507f1f77bcf86cd799439011',
       email: 'a@example.com',
       isPlatformAdmin: false,
+      isEmailVerified: true,
       isActive: true,
+      isLocked: false,
     });
     sessions.rotateRefresh.mockResolvedValue(true);
 

@@ -52,6 +52,10 @@ export class TemporaryRole {
   @Prop({ trim: true })
   revocationReason?: string;
 
+  /** Project the elevation was granted for, when the grantor named one. */
+  @Prop({ type: MongooseSchema.Types.ObjectId, ref: 'Project', required: false })
+  projectId?: Types.ObjectId;
+
   createdAt!: Date;
   updatedAt!: Date;
 }

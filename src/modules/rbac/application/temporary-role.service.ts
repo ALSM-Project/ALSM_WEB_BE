@@ -14,6 +14,34 @@ import { Role, RoleDocument } from '../infrastructure/schemas/role.schema';
 import { AUDIT_REPOSITORY, AuditRepository } from '../../audit/domain/audit.repository';
 import { toValidObjectId } from '../../../shared/utils/object-id.util';
 
+export const MIN_TEMPORARY_ROLE_HOURS = 1;
+export const MAX_TEMPORARY_ROLE_HOURS = 24;
+export const MIN_JUSTIFICATION_LENGTH = 10;
+const PLATFORM_ADMIN_ROLES = new Set(['SYSTEM_ADMIN', 'ADMIN', 'PLATFORM_ADMIN']);
+
+function requireValidDuration(durationHours: number): void {
+  if (
+    !Number.isFinite(durationHours) ||
+    durationHours < MIN_TEMPORARY_ROLE_HOURS ||
+    durationHours > MAX_TEMPORARY_ROLE_HOURS
+  ) {
+    throw new BadRequestException(
+      `Temporary role duration must be between ${MIN_TEMPORARY_ROLE_HOURS} and ${MAX_TEMPORARY_ROLE_HOURS} hours`,
+    );
+  }
+}
+
+function requireJustification(reason: string | undefined): string {
+  const clean = reason?.trim() ?? '';
+  if (clean.length < MIN_JUSTIFICATION_LENGTH) {
+    throw new BadRequestException({
+      code: 'JUSTIFICATION_TOO_SHORT',
+      message: `The justification must have at least ${MIN_JUSTIFICATION_LENGTH} characters`,
+    });
+  }
+  return clean;
+}
+
 @Injectable()
 export class TemporaryRoleService {
   constructor(
@@ -29,14 +57,18 @@ export class TemporaryRoleService {
     roleId: string,
     durationHours: number,
     reason: string,
+    projectId?: string,
   ) {
-    if (durationHours <= 0 || durationHours > 24) {
-      throw new BadRequestException('Temporary role duration must be between 1 and 24 hours');
-    }
+    requireValidDuration(durationHours);
+    const justification = requireJustification(reason);
 
     const normalizedRole = roleId.toUpperCase().trim();
-    if (normalizedRole === 'SYSTEM_ADMIN' || normalizedRole === 'ADMIN' || normalizedRole === 'PLATFORM_ADMIN') {
+    if (PLATFORM_ADMIN_ROLES.has(normalizedRole)) {
       throw new ForbiddenException('Temporary role cannot grant Platform Admin privileges');
+    }
+    // Nobody raises their own privileges through this route.
+    if (actorUserId === targetUserId) {
+      throw new ForbiddenException('You cannot grant a temporary role to yourself');
     }
 
     const role = await this.roleModel.findOne({
@@ -49,6 +81,9 @@ export class TemporaryRoleService {
     const targetUser = await this.userModel.findById(toValidObjectId(targetUserId)).exec();
     if (!targetUser) {
       throw new NotFoundException(`Target user '${targetUserId}' was not found`);
+    }
+    if ((targetUser as { isLocked?: boolean }).isLocked) {
+      throw new BadRequestException('A locked account cannot receive a temporary role');
     }
 
     // A user can only have one active temporary role at a time
@@ -76,8 +111,9 @@ export class TemporaryRoleService {
       expiresAt,
       durationHours,
       status: 'ACTIVE',
-      reason,
+      reason: justification,
       requestStatus: 'APPROVED',
+      ...(projectId ? { projectId: toValidObjectId(projectId) } : {}),
     });
 
     await this.audit.append({
@@ -89,7 +125,10 @@ export class TemporaryRoleService {
         targetUserId,
         roleId: role.id || normalizedRole,
         durationHours: String(durationHours),
-        reason,
+        grantedAt: now.toISOString(),
+        expiresAt: expiresAt.toISOString(),
+        ...(projectId ? { projectId } : {}),
+        reason: justification,
       },
     });
 
@@ -117,11 +156,24 @@ export class TemporaryRoleService {
     if (!doc) {
       throw new NotFoundException('Temporary role was not found');
     }
+    if (doc.status !== 'ACTIVE') {
+      throw new ConflictException({
+        code: 'TEMPORARY_ROLE_NOT_ACTIVE',
+        message: `Only an active temporary role can be revoked; this one is ${doc.status}`,
+      });
+    }
+    const revocationReason = reason?.trim() ?? '';
+    if (!revocationReason) {
+      throw new BadRequestException({
+        code: 'REVOCATION_REASON_REQUIRED',
+        message: 'A reason is required to revoke a temporary role',
+      });
+    }
 
     doc.status = 'REVOKED';
     doc.revokedAt = new Date();
     doc.revokedBy = toValidObjectId(actorUserId);
-    doc.revocationReason = reason;
+    doc.revocationReason = revocationReason;
     await doc.save();
 
     await this.audit.append({
@@ -132,7 +184,8 @@ export class TemporaryRoleService {
       metadata: {
         userId: doc.userId.toString(),
         roleId: doc.roleId,
-        reason: reason || '',
+        revokedAt: doc.revokedAt.toISOString(),
+        reason: revocationReason,
       },
     });
 
@@ -145,12 +198,11 @@ export class TemporaryRoleService {
     durationHours: number,
     reason: string,
   ) {
-    if (durationHours <= 0 || durationHours > 24) {
-      throw new BadRequestException('Requested duration cannot exceed 24 hours');
-    }
+    requireValidDuration(durationHours);
+    const justification = requireJustification(reason);
 
     const normalizedRole = roleId.toUpperCase().trim();
-    if (normalizedRole === 'SYSTEM_ADMIN' || normalizedRole === 'ADMIN' || normalizedRole === 'PLATFORM_ADMIN') {
+    if (PLATFORM_ADMIN_ROLES.has(normalizedRole)) {
       throw new ForbiddenException('Cannot request Platform Admin role');
     }
 
@@ -178,7 +230,7 @@ export class TemporaryRoleService {
       expiresAt,
       durationHours,
       status: 'REVOKED', // not active until approved
-      reason,
+      reason: justification,
       requestedBy: toValidObjectId(staffUserId),
       requestStatus: 'PENDING',
     });
@@ -188,7 +240,7 @@ export class TemporaryRoleService {
       action: 'TEMPORARY_ROLE_REQUESTED',
       resourceType: 'TEMPORARY_ROLE',
       resourceId: doc.id,
-      metadata: { roleId: normalizedRole, durationHours: String(durationHours), reason },
+      metadata: { roleId: normalizedRole, durationHours: String(durationHours), reason: justification },
     });
 
     return doc;
@@ -203,6 +255,33 @@ export class TemporaryRoleService {
     const doc = await this.tempRoleModel.findById(toValidObjectId(requestId)).exec();
     if (!doc) {
       throw new NotFoundException('Temporary role request was not found');
+    }
+    if (doc.requestStatus !== 'PENDING') {
+      throw new ConflictException({
+        code: 'REQUEST_ALREADY_REVIEWED',
+        message: 'This request has already been reviewed',
+      });
+    }
+    // Nobody approves their own request.
+    if (doc.userId.toString() === reviewerUserId) {
+      throw new ForbiddenException('You cannot review your own temporary role request');
+    }
+    if (!approved && !reason?.trim()) {
+      throw new BadRequestException({
+        code: 'REJECTION_REASON_REQUIRED',
+        message: 'A reason is required to reject a request',
+      });
+    }
+    if (approved) {
+      const stillActive = await this.tempRoleModel
+        .findOne({ userId: doc.userId, status: 'ACTIVE', expiresAt: { $gt: new Date() } })
+        .exec();
+      if (stillActive) {
+        throw new ConflictException({
+          code: 'ACTIVE_TEMPORARY_ROLE_EXISTS',
+          message: 'The user already holds an active temporary role',
+        });
+      }
     }
 
     doc.requestStatus = approved ? 'APPROVED' : 'REJECTED';

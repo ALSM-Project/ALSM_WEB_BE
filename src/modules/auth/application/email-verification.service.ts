@@ -1,6 +1,12 @@
-import { BadRequestException, Inject, Injectable, Logger, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  Inject,
+  Injectable,
+  ServiceUnavailableException,
+} from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { createHash, randomBytes } from 'crypto';
+import { createHash, randomBytes, randomInt } from 'crypto';
+import { isAccountAdmitted } from '../domain/account-admission';
 import { USER_REPOSITORY, UserRecord, UserRepository } from '../../users/domain/user.repository';
 import { EMAIL_PORT, EmailPort } from '../domain/email.port';
 import {
@@ -12,8 +18,6 @@ const VERIFICATION_TOKEN_TTL_MS = 15 * 60 * 1000; // 15 minutes
 
 @Injectable()
 export class EmailVerificationService {
-  private readonly logger = new Logger(EmailVerificationService.name);
-
   constructor(
     private readonly config: ConfigService,
     @Inject(USER_REPOSITORY) private readonly users: UserRepository,
@@ -25,7 +29,7 @@ export class EmailVerificationService {
   async sendVerificationEmail(user: UserRecord): Promise<void> {
     const plainToken = randomBytes(32).toString('hex');
     const tokenHash = hashToken(plainToken);
-    const code = Math.floor(100000 + Math.random() * 900000).toString();
+    const code = randomInt(100000, 1000000).toString();
 
     await this.emailVerifications.revokeAllForUser(user.id);
     await this.emailVerifications.create({
@@ -36,10 +40,6 @@ export class EmailVerificationService {
     });
 
     const verifyUrl = this.buildVerifyUrl(plainToken, user.email);
-
-    this.logger.log(
-      `Email verification generated for ${user.email}: Code=${code}, Token=${plainToken}`,
-    );
 
     await this.email.send({
       to: user.email,
@@ -56,45 +56,70 @@ export class EmailVerificationService {
   }
 
   async verify(email: string, tokenOrCode: string): Promise<UserRecord> {
+    const invalid = () =>
+      new BadRequestException({
+        code: 'INVALID_VERIFICATION_CODE',
+        message: 'Verification could not be completed. Sign in or request a new verification code.',
+      });
+    if (typeof email !== 'string' || typeof tokenOrCode !== 'string') throw invalid();
     const normalizedEmail = email.trim().toLowerCase();
-    const user = await this.users.findByEmail(normalizedEmail);
-    if (!user) {
-      throw new NotFoundException({
-        code: 'USER_NOT_FOUND',
-        message: 'User account not found',
-      });
-    }
-
-    if (user.isEmailVerified) {
-      return user;
-    }
-
-    const record = await this.emailVerifications.findLatestActiveByUserId(user.id);
-    if (!record) {
-      throw new BadRequestException({
-        code: 'INVALID_VERIFICATION_CODE',
-        message: 'Verification code or link has expired or is invalid. Please request a new code.',
-      });
-    }
-
     const cleanInput = tokenOrCode.trim();
-    const matchesCode = record.code === cleanInput;
-    const matchesToken = record.tokenHash === hashToken(cleanInput);
-
-    if (!matchesCode && !matchesToken) {
-      throw new BadRequestException({
-        code: 'INVALID_VERIFICATION_CODE',
-        message: 'Invalid verification code or link.',
+    if (!/^(?:\d{6}|[a-f0-9]{64})$/.test(cleanInput)) throw invalid();
+    try {
+      const user = await this.users.findByEmail(normalizedEmail);
+      // Verified state is not proof. This route also has no second-factor challenge.
+      if (
+        !user ||
+        user.email !== normalizedEmail ||
+        !/^[a-f0-9]{24}$/.test(user.id) ||
+        !isAccountAdmitted(user) ||
+        user.isEmailVerified !== false ||
+        user.mfa?.enabled !== false
+      )
+        throw invalid();
+      const record = await this.emailVerifications.findLatestActiveByUserId(user.id);
+      if (
+        !record ||
+        record.userId !== user.id ||
+        !/^[a-f0-9]{24}$/.test(record.id) ||
+        record.consumedAt !== undefined ||
+        !Number.isFinite(record.expiresAt?.getTime()) ||
+        record.expiresAt.getTime() <= Date.now()
+      )
+        throw invalid();
+      const matchesCode = /^\d{6}$/.test(cleanInput) && record.code === cleanInput;
+      const matchesToken =
+        /^[a-f0-9]{64}$/.test(cleanInput) && record.tokenHash === hashToken(cleanInput);
+      if (!matchesCode && !matchesToken) throw invalid();
+      if (
+        !(await this.emailVerifications.consumeActive({
+          id: record.id,
+          userId: user.id,
+          tokenHash: record.tokenHash,
+          code: record.code,
+        }))
+      )
+        throw invalid();
+      // A second conditional write prevents separate concurrent proofs from both
+      // authorizing the same unverified -> verified transition. Never retry it.
+      const verified = await this.users.markEmailVerifiedIfUnverified(user.id, normalizedEmail);
+      if (
+        !verified ||
+        verified.id !== user.id ||
+        verified.email !== normalizedEmail ||
+        verified.isEmailVerified !== true ||
+        !isAccountAdmitted(verified) ||
+        verified.mfa?.enabled !== false
+      )
+        throw invalid();
+      return verified;
+    } catch (error) {
+      if (error instanceof BadRequestException) throw error;
+      throw new ServiceUnavailableException({
+        code: 'EMAIL_VERIFICATION_UNAVAILABLE',
+        message: 'Email verification could not be confirmed. Please try again.',
       });
     }
-
-    await this.emailVerifications.markConsumed(record.id);
-    await this.users.markEmailVerified(user.id);
-
-    return {
-      ...user,
-      isEmailVerified: true,
-    };
   }
 
   async resendVerification(email: string): Promise<void> {

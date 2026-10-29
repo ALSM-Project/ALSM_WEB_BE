@@ -31,6 +31,7 @@ import { OnboardUserService } from '../src/modules/users/application/onboard-use
 import { RbacModule } from '../src/modules/rbac/rbac.module';
 import { ProjectsController } from '../src/modules/projects/presentation/projects.controller';
 import { ProjectService } from '../src/modules/projects/application/project.service';
+import { ProjectStaffAllocationService } from '../src/modules/projects/application/project-staff-allocation.service';
 import { ProjectRepository } from '../src/modules/projects/domain/project.types';
 import { OrganizationContextService } from '../src/modules/organizations/application/organization-context.service';
 import { OrganizationAuthorizationService } from '../src/modules/organizations/application/organization-authorization.service';
@@ -62,6 +63,7 @@ const routeCases = [
   ['post', 'resources/transfer', 'resources.transfer', 'transferResource'],
   ['get', 'audit-logs', 'audit.view', 'listAuditLogs'],
   ['get', 'audit-logs/export', 'audit.view', 'exportAuditLogs'],
+  ['get', 'audit-logs/export/pdf', 'audit.view', 'exportAuditLogsPdf'],
 ] as const;
 const catalog = [
   ...new Set([...routeCases.map((c) => c[2]), 'resources.transfer.confirm', 'users.manage']),
@@ -147,7 +149,11 @@ describe('real AdminModule authorization HTTP boundary', () => {
   };
   const audit = { append: jest.fn() };
   const email = { send: jest.fn() };
-  const projectRepository = { assignTeamLead: jest.fn(), findAll: jest.fn() };
+  const projectRepository = {
+    assignTeamLead: jest.fn(),
+    findAll: jest.fn(),
+    findByAssignedStaff: jest.fn().mockResolvedValue([]),
+  };
   const organizationRepository = { findFirstForMember: jest.fn(), findForMember: jest.fn() };
   // Actual module, guards, RBAC resolver, current-session service and business
   // services. Only database/email ports and bootstrap side effects are fixtures.
@@ -267,6 +273,8 @@ describe('real AdminModule authorization HTTP boundary', () => {
       controllers: [UsersController, ProjectsController],
       providers: [
         { provide: OnboardUserService, useValue: {} },
+        // ProjectsController also serves staff allocation (UC-86); these tests never call it.
+        { provide: ProjectStaffAllocationService, useValue: {} },
         {
           provide: ProjectService,
           useValue: new ProjectService(
@@ -485,11 +493,13 @@ describe('real AdminModule authorization HTTP boundary', () => {
     'expired session',
     'revoked session',
     'inactive account',
+    'locked account',
     'stale session',
   ])('retains 401 for %s', async (state) => {
     if (state === 'expired session') session.expiresAt = new Date(0);
     if (state === 'revoked session') session.revokedAt = new Date();
     if (state === 'inactive account') account.isActive = false;
+    if (state === 'locked account') account.isLocked = true;
     if (state === 'stale session') session.accessVersion = 'rotated';
     const req = request(app.getHttpServer()).get('/api/v1/admin/organizations');
     if (state !== 'missing JWT')
@@ -504,6 +514,15 @@ describe('real AdminModule authorization HTTP boundary', () => {
     expect(rbac.findUserById).not.toHaveBeenCalled();
     noBusinessReads();
   });
+  it.each(routeCases)(
+    'denies a locked persisted admin with signed claims on %s %s',
+    async (method, path) => {
+      account.isLocked = true;
+      expect((await call(method, path, { isPlatformAdmin: true })).status).toBe(401);
+      expect(rbac.findUserById).not.toHaveBeenCalled();
+      noBusinessReads();
+    },
+  );
   it('keeps impersonation unavailable without requiring admin/RBAC availability', async () => {
     account.isPlatformAdmin = false;
     rbac.findUserById.mockRejectedValue(new Error('unavailable'));

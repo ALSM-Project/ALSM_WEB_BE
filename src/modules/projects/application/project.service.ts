@@ -45,6 +45,10 @@ export class ProjectService {
       action: 'PROJECT_CREATED',
       resourceType: 'PROJECT',
       resourceId: project.id,
+      metadata: {
+        projectName: project.name,
+        conversionType: project.conversionType,
+      },
     });
     return project;
   }
@@ -95,9 +99,22 @@ export class ProjectService {
     return project;
   }
 
-  async list(userId: string, organizationHeader?: string): Promise<ProjectRecord[]> {
+  async list(
+    userId: string,
+    organizationHeader?: string,
+    isPlatformAdmin = false,
+  ): Promise<ProjectRecord[]> {
+    // A Platform Admin assigns projects of any organisation to a Team Lead (UC 3.13.3), so
+    // without a specific organization in the request they see every project in the system.
+    if (isPlatformAdmin && !organizationHeader?.trim()) {
+      return this.projects.findAll();
+    }
     const organization = await this.organizationContext.resolve(userId, organizationHeader);
-    return this.projects.findAll(organization.id);
+    const own = await this.projects.findAll(organization.id);
+    // Projects a Team Lead allocated to this person belong in their list wherever they live (UC-86).
+    const allocated = (await this.projects.findByAssignedStaff(userId)) ?? [];
+    const known = new Set(own.map((p) => p.id));
+    return [...own, ...allocated.filter((p) => !known.has(p.id))];
   }
 
   async get(

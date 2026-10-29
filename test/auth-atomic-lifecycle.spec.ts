@@ -15,7 +15,11 @@ async function fixture() {
   const config = {
     getOrThrow: (key: string) => (key.includes('EXPIRES') ? '15m' : 'fixture-only-key'),
   };
-  const users = { findById: jest.fn().mockResolvedValue({ id: userId, isActive: true }) };
+  const users = {
+    findById: jest
+      .fn()
+      .mockResolvedValue({ id: userId, isActive: true, isLocked: false, isEmailVerified: true }),
+  };
   const sessions = {
     findActive: jest.fn().mockResolvedValue({
       id: sessionId,

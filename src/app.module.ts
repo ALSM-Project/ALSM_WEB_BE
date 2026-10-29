@@ -49,6 +49,7 @@ import { JwtModule } from '@nestjs/jwt';
 import { getConnectionToken, getModelToken, MongooseModule } from '@nestjs/mongoose';
 import { environmentValidationSchema } from './config/environment.validation';
 import { RequestIdMiddleware } from './shared/logging/request-id.middleware';
+import { RequestIpMiddleware } from './shared/logging/request-ip.middleware';
 import { JwtAuthGuard } from './shared/security/jwt-auth.guard';
 import { PermissionsGuard } from './shared/security/permissions.guard';
 import { User, UserSchema } from './modules/users/infrastructure/user.schema';
@@ -220,6 +221,14 @@ import { ConversionWorkerRunner } from './modules/conversions/infrastructure/con
 import { ExportCodeService } from './modules/conversions/application/export-code.service';
 import { ExportController } from './modules/conversions/presentation/export.controller';
 import { PartnerExportController } from './modules/conversions/presentation/partner-export.controller';
+import { SupportPatchController } from './modules/conversions/presentation/support-patch.controller';
+import { ConversionSupportPatchService } from './modules/conversions/application/conversion-support-patch.service';
+import {
+  SupportPatch,
+  SupportPatchSchema,
+} from './modules/conversions/infrastructure/support-patch.schema';
+import { MongoSupportPatchRepository } from './modules/conversions/infrastructure/mongo-support-patch.repository';
+import { SUPPORT_PATCH_REPOSITORY } from './modules/conversions/domain/support-patch.types';
 import { PartnerBundleService } from './modules/conversions/application/partner-bundle.service';
 import { PublishPartnerExportService } from './modules/conversions/application/publish-partner-export.service';
 import {
@@ -271,6 +280,7 @@ import { MenuModule } from './modules/menus/menu.module';
 
 import { VALIDATION_REPOSITORY } from './modules/conversions/domain/validation.types';
 import { MongoValidationRepository } from './modules/conversions/infrastructure/mongo-validation.repository';
+import { ProjectStaffAllocationService } from './modules/projects/application/project-staff-allocation.service';
 import { RuleValidatorService } from './modules/conversions/application/rule-validator.service';
 import { LegacyValidationService } from './modules/conversions/application/legacy-validation.service';
 import {
@@ -331,6 +341,7 @@ import { AuditModule } from './modules/audit/audit.module';
       { name: QuoteRequest.name, schema: QuoteRequestSchema },
       { name: ConversionQualityReview.name, schema: ConversionQualityReviewSchema },
       { name: ExportBundle.name, schema: ExportBundleSchema },
+      { name: SupportPatch.name, schema: SupportPatchSchema },
     ]),
     RbacModule,
     MenuModule,
@@ -357,6 +368,7 @@ import { AuditModule } from './modules/audit/audit.module';
     UsersController,
     ExportController,
     PartnerExportController,
+    SupportPatchController,
     ErrorLogController,
     ValidationController,
     RuleValidationController,
@@ -452,6 +464,7 @@ import { AuditModule } from './modules/audit/audit.module';
     OrganizationContextService,
     OrganizationAuthorizationService,
     ProjectService,
+    ProjectStaffAllocationService,
     ConversionJobService,
     ConversionProjectAccessService,
     UploadConversionSourceService,
@@ -471,6 +484,8 @@ import { AuditModule } from './modules/audit/audit.module';
     LegacyValidationService,
     ExportCodeService,
     PartnerBundleService,
+    ConversionSupportPatchService,
+    { provide: SUPPORT_PATCH_REPOSITORY, useClass: MongoSupportPatchRepository },
     PublishPartnerExportService,
     { provide: EXPORT_BUNDLE_REPOSITORY, useClass: MongoExportBundleRepository },
     {
@@ -589,6 +604,6 @@ import { AuditModule } from './modules/audit/audit.module';
 })
 export class AppModule implements NestModule {
   configure(consumer: MiddlewareConsumer): void {
-    consumer.apply(RequestIdMiddleware).forRoutes('*');
+    consumer.apply(RequestIpMiddleware, RequestIdMiddleware).forRoutes('*');
   }
 }

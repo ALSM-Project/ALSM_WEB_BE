@@ -47,7 +47,12 @@ export interface ConversionJobRepository {
     screenId: string,
     organizationId: string,
   ): Promise<ConversionJobRecord[]>;
-  retry(id: string, organizationId: string): Promise<ConversionJobRecord | null>;
+  /** FAILED/DEAD -> QUEUED with attempts reset; `priority` also moves it up the queue. */
+  retry(
+    id: string,
+    organizationId: string,
+    options?: { priority?: ConversionPriority },
+  ): Promise<ConversionJobRecord | null>;
   markProcessing(
     id: string,
     token: string,
