@@ -20,6 +20,8 @@ import {
   ApiTags,
 } from '@nestjs/swagger';
 import { JwtAuthGuard } from '../../../shared/security/jwt-auth.guard';
+import { PermissionsGuard } from '../../../shared/security/permissions.guard';
+import { RequirePermissions } from '../../../shared/security/require-permissions.decorator';
 import { CurrentUser } from '../../../shared/security/current-user.decorator';
 import { AuthenticatedUser } from '../../../shared/logging/request-id.middleware';
 import { BillingService } from '../application/billing.service';
@@ -281,12 +283,13 @@ export class BillingController {
   }
 
   @ApiBearerAuth()
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(JwtAuthGuard, PermissionsGuard)
+  @RequirePermissions('billing.quotes.manage')
   @Get('enterprise/quote-requests')
   @ApiOperation({
-    summary: 'List enterprise quote requests (Admin only) (UC-32)',
+    summary: 'List enterprise quote requests (UC-32)',
     description:
-      'Retrieve all enterprise quote requests with optional status filter and pagination. Requires Platform Admin access.',
+      'Retrieve all enterprise quote requests with optional status filter and pagination. Requires the billing.quotes.manage permission.',
   })
   @ApiResponse({
     status: HttpStatus.OK,
@@ -296,7 +299,7 @@ export class BillingController {
     status: HttpStatus.UNAUTHORIZED,
     description: 'Missing or invalid authentication token',
   })
-  @ApiResponse({ status: HttpStatus.FORBIDDEN, description: 'Requires Platform Admin role' })
+  @ApiResponse({ status: HttpStatus.FORBIDDEN, description: 'Requires billing.quotes.manage permission' })
   async listQuoteRequests(
     @CurrentUser() user: AuthenticatedUser,
     @Query() query: ListQuoteRequestsQueryDto,
@@ -309,11 +312,12 @@ export class BillingController {
   }
 
   @ApiBearerAuth()
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(JwtAuthGuard, PermissionsGuard)
+  @RequirePermissions('billing.quotes.manage')
   @Patch('enterprise/quote-requests/:id/status')
   @ApiOperation({
-    summary: 'Update enterprise quote request status (Admin only) (UC-32)',
-    description: 'Update an enterprise quote request. APPROVED activates/restores Enterprise access; SUSPENDED blocks access until restored. Requires Platform Admin access.',
+    summary: 'Update enterprise quote request status (UC-32)',
+    description: 'Update an enterprise quote request. APPROVED activates/restores Enterprise access; SUSPENDED blocks access until restored. Requires the billing.quotes.manage permission.',
   })
   @ApiParam({
     name: 'id',
@@ -330,7 +334,7 @@ export class BillingController {
     status: HttpStatus.UNAUTHORIZED,
     description: 'Missing or invalid authentication token',
   })
-  @ApiResponse({ status: HttpStatus.FORBIDDEN, description: 'Requires Platform Admin role' })
+  @ApiResponse({ status: HttpStatus.FORBIDDEN, description: 'Requires billing.quotes.manage permission' })
   @ApiResponse({ status: HttpStatus.NOT_FOUND, description: 'Quote request not found' })
   async updateQuoteRequestStatus(
     @CurrentUser() user: AuthenticatedUser,
@@ -342,9 +346,10 @@ export class BillingController {
   }
 
   @ApiBearerAuth()
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(JwtAuthGuard, PermissionsGuard)
+  @RequirePermissions('billing.quotes.manage')
   @Patch('enterprise/quote-requests/:id/appeal')
-  @ApiOperation({ summary: 'Approve or decline a customer appeal (Admin only)' })
+  @ApiOperation({ summary: 'Approve or decline a customer appeal (requires billing.quotes.manage)' })
   async resolveEnterpriseAppeal(
     @CurrentUser() user: AuthenticatedUser,
     @Param('id') id: string,
