@@ -80,7 +80,7 @@ describe('UC-65 View Sales Pipeline', () => {
         contactName: 'Dr. Michael Chang',
         status: 'NEGOTIATION',
         estimatedValue: 250000,
-        currency: 'USD',
+        currency: 'VND',
         assignedToUserId: assignedUserId,
         createdAt,
       },

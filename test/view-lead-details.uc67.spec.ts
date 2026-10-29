@@ -17,7 +17,7 @@ describe('View Lead Details (UC-67)', () => {
     status: LeadStatus.QUALIFIED,
     source: LeadSource.REFERRAL,
     priority: LeadPriority.HIGH,
-    currency: 'USD',
+    currency: 'VND',
     notes: 'Interested in modernization',
     tags: ['Banking'],
     createdByUserId: '64b000000000000000000001',

@@ -31,7 +31,7 @@ describe('ScheduleDemoService (UC-61)', () => {
     status: LeadStatus.NEW,
     source: LeadSource.WEBSITE,
     priority: LeadPriority.MEDIUM,
-    currency: 'USD',
+    currency: 'VND',
     tags: [],
     demos: [],
     createdByUserId: ACTOR_ID,

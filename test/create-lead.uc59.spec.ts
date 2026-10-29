@@ -32,7 +32,7 @@ const dto: CreateLeadDto = {
   source: LeadSource.REFERRAL,
   priority: LeadPriority.HIGH,
   estimatedValue: 125000,
-  currency: 'USD',
+  currency: 'VND',
   notes: 'Interested in modernization',
 };
 
@@ -48,7 +48,7 @@ describe('CreateLeadService (UC-59)', () => {
     source: LeadSource.REFERRAL,
     priority: LeadPriority.HIGH,
     estimatedValue: 125000,
-    currency: 'USD',
+    currency: 'VND',
     notes: 'Interested in modernization',
     assignedToUserId: actor.userId,
     assignedToEmail: actor.email,
