@@ -48,8 +48,9 @@ describe('Spring Boot scaffold build profile', () => {
     expect(pom).toContain('<version>2.4.2</version>');
     expect(pom).toContain('<java.version>11</java.version>');
     expect(pom).toContain('<lombok.version>1.18.30</lombok.version>');
-    expect(pom).toContain('<groupId>C2J</groupId>');
-    expect(pom).toContain('<artifactId>Common</artifactId>');
+    // The runtime is bundled as source, so no external library dependency is needed - only JPA.
+    expect(pom).not.toContain('<groupId>C2J</groupId>');
+    expect(pom).toContain('spring-boot-starter-data-jpa');
     expect(find(legacy, 'application.yml')?.content).toContain('initialize-schema: always');
     expect(find(legacy, 'application.yml')?.content).not.toMatch(/^ {4}jdbc:/m);
     expect(find(legacy, 'README.md')?.content).toContain('Spring Boot 2.4 (Java 11)');
@@ -68,12 +69,33 @@ describe('Spring Boot scaffold build profile', () => {
     expect(find(legacy, 'TimeArea_1Tasklet.java')).toBeUndefined();
   });
 
+  it('carries the converter runtime as source so the project builds with nothing installed', () => {
+    const runtimeFiles = flatten(legacy).filter((f) => f.path.includes('src/main/java/jp/co/alsm/'));
+    const paths = runtimeFiles.map((f) => f.path.split('src/main/java/')[1]);
+    expect(paths).toEqual(
+      expect.arrayContaining([
+        'jp/co/alsm/common/Console.java',
+        'jp/co/alsm/common/Record.java',
+        'jp/co/alsm/common/FileRecord.java',
+        'jp/co/alsm/common/Constant.java',
+        'jp/co/alsm/helper/Compare.java',
+        'jp/co/alsm/helper/StringHelper.java',
+        'jp/co/alsm/logging/Logger.java',
+        'jp/co/alsm/config/ApplicationContextProvider.java',
+        'jp/co/alsm/config/BaseJobExecutionListener.java',
+      ]),
+    );
+    expect(find(legacy, 'jp/co/alsm/common/Console.java')?.content).toContain('package jp.co.alsm.common;');
+    expect(find(legacy, 'README.md')?.content).toContain('Bundled runtime');
+    expect(find(legacy, 'README.md')?.content).not.toContain('Before you build');
+  });
+
   it('keeps Spring Boot 3.3 and Java 21 for code written against Spring Batch 5', () => {
     const tree = buildSpringBootProjectTree({ ...base, programs: [{ name: 'CBACT01C', files: [modernTasklet] }] });
     const pom = find(tree, 'pom.xml')?.content ?? '';
     expect(pom).toContain('<version>3.3.5</version>');
     expect(pom).toContain('<java.version>21</java.version>');
-    expect(pom).not.toContain('<artifactId>Common</artifactId>');
+    expect(pom).not.toContain('spring-boot-starter-data-jpa');
     expect(find(tree, 'application.yml')?.content).toMatch(/^ {4}jdbc:/m);
     expect(find(tree, 'ModernizedApplication.java')?.content).not.toContain('@EnableBatchProcessing');
     expect(find(tree, 'BaseJobExecutionListener.java')).toBeUndefined();
