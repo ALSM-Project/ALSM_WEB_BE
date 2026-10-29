@@ -43,6 +43,7 @@ describe('SendQuoteService (UC-62)', () => {
     leads = {
       create: jest.fn(), findById: jest.fn(), list: jest.fn(), countByStatus: jest.fn(),
       updateStatus: jest.fn(), addQuote: jest.fn(), addQuoteOnce: jest.fn(),
+      claimEmailNotification: jest.fn(), completeEmailNotification: jest.fn(),
     };
     audit = { append: jest.fn().mockResolvedValue(undefined) };
     uow = { run: jest.fn() } as unknown as jest.Mocked<SendQuoteUnitOfWork>;
