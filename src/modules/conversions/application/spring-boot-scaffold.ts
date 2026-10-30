@@ -97,6 +97,65 @@ interface PlacedJavaFile {
   content: string;
 }
 
+/** A program the converted code calls but that was not part of the conversion. */
+interface CalledProgram {
+  packageName: string;
+  className: string;
+  programName: string;
+}
+
+/**
+ * Converted programs call each other through `import <root>.<program>.<Program>Tasklet`. When the
+ * called program was not converted, that import points at nothing and the whole project fails to
+ * compile - so a stand-in class is written that fails with a clear message only if it is called.
+ */
+function findMissingCalledPrograms(files: JavaSourceFile[], placed: PlacedJavaFile[]): CalledProgram[] {
+  const provided = new Set(placed.map((f) => `${f.packageName}.${f.className}`));
+  const roots = new Set(placed.map((f) => f.packageName?.split('.')[0]).filter(Boolean) as string[]);
+  const missing = new Map<string, CalledProgram>();
+  for (const file of files) {
+    for (const match of file.content.matchAll(/^\s*import\s+([a-z][\w]*(?:\.[a-z][\w]*)+)\.([A-Z]\w*Tasklet)\s*;/gm)) {
+      const [, packageName, className] = match;
+      if (!roots.has(packageName.split('.')[0]) || provided.has(`${packageName}.${className}`)) continue;
+      const programName = (packageName.split('.').pop() ?? className).toUpperCase();
+      missing.set(`${packageName}.${className}`, { packageName, className, programName });
+    }
+  }
+  return [...missing.values()].sort((a, b) => a.programName.localeCompare(b.programName));
+}
+
+function calledProgramStub(program: CalledProgram): string {
+  return `package ${program.packageName};
+
+/** Stand-in for the COBOL program ${program.programName}, which was not part of this conversion. */
+public class ${program.className} {
+
+  public Object execute(Object... arguments) throws Exception {
+    throw new UnsupportedOperationException(
+        "COBOL program ${program.programName} was not converted, so it cannot be called. "
+            + "Convert it as well and add it to this project.");
+  }
+}
+`;
+}
+
+/** Names the jobs can be started by: the bean names of the generated Job classes. */
+export function findJobNames(files: JavaSourceFile[]): string[] {
+  const constants = new Map<string, string>();
+  for (const file of files) {
+    for (const m of file.content.matchAll(/static\s+final\s+String\s+(\w+)\s*=\s*"([^"]+)"/g)) constants.set(m[1], m[2]);
+  }
+  const names = new Set<string>();
+  for (const file of files) {
+    for (const m of file.content.matchAll(/@Bean\(\s*name\s*=\s*"([^"]+)"\s*\)/g)) names.add(m[1]);
+    for (const m of file.content.matchAll(/@Bean\(\s*\w+\.(\w+)\s*\)/g)) {
+      const value = constants.get(m[1]);
+      if (value && !value.endsWith('Step') && !m[1].endsWith('_STEP')) names.add(value);
+    }
+  }
+  return [...names].sort();
+}
+
 function kb(content: string): string {
   return `${(Buffer.byteLength(content, 'utf8') / 1024).toFixed(1)} KB`;
 }
@@ -381,7 +440,18 @@ function readme(
   classCount: number,
   profile: BuildProfile,
   embedsRuntime = false,
+  jobNames: string[] = [],
+  calledPrograms: CalledProgram[] = [],
 ): string {
+  const exampleJob = jobNames[0] ?? '<jobName>';
+  const jobList = jobNames.length
+    ? jobNames.map((name) => `- \`${name}\``).join('\n')
+    : '- (no job names could be read from the generated code; look for the `@Bean` methods in the `*Job` or `*Configuration` classes)';
+  const notConverted = calledPrograms.length
+    ? `\n## Programs called but not converted\n\nThese COBOL programs are called by the converted ones but were not part of the conversion. Each has a stand-in class that fails with a clear message if it is reached; convert the program too and replace the stand-in:\n\n${calledPrograms
+        .map((p) => `- \`${p.programName}\` (\`${p.packageName}.${p.className}\`)`)
+        .join('\n')}\n`
+    : '';
   const programList = input.programs.map((p) => `- ${p.name}`).join('\n') || '- none';
   const excluded = input.excludedItems.length
     ? `\n## Not included\n\n${input.excludedItems.map((i) => `- ${i.name}: ${i.reason}`).join('\n')}\n`
@@ -413,12 +483,37 @@ mvn package
 
 ## Run
 
+The application starts the Spring context and then runs the job whose name you pass as the first argument. Without a name it starts and does nothing (\`spring.batch.job.enabled\` is \`false\` on purpose: otherwise every job would run at start-up).
+
 \`\`\`bash
-mvn spring-boot:run
+mvn spring-boot:run -Dspring-boot.run.arguments=${exampleJob}
 \`\`\`
 
-The converted programs are Spring Batch tasklets. \`application.yml\` keeps \`spring.batch.job.enabled: false\` so the app starts without running anything; define the jobs and steps that call each tasklet, then enable it.
-${tests}`;
+or, after \`mvn package\`:
+
+\`\`\`bash
+java -jar target/*.jar ${exampleJob}
+\`\`\`
+
+Jobs you can start:
+
+${jobList}
+
+A finished run ends with a log line containing \`status: [COMPLETED]\`.
+
+## Quick start
+
+1. Install JDK ${profile.java} or newer and Maven 3.9 or newer (\`java -version\`, \`mvn -version\`).
+2. In this folder run \`mvn clean package\` - it compiles the code and runs the smoke tests.
+3. Run a job as shown above.
+
+## Good to know
+
+- **Database:** Spring Batch keeps its job history in an in-memory H2 database (\`jdbc:h2:mem:batchdb\`), so nothing needs to be installed. It is lost when the program stops. To use your own database, change \`spring.datasource\` in \`src/main/resources/application.yml\` and add its driver to \`pom.xml\`.
+- **Running the same job twice** is fine: every run gets its own run id.
+- **Output** of the converted programs (\`DISPLAY\`) is printed to the console.
+- **"package does not exist" while compiling:** the project is incomplete - make sure you opened the whole folder, not a single file, and that Maven finished downloading dependencies.
+${notConverted}${tests}`;
 }
 
 /** Runnable Spring Boot 3.3 project around real tool2java output (UC-48). */
@@ -456,6 +551,11 @@ export function buildSpringBootProjectTree(input: SpringBootScaffoldInput): Expo
   }
   // The shared runtime the generated code imports (Console, Record, Compare, ...), so the
   // project builds without installing a library first. A file the bundle already has wins.
+  const calledPrograms = findMissingCalledPrograms(allFiles, placed);
+  for (const program of calledPrograms) {
+    const path = `src/main/java/${program.packageName.replace(/\./g, '/')}/${program.className}.java`;
+    children.push(fileItem(path, calledProgramStub(program), 'java'));
+  }
   if (embedsRuntime) {
     const have = new Set(children.map((c) => c.path));
     for (const [relativePath, content] of Object.entries(ALSM_RUNTIME_SOURCES)) {
@@ -471,7 +571,7 @@ export function buildSpringBootProjectTree(input: SpringBootScaffoldInput): Expo
   }
   children.push(fileItem('.gitignore', 'target/\n.idea/\n*.iml\n.vscode/\n'));
   if (input.includeDocumentation) {
-    children.push(fileItem('README.md', readme(input, externalLeft, placed.length, profile, embedsRuntime), 'markdown'));
+    children.push(fileItem('README.md', readme(input, externalLeft, placed.length, profile, embedsRuntime, findJobNames(allFiles), calledPrograms), 'markdown'));
   }
 
   return [
