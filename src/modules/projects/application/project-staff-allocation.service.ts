@@ -1,6 +1,7 @@
 import { BadRequestException, Inject, Injectable, NotFoundException } from '@nestjs/common';
 import { AUDIT_REPOSITORY, AuditRepository } from '../../audit/domain/audit.repository';
 import { RbacService } from '../../rbac/application/rbac.service';
+import { MailService } from '../../../shared/mail/mail.service';
 import { PROJECT_REPOSITORY, ProjectRecord, ProjectRepository } from '../domain/project.types';
 
 export const PROJECT_STAFF_ALLOCATED = 'PROJECT_STAFF_ALLOCATED';
@@ -27,6 +28,7 @@ export class ProjectStaffAllocationService {
     @Inject(PROJECT_REPOSITORY) private readonly projects: ProjectRepository,
     @Inject(AUDIT_REPOSITORY) private readonly audit: AuditRepository,
     private readonly rbac: RbacService,
+    private readonly mail: MailService,
   ) {}
 
   /** Active Conversion Staff accounts with the number of projects each one carries. */
@@ -54,6 +56,7 @@ export class ProjectStaffAllocationService {
     projectId: string,
     staffUserId: string,
     note?: string,
+    reason?: string,
   ): Promise<ProjectRecord> {
     const project = await this.projects.findById(projectId);
     if (!project) {
@@ -83,6 +86,13 @@ export class ProjectStaffAllocationService {
         message: 'Only Conversion Staff can be assigned a project',
       });
     }
+    if (project.assignedStaffId && project.assignedStaffId === staff.id) {
+      throw new BadRequestException({
+        code: 'SAME_ASSIGNEE_REJECTED',
+        message: 'The selected staff member is already assigned to this project',
+      });
+    }
+    const cleanReason = reason?.trim() ?? '';
 
     const previousStaffId = project.assignedStaffId;
     const updated = await this.projects.assignStaff(projectId, {
@@ -104,9 +114,25 @@ export class ProjectStaffAllocationService {
       metadata: {
         staffId: staff.id,
         note: cleanNote,
+        ...(cleanReason ? { reason: cleanReason } : {}),
         ...(previousStaffId ? { previousStaffId } : {}),
       },
     });
+    const actor = (await this.rbac.getAllUsers()).find((u) => u.id === actorUserId);
+    const actorName = actor?.fullName || actor?.email || 'Team Lead';
+    try {
+      await this.mail.sendProjectOwnershipTransferNotification({
+        to: staff.email,
+        assigneeName: staff.fullName || staff.email,
+        projectName: updated.name,
+        projectId: updated.id,
+        transferredByName: actorName,
+        reason: cleanReason || undefined,
+        notes: cleanNote || undefined,
+      });
+    } catch {
+      // Notification failure must not corrupt the completed transfer
+    }
     return updated;
   }
 
