@@ -102,7 +102,7 @@ export class ProjectsController {
     @Param('id') id: string,
     @Body() dto: AssignProjectStaffDto,
   ) {
-    return this.staffAllocation.assign(user.userId, id, dto.staffId, dto.note);
+    return this.staffAllocation.assign(user.userId, id, dto.staffId, dto.note, dto.reason);
   }
 
   @Post(':id/assign-team-lead')

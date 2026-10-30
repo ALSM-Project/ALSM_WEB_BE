@@ -18,7 +18,8 @@ describe('ProjectStaffAllocationService (UC-86)', () => {
   const projects = { findById: jest.fn(), findAll: jest.fn(), assignStaff: jest.fn() };
   const audit = { append: jest.fn() };
   const rbac = { getAllUsers: jest.fn() };
-  const service = new ProjectStaffAllocationService(projects as never, audit as never, rbac as never);
+  const mail = { sendProjectOwnershipTransferNotification: jest.fn().mockResolvedValue(true) };
+  const service = new ProjectStaffAllocationService(projects as never, audit as never, rbac as never, mail as never);
 
   beforeEach(() => {
     jest.resetAllMocks();
@@ -71,6 +72,49 @@ describe('ProjectStaffAllocationService (UC-86)', () => {
         resourceId: 'p1',
         metadata: { staffId: 'marcus', note: 'Do the balance screens first' },
       });
+    });
+
+    it('records transfer reason and notifies the new assignee (UC-84)', async () => {
+      projects.findById.mockResolvedValue({ ...project, assignedStaffId: 'old-owner' });
+      await service.assign('lead', 'p1', 'marcus', 'Handle balance screens', 'Workload Balancing');
+
+      expect(audit.append).toHaveBeenCalledWith(
+        expect.objectContaining({
+          metadata: expect.objectContaining({
+            staffId: 'marcus',
+            previousStaffId: 'old-owner',
+            reason: 'Workload Balancing',
+            note: 'Handle balance screens',
+          }),
+        }),
+      );
+      expect(mail.sendProjectOwnershipTransferNotification).toHaveBeenCalledWith({
+        to: 'marcus@alsm.io',
+        assigneeName: 'Person marcus',
+        projectName: 'ACME',
+        projectId: 'p1',
+        transferredByName: 'Person lead',
+        reason: 'Workload Balancing',
+        notes: 'Handle balance screens',
+      });
+    });
+
+    it('rejects transfer if new assignee is already the current assignee (UC-84)', async () => {
+      projects.findById.mockResolvedValue({ ...project, assignedStaffId: 'marcus' });
+      const error = await service.assign('lead', 'p1', 'marcus').catch((e: unknown) => e);
+      expect(error).toBeInstanceOf(BadRequestException);
+      expect((error as BadRequestException).getResponse()).toMatchObject({ code: 'SAME_ASSIGNEE_REJECTED' });
+      expect(projects.assignStaff).not.toHaveBeenCalled();
+      expect(audit.append).not.toHaveBeenCalled();
+    });
+
+    it('preserves successful transfer even when mail notification throws (UC-84)', async () => {
+      projects.findById.mockResolvedValue({ ...project, assignedStaffId: 'old-owner' });
+      mail.sendProjectOwnershipTransferNotification.mockRejectedValueOnce(new Error('SMTP down'));
+      const result = await service.assign('lead', 'p1', 'marcus');
+      expect(result).toMatchObject({ assignedStaffId: 'marcus' });
+      expect(projects.assignStaff).toHaveBeenCalled();
+      expect(audit.append).toHaveBeenCalled();
     });
 
     it('records the previous owner when the project is reallocated', async () => {

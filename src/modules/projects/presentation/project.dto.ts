@@ -20,6 +20,11 @@ export class AssignProjectStaffDto {
   @IsString()
   @MaxLength(1000)
   note?: string;
+  @ApiPropertyOptional({ description: 'Transfer or reassignment reason (UC-84)' })
+  @IsOptional()
+  @IsString()
+  @MaxLength(200)
+  reason?: string;
 }
 export class UpdateProjectDto {
   @ApiPropertyOptional() @IsOptional() @IsString() @MinLength(2) @MaxLength(150) name?: string;
