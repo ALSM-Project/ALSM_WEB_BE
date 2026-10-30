@@ -34,6 +34,7 @@ export class GetFieldMappingService {
     const organization = await this.organizationContext.resolve(
       input.userId,
       input.organizationHeader,
+      input.projectId,
     );
     const project = await this.projects.getForOrganization(input.projectId, organization.id);
     const record = await this.fieldMappings.findByScreen(

@@ -38,6 +38,13 @@ export class MongoOrganizationRepository implements OrganizationRepository {
     return doc ? this.map(doc) : null;
   }
 
+  async findById(organizationId: string): Promise<OrganizationRecord | null> {
+    const doc = await this.model
+      .findOne({ $or: [{ _id: toValidObjectId(organizationId) }, { _id: organizationId }] })
+      .exec();
+    return doc ? this.map(doc) : null;
+  }
+
   async findFirstForMember(userId: string): Promise<OrganizationRecord | null> {
     const userObjId = toValidObjectId(userId);
     const doc = await this.model
