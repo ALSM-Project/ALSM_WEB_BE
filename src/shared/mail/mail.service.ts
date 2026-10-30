@@ -33,6 +33,90 @@ export class MailService {
     }
   }
 
+  /** Notify a staff member when a project ownership / assignment is transferred to them (UC-84). */
+  async sendProjectOwnershipTransferNotification(params: {
+    to: string;
+    assigneeName: string;
+    projectName: string;
+    projectId: string;
+    transferredByName: string;
+    reason?: string;
+    notes?: string;
+  }): Promise<boolean> {
+    const esc = (value?: string) =>
+      (value || '')
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
+
+    const assigneeName = esc(params.assigneeName);
+    const projectName = esc(params.projectName);
+    const transferredByName = esc(params.transferredByName);
+    const reason = esc(params.reason);
+    const notes = esc(params.notes);
+
+    const subject = `[ALSM] Project Assignment Transferred: ${params.projectName}`;
+    const text = [
+      `Hello ${params.assigneeName},`,
+      '',
+      `Project "${params.projectName}" (ID: ${params.projectId}) has been transferred to you by ${params.transferredByName}.`,
+      params.reason ? `Reason: ${params.reason}` : '',
+      params.notes ? `Notes: ${params.notes}` : '',
+      '',
+      'You can now access and manage this project in your workspace.',
+      '',
+      'Best regards,',
+      'ALSM Team',
+    ]
+      .filter((line) => line !== undefined)
+      .join('\n');
+
+    const html = `
+      <!DOCTYPE html>
+      <html lang="en">
+        <head><meta charset="UTF-8" /><meta name="viewport" content="width=device-width, initial-scale=1.0" /></head>
+        <body style="margin:0;padding:32px;background:#f5f7fa;font-family:Arial,sans-serif;color:#091E42;">
+          <table role="presentation" style="max-width:600px;margin:0 auto;background:#fff;border-radius:12px;padding:32px;width:100%;">
+            <tr><td>
+              <h1 style="font-size:20px;color:#0652CC;margin:0 0 20px;">Project Assignment Transferred (UC-84)</h1>
+              <p>Hello <strong>${assigneeName}</strong>,</p>
+              <p>The ownership and workspace assignment for project <strong>"${projectName}"</strong> has been transferred to you by <strong>${transferredByName}</strong>.</p>
+              ${reason ? `<p><strong>Reason:</strong> ${reason}</p>` : ''}
+              ${notes ? `<p><strong>Briefing / Notes:</strong> ${notes}</p>` : ''}
+              <p style="margin-top:24px;">This project and its modernization queue items are now active in your workspace.</p>
+              <p style="margin-top:28px;">Best regards,<br /><strong>ALSM Enterprise Platform</strong></p>
+            </td></tr>
+          </table>
+        </body>
+      </html>`;
+
+    if (!this.transporter) {
+      this.logger.warn(
+        `[EMAIL SKIPPED - No SMTP] Project transfer notification for ${params.projectName} to ${params.to}`,
+      );
+      return false;
+    }
+
+    try {
+      await this.transporter.sendMail({
+        from: this.fromAddress,
+        to: params.to,
+        subject,
+        text,
+        html,
+      });
+      this.logger.log(`Project transfer notification sent to ${params.to} for project ${params.projectName}`);
+      return true;
+    } catch (error) {
+      this.logger.warn(
+        `Failed to send project transfer notification to ${params.to}: ${(error as Error).message}`,
+      );
+      return false;
+    }
+  }
+
   /** Notify a new lead contact after the lead has been committed successfully. */
   async sendLeadCreatedNotification(params: {
     to: string;
