@@ -122,7 +122,8 @@ export class ProjectService {
     organizationHeader: string | undefined,
     id: string,
   ): Promise<ProjectRecord> {
-    const organization = await this.organizationContext.resolve(userId, organizationHeader);
+    // A project allocated to this person is read in its own organization (UC-86).
+    const organization = await this.organizationContext.resolve(userId, organizationHeader, id);
     return this.requireProject(id, organization.id);
   }
 

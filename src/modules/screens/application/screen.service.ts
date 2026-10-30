@@ -58,7 +58,7 @@ export class ScreenService {
     organizationHeader: string | undefined,
     projectId: string,
   ): Promise<ScreenRecord[]> {
-    const organization = await this.organizationContext.resolve(userId, organizationHeader);
+    const organization = await this.organizationContext.resolve(userId, organizationHeader, projectId);
     await this.projects.getForOrganization(projectId, organization.id);
     return this.screens.listByProject(projectId, organization.id);
   }
