@@ -23,18 +23,20 @@ export class MongoProjectRepository implements ProjectRepository {
     );
   }
 
-  async findById(id: string, organizationId?: string): Promise<ProjectRecord | null> {
-    const projObjId = toValidObjectId(id);
-    const filter: FilterQuery<ProjectDocument> = {
-      $or: [{ _id: projObjId }, { name: id }],
-      deletedAt: { $exists: false },
-    };
-    if (organizationId?.trim()) {
-      const orgObjId = toValidObjectId(organizationId);
-      filter.organizationId = { $in: [orgObjId, organizationId] };
-    }
+  async findById(id: string, organizationId: string): Promise<ProjectRecord | null> {
+    if (!organizationId?.trim()) return null;
 
-    const doc = await this.model.findOne(filter).exec();
+    const projObjId = toValidObjectId(id);
+    const orgObjId = toValidObjectId(organizationId);
+
+    const doc = await this.model
+      .findOne({
+        $or: [{ _id: projObjId }, { name: id }],
+        organizationId: { $in: [orgObjId, organizationId] },
+        deletedAt: { $exists: false },
+      })
+      .exec();
+
     return doc ? this.map(doc) : null;
   }
 

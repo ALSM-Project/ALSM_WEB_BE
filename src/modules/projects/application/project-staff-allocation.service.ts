@@ -58,7 +58,11 @@ export class ProjectStaffAllocationService {
     note?: string,
     reason?: string,
   ): Promise<ProjectRecord> {
-    const project = await this.projects.findById(projectId);
+    let project = await this.projects.findById(projectId);
+    if (!project) {
+      const allProjects = await this.projects.findAll();
+      project = Array.isArray(allProjects) ? (allProjects.find((p) => p.id === projectId) ?? null) : null;
+    }
     if (!project) {
       throw new NotFoundException({ code: 'PROJECT_NOT_FOUND', message: 'Project was not found' });
     }
