@@ -7,11 +7,13 @@ import { RequirePermissions } from '../../../shared/security/require-permissions
 import { AuthenticatedUser } from '../../../shared/logging/request-id.middleware';
 import { OnboardUserService } from '../application/onboard-user.service';
 import { UpdateUserStatusService } from '../application/update-user-status.service';
+import { UserOffboardingService } from '../application/user-offboarding.service';
 import { RbacService } from '../../rbac/application/rbac.service';
 import { OnboardUserDto, UpdateUserStatusDto } from './users.dto';
+import { ExecuteUserOffboardingDto } from './user-offboarding.dto';
 import { PlatformAdminAuthorizationGuard } from '../../admin/presentation/platform-admin-authorization.guard';
 
-@ApiTags('Users (UC-82)')
+@ApiTags('Users (UC-82 / UC-83)')
 @ApiBearerAuth()
 @UseGuards(JwtAuthGuard)
 @Controller('users')
@@ -19,6 +21,7 @@ export class UsersController {
   constructor(
     private readonly onboardUserService: OnboardUserService,
     private readonly updateUserStatusService: UpdateUserStatusService,
+    private readonly offboardingService: UserOffboardingService,
     private readonly rbacService: RbacService,
   ) {}
 
@@ -49,6 +52,49 @@ export class UsersController {
       organizationId: dto.organizationId,
       actorUserId: user.userId,
     });
+  }
+
+  @Get(':id/offboarding-summary')
+  @UseGuards(PermissionsGuard)
+  @RequirePermissions('users.offboard.review')
+  @ApiOperation({
+    summary: 'Get user offboarding resource review summary (UC-83)',
+    description: 'Retrieves authoritative active sessions, assigned projects, and candidate successors.',
+  })
+  @ApiResponse({ status: 200, description: 'Offboarding summary retrieved successfully' })
+  @ApiResponse({ status: 404, description: 'User not found' })
+  async getOffboardingSummary(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('id') id: string,
+  ) {
+    return this.offboardingService.getOffboardingSummary(
+      user.userId,
+      id,
+      user.isPlatformAdmin,
+    );
+  }
+
+  @Post(':id/offboard')
+  @UseGuards(PermissionsGuard)
+  @RequirePermissions('users.offboard')
+  @ApiOperation({
+    summary: 'Execute user offboarding workflow (UC-83)',
+    description: 'Transfers projects, invalidates sessions, revokes roles, and deactivates account.',
+  })
+  @ApiResponse({ status: 200, description: 'User offboarded successfully' })
+  @ApiResponse({ status: 400, description: 'Invalid transfer target or unassigned resources' })
+  @ApiResponse({ status: 404, description: 'User not found' })
+  async executeOffboard(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('id') id: string,
+    @Body() dto: ExecuteUserOffboardingDto,
+  ) {
+    return this.offboardingService.executeOffboarding(
+      user.userId,
+      id,
+      user.isPlatformAdmin,
+      dto,
+    );
   }
 
   @Patch(':id/status')
