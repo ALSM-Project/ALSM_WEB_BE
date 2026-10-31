@@ -29,6 +29,17 @@ export class Lead {
   @Prop({ type: String, trim: true, uppercase: true, default: 'VND' }) currency?: string;
   @Prop({ type: MongoSchema.Types.ObjectId }) assignedToUserId?: Types.ObjectId;
   @Prop({ trim: true }) assignedToName?: string;
+  @Prop({ type: MongoSchema.Types.ObjectId }) convertedOrganizationId?: Types.ObjectId;
+  @Prop() convertedAt?: Date;
+  @Prop({ type: Object }) provisioning?: {
+    status: 'COMPLETED';
+    organizationId: string;
+    organizationName: string;
+    domain?: string;
+    adminEmail?: string;
+    adminLinked: boolean;
+    completedAt: Date;
+  };
   @Prop() lastContactAt?: Date;
   @Prop() notes?: string;
   @Prop({ type: [Object], default: [] }) interactions!: Array<{
@@ -75,7 +86,7 @@ export class Lead {
     documentTitle?: string;
     plan?: string;
     annualValue?: number;
-    status: 'DRAFT' | 'SENT_FOR_SIGNATURE' | 'SIGNED' | 'DECLINED';
+    status: 'DRAFT' | 'SENT_FOR_SIGNATURE' | 'SIGNED' | 'FULLY_SIGNED' | 'DECLINED';
     effectiveDate?: string;
     envelopeId?: string;
     signedAt?: Date;

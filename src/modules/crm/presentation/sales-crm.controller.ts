@@ -15,6 +15,7 @@ import { Response } from 'express';
 import { CurrentUser } from '../../../shared/security/current-user.decorator';
 import { JwtAuthGuard } from '../../../shared/security/jwt-auth.guard';
 import { AuthenticatedUser } from '../../../shared/logging/request-id.middleware';
+import { CurrentSessionGuard } from '../../../shared/security/current-session.guard';
 import { PermissionsGuard } from '../../../shared/security/permissions.guard';
 import { RequirePermissions } from '../../../shared/security/require-permissions.decorator';
 import {
@@ -25,6 +26,7 @@ import {
   SendQuoteDto,
 } from '../application/sales-crm.service';
 import { CreateContractService } from '../application/create-contract.service';
+import { ActivateCrmLeadService } from '../application/activate-crm-lead.service';
 import { CreateContractDto } from './sales.dto';
 import { SalesPipelineQueryDto } from './sales-pipeline-query.dto';
 
@@ -37,6 +39,7 @@ export class SalesCrmController {
   constructor(
     private readonly crmService: SalesCrmService,
     private readonly createContractService: CreateContractService,
+    private readonly activateCrmLeadService: ActivateCrmLeadService,
   ) {}
 
   @Get('pipeline')
@@ -77,6 +80,8 @@ export class SalesCrmController {
   }
 
   @Patch('leads/:id/stage')
+  @UseGuards(CurrentSessionGuard, PermissionsGuard)
+  @RequirePermissions('sales.leads.manage')
   @ApiOperation({ summary: 'Update CRM lead stage / Kanban move (3.11.10)' })
   async updateStage(
     @CurrentUser() user: AuthenticatedUser,
@@ -84,6 +89,21 @@ export class SalesCrmController {
     @Body('stage') stage: 'NEW' | 'CONTACTED' | 'QUALIFIED' | 'PROPOSAL' | 'WON' | 'LOST',
   ) {
     return this.crmService.updateStage(user.userId, id, stage);
+  }
+
+  @Post('leads/:id/activate')
+  @UseGuards(CurrentSessionGuard, PermissionsGuard)
+  @RequirePermissions('sales.leads.manage')
+  @ApiOperation({ summary: 'Convert a signed CRM lead into a customer organization and mark it Won (UC-64)' })
+  @ApiResponse({ status: 400, description: 'The lead is missing a signed contract or valid customer details' })
+  @ApiResponse({ status: 403, description: 'The user lacks sales.leads.manage permission' })
+  @ApiResponse({ status: 409, description: 'The lead was already converted or changed concurrently' })
+  @ApiResponse({ status: 503, description: 'Customer conversion failed and the transaction was rolled back' })
+  async activateCustomer(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('id') id: string,
+  ) {
+    return this.activateCrmLeadService.execute(user.userId, id);
   }
 
   @Post('leads/:id/interactions')
@@ -150,7 +170,9 @@ export class SalesCrmController {
   }
 
   @Post('leads/:id/contracts/:contractId/sign')
-  @ApiOperation({ summary: 'Confirm contract signed and auto-provision (3.11.8)' })
+  @UseGuards(CurrentSessionGuard, PermissionsGuard)
+  @RequirePermissions('sales.leads.manage')
+  @ApiOperation({ summary: 'Mark a contract as signed; customer conversion is a separate UC-64 action' })
   async signContract(
     @CurrentUser() user: AuthenticatedUser,
     @Param('id') id: string,

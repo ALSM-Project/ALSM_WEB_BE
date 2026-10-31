@@ -18,6 +18,7 @@ import { SalesController } from './modules/crm/presentation/sales.controller';
 import { SalesCrmController } from './modules/crm/presentation/sales-crm.controller';
 import { SalesCrmService } from './modules/crm/application/sales-crm.service';
 import { CreateContractService } from './modules/crm/application/create-contract.service';
+import { ActivateCrmLeadService } from './modules/crm/application/activate-crm-lead.service';
 import { AdminModule } from './modules/admin/admin.module';
 import { CurrentSessionGuard } from './shared/security/current-session.guard';
 import { SessionAssuranceModule } from './modules/auth/session-assurance.module';
@@ -411,6 +412,7 @@ import { NotificationsService } from './modules/notifications/notifications.serv
     GetSalesLeadService,
     SalesCrmService,
     CreateContractService,
+    ActivateCrmLeadService,
     NotificationsService,
     {
       provide: SALES_UNIT_OF_WORK,
