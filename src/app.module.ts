@@ -220,6 +220,14 @@ import { OrganizationAuthorizationService } from './modules/organizations/applic
 import { OrganizationContextService } from './modules/organizations/application/organization-context.service';
 import { ProjectService } from './modules/projects/application/project.service';
 import { ProjectsController } from './modules/projects/presentation/projects.controller';
+import {
+  ResourceTransferRequest,
+  ResourceTransferRequestSchema,
+} from './modules/projects/infrastructure/resource-transfer-request.schema';
+import { RESOURCE_TRANSFER_REQUEST_REPOSITORY } from './modules/projects/domain/resource-transfer-request.types';
+import { MongoResourceTransferRequestRepository } from './modules/projects/infrastructure/mongo-resource-transfer-request.repository';
+import { ResourceTransferApprovalService } from './modules/projects/application/resource-transfer-approval.service';
+import { ResourceTransferController } from './modules/projects/presentation/resource-transfer.controller';
 import { ConversionJobService } from './modules/conversions/application/conversion-job.service';
 import { ConversionProjectAccessService } from './modules/conversions/application/conversion-project-access.service';
 import { ConversionsController } from './modules/conversions/presentation/conversions.controller';
@@ -324,6 +332,7 @@ import { AuditModule } from './modules/audit/audit.module';
       { name: UserSession.name, schema: UserSessionSchema },
       { name: AuditLog.name, schema: AuditLogSchema },
       { name: Project.name, schema: ProjectSchema },
+      { name: ResourceTransferRequest.name, schema: ResourceTransferRequestSchema },
       { name: Team.name, schema: TeamSchema },
       { name: TeamJobAssignment.name, schema: TeamJobAssignmentSchema },
       { name: ConversionJob.name, schema: ConversionJobSchema },
@@ -362,6 +371,7 @@ import { AuditModule } from './modules/audit/audit.module';
     TeamJobAssignmentsController,
     AuthController,
     ProjectsController,
+    ResourceTransferController,
     ConversionsController,
     QualityReviewController,
     ConversionSourceController,
@@ -556,6 +566,8 @@ import { AuditModule } from './modules/audit/audit.module';
     { provide: SESSION_REPOSITORY, useClass: MongoSessionRepository },
     { provide: AUDIT_REPOSITORY, useClass: MongoAuditRepository },
     { provide: PROJECT_REPOSITORY, useClass: MongoProjectRepository },
+    { provide: RESOURCE_TRANSFER_REQUEST_REPOSITORY, useClass: MongoResourceTransferRequestRepository },
+    ResourceTransferApprovalService,
     { provide: CONVERSION_JOB_REPOSITORY, useClass: MongoConversionJobRepository },
     {
       provide: CONVERSION_QUALITY_REVIEW_REPOSITORY,
