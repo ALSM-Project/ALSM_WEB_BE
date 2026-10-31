@@ -21,6 +21,7 @@ import {
   RequestTemporaryRoleDto,
   ReviewTemporaryRoleRequestDto,
   RevokeTemporaryRoleDto,
+  EligibleStaffQueryDto,
 } from './dtos/temporary-role.dto';
 
 @ApiTags('Temporary Role Management (Section 3.15)')
@@ -30,6 +31,32 @@ import {
 @Controller('rbac/temporary-roles')
 export class TemporaryRoleController {
   constructor(private readonly tempRoleService: TemporaryRoleService) {}
+
+  @Get('eligible-staff')
+  @RequirePermissions('roles.temporary.grant')
+  @ApiOperation({ summary: 'Discover and filter internal staff eligible for temporary elevation' })
+  async getEligibleStaff(
+    @CurrentUser() user: AuthenticatedUser,
+    @Query() query: EligibleStaffQueryDto,
+  ) {
+    return this.tempRoleService.getEligibleStaff(user.userId, query);
+  }
+
+  @Get('staff/:staffId/elevation-profile')
+  @RequirePermissions('roles.temporary.grant')
+  @ApiOperation({ summary: 'Get detailed staff elevation profile and eligibility assessment' })
+  async getStaffElevationProfile(
+    @Param('staffId') staffId: string,
+  ) {
+    return this.tempRoleService.getStaffElevationProfile(staffId);
+  }
+
+  @Get('elevation-catalog')
+  @RequirePermissions('roles.temporary.grant')
+  @ApiOperation({ summary: 'Get catalogue of roles available for temporary elevation with permission previews' })
+  async getElevationCatalog() {
+    return this.tempRoleService.getElevationCatalog();
+  }
 
   @Post()
   @RequirePermissions('roles.temporary.grant')

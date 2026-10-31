@@ -39,6 +39,16 @@ export class GrantTemporaryRoleDto {
   @IsOptional()
   @IsString()
   projectId?: string;
+
+  @ApiPropertyOptional({ description: 'Scope type: ALL_CONTEXTS | SPECIFIC_PROJECT | SPECIFIC_ORGANIZATION | NONE' })
+  @IsOptional()
+  @IsString()
+  scopeType?: string;
+
+  @ApiPropertyOptional({ description: 'Identifier of targeted scope (project ID, org ID)' })
+  @IsOptional()
+  @IsString()
+  scopeId?: string;
 }
 
 export class RequestTemporaryRoleDto {
@@ -91,4 +101,49 @@ export class RevokeTemporaryRoleDto {
   @IsNotEmpty()
   @MaxLength(1000)
   reason!: string;
+}
+
+export class EligibleStaffQueryDto {
+  @ApiPropertyOptional({ description: 'Search query for name, email, or employee ID' })
+  @IsOptional()
+  @IsString()
+  search?: string;
+
+  @ApiPropertyOptional({ description: 'Filter by department' })
+  @IsOptional()
+  @IsString()
+  department?: string;
+
+  @ApiPropertyOptional({ description: 'Filter by current baseline role' })
+  @IsOptional()
+  @IsString()
+  currentRole?: string;
+
+  @ApiPropertyOptional({ description: 'Filter by account status: ALL | ACTIVE | LOCKED | DEACTIVATED' })
+  @IsOptional()
+  @IsString()
+  accountStatus?: string;
+
+  @ApiPropertyOptional({ description: 'Filter by eligibility: ALL | ELIGIBLE | INELIGIBLE' })
+  @IsOptional()
+  @IsString()
+  eligibility?: string;
+
+  @ApiPropertyOptional({ description: 'Page number', default: 1 })
+  @IsOptional()
+  page?: number | string;
+
+  @ApiPropertyOptional({ description: 'Items per page', default: 10 })
+  @IsOptional()
+  limit?: number | string;
+
+  @ApiPropertyOptional({ description: 'Sort field' })
+  @IsOptional()
+  @IsString()
+  sortBy?: string;
+
+  @ApiPropertyOptional({ description: 'Sort order: asc | desc' })
+  @IsOptional()
+  @IsString()
+  sortOrder?: 'asc' | 'desc';
 }
