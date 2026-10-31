@@ -37,6 +37,33 @@ export class MongoTransactionRunner {
       throw new Error('Transaction outcome unavailable');
     } catch (error) {
       if (error instanceof HttpException) throw error;
+      const diagnostic = error as {
+        name?: string;
+        message?: string;
+        code?: string | number;
+        codeName?: string;
+        errorLabels?: string[];
+      };
+      const safeTypeError =
+        diagnostic?.name === 'TypeError' &&
+        /^Cannot read properties of (?:undefined|null) \(reading '[A-Za-z0-9_$]+'\)$/.test(
+          diagnostic.message ?? '',
+        )
+          ? diagnostic.message
+          : null;
+      // Keep the underlying driver cause in server logs for operators, but never
+      // return it to the caller because driver messages can contain infrastructure details.
+      this.logger.error(
+        JSON.stringify({
+          event: 'mongo_transaction_aborted',
+          resourceId,
+          errorName: diagnostic?.name ?? typeof error,
+          safeTypeError,
+          code: diagnostic?.code ?? null,
+          codeName: diagnostic?.codeName ?? null,
+          errorLabels: diagnostic?.errorLabels ?? [],
+        }),
+      );
       const unknown =
         (error as { hasErrorLabel?: (label: string) => boolean })?.hasErrorLabel?.(
           'UnknownTransactionCommitResult',

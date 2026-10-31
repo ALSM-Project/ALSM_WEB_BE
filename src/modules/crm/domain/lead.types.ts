@@ -20,6 +20,34 @@ export interface LeadConversion {
   teamId: string;
   salespersonId: string;
 }
+
+export interface LeadContractRecord {
+  id: string;
+  requestId: string;
+  requestFingerprint: string;
+  contractNumber: string;
+  title: string;
+  plan: string;
+  quoteId?: string;
+  annualValue: number;
+  status: 'DRAFT';
+  effectiveDate: string;
+  createdByUserId: string;
+  createdAt: Date;
+}
+
+export interface AddLeadContractInput {
+  leadId: string;
+  requestId: string;
+  requestFingerprint: string;
+  contract: Omit<LeadContractRecord, 'requestId' | 'requestFingerprint' | 'contractNumber'>;
+}
+
+export interface AddLeadContractResult {
+  organizationId?: string;
+  contract: LeadContractRecord;
+  replayed: boolean;
+}
 export interface LeadRecord {
   status: LeadStatus;
   id: string;
@@ -69,5 +97,6 @@ export interface LeadRepository {
     expectedRevision: number,
     conversion: LeadConversion,
   ): Promise<LeadRecord | null>;
+  addContract(input: AddLeadContractInput): Promise<AddLeadContractResult | null>;
 }
 export const LEAD_REPOSITORY = Symbol('LEAD_REPOSITORY');

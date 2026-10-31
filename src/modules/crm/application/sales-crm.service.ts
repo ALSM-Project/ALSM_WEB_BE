@@ -3,17 +3,18 @@ import {
   ConflictException,
   Inject,
   Injectable,
+  Logger,
   NotFoundException,
+  Optional,
 } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { FilterQuery, Model, Types } from 'mongoose';
 import { randomBytes, randomUUID } from 'node:crypto';
 import { Lead, LeadDocument } from '../infrastructure/lead.schema';
-import { Organization } from '../../organizations/infrastructure/organization.schema';
-import { OrganizationRole, OrganizationType } from '../../organizations/domain/organization.types';
 import { User } from '../../users/infrastructure/user.schema';
 import { AUDIT_REPOSITORY, AuditRepository } from '../../audit/domain/audit.repository';
 import { LeadStatus } from '../domain/lead.types';
+import { NotificationsService } from '../../notifications/notifications.service';
 import {
   SALES_PIPELINE_STAGES,
   SalesPipelineLead,
@@ -54,18 +55,15 @@ export interface SendQuoteDto {
   discountReason?: string;
 }
 
-export interface CreateContractDto {
-  quoteId?: string;
-  documentTitle: string;
-}
-
 @Injectable()
 export class SalesCrmService {
+  private readonly logger = new Logger(SalesCrmService.name);
+
   constructor(
     @InjectModel(Lead.name) private readonly leadModel: Model<Lead>,
-    @InjectModel(Organization.name) private readonly orgModel: Model<Organization>,
     @InjectModel(User.name) private readonly userModel: Model<User>,
     @Inject(AUDIT_REPOSITORY) private readonly audit: AuditRepository,
+    @Optional() @Inject(NotificationsService) private readonly notifications?: NotificationsService,
   ) {}
 
   async listLeads(
@@ -297,7 +295,22 @@ export class SalesCrmService {
     leadId: string,
     newStage: 'NEW' | 'CONTACTED' | 'QUALIFIED' | 'PROPOSAL' | 'WON' | 'LOST',
   ) {
+    if (!['NEW', 'CONTACTED', 'QUALIFIED', 'PROPOSAL', 'WON', 'LOST'].includes(newStage)) {
+      throw new BadRequestException({ code: 'INVALID_LEAD_STAGE', message: 'Select a valid sales stage.' });
+    }
+    if (newStage === 'WON') {
+      throw new BadRequestException({
+        code: 'LEAD_ACTIVATION_REQUIRED',
+        message: 'Convert the lead to a customer through Customer Activation to mark it Won.',
+      });
+    }
     const doc = await this.findLeadById(leadId);
+    if (doc.stage === 'WON') {
+      throw new ConflictException({
+        code: 'LEAD_ALREADY_WON',
+        message: 'A converted customer cannot be moved back through the lead-stage editor.',
+      });
+    }
     const oldStage = doc.stage;
     doc.stage = newStage;
     await doc.save();
@@ -420,35 +433,6 @@ export class SalesCrmService {
     return this.mapLead(doc);
   }
 
-  async createContract(userId: string, leadId: string, dto: CreateContractDto) {
-    const doc = await this.findLeadById(leadId);
-    const envelopeId = `docusign_env_${Date.now()}_${randomBytes(4).toString('hex')}`;
-
-    const contract = {
-      id: randomUUID(),
-      quoteId: dto.quoteId,
-      documentTitle: dto.documentTitle || `${doc.company || 'Customer'} Service Modernization Agreement`,
-      status: 'SENT_FOR_SIGNATURE' as const,
-      envelopeId,
-      signedAt: undefined,
-      createdAt: new Date(),
-    };
-
-    doc.contracts.push(contract);
-    await doc.save();
-
-    await this.audit.append({
-      actorUserId: userId,
-      organizationId: doc.organizationId?.toString(),
-      action: 'LEAD_CONTRACT_CREATED',
-      resourceType: 'LEAD',
-      resourceId: doc.id,
-      metadata: { documentTitle: contract.documentTitle, envelopeId },
-    });
-
-    return this.mapLead(doc);
-  }
-
   async signContract(userId: string, leadId: string, contractId: string) {
     const doc = await this.findLeadById(leadId);
     const contract = (doc.contracts || []).find((c) => c.id === contractId);
@@ -456,10 +440,29 @@ export class SalesCrmService {
       throw new NotFoundException('Contract was not found on this lead');
     }
 
+    if (contract.status === 'SIGNED' || contract.status === 'FULLY_SIGNED') {
+      return this.mapLead(doc);
+    }
+    if (contract.status !== 'SENT_FOR_SIGNATURE') {
+      throw new BadRequestException({
+        code: 'CONTRACT_NOT_SENT',
+        message: 'Send the contract for signature before recording the customer signature.',
+      });
+    }
+
+    const signedAt = new Date();
+    const update = await this.leadModel.updateOne(
+      { _id: doc._id, contracts: { $elemMatch: { id: contractId, status: 'SENT_FOR_SIGNATURE' } } },
+      { $set: { 'contracts.$.status': 'SIGNED', 'contracts.$.signedAt': signedAt } },
+    ).exec();
+    if (update.matchedCount !== 1) {
+      throw new ConflictException({
+        code: 'CONTRACT_STATE_CHANGED',
+        message: 'The contract changed while it was being signed. Refresh the lead and try again.',
+      });
+    }
     contract.status = 'SIGNED';
-    contract.signedAt = new Date();
-    doc.stage = 'WON';
-    await doc.save();
+    contract.signedAt = signedAt;
 
     await this.audit.append({
       actorUserId: userId,
@@ -470,51 +473,60 @@ export class SalesCrmService {
       metadata: { contractId, envelopeId: contract.envelopeId || '' },
     });
 
-    // Auto-provision Enterprise Org and Customer Admin user upon won
-    await this.autoProvisionCustomer(userId, doc);
-
     return this.mapLead(doc);
   }
 
-  async autoProvisionCustomer(userId: string, leadDoc: LeadDocument) {
-    try {
-      const orgName = leadDoc.company || `${leadDoc.contactName} Enterprise`;
-      let org = await this.orgModel.findOne({ name: orgName }).exec();
-      if (!org) {
-        org = await this.orgModel.create({
-          name: orgName,
-          type: OrganizationType.ENTERPRISE,
-          members: [],
+  async sendContractForSignature(userId: string, leadId: string, contractId: string) {
+    const doc = await this.findLeadById(leadId);
+    const contract = (doc.contracts || []).find((item) => item.id === contractId);
+    if (!contract) throw new NotFoundException('Contract was not found on this lead');
+    if (contract.status !== 'DRAFT' && contract.status !== 'SENT_FOR_SIGNATURE') {
+      throw new BadRequestException('Only a draft contract can be sent for signature.');
+    }
+
+    const newlySent = contract.status === 'DRAFT';
+    if (newlySent) {
+      const envelopeId = contract.envelopeId || `ENV-${randomUUID()}`;
+      const update = await this.leadModel.updateOne(
+        { _id: doc._id, contracts: { $elemMatch: { id: contractId, status: 'DRAFT' } } },
+        { $set: { 'contracts.$.status': 'SENT_FOR_SIGNATURE', 'contracts.$.envelopeId': envelopeId } },
+      ).exec();
+      if (update.matchedCount !== 1) {
+        throw new ConflictException({
+          code: 'CONTRACT_STATE_CHANGED',
+          message: 'The contract changed while it was being sent. Refresh the lead and try again.',
         });
       }
-
-      const email = leadDoc.contactEmail || `customer_${Date.now()}@example.com`;
-      let user = await this.userModel.findOne({ email }).exec();
-      if (!user) {
-        user = await this.userModel.create({
-          email,
-          fullName: leadDoc.contactName || orgName,
-          isActive: true,
-          isPlatformAdmin: false,
-        });
-      }
-
-      if (!org.members.some((m) => m.userId.toString() === user!._id.toString())) {
-        org.members.push({ userId: user!._id, role: OrganizationRole.ADMIN });
-        await org.save();
-      }
+      contract.status = 'SENT_FOR_SIGNATURE';
+      contract.envelopeId = envelopeId;
 
       await this.audit.append({
         actorUserId: userId,
-        organizationId: org._id.toString(),
-        action: 'LEAD_CUSTOMER_AUTO_PROVISIONED',
-        resourceType: 'ORGANIZATION',
-        resourceId: org._id.toString(),
-        metadata: { leadId: leadDoc.id, customerEmail: email },
+        organizationId: doc.organizationId?.toString(),
+        action: 'LEAD_CONTRACT_SENT_FOR_SIGNATURE',
+        resourceType: 'LEAD',
+        resourceId: doc.id,
+        metadata: { contractId, contractNumber: contract.contractNumber || '', status: contract.status },
       });
-    } catch {
-      // Non-blocking provisioning fallback
     }
+
+    let notificationSent = false;
+    try {
+      const recipientCount = await this.notifications?.createForEmails({
+        recipientEmails: doc.contactEmail ? [doc.contactEmail] : [],
+        type: 'CRM_CONTRACT_SENT_FOR_SIGNATURE',
+        title: 'Contract ready for your signature',
+        message: `Contract ${contract.contractNumber || ''} has been sent to you for electronic signature.`,
+        eventKey: `crm-contract-sent-for-signature:${contractId}`,
+        resourceType: 'CONTRACT',
+        resourceId: contractId,
+      });
+      notificationSent = (recipientCount ?? 0) > 0;
+    } catch (error) {
+      this.logger.warn(`Could not notify contract contact for ${contractId}: ${(error as Error).message}`);
+    }
+
+    return { lead: this.mapLead(doc), notificationSent };
   }
 
   // Section 3.12: Sales Reports & Approvals
@@ -650,13 +662,27 @@ export class SalesCrmService {
     return doc;
   }
 
-  private mapLead(doc: LeadDocument) {
+  mapLead(doc: LeadDocument) {
+    const company = [doc.company, doc.companyName].find(
+      (value) => typeof value === 'string' && value.trim().length > 0,
+    ) ?? (
+      typeof doc.title === 'string' &&
+      doc.title.trim().length > 0 &&
+      !/^[a-f\d]{24}$/i.test(doc.title.trim())
+        ? doc.title.trim()
+        : undefined
+    ) ?? (
+      typeof doc.contactName === 'string' && doc.contactName.trim().length > 0
+        ? doc.contactName.trim()
+        : 'Unnamed company'
+    );
     return {
       id: doc.id || doc._id.toString(),
       organizationId: doc.organizationId?.toString(),
       title: doc.title,
       contactName: doc.contactName,
-      company: doc.company,
+      company,
+      email: doc.contactEmail,
       contactEmail: doc.contactEmail,
       phone: doc.phone,
       source: doc.source,
@@ -665,10 +691,24 @@ export class SalesCrmService {
       lastContactAt: doc.lastContactAt,
       notes: doc.notes,
       assignedTo: doc.assignedTo,
+      convertedAt: doc.convertedAt,
+      convertedOrganizationId: doc.convertedOrganizationId?.toString(),
+      provisioning: doc.provisioning,
       interactions: doc.interactions || [],
       demos: doc.demos || [],
       quotes: doc.quotes || [],
-      contracts: doc.contracts || [],
+      contracts: (doc.contracts || []).map((contract) => {
+        const {
+          requestId: _requestId,
+          requestFingerprint: _requestFingerprint,
+          createdByUserId: _createdByUserId,
+          ...publicContract
+        } = contract as Record<string, unknown>;
+        void _requestId;
+        void _requestFingerprint;
+        void _createdByUserId;
+        return publicContract;
+      }),
       createdAt: doc.createdAt,
       updatedAt: doc.updatedAt,
     };

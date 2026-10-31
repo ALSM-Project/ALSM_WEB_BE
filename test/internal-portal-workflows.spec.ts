@@ -94,6 +94,7 @@ describe('Internal Staff Portal & Platform Administration Workflows', () => {
       quotes: Record<string, unknown>[];
       contracts: Record<string, unknown>[];
       save: jest.Mock;
+      markModified: jest.Mock;
       [key: string]: unknown;
     };
     let leadModel: {
@@ -101,11 +102,7 @@ describe('Internal Staff Portal & Platform Administration Workflows', () => {
       findById: jest.Mock;
       findOne: jest.Mock;
       create: jest.Mock;
-    };
-    let orgModel: {
-      findOne: jest.Mock;
-      create: jest.Mock;
-      findById?: jest.Mock;
+      updateOne: jest.Mock;
     };
     let userModel: {
       findOne?: jest.Mock;
@@ -129,6 +126,7 @@ describe('Internal Staff Portal & Platform Administration Workflows', () => {
         quotes: [],
         contracts: [],
         save: jest.fn().mockResolvedValue(true),
+        markModified: jest.fn(),
       };
 
       leadModel = {
@@ -145,13 +143,9 @@ describe('Internal Staff Portal & Platform Administration Workflows', () => {
           .mockImplementation((dto) =>
             Promise.resolve({ id: 'lead-new-1', ...dto, save: jest.fn() }),
           ),
-      };
-
-      orgModel = {
-        findOne: jest.fn().mockReturnValue({ exec: jest.fn().mockResolvedValue(null) }),
-        create: jest
-          .fn()
-          .mockResolvedValue({ _id: new Types.ObjectId(), members: [], save: jest.fn() }),
+        updateOne: jest.fn().mockReturnValue({
+          exec: jest.fn().mockResolvedValue({ matchedCount: 1 }),
+        }),
       };
 
       userModel = {
@@ -161,7 +155,6 @@ describe('Internal Staff Portal & Platform Administration Workflows', () => {
 
       salesCrmService = new SalesCrmService(
         leadModel as never,
-        orgModel as never,
         userModel as never,
         auditRepo as never,
       );
@@ -217,7 +210,7 @@ describe('Internal Staff Portal & Platform Administration Workflows', () => {
       expect(mockLead.quotes[0].discountApproved).toBe(true);
     });
 
-    it('3.11.7 & 3.11.8: signing contract changes stage to WON and auto-provisions enterprise org', async () => {
+    it('3.11.7: records the signed contract; customer provisioning is a separate activation step', async () => {
       mockLead.contracts = [
         {
           id: 'contract-1',
@@ -230,10 +223,15 @@ describe('Internal Staff Portal & Platform Administration Workflows', () => {
 
       const updated = await salesCrmService.signContract('manager-user-1', 'lead-1', 'contract-1');
 
-      expect(updated.stage).toBe('WON');
+      expect(updated.stage).toBe('NEW');
       expect(mockLead.contracts[0].status).toBe('SIGNED');
-      expect(orgModel.create).toHaveBeenCalled();
-      expect(userModel.create).toHaveBeenCalled();
+      expect(leadModel.updateOne).toHaveBeenCalledWith(
+        expect.objectContaining({ contracts: expect.any(Object) }),
+        expect.objectContaining({ $set: expect.objectContaining({ 'contracts.$.status': 'SIGNED' }) }),
+      );
+      expect(auditRepo.append).toHaveBeenCalledWith(
+        expect.objectContaining({ action: 'LEAD_CONTRACT_SIGNED' }),
+      );
     });
 
     it('3.12.1: compiles comprehensive sales reports and CSV export', async () => {

@@ -17,6 +17,8 @@ import { GetSalesLeadService } from './modules/crm/application/get-sales-lead.se
 import { SalesController } from './modules/crm/presentation/sales.controller';
 import { SalesCrmController } from './modules/crm/presentation/sales-crm.controller';
 import { SalesCrmService } from './modules/crm/application/sales-crm.service';
+import { CreateContractService } from './modules/crm/application/create-contract.service';
+import { ActivateCrmLeadService } from './modules/crm/application/activate-crm-lead.service';
 import { AdminModule } from './modules/admin/admin.module';
 import { CurrentSessionGuard } from './shared/security/current-session.guard';
 import { SessionAssuranceModule } from './modules/auth/session-assurance.module';
@@ -317,6 +319,9 @@ import { SubmitConversionQualityReviewService } from './modules/conversions/appl
 import { QualityReviewController } from './modules/conversions/presentation/quality-review.controller';
 
 import { AuditModule } from './modules/audit/audit.module';
+import { SystemNotification, SystemNotificationSchema } from './modules/notifications/notification.schema';
+import { NotificationsController } from './modules/notifications/notifications.controller';
+import { NotificationsService } from './modules/notifications/notifications.service';
 
 @Module({
   imports: [
@@ -359,6 +364,7 @@ import { AuditModule } from './modules/audit/audit.module';
       { name: ConversionQualityReview.name, schema: ConversionQualityReviewSchema },
       { name: ExportBundle.name, schema: ExportBundleSchema },
       { name: SupportPatch.name, schema: SupportPatchSchema },
+      { name: SystemNotification.name, schema: SystemNotificationSchema },
     ]),
     RbacModule,
     MenuModule,
@@ -390,6 +396,7 @@ import { AuditModule } from './modules/audit/audit.module';
     ErrorLogController,
     ValidationController,
     RuleValidationController,
+    NotificationsController,
     HealthController,
     BillingController,
     PaymentController,
@@ -405,6 +412,9 @@ import { AuditModule } from './modules/audit/audit.module';
     RecordSalesRevenueService,
     GetSalesLeadService,
     SalesCrmService,
+    CreateContractService,
+    ActivateCrmLeadService,
+    NotificationsService,
     {
       provide: SALES_UNIT_OF_WORK,
       inject: [
