@@ -20,11 +20,21 @@ const SPRING_BOOT_VERSION = '3.3.5';
 /**
  * Generated code written against the converter's own runtime (Common) uses Spring Batch 4
  * (JobBuilderFactory, StepBuilderFactory) and javax.persistence, which only exist up to
- * Spring Boot 2.x. Such code is built on Spring Boot 2.4 / Java 11 instead of 3.3 / Java 21.
+ * Spring Boot 2.x. Such code is built on Spring Boot 2.7 - the last 2.x line, which runs on
+ * Java 8 up to 21 - instead of 3.3 / Java 21.
  */
-const LEGACY_SPRING_BOOT_VERSION = '2.4.2';
-const LEGACY_JAVA_VERSION = '11';
+const LEGACY_SPRING_BOOT_VERSION = '2.7.18';
+const LEGACY_JAVA_VERSION = '1.8';
 const LEGACY_RUNTIME_PREFIX = 'jp.co.alsm';
+/** Lombok release that understands JDK 8 through 24; older ones break getters/setters on new JDKs. */
+const LOMBOK_VERSION = '1.18.38';
+
+/** Every converted program lives in jp.co.alsm.batch.<program>, next to jp.co.alsm.common/config. */
+const BATCH_PACKAGE = 'jp.co.alsm.batch';
+const LEGACY_APPLICATION_PACKAGE = 'jp.co.alsm';
+const LEGACY_APPLICATION_CLASS = 'BatchApplication';
+/** Package roots that belong to libraries, never to the converter's -pp/-dp output. */
+const LIBRARY_ROOTS = new Set(['com', 'org', 'net', 'io', 'java', 'javax', 'jakarta', 'jp', 'lombok']);
 
 interface BuildProfile {
   legacy: boolean;
@@ -73,9 +83,29 @@ function detectProfile(files: JavaSourceFile[]): BuildProfile {
         legacy,
         springBoot: LEGACY_SPRING_BOOT_VERSION,
         java: LEGACY_JAVA_VERSION,
-        label: `Spring Boot 2.4 (Java ${LEGACY_JAVA_VERSION})`,
+        label: 'Spring Boot 2.7 (Java 8 to 21)',
       }
     : { legacy, springBoot: SPRING_BOOT_VERSION, java: '21', label: 'Spring Boot 3.3 (Java 21)' };
+}
+
+/**
+ * The converter writes each program to <root>.<program> where <root> is whatever -pp/-dp it was
+ * given (cobolprogramclasses on this platform). Spring has to scan the same packages it was told
+ * about, so the export moves every program to jp.co.alsm.batch.<program> - package declarations,
+ * imports and fully qualified names alike - and scans jp.co.alsm only.
+ */
+export function normalizeBatchPackages(files: JavaSourceFile[]): JavaSourceFile[] {
+  const roots = new Set<string>();
+  for (const file of files) {
+    const match = /^([a-z]\w*)\.[a-z0-9_]\w*$/.exec(packageOf(file.content) ?? '');
+    if (match && !LIBRARY_ROOTS.has(match[1])) roots.add(match[1]);
+  }
+  if (roots.size === 0) return files;
+  const pattern = new RegExp(`(^|[^\\w.])(?:${[...roots].join('|')})\\.(?=[a-z0-9_])`, 'gm');
+  return files.map((file) => ({
+    relativePath: file.relativePath,
+    content: file.content.replace(pattern, `$1${BATCH_PACKAGE}.`),
+  }));
 }
 
 /** Packages the generated code may import without anything extra on the classpath. */
@@ -253,10 +283,39 @@ function pomXml(
       <artifactId>spring-boot-starter-data-jpa</artifactId>
     </dependency>`
     : '';
-  const legacyProperty = profile.legacy
+  const lombokProperty = `
+    <!-- The Lombok Spring Boot manages is too old for the newest JDKs. -->
+    <lombok.version>${LOMBOK_VERSION}</lombok.version>`;
+  // On JDK 9+ "release" also checks the code only uses Java 8 APIs, so the jar runs on Java 8 too;
+  // JDK 8 itself has no --release flag and compiles with source/target 1.8.
+  const legacyBuild = profile.legacy
     ? `
-    <!-- Spring Boot 2.4 manages a Lombok too old for JDK 17 and newer. -->
-    <lombok.version>1.18.30</lombok.version>`
+  <profiles>
+    <profile>
+      <id>release-8</id>
+      <activation>
+        <jdk>[9,)</jdk>
+      </activation>
+      <properties>
+        <maven.compiler.release>8</maven.compiler.release>
+      </properties>
+    </profile>
+  </profiles>`
+    : '';
+  // Config.properties sits at the project root for editing and is also packed into the jar.
+  const configResource = profile.legacy
+    ? `
+    <resources>
+      <resource>
+        <directory>src/main/resources</directory>
+      </resource>
+      <resource>
+        <directory>\${project.basedir}</directory>
+        <includes>
+          <include>Config.properties</include>
+        </includes>
+      </resource>
+    </resources>`
     : '';
   const externalNote = stillExternal.length
     ? `
@@ -295,7 +354,8 @@ function pomXml(
   <description>COBOL programs modernized to Java by ALSM</description>
 
   <properties>
-    <java.version>${profile.java}</java.version>${legacyProperty}
+    <java.version>${profile.java}</java.version>
+    <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>${lombokProperty}
   </properties>
 
   <dependencies>
@@ -317,10 +377,28 @@ function pomXml(
   </dependencies>
 
   <build>
+    <!-- target/${artifactIdOf(projectName)}.jar is one executable jar with every dependency inside. -->
+    <finalName>${artifactIdOf(projectName)}</finalName>${configResource}
     <plugins>
+      <!-- Naming Lombok as the annotation processor keeps getters/setters generated on JDK 23+,
+           which no longer runs processors found on the classpath. -->
+      <plugin>
+        <groupId>org.apache.maven.plugins</groupId>
+        <artifactId>maven-compiler-plugin</artifactId>
+        <configuration>
+          <annotationProcessorPaths>
+            <path>
+              <groupId>org.projectlombok</groupId>
+              <artifactId>lombok</artifactId>
+              <version>\${lombok.version}</version>
+            </path>
+          </annotationProcessorPaths>
+        </configuration>
+      </plugin>
       <plugin>
         <groupId>org.springframework.boot</groupId>
         <artifactId>spring-boot-maven-plugin</artifactId>
+        <!-- spring-boot-starter-parent binds "repackage" to mvn package: it nests every dependency in the jar. -->
         <configuration>
           <excludes>
             <exclude>
@@ -331,8 +409,33 @@ function pomXml(
         </configuration>
       </plugin>
     </plugins>
-  </build>
+  </build>${legacyBuild}
 </project>
+`;
+}
+
+/** Converter settings plus the defaults the runtime reads; a copy next to the jar overrides them. */
+function configProperties(): string {
+  return `# Settings of the COBOL to Java conversion this project came from.
+# BatchApplication loads this file from the jar and, if present, from the working directory -
+# edit the copy next to the jar to change a value without rebuilding.
+
+# Packages the converted programs and their data records were written to.
+programPackage = ${BATCH_PACKAGE}
+dataPackage = ${BATCH_PACKAGE}
+
+# Character set of the data files the programs read and write (Shift_JIS on Windows).
+encoding = MS932
+isEbcdicMachine = false
+isFixedFormat = true
+
+# Database the generated SQL targets: 1-Oracle, 2-Sybase, 3-Informix, 4-DB2, 5-SQL Server,
+# 6-MS Access, 7-Sybase SQL Anywhere, 8-MySQL.
+sqlDatabaseType = 1
+
+# Database Spring Batch keeps its job history in. H2 runs in memory and needs nothing installed;
+# to use another one change spring.datasource in src/main/resources/application.yml.
+database.type = H2
 `;
 }
 
@@ -341,9 +444,10 @@ function applicationYml(projectName: string, profile: BuildProfile): string {
   application:
     name: ${artifactIdOf(projectName)}
   batch:
-${profile.legacy ? '    initialize-schema: always' : '    jdbc:\n      initialize-schema: always'}
+    jdbc:
+      initialize-schema: always${profile.legacy ? '\n      # The runtime brings JPA; JPA cannot take the stricter lock Spring Batch asks for by default.\n      isolation-level-for-create: default' : ''}
     job:
-      # Converted programs are Spring Batch tasklets; wire them into jobs before enabling this.
+      # ${profile.legacy ? `${LEGACY_APPLICATION_CLASS} decides which job runs, so Spring Boot must not start them all.` : 'Converted programs are Spring Batch tasklets; wire them into jobs before enabling this.'}
       enabled: false
   datasource:
     url: jdbc:h2:mem:batchdb;DB_CLOSE_DELAY=-1
@@ -353,26 +457,40 @@ ${profile.legacy ? '    initialize-schema: always' : '    jdbc:\n      initializ
 }
 
 /**
- * Spring Batch 4 jobs (JobBuilderFactory) need @EnableBatchProcessing, and the app runs the job
- * named by its first argument: `java -jar app.jar Model01`.
+ * Spring Batch 4 jobs (JobBuilderFactory) need @EnableBatchProcessing. The app runs the job named
+ * by its first argument (`java -jar app.jar Model01`) or, without one, the first job it finds, then
+ * exits with 0 only when that job COMPLETED. A wrong name lists the jobs that do exist.
  */
 function legacyApplicationClass(scanPackages: string[]): string {
-  const packages = [APPLICATION_PACKAGE, ...scanPackages.filter((p) => p !== APPLICATION_PACKAGE)];
-  return `package ${APPLICATION_PACKAGE};
+  const packages = [
+    LEGACY_APPLICATION_PACKAGE,
+    ...scanPackages.filter((p) => p !== LEGACY_APPLICATION_PACKAGE && !p.startsWith(`${LEGACY_APPLICATION_PACKAGE}.`)),
+  ];
+  return `package ${LEGACY_APPLICATION_PACKAGE};
 
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Map;
+import java.util.TreeMap;
+
+import org.springframework.batch.core.BatchStatus;
 import org.springframework.batch.core.Job;
+import org.springframework.batch.core.JobExecution;
 import org.springframework.batch.core.JobParametersBuilder;
 import org.springframework.batch.core.configuration.annotation.EnableBatchProcessing;
 import org.springframework.batch.core.launch.JobLauncher;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.CommandLineRunner;
+import org.springframework.boot.ExitCodeGenerator;
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
 import org.springframework.context.ApplicationContext;
+import org.springframework.context.annotation.PropertySource;
 
 @SpringBootApplication(scanBasePackages = {${packages.map((p) => `"${p}"`).join(', ')}})
 @EnableBatchProcessing
-public class ModernizedApplication implements CommandLineRunner {
+@PropertySource(value = {"classpath:Config.properties", "file:Config.properties"}, ignoreResourceNotFound = true)
+public class ${LEGACY_APPLICATION_CLASS} implements CommandLineRunner, ExitCodeGenerator {
 
   @Autowired
   private JobLauncher jobLauncher;
@@ -380,20 +498,79 @@ public class ModernizedApplication implements CommandLineRunner {
   @Autowired
   private ApplicationContext context;
 
+  private int exitCode;
+
   public static void main(String[] args) {
-    SpringApplication.run(ModernizedApplication.class, args);
+    System.exit(SpringApplication.exit(SpringApplication.run(${LEGACY_APPLICATION_CLASS}.class, args)));
   }
 
   @Override
   public void run(String... args) throws Exception {
-    if (args.length == 0) {
+    Map<String, Job> jobs = new TreeMap<>(context.getBeansOfType(Job.class));
+    if (jobs.isEmpty()) {
+      System.err.println("No Spring Batch job was found under the scanned packages " + scanned() + ".");
+      exitCode = 1;
       return;
     }
-    Job job = context.getBean(args[0], Job.class);
-    jobLauncher.run(job, new JobParametersBuilder().addLong("run.id", System.currentTimeMillis()).toJobParameters());
+    String requested = firstJobArgument(args);
+    String name = requested == null ? jobs.keySet().iterator().next() : findJob(jobs, requested);
+    if (name == null) {
+      System.err.println("There is no job named \\"" + requested + "\\". Jobs you can run: " + jobs.keySet());
+      exitCode = 2;
+      return;
+    }
+    if (requested == null && jobs.size() > 1) {
+      System.out.println("No job name given, running " + name + ". Jobs you can run: " + jobs.keySet());
+    }
+    JobExecution execution = jobLauncher.run(jobs.get(name),
+        new JobParametersBuilder().addLong("run.id", System.currentTimeMillis()).toJobParameters());
+    System.out.println("Job " + name + " finished with status " + execution.getStatus());
+    exitCode = execution.getStatus() == BatchStatus.COMPLETED ? 0 : 1;
+  }
+
+  @Override
+  public int getExitCode() {
+    return exitCode;
+  }
+
+  /** The job name is the first argument that is not a Spring option such as --server.port=0. */
+  private static String firstJobArgument(String... args) {
+    for (String arg : args) {
+      if (!arg.startsWith("-")) {
+        return arg;
+      }
+    }
+    return null;
+  }
+
+  /** Exact bean name first, then ignoring case, so "model01" finds the job "Model01". */
+  private static String findJob(Map<String, Job> jobs, String requested) {
+    if (jobs.containsKey(requested)) {
+      return requested;
+    }
+    for (String name : jobs.keySet()) {
+      if (name.equalsIgnoreCase(requested)) {
+        return name;
+      }
+    }
+    return null;
+  }
+
+  private static List<String> scanned() {
+    List<String> packages = new ArrayList<>();
+    for (String p : ${LEGACY_APPLICATION_CLASS}.class.getAnnotation(SpringBootApplication.class).scanBasePackages()) {
+      packages.add(p);
+    }
+    return packages;
   }
 }
 `;
+}
+
+function applicationClassPath(profile: BuildProfile): string {
+  return profile.legacy
+    ? `src/main/java/${LEGACY_APPLICATION_PACKAGE.replace(/\./g, '/')}/${LEGACY_APPLICATION_CLASS}.java`
+    : `src/main/java/${APPLICATION_PACKAGE.replace(/\./g, '/')}/ModernizedApplication.java`;
 }
 
 function applicationClass(scanPackages: string[], profile: BuildProfile): string {
@@ -464,26 +641,27 @@ function readme(
   const tests = input.includeUnitTests
     ? `\n## Run the tests\n\n\`\`\`bash\nmvn test\n\`\`\`\n\nEach generated class has a smoke test that only checks it compiles and loads. Verify the business behaviour against the original COBOL program before going to production.\n`
     : '';
-  return `# ${input.projectName}
+  const javaVersion = profile.java === '1.8' ? '8' : profile.java;
+  const jar = `target/${artifactIdOf(input.projectName)}.jar`;
+  const run = profile.legacy
+    ? `The application starts the Spring context, runs one job and exits - with code 0 only when the job ended \`COMPLETED\`.
 
-${profile.label} project generated by ALSM from the COBOL programs converted in this project. The files under \`src/main/java\` (other than \`${APPLICATION_PACKAGE.replace(/\./g, '/')}/ModernizedApplication.java\`) are the real conversion output - ${classCount} class(es) from:
-
-${programList}
-${excluded}${embedsRuntime ? '\n## Bundled runtime\n\nThe classes under `src/main/java/jp/co/alsm` are the converter runtime (`Console`, `Record`, `Compare`, `Logger`, ...) that the converted programs call. They are part of this project, so nothing needs to be installed before `mvn package`.\n' : ''}${external}
-## Requirements
-
-- JDK ${profile.java} or newer
-- Maven 3.9 or newer
-
-## Build
+- **No argument:** it runs the first job (by name). If there are several it also prints the names of the others.
+- **A job name as the first argument:** it runs that job. The name is not case sensitive (\`model01\` finds \`Model01\`); a name that does not exist prints the list of jobs you can run.
 
 \`\`\`bash
-mvn package
+java -jar ${jar}
+java -jar ${jar} ${exampleJob}
 \`\`\`
 
-## Run
+or without building the jar first:
 
-The application starts the Spring context and then runs the job whose name you pass as the first argument. Without a name it starts and does nothing (\`spring.batch.job.enabled\` is \`false\` on purpose: otherwise every job would run at start-up).
+\`\`\`bash
+mvn spring-boot:run -Dspring-boot.run.arguments=${exampleJob}
+\`\`\`
+
+The jar is self-contained (every dependency is inside), so it can be copied to any machine with Java ${javaVersion} or newer.`
+    : `The application starts the Spring context and then runs the job whose name you pass as the first argument. Without a name it starts and does nothing (\`spring.batch.job.enabled\` is \`false\` on purpose: otherwise every job would run at start-up).
 
 \`\`\`bash
 mvn spring-boot:run -Dspring-boot.run.arguments=${exampleJob}
@@ -492,8 +670,31 @@ mvn spring-boot:run -Dspring-boot.run.arguments=${exampleJob}
 or, after \`mvn package\`:
 
 \`\`\`bash
-java -jar target/*.jar ${exampleJob}
+java -jar ${jar} ${exampleJob}
+\`\`\``;
+  const config = profile.legacy
+    ? `\n- **Config.properties** (in this folder) holds the conversion settings - packages, \`encoding = MS932\`, \`sqlDatabaseType\` - and is packed into the jar. A \`Config.properties\` in the folder you run \`java -jar\` from overrides it, so values can change without rebuilding.\n- **Packages:** every converted program is in \`${BATCH_PACKAGE}.<program>\`; the runtime is in \`jp.co.alsm.common\`, \`jp.co.alsm.helper\`, \`jp.co.alsm.config\`. \`${LEGACY_APPLICATION_CLASS}\` scans \`jp.co.alsm\`, so a class moved elsewhere is not found.`
+    : '';
+  return `# ${input.projectName}
+
+${profile.label} project generated by ALSM from the COBOL programs converted in this project. The files under \`src/main/java\` (other than \`${applicationClassPath(profile).replace('src/main/java/', '')}\`) are the real conversion output - ${classCount} class(es) from:
+
+${programList}
+${excluded}${embedsRuntime ? '\n## Bundled runtime\n\nThe classes under `src/main/java/jp/co/alsm` are the converter runtime (`Console`, `Record`, `Compare`, `Logger`, `PropertiesHelper`, ...) that the converted programs call. They are part of this project, so nothing needs to be installed before `mvn package`.\n' : ''}${external}
+## Requirements
+
+- JDK ${javaVersion} or newer${profile.legacy ? ' (8, 11, 17 and 21 all work)' : ''}
+- Maven 3.9 or newer
+
+## Build
+
+\`\`\`bash
+mvn clean package
 \`\`\`
+
+## Run
+
+${run}
 
 Jobs you can start:
 
@@ -503,7 +704,7 @@ A finished run ends with a log line containing \`status: [COMPLETED]\`.
 
 ## Quick start
 
-1. Install JDK ${profile.java} or newer and Maven 3.9 or newer (\`java -version\`, \`mvn -version\`).
+1. Install JDK ${javaVersion} or newer and Maven 3.9 or newer (\`java -version\`, \`mvn -version\`).
 2. In this folder run \`mvn clean package\` - it compiles the code and runs the smoke tests.
 3. Run a job as shown above.
 
@@ -511,15 +712,17 @@ A finished run ends with a log line containing \`status: [COMPLETED]\`.
 
 - **Database:** Spring Batch keeps its job history in an in-memory H2 database (\`jdbc:h2:mem:batchdb\`), so nothing needs to be installed. It is lost when the program stops. To use your own database, change \`spring.datasource\` in \`src/main/resources/application.yml\` and add its driver to \`pom.xml\`.
 - **Running the same job twice** is fine: every run gets its own run id.
-- **Output** of the converted programs (\`DISPLAY\`) is printed to the console.
+- **Output** of the converted programs (\`DISPLAY\`) is printed to the console.${config}
 - **"package does not exist" while compiling:** the project is incomplete - make sure you opened the whole folder, not a single file, and that Maven finished downloading dependencies.
 ${notConverted}${tests}`;
 }
 
 /** Runnable Spring Boot 3.3 project around real tool2java output (UC-48). */
 export function buildSpringBootProjectTree(input: SpringBootScaffoldInput): ExportFileItem[] {
-  const allFiles = input.programs.flatMap((p) => p.files);
-  const profile = detectProfile(allFiles);
+  const converted = input.programs.flatMap((p) => p.files);
+  // Decided on the converter's own packages: after normalizing every file mentions jp.co.alsm.
+  const profile = detectProfile(converted);
+  const allFiles = normalizeBatchPackages(converted);
   // Programs converted in the same bundle can each carry a copy of a shared class; keep one.
   const placed = [...new Map(allFiles.map(placeJavaFile).map((f) => [f.path, f])).values()];
   const externalImports = findExternalImports(allFiles);
@@ -528,22 +731,24 @@ export function buildSpringBootProjectTree(input: SpringBootScaffoldInput): Expo
   const addListener = profile.legacy && needsJobListener(allFiles, placed);
   const scanPackages = [
     ...new Set([
-      ...(placed.map((f) => f.packageName?.split('.')[0]).filter(Boolean) as string[]),
-      // The listener and the runtime's own components live under jp.co.alsm.
-      ...(addListener ? ['jp.co.alsm'] : []),
+      ...(placed
+        .map((f) => f.packageName)
+        .filter((p): p is string => Boolean(p))
+        // Programs, the runtime and the listener all live under jp.co.alsm.
+        .map((p) => (p === LEGACY_RUNTIME_PREFIX || p.startsWith(`${LEGACY_RUNTIME_PREFIX}.`) ? LEGACY_RUNTIME_PREFIX : p.split('.')[0]))),
+      ...(addListener ? [LEGACY_RUNTIME_PREFIX] : []),
     ]),
   ].sort();
 
   const children: ExportFileItem[] = [
     fileItem('pom.xml', pomXml(input.projectName, input.includeUnitTests, externalImports, profile)),
     fileItem('src/main/resources/application.yml', applicationYml(input.projectName, profile)),
-    fileItem(
-      `src/main/java/${APPLICATION_PACKAGE.replace(/\./g, '/')}/ModernizedApplication.java`,
-      applicationClass(scanPackages, profile),
-      'java',
-    ),
+    fileItem(applicationClassPath(profile), applicationClass(scanPackages, profile), 'java'),
     ...placed.map((f) => fileItem(f.path, f.content, 'java')),
   ];
+  if (profile.legacy) {
+    children.push(fileItem('Config.properties', configProperties()));
+  }
   // The generated job classes hook into BaseJobExecutionListener, which belongs to the batch
   // runner rather than the runtime library, so a bundle that uses it has to carry it.
   if (addListener) {
