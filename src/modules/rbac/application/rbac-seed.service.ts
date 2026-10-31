@@ -40,6 +40,11 @@ export class RbacSeedService implements OnApplicationBootstrap {
     await this.ensureRole('SALES_REP', 'Sales Representative', 'Sales executive legacy alias', true);
     await this.ensureRole('ENTERPRISE_MEMBER', 'Enterprise Member', 'Enterprise client member', true);
     await this.ensureRole('PARTNER', 'Partner User', 'External partner organization representative with read-only modernization access', true);
+    await this.ensureRole('ORGANIZATION_OWNER', 'Organization Owner', 'Enterprise partner owner with full workspace and organization governance rights', true);
+    await this.ensureRole('PROJECT_MANAGER', 'Project Manager', 'Partner project manager overseeing projects, files, and deliveries', true);
+    await this.ensureRole('DEVELOPER', 'Developer', 'Technical modernize engineer managing code conversions and results', true);
+    await this.ensureRole('VIEWER', 'Viewer', 'Read-only viewer for modernization projects and deliverables', true);
+    await this.ensureRole('ORGANIZATION_MEMBER', 'Organization Member', 'Standard enterprise client organization member', true);
 
     // 2. Authoritative Permission Catalog
     // Users & Access
@@ -89,6 +94,8 @@ export class RbacSeedService implements OnApplicationBootstrap {
     // Platform Administration (Section 3.13)
     await this.ensurePermission('organizations.view', 'View Organisations', 'admin', 'View customer and enterprise organisations');
     await this.ensurePermission('organizations.manage', 'Manage Organisations', 'admin', 'Create enterprise organisations and manage engagements');
+    await this.ensurePermission('company_profile.view', 'View Company Legal Profile', 'admin', 'View ALSM provider legal profile and version history');
+    await this.ensurePermission('company_profile.manage', 'Manage Company Legal Profile', 'admin', 'Manage ALSM provider legal profile, tax ID, and signatory configuration');
     await this.ensurePermission('revenue.view', 'View Total Revenue', 'finance', 'View platform-wide revenue and contract metrics');
     await this.ensurePermission('engagement-types.manage', 'Manage Engagement Types', 'admin', 'Create and edit engagement types');
     await this.ensurePermission('users.lock', 'Lock User Account', 'admin', 'Lock or unlock user accounts');
@@ -143,8 +150,70 @@ export class RbacSeedService implements OnApplicationBootstrap {
     await this.ensurePermission('partner_portal.error.view', 'View Error Details (Portal)', 'partner_portal', 'View safe, user-facing conversion error details');
     await this.ensurePermission('partner_portal.download', 'Download Bundles (Portal)', 'partner_portal', 'Download authorized exported bundles');
 
+    // Section 3.E: Bank Account Management — Company Receiving Accounts
+    await this.ensurePermission('bank_accounts.view', 'View Bank Accounts', 'finance', 'View company receiving bank accounts');
+    await this.ensurePermission('bank_accounts.create', 'Create Bank Account', 'finance', 'Add new company receiving bank account');
+    await this.ensurePermission('bank_accounts.update', 'Update Bank Account', 'finance', 'Edit company receiving bank account details');
+    await this.ensurePermission('bank_accounts.set_default', 'Set Default Bank Account', 'finance', 'Set receiving bank account as currency default');
+    await this.ensurePermission('bank_accounts.deactivate', 'Deactivate Bank Account', 'finance', 'Deactivate company receiving bank account');
+    await this.ensurePermission('bank_accounts.reveal_sensitive_data', 'Reveal Full Bank Account Number', 'finance', 'Reveal unmasked company bank account number with audit logging');
+
+    // Section 3.F: Web 3 Partner Portal & Enterprise Roles Governance
+    // Organization
+    await this.ensurePermission('organization.view', 'View Organisation', 'organization', 'View organization profile and details');
+    await this.ensurePermission('organization.update', 'Update Organisation', 'organization', 'Update organization details and settings');
+    await this.ensurePermission('organization.members.view', 'View Organisation Members', 'organization', 'View members and internal teams of the organization');
+    await this.ensurePermission('organization.members.invite', 'Invite Organisation Members', 'organization', 'Invite new members to the organization');
+    await this.ensurePermission('organization.members.remove', 'Remove Organisation Members', 'organization', 'Remove members from the organization');
+    await this.ensurePermission('organization.roles.manage', 'Manage Organisation Roles', 'organization', 'Manage role assignments within the organization');
+
+    // Projects
+    await this.ensurePermission('projects.view', 'View Projects', 'projects', 'View client modernization projects');
+    await this.ensurePermission('projects.create', 'Create Project', 'projects', 'Create a new modernization project');
+    await this.ensurePermission('projects.update', 'Update Project', 'projects', 'Update modernization project metadata');
+    await this.ensurePermission('projects.delete', 'Delete Project', 'projects', 'Delete modernization project');
+    await this.ensurePermission('projects.members.manage', 'Manage Project Members', 'projects', 'Manage members and team allocations on projects');
+
+    // Files
+    await this.ensurePermission('project_files.view', 'View Project Files', 'projects', 'View project source code and assets');
+    await this.ensurePermission('project_files.upload', 'Upload Project Files', 'projects', 'Upload source files and documents to project');
+    await this.ensurePermission('project_files.download', 'Download Project Files', 'projects', 'Download project source code and assets');
+    await this.ensurePermission('project_files.delete', 'Delete Project Files', 'projects', 'Delete project source files');
+
+    // Self-Service Conversion
+    await this.ensurePermission('conversion.execute', 'Execute Self-Service Conversion', 'conversions', 'Execute modernization conversion jobs on source screens and programs');
+    await this.ensurePermission('conversion.view', 'View Conversion Workspace', 'conversions', 'View self-service conversion workspace and queue');
+    await this.ensurePermission('conversion.history.view', 'View Conversion History', 'conversions', 'View history of previous conversion runs');
+    await this.ensurePermission('conversion.results.view', 'View Conversion Results', 'conversions', 'Inspect converted source code and interactive previews');
+
+    // Managed Modernization Services (Turnkey Managed)
+    await this.ensurePermission('conversion_requests.view', 'View Conversion Requests', 'conversions', 'View managed conversion requests');
+    await this.ensurePermission('conversion_requests.create', 'Create Conversion Request', 'conversions', 'Submit conversion request to ALSM team');
+    await this.ensurePermission('conversion_requests.update', 'Update Conversion Request', 'conversions', 'Update conversion request specifications');
+    await this.ensurePermission('conversion_requests.cancel', 'Cancel Conversion Request', 'conversions', 'Cancel pending conversion request');
+    await this.ensurePermission('project_progress.view', 'View Project Progress', 'projects', 'Track turnkey modernization project progress and milestones');
+    await this.ensurePermission('project_deliverables.view', 'View Deliverables', 'projects', 'View completed conversion deliverables and sign-offs');
+    await this.ensurePermission('project_deliverables.download', 'Download Deliverables', 'projects', 'Download final approved deliverables and bundles');
+
+    // Service & Contract
+    await this.ensurePermission('service_usage.view', 'View Service Usage', 'billing', 'View modernization screen quotas and service usage statistics');
+    await this.ensurePermission('quotas.view', 'View Quotas', 'billing', 'View contracted quota limits and remaining screens');
+    await this.ensurePermission('contracts.view', 'View Contracts', 'billing', 'View enterprise contracts, SLAs, and subscriptions');
+    await this.ensurePermission('contracts.upgrade.request', 'Request Plan Upgrade', 'billing', 'Request quota increase or contract upgrade');
+
+    // Communication
+    await this.ensurePermission('conversations.view', 'View Conversations', 'communication', 'View communication threads and project dialogues');
+    await this.ensurePermission('conversations.create', 'Create Conversation', 'communication', 'Initiate project communication threads');
+    await this.ensurePermission('support_requests.create', 'Create Support Request', 'support', 'Submit operational and conversion support tickets');
+
     // 3. Grant Permissions to System Roles
     const allCatalogPermissionKeys = [
+      'bank_accounts.view',
+      'bank_accounts.create',
+      'bank_accounts.update',
+      'bank_accounts.set_default',
+      'bank_accounts.deactivate',
+      'bank_accounts.reveal_sensitive_data',
       'users.onboard',
       'users.manage',
       'users.view',
@@ -193,6 +262,8 @@ export class RbacSeedService implements OnApplicationBootstrap {
       'organizations.impersonate',
       'organizations.view',
       'organizations.manage',
+      'company_profile.view',
+      'company_profile.manage',
       'conversions.troubleshoot.view',
       'conversions.mapping.validate',
       'conversions.support_patch.apply',
@@ -386,6 +457,137 @@ export class RbacSeedService implements OnApplicationBootstrap {
       'partner_portal.progress.view',
       'partner_portal.result.view',
       'partner_portal.error.view',
+      'partner_portal.download',
+    ]);
+
+    await this.grantRolePermissions('ORGANIZATION_OWNER', [
+      'organization.view',
+      'organization.update',
+      'organization.members.view',
+      'organization.members.invite',
+      'organization.members.remove',
+      'organization.roles.manage',
+      'projects.view',
+      'projects.create',
+      'projects.update',
+      'projects.delete',
+      'projects.members.manage',
+      'project_files.view',
+      'project_files.upload',
+      'project_files.download',
+      'project_files.delete',
+      'conversion.execute',
+      'conversion.view',
+      'conversion.history.view',
+      'conversion.results.view',
+      'conversion_requests.view',
+      'conversion_requests.create',
+      'conversion_requests.update',
+      'conversion_requests.cancel',
+      'project_progress.view',
+      'project_deliverables.view',
+      'project_deliverables.download',
+      'service_usage.view',
+      'quotas.view',
+      'contracts.view',
+      'contracts.upgrade.request',
+      'conversations.view',
+      'conversations.create',
+      'meetings.view',
+      'meetings.create',
+      'support_requests.create',
+      'partner_portal.dashboard.view',
+      'partner_portal.project.view',
+      'partner_portal.progress.view',
+      'partner_portal.result.view',
+      'partner_portal.download',
+    ]);
+
+    await this.grantRolePermissions('PROJECT_MANAGER', [
+      'organization.view',
+      'organization.members.view',
+      'projects.view',
+      'projects.create',
+      'projects.update',
+      'projects.members.manage',
+      'project_files.view',
+      'project_files.upload',
+      'project_files.download',
+      'conversion.execute',
+      'conversion.view',
+      'conversion.history.view',
+      'conversion.results.view',
+      'conversion_requests.view',
+      'conversion_requests.create',
+      'conversion_requests.update',
+      'project_progress.view',
+      'project_deliverables.view',
+      'project_deliverables.download',
+      'service_usage.view',
+      'quotas.view',
+      'conversations.view',
+      'conversations.create',
+      'meetings.view',
+      'meetings.create',
+      'support_requests.create',
+      'partner_portal.dashboard.view',
+      'partner_portal.project.view',
+      'partner_portal.download',
+    ]);
+
+    await this.grantRolePermissions('DEVELOPER', [
+      'organization.view',
+      'projects.view',
+      'project_files.view',
+      'project_files.upload',
+      'project_files.download',
+      'conversion.execute',
+      'conversion.view',
+      'conversion.history.view',
+      'conversion.results.view',
+      'conversion_requests.view',
+      'project_progress.view',
+      'project_deliverables.download',
+      'service_usage.view',
+      'conversations.view',
+      'meetings.view',
+      'support_requests.create',
+      'partner_portal.dashboard.view',
+      'partner_portal.project.view',
+      'partner_portal.download',
+    ]);
+
+    await this.grantRolePermissions('VIEWER', [
+      'organization.view',
+      'projects.view',
+      'project_files.view',
+      'project_files.download',
+      'conversion.view',
+      'conversion.history.view',
+      'conversion.results.view',
+      'project_progress.view',
+      'project_deliverables.view',
+      'project_deliverables.download',
+      'service_usage.view',
+      'conversations.view',
+      'meetings.view',
+      'partner_portal.dashboard.view',
+      'partner_portal.project.view',
+      'partner_portal.download',
+    ]);
+
+    await this.grantRolePermissions('ORGANIZATION_MEMBER', [
+      'organization.view',
+      'projects.view',
+      'project_files.view',
+      'project_files.download',
+      'conversion.view',
+      'conversion.results.view',
+      'service_usage.view',
+      'conversations.view',
+      'meetings.view',
+      'partner_portal.dashboard.view',
+      'partner_portal.project.view',
       'partner_portal.download',
     ]);
 
