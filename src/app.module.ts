@@ -317,6 +317,9 @@ import { SubmitConversionQualityReviewService } from './modules/conversions/appl
 import { QualityReviewController } from './modules/conversions/presentation/quality-review.controller';
 
 import { AuditModule } from './modules/audit/audit.module';
+import { SystemNotification, SystemNotificationSchema } from './modules/notifications/notification.schema';
+import { NotificationsController } from './modules/notifications/notifications.controller';
+import { NotificationsService } from './modules/notifications/notifications.service';
 
 @Module({
   imports: [
@@ -359,6 +362,7 @@ import { AuditModule } from './modules/audit/audit.module';
       { name: ConversionQualityReview.name, schema: ConversionQualityReviewSchema },
       { name: ExportBundle.name, schema: ExportBundleSchema },
       { name: SupportPatch.name, schema: SupportPatchSchema },
+      { name: SystemNotification.name, schema: SystemNotificationSchema },
     ]),
     RbacModule,
     MenuModule,
@@ -390,6 +394,7 @@ import { AuditModule } from './modules/audit/audit.module';
     ErrorLogController,
     ValidationController,
     RuleValidationController,
+    NotificationsController,
     HealthController,
     BillingController,
     PaymentController,
@@ -406,6 +411,7 @@ import { AuditModule } from './modules/audit/audit.module';
     GetSalesLeadService,
     SalesCrmService,
     CreateContractService,
+    NotificationsService,
     {
       provide: SALES_UNIT_OF_WORK,
       inject: [
