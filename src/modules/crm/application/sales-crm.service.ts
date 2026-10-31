@@ -450,10 +450,19 @@ export class SalesCrmService {
       });
     }
 
+    const signedAt = new Date();
+    const update = await this.leadModel.updateOne(
+      { _id: doc._id, contracts: { $elemMatch: { id: contractId, status: 'SENT_FOR_SIGNATURE' } } },
+      { $set: { 'contracts.$.status': 'SIGNED', 'contracts.$.signedAt': signedAt } },
+    ).exec();
+    if (update.matchedCount !== 1) {
+      throw new ConflictException({
+        code: 'CONTRACT_STATE_CHANGED',
+        message: 'The contract changed while it was being signed. Refresh the lead and try again.',
+      });
+    }
     contract.status = 'SIGNED';
-    contract.signedAt = new Date();
-    doc.markModified('contracts');
-    await doc.save();
+    contract.signedAt = signedAt;
 
     await this.audit.append({
       actorUserId: userId,
@@ -477,10 +486,19 @@ export class SalesCrmService {
 
     const newlySent = contract.status === 'DRAFT';
     if (newlySent) {
+      const envelopeId = contract.envelopeId || `ENV-${randomUUID()}`;
+      const update = await this.leadModel.updateOne(
+        { _id: doc._id, contracts: { $elemMatch: { id: contractId, status: 'DRAFT' } } },
+        { $set: { 'contracts.$.status': 'SENT_FOR_SIGNATURE', 'contracts.$.envelopeId': envelopeId } },
+      ).exec();
+      if (update.matchedCount !== 1) {
+        throw new ConflictException({
+          code: 'CONTRACT_STATE_CHANGED',
+          message: 'The contract changed while it was being sent. Refresh the lead and try again.',
+        });
+      }
       contract.status = 'SENT_FOR_SIGNATURE';
-      contract.envelopeId = contract.envelopeId || `ENV-${randomUUID()}`;
-      doc.markModified('contracts');
-      await doc.save();
+      contract.envelopeId = envelopeId;
 
       await this.audit.append({
         actorUserId: userId,

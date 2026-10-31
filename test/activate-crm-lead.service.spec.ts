@@ -37,7 +37,7 @@ describe('ActivateCrmLeadService (UC-64)', () => {
   let lead: TestLead;
   let session: { withTransaction: MockFn; endSession: MockFn };
   let connection: { startSession: MockFn };
-  let leads: { findById: MockFn };
+  let leads: { findById: MockFn; updateOne: MockFn };
   let organizations: { findOne: MockFn; create: MockFn };
   let users: { findOne: MockFn };
   let audits: { create: MockFn };
@@ -69,7 +69,10 @@ describe('ActivateCrmLeadService (UC-64)', () => {
       endSession: jest.fn().mockResolvedValue(undefined),
     };
     connection = { startSession: jest.fn().mockResolvedValue(session) };
-    leads = { findById: jest.fn().mockReturnValue(query(lead)) };
+    leads = {
+      findById: jest.fn().mockReturnValue(query(lead)),
+      updateOne: jest.fn().mockReturnValue(query({ matchedCount: 1 })),
+    };
     organizations = {
       findOne: jest.fn().mockReturnValue(query(null)),
       create: jest.fn().mockResolvedValue([{ _id: new Types.ObjectId(ORG_ID), name: 'Zenith Holdings' }]),
@@ -131,7 +134,15 @@ describe('ActivateCrmLeadService (UC-64)', () => {
     expect(lead).toMatchObject({ status: LeadStatus.CONVERTED, stage: 'WON', revision: 5 });
     expect(lead.convertedOrganizationId?.toString()).toBe(ORG_ID);
     expect(lead.provisioning).toMatchObject({ status: 'COMPLETED', adminLinked: true, organizationId: ORG_ID });
-    expect(lead.save).toHaveBeenCalledWith({ session });
+    expect(leads.updateOne).toHaveBeenCalledWith(
+      expect.objectContaining({ _id: lead._id, revision: 4 }),
+      expect.objectContaining({ $set: expect.objectContaining({
+        status: LeadStatus.CONVERTED,
+        stage: 'WON',
+        revision: 5,
+      }) }),
+      { session },
+    );
     expect(audits.create).toHaveBeenCalledWith([expect.objectContaining({
       action: 'LEAD_CONVERTED_TO_CUSTOMER',
       resourceId: LEAD_ID,
