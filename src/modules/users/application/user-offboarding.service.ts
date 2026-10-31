@@ -15,7 +15,6 @@ import { RbacService } from '../../rbac/application/rbac.service';
 import { AUDIT_REPOSITORY, AuditRepository } from '../../audit/domain/audit.repository';
 import {
   ExecuteUserOffboardingDto,
-  ProjectTransferItemDto,
 } from '../presentation/user-offboarding.dto';
 import {
   DepartingStaffDossier,
@@ -167,7 +166,7 @@ export class UserOffboardingService {
       browser: s.browser,
       ipAddress: s.ipAddress,
       lastActiveAt: s.lastActiveAt,
-      createdAt: s.createdAt,
+      createdAt: (s as unknown as { createdAt?: Date }).createdAt,
     }));
 
     const mappedJobs: OffboardingPendingJob[] = pendingJobs.map((j) => ({
