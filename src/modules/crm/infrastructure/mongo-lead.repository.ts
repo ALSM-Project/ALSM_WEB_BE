@@ -208,7 +208,11 @@ export class MongoLeadRepository implements LeadRepository {
           message: 'This request ID was already used for different contract details.',
         });
       }
-      return { lead: this.map(doc), contract: existing, replayed: true };
+      return {
+        organizationId: doc.organizationId?.toString(),
+        contract: existing,
+        replayed: true,
+      };
     }
 
     if (doc.stage === 'LOST') {
@@ -262,7 +266,7 @@ export class MongoLeadRepository implements LeadRepository {
     }
 
     return {
-      lead: this.map(updated),
+      organizationId: updated.organizationId?.toString(),
       contract,
       replayed: false,
     };

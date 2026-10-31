@@ -1,6 +1,6 @@
 import { BadRequestException } from '@nestjs/common';
 import { AuthenticatedUser } from '../src/shared/logging/request-id.middleware';
-import { AddLeadContractInput, LeadRecord } from '../src/modules/crm/domain/lead.types';
+import { AddLeadContractInput } from '../src/modules/crm/domain/lead.types';
 import { SalesMutationRepositories, SalesUnitOfWork } from '../src/modules/crm/application/sales-unit-of-work.port';
 import { CreateContractService } from '../src/modules/crm/application/create-contract.service';
 
@@ -20,10 +20,10 @@ describe('CreateContractService (UC-63)', () => {
   let unitOfWork: jest.Mocked<SalesUnitOfWork>;
   let service: CreateContractService;
 
-  const lead = { id: LEAD_ID, organizationId: '6a9cdbda5e82fb42d449ac03' } as LeadRecord;
+  const organizationId = '6a9cdbda5e82fb42d449ac03';
   const setupCreatedContract = () => {
     leads.addContract.mockImplementation(async (operation: AddLeadContractInput) => ({
-      lead,
+      organizationId,
       replayed: false,
       contract: {
         ...operation.contract,
@@ -84,7 +84,7 @@ describe('CreateContractService (UC-63)', () => {
 
   it('returns an idempotent replay without writing a second audit event', async () => {
     leads.addContract.mockImplementation(async (operation: AddLeadContractInput) => ({
-      lead,
+      organizationId,
       replayed: true,
       contract: {
         ...operation.contract,

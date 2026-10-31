@@ -44,7 +44,7 @@ export interface AddLeadContractInput {
 }
 
 export interface AddLeadContractResult {
-  lead: LeadRecord;
+  organizationId?: string;
   contract: LeadContractRecord;
   replayed: boolean;
 }
