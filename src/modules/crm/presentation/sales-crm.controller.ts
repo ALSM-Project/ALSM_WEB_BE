@@ -137,6 +137,18 @@ export class SalesCrmController {
     return this.createContractService.execute(id, dto, user, requestId);
   }
 
+  @Post('leads/:id/contracts/:contractId/send')
+  @UseGuards(PermissionsGuard)
+  @RequirePermissions('sales.leads.manage')
+  @ApiOperation({ summary: 'Send a draft contract for electronic signature and notify the customer account' })
+  async sendContractForSignature(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('id') id: string,
+    @Param('contractId') contractId: string,
+  ) {
+    return this.crmService.sendContractForSignature(user.userId, id, contractId);
+  }
+
   @Post('leads/:id/contracts/:contractId/sign')
   @ApiOperation({ summary: 'Confirm contract signed and auto-provision (3.11.8)' })
   async signContract(

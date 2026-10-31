@@ -3,7 +3,9 @@ import {
   ConflictException,
   Inject,
   Injectable,
+  Logger,
   NotFoundException,
+  Optional,
 } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { FilterQuery, Model, Types } from 'mongoose';
@@ -14,6 +16,7 @@ import { OrganizationRole, OrganizationType } from '../../organizations/domain/o
 import { User } from '../../users/infrastructure/user.schema';
 import { AUDIT_REPOSITORY, AuditRepository } from '../../audit/domain/audit.repository';
 import { LeadStatus } from '../domain/lead.types';
+import { NotificationsService } from '../../notifications/notifications.service';
 import {
   SALES_PIPELINE_STAGES,
   SalesPipelineLead,
@@ -56,11 +59,14 @@ export interface SendQuoteDto {
 
 @Injectable()
 export class SalesCrmService {
+  private readonly logger = new Logger(SalesCrmService.name);
+
   constructor(
     @InjectModel(Lead.name) private readonly leadModel: Model<Lead>,
     @InjectModel(Organization.name) private readonly orgModel: Model<Organization>,
     @InjectModel(User.name) private readonly userModel: Model<User>,
     @Inject(AUDIT_REPOSITORY) private readonly audit: AuditRepository,
+    @Optional() @Inject(NotificationsService) private readonly notifications?: NotificationsService,
   ) {}
 
   async listLeads(
@@ -440,6 +446,50 @@ export class SalesCrmService {
     await this.autoProvisionCustomer(userId, doc);
 
     return this.mapLead(doc);
+  }
+
+  async sendContractForSignature(userId: string, leadId: string, contractId: string) {
+    const doc = await this.findLeadById(leadId);
+    const contract = (doc.contracts || []).find((item) => item.id === contractId);
+    if (!contract) throw new NotFoundException('Contract was not found on this lead');
+    if (contract.status !== 'DRAFT' && contract.status !== 'SENT_FOR_SIGNATURE') {
+      throw new BadRequestException('Only a draft contract can be sent for signature.');
+    }
+
+    const newlySent = contract.status === 'DRAFT';
+    if (newlySent) {
+      contract.status = 'SENT_FOR_SIGNATURE';
+      contract.envelopeId = contract.envelopeId || `ENV-${randomUUID()}`;
+      doc.markModified('contracts');
+      await doc.save();
+
+      await this.audit.append({
+        actorUserId: userId,
+        organizationId: doc.organizationId?.toString(),
+        action: 'LEAD_CONTRACT_SENT_FOR_SIGNATURE',
+        resourceType: 'LEAD',
+        resourceId: doc.id,
+        metadata: { contractId, contractNumber: contract.contractNumber || '', status: contract.status },
+      });
+    }
+
+    let notificationSent = false;
+    try {
+      const recipientCount = await this.notifications?.createForEmails({
+        recipientEmails: doc.contactEmail ? [doc.contactEmail] : [],
+        type: 'CRM_CONTRACT_SENT_FOR_SIGNATURE',
+        title: 'Contract ready for your signature',
+        message: `Contract ${contract.contractNumber || ''} has been sent to you for electronic signature.`,
+        eventKey: `crm-contract-sent-for-signature:${contractId}`,
+        resourceType: 'CONTRACT',
+        resourceId: contractId,
+      });
+      notificationSent = (recipientCount ?? 0) > 0;
+    } catch (error) {
+      this.logger.warn(`Could not notify contract contact for ${contractId}: ${(error as Error).message}`);
+    }
+
+    return { lead: this.mapLead(doc), notificationSent };
   }
 
   async autoProvisionCustomer(userId: string, leadDoc: LeadDocument) {
