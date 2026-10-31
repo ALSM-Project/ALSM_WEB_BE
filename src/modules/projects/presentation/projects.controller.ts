@@ -1,4 +1,5 @@
 import {
+  BadRequestException,
   Body,
   Controller,
   Delete,
@@ -9,6 +10,7 @@ import {
   Param,
   Patch,
   Post,
+  Query,
   UseGuards,
 } from '@nestjs/common';
 import {
@@ -22,7 +24,17 @@ import {
 import { ProjectService } from '../application/project.service';
 import { ProjectStaffAllocationService } from '../application/project-staff-allocation.service';
 import { PermissionsGuard } from '../../../shared/security/permissions.guard';
-import { AssignProjectStaffDto, CreateProjectDto, UpdateProjectDto } from './project.dto';
+import {
+  AllocateStaffBatchDto,
+  AdminReviewProjectDto,
+  AssignProjectStaffDto,
+  AssignTeamLeadDto,
+  CreateProjectDto,
+  CustomerAcceptanceDto,
+  RemoveProjectStaffDto,
+  UpdateProjectDto,
+  UpdateProjectStageDto,
+} from './project.dto';
 import { JwtAuthGuard } from '../../../shared/security/jwt-auth.guard';
 import { CurrentUser } from '../../../shared/security/current-user.decorator';
 import { AuthenticatedUser } from '../../../shared/logging/request-id.middleware';
@@ -89,6 +101,29 @@ export class ProjectsController {
     return this.staffAllocation.listAssignableStaff();
   }
 
+  @Get('assignable-team-leads')
+  @UseGuards(PlatformAdminAuthorizationGuard)
+  @RequirePermissions('organizations.manage', 'resources.transfer', 'resources.transfer.confirm')
+  @ApiOperation({
+    summary: 'List internal ALSM Team Leads eligible for project assignment',
+    description: 'Only internal ALSM employees with active status are returned.',
+  })
+  async assignableTeamLeads() {
+    return this.projects.listAssignableTeamLeads();
+  }
+
+  @Get(':id/assigned-members')
+  @ApiOperation({
+    summary: 'List staff and members assigned tasks for a project',
+    description:
+      'Returns the staff member(s) allocated to this project to receive project notifications and meeting invites.',
+  })
+  @ApiParam({ name: 'id', description: 'Unique Project ID' })
+  @ApiResponse({ status: HttpStatus.OK, description: 'List of assigned project members retrieved successfully' })
+  async assignedMembers(@Param('id') id: string) {
+    return this.staffAllocation.getAssignedMembers(id);
+  }
+
   @Post(':id/assign-staff')
   @UseGuards(PermissionsGuard)
   @RequirePermissions('teams.manage')
@@ -105,6 +140,82 @@ export class ProjectsController {
     return this.staffAllocation.assign(user.userId, id, dto.staffId, dto.note, dto.reason);
   }
 
+  @Get(':id/allocation')
+  @ApiOperation({
+    summary: 'Get full project staff allocation overview',
+    description: 'Retrieves current assigned staff, team lead, project scale, and capacity metrics.',
+  })
+  @ApiParam({ name: 'id', description: 'Unique Project ID' })
+  @ApiResponse({ status: HttpStatus.OK, description: 'Allocation overview retrieved successfully' })
+  async getProjectAllocation(@Param('id') id: string) {
+    return this.staffAllocation.getProjectAllocation(id);
+  }
+
+  @Get(':id/eligible-staff')
+  @ApiOperation({
+    summary: 'List eligible conversion staff with skills and capacity for this project',
+  })
+  @ApiParam({ name: 'id', description: 'Unique Project ID' })
+  @ApiResponse({ status: HttpStatus.OK, description: 'Eligible staff list retrieved successfully' })
+  async getEligibleStaff(@Param('id') id: string) {
+    return this.staffAllocation.getEligibleStaff(id);
+  }
+
+  @Post(':id/allocations')
+  @UseGuards(PermissionsGuard)
+  @RequirePermissions('teams.manage')
+  @ApiOperation({
+    summary: 'Allocate staff to project (single or multiple)',
+  })
+  @ApiParam({ name: 'id', description: 'Unique Project ID' })
+  async allocateStaffBatch(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('id') id: string,
+    @Body() dto: AllocateStaffBatchDto,
+  ) {
+    const staffIds = Array.isArray(dto.staffIds) && dto.staffIds.length > 0 ? dto.staffIds : [];
+    if (staffIds.length === 0) {
+      throw new BadRequestException('At least one staff member must be selected');
+    }
+    const primaryStaffId = staffIds[0];
+    const updated = await this.staffAllocation.assign(
+      user.userId,
+      id,
+      primaryStaffId,
+      dto.note,
+      dto.role || 'Lead Conversion Engineer',
+    );
+    return updated;
+  }
+
+  @Delete(':id/allocations/:staffId')
+  @UseGuards(PermissionsGuard)
+  @RequirePermissions('teams.manage')
+  @ApiOperation({
+    summary: 'Remove staff allocation from project',
+  })
+  @ApiParam({ name: 'id', description: 'Unique Project ID' })
+  @ApiParam({ name: 'staffId', description: 'Staff User ID to deallocate' })
+  async removeAllocation(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('id') id: string,
+    @Param('staffId') staffId: string,
+    @Query('reason') queryReason?: string,
+    @Body() body?: RemoveProjectStaffDto,
+  ) {
+    const reason = body?.reason || queryReason;
+    return this.staffAllocation.removeAllocation(user.userId, id, staffId, reason);
+  }
+
+  @Get(':id/allocation-history')
+  @ApiOperation({
+    summary: 'Get allocation and assignment audit history for a project',
+  })
+  @ApiParam({ name: 'id', description: 'Unique Project ID' })
+  async getAllocationHistory(@Param('id') id: string) {
+    return this.staffAllocation.getAllocationHistory(id);
+  }
+
   @Post(':id/assign-team-lead')
   @UseGuards(PlatformAdminAuthorizationGuard)
   @RequirePermissions('organizations.manage', 'resources.transfer', 'resources.transfer.confirm')
@@ -116,9 +227,47 @@ export class ProjectsController {
   async assignTeamLead(
     @CurrentUser() user: AuthenticatedUser,
     @Param('id') id: string,
-    @Body() dto: { teamLeadId: string },
+    @Body() dto: AssignTeamLeadDto,
   ) {
-    return this.projects.assignTeamLead(user.userId, id, dto.teamLeadId);
+    return this.projects.assignTeamLead(user.userId, id, dto.teamLeadId, dto.note);
+  }
+
+  @Post(':id/admin-review')
+  @UseGuards(PlatformAdminAuthorizationGuard)
+  @ApiOperation({
+    summary: 'Admin review customer submission (Approve, Request Info, Reject)',
+  })
+  async adminReview(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('id') id: string,
+    @Body() dto: AdminReviewProjectDto,
+  ) {
+    return this.projects.adminReview(user.userId, id, dto.action, dto.notes);
+  }
+
+  @Patch(':id/stage')
+  @ApiOperation({
+    summary: 'Advance project along the canonical 9 stages',
+  })
+  async updateStage(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('id') id: string,
+    @Body() dto: UpdateProjectStageDto,
+  ) {
+    return this.projects.updateStage(user.userId, id, dto.stage, dto.note);
+  }
+
+  @Post(':id/acceptance')
+  @ApiOperation({
+    summary: 'Customer signs off and accepts final deliverables',
+  })
+  async acceptDeliverables(
+    @CurrentUser() user: AuthenticatedUser,
+    @Headers('x-organization-id') organizationId: string | undefined,
+    @Param('id') id: string,
+    @Body() dto: CustomerAcceptanceDto,
+  ) {
+    return this.projects.acceptProject(user.userId, organizationId, id, dto.notes);
   }
 
   @Get()
