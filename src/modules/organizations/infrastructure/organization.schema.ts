@@ -15,6 +15,8 @@ export class Organization {
   @Prop({ type: [OrganizationMemberSchema], default: [] }) members!: OrganizationMember[];
   @Prop({ trim: true }) domain?: string;
   @Prop({ trim: true }) contactEmail?: string;
+  @Prop({ type: MongooseSchema.Types.ObjectId, index: true, unique: true, sparse: true })
+  sourceLeadId?: Types.ObjectId;
   @Prop({ default: 'ACTIVE' }) status!: 'ACTIVE' | 'SUSPENDED' | 'TRIAL';
   @Prop({ default: 'Trial' }) engagementType!: string;
   @Prop() trialExpiresAt?: Date;

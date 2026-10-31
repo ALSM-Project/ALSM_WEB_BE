@@ -11,8 +11,6 @@ import { InjectModel } from '@nestjs/mongoose';
 import { FilterQuery, Model, Types } from 'mongoose';
 import { randomBytes, randomUUID } from 'node:crypto';
 import { Lead, LeadDocument } from '../infrastructure/lead.schema';
-import { Organization } from '../../organizations/infrastructure/organization.schema';
-import { OrganizationRole, OrganizationType } from '../../organizations/domain/organization.types';
 import { User } from '../../users/infrastructure/user.schema';
 import { AUDIT_REPOSITORY, AuditRepository } from '../../audit/domain/audit.repository';
 import { LeadStatus } from '../domain/lead.types';
@@ -63,7 +61,6 @@ export class SalesCrmService {
 
   constructor(
     @InjectModel(Lead.name) private readonly leadModel: Model<Lead>,
-    @InjectModel(Organization.name) private readonly orgModel: Model<Organization>,
     @InjectModel(User.name) private readonly userModel: Model<User>,
     @Inject(AUDIT_REPOSITORY) private readonly audit: AuditRepository,
     @Optional() @Inject(NotificationsService) private readonly notifications?: NotificationsService,
@@ -298,7 +295,22 @@ export class SalesCrmService {
     leadId: string,
     newStage: 'NEW' | 'CONTACTED' | 'QUALIFIED' | 'PROPOSAL' | 'WON' | 'LOST',
   ) {
+    if (!['NEW', 'CONTACTED', 'QUALIFIED', 'PROPOSAL', 'WON', 'LOST'].includes(newStage)) {
+      throw new BadRequestException({ code: 'INVALID_LEAD_STAGE', message: 'Select a valid sales stage.' });
+    }
+    if (newStage === 'WON') {
+      throw new BadRequestException({
+        code: 'LEAD_ACTIVATION_REQUIRED',
+        message: 'Convert the lead to a customer through Customer Activation to mark it Won.',
+      });
+    }
     const doc = await this.findLeadById(leadId);
+    if (doc.stage === 'WON') {
+      throw new ConflictException({
+        code: 'LEAD_ALREADY_WON',
+        message: 'A converted customer cannot be moved back through the lead-stage editor.',
+      });
+    }
     const oldStage = doc.stage;
     doc.stage = newStage;
     await doc.save();
@@ -428,9 +440,19 @@ export class SalesCrmService {
       throw new NotFoundException('Contract was not found on this lead');
     }
 
+    if (contract.status === 'SIGNED' || contract.status === 'FULLY_SIGNED') {
+      return this.mapLead(doc);
+    }
+    if (contract.status !== 'SENT_FOR_SIGNATURE') {
+      throw new BadRequestException({
+        code: 'CONTRACT_NOT_SENT',
+        message: 'Send the contract for signature before recording the customer signature.',
+      });
+    }
+
     contract.status = 'SIGNED';
     contract.signedAt = new Date();
-    doc.stage = 'WON';
+    doc.markModified('contracts');
     await doc.save();
 
     await this.audit.append({
@@ -441,9 +463,6 @@ export class SalesCrmService {
       resourceId: doc.id,
       metadata: { contractId, envelopeId: contract.envelopeId || '' },
     });
-
-    // Auto-provision Enterprise Org and Customer Admin user upon won
-    await this.autoProvisionCustomer(userId, doc);
 
     return this.mapLead(doc);
   }
@@ -490,47 +509,6 @@ export class SalesCrmService {
     }
 
     return { lead: this.mapLead(doc), notificationSent };
-  }
-
-  async autoProvisionCustomer(userId: string, leadDoc: LeadDocument) {
-    try {
-      const orgName = leadDoc.company || `${leadDoc.contactName} Enterprise`;
-      let org = await this.orgModel.findOne({ name: orgName }).exec();
-      if (!org) {
-        org = await this.orgModel.create({
-          name: orgName,
-          type: OrganizationType.ENTERPRISE,
-          members: [],
-        });
-      }
-
-      const email = leadDoc.contactEmail || `customer_${Date.now()}@example.com`;
-      let user = await this.userModel.findOne({ email }).exec();
-      if (!user) {
-        user = await this.userModel.create({
-          email,
-          fullName: leadDoc.contactName || orgName,
-          isActive: true,
-          isPlatformAdmin: false,
-        });
-      }
-
-      if (!org.members.some((m) => m.userId.toString() === user!._id.toString())) {
-        org.members.push({ userId: user!._id, role: OrganizationRole.ADMIN });
-        await org.save();
-      }
-
-      await this.audit.append({
-        actorUserId: userId,
-        organizationId: org._id.toString(),
-        action: 'LEAD_CUSTOMER_AUTO_PROVISIONED',
-        resourceType: 'ORGANIZATION',
-        resourceId: org._id.toString(),
-        metadata: { leadId: leadDoc.id, customerEmail: email },
-      });
-    } catch {
-      // Non-blocking provisioning fallback
-    }
   }
 
   // Section 3.12: Sales Reports & Approvals
@@ -666,7 +644,7 @@ export class SalesCrmService {
     return doc;
   }
 
-  private mapLead(doc: LeadDocument) {
+  mapLead(doc: LeadDocument) {
     const company = [doc.company, doc.companyName].find(
       (value) => typeof value === 'string' && value.trim().length > 0,
     ) ?? (
@@ -695,6 +673,9 @@ export class SalesCrmService {
       lastContactAt: doc.lastContactAt,
       notes: doc.notes,
       assignedTo: doc.assignedTo,
+      convertedAt: doc.convertedAt,
+      convertedOrganizationId: doc.convertedOrganizationId?.toString(),
+      provisioning: doc.provisioning,
       interactions: doc.interactions || [],
       demos: doc.demos || [],
       quotes: doc.quotes || [],
