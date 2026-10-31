@@ -355,6 +355,69 @@ export class MailService {
     }
   }
 
+  /** Notify one selected attendee that a product demo has been scheduled. */
+  async sendScheduledDemoNotification(params: {
+    to: string;
+    companyName: string;
+    contactName: string;
+    demoTitle: string;
+    scheduledAt: Date;
+    durationMinutes: number;
+    agenda?: string;
+    scheduledByEmail: string;
+  }): Promise<boolean> {
+    if (!this.transporter) {
+      this.logger.warn('Scheduled demo notification skipped because SMTP is not configured.');
+      return false;
+    }
+
+    const escapeHtml = (value: string) => value
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;')
+      .replace(/'/g, '&#39;');
+    const formattedDate = new Intl.DateTimeFormat('vi-VN', {
+      dateStyle: 'full',
+      timeStyle: 'short',
+      timeZone: 'Asia/Ho_Chi_Minh',
+    }).format(params.scheduledAt);
+    const agenda = params.agenda?.trim();
+    const subject = `[ALSM] Demo đã được lên lịch: ${params.demoTitle}`;
+    const text = [
+      'Xin chào,',
+      `Bạn được mời tham dự buổi demo sản phẩm với ${params.companyName}.`,
+      `Chủ đề: ${params.demoTitle}`,
+      `Thời gian: ${formattedDate} (giờ Việt Nam)`,
+      `Thời lượng: ${params.durationMinutes} phút`,
+      ...(agenda ? [`Nội dung: ${agenda}`] : []),
+      `Người lên lịch: ${params.scheduledByEmail}`,
+      `Liên hệ: ${params.contactName}`,
+      'Email này thông báo lịch demo đã được ghi nhận; không bao gồm link họp hoặc lời mời calendar.',
+    ].join('\n\n');
+    const html = `<!DOCTYPE html>
+<html lang="vi"><head><meta charset="UTF-8" /></head>
+<body style="font-family:Arial,sans-serif;color:#091E42;line-height:1.6">
+  <h2>Demo sản phẩm đã được lên lịch</h2>
+  <p>Xin chào, bạn được mời tham dự buổi demo sản phẩm với <strong>${escapeHtml(params.companyName)}</strong>.</p>
+  <p><strong>Chủ đề:</strong> ${escapeHtml(params.demoTitle)}<br />
+     <strong>Thời gian:</strong> ${escapeHtml(formattedDate)} (giờ Việt Nam)<br />
+     <strong>Thời lượng:</strong> ${params.durationMinutes} phút<br />
+     <strong>Người lên lịch:</strong> ${escapeHtml(params.scheduledByEmail)}<br />
+     <strong>Liên hệ:</strong> ${escapeHtml(params.contactName)}</p>
+  ${agenda ? `<p><strong>Nội dung:</strong><br />${escapeHtml(agenda).replace(/\n/g, '<br />')}</p>` : ''}
+  <p>Email này thông báo lịch demo đã được ghi nhận; không bao gồm link họp hoặc lời mời calendar.</p>
+</body></html>`;
+
+    try {
+      await this.transporter.sendMail({ from: this.fromAddress, to: params.to, subject, text, html });
+      return true;
+    } catch {
+      this.logger.error('Scheduled demo notification email could not be delivered.');
+      return false;
+    }
+  }
+
   /**
    * UC-48: tells a partner their modernized code bundle is ready. Returns false when SMTP is
    * not configured (nothing was sent) and throws when the SMTP server rejects the message,
