@@ -54,11 +54,6 @@ export interface SendQuoteDto {
   discountReason?: string;
 }
 
-export interface CreateContractDto {
-  quoteId?: string;
-  documentTitle: string;
-}
-
 @Injectable()
 export class SalesCrmService {
   constructor(
@@ -420,35 +415,6 @@ export class SalesCrmService {
     return this.mapLead(doc);
   }
 
-  async createContract(userId: string, leadId: string, dto: CreateContractDto) {
-    const doc = await this.findLeadById(leadId);
-    const envelopeId = `docusign_env_${Date.now()}_${randomBytes(4).toString('hex')}`;
-
-    const contract = {
-      id: randomUUID(),
-      quoteId: dto.quoteId,
-      documentTitle: dto.documentTitle || `${doc.company || 'Customer'} Service Modernization Agreement`,
-      status: 'SENT_FOR_SIGNATURE' as const,
-      envelopeId,
-      signedAt: undefined,
-      createdAt: new Date(),
-    };
-
-    doc.contracts.push(contract);
-    await doc.save();
-
-    await this.audit.append({
-      actorUserId: userId,
-      organizationId: doc.organizationId?.toString(),
-      action: 'LEAD_CONTRACT_CREATED',
-      resourceType: 'LEAD',
-      resourceId: doc.id,
-      metadata: { documentTitle: contract.documentTitle, envelopeId },
-    });
-
-    return this.mapLead(doc);
-  }
-
   async signContract(userId: string, leadId: string, contractId: string) {
     const doc = await this.findLeadById(leadId);
     const contract = (doc.contracts || []).find((c) => c.id === contractId);
@@ -668,7 +634,18 @@ export class SalesCrmService {
       interactions: doc.interactions || [],
       demos: doc.demos || [],
       quotes: doc.quotes || [],
-      contracts: doc.contracts || [],
+      contracts: (doc.contracts || []).map((contract) => {
+        const {
+          requestId: _requestId,
+          requestFingerprint: _requestFingerprint,
+          createdByUserId: _createdByUserId,
+          ...publicContract
+        } = contract as Record<string, unknown>;
+        void _requestId;
+        void _requestFingerprint;
+        void _createdByUserId;
+        return publicContract;
+      }),
       createdAt: doc.createdAt,
       updatedAt: doc.updatedAt,
     };

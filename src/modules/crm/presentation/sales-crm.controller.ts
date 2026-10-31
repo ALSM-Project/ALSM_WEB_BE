@@ -10,7 +10,7 @@ import {
   Res,
   UseGuards,
 } from '@nestjs/common';
-import { ApiBearerAuth, ApiHeader, ApiOperation, ApiTags } from '@nestjs/swagger';
+import { ApiBearerAuth, ApiHeader, ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagger';
 import { Response } from 'express';
 import { CurrentUser } from '../../../shared/security/current-user.decorator';
 import { JwtAuthGuard } from '../../../shared/security/jwt-auth.guard';
@@ -19,12 +19,13 @@ import { PermissionsGuard } from '../../../shared/security/permissions.guard';
 import { RequirePermissions } from '../../../shared/security/require-permissions.decorator';
 import {
   CreateCrmLeadDto,
-  CreateContractDto,
   LogCallDto,
   SalesCrmService,
   ScheduleDemoDto,
   SendQuoteDto,
 } from '../application/sales-crm.service';
+import { CreateContractService } from '../application/create-contract.service';
+import { CreateContractDto } from './sales.dto';
 import { SalesPipelineQueryDto } from './sales-pipeline-query.dto';
 
 @ApiTags('CRM & Sales (Sections 3.11 & 3.12)')
@@ -33,7 +34,10 @@ import { SalesPipelineQueryDto } from './sales-pipeline-query.dto';
 @UseGuards(JwtAuthGuard)
 @Controller('sales/crm')
 export class SalesCrmController {
-  constructor(private readonly crmService: SalesCrmService) {}
+  constructor(
+    private readonly crmService: SalesCrmService,
+    private readonly createContractService: CreateContractService,
+  ) {}
 
   @Get('pipeline')
   @UseGuards(PermissionsGuard)
@@ -113,13 +117,24 @@ export class SalesCrmController {
   }
 
   @Post('leads/:id/contracts')
-  @ApiOperation({ summary: 'Create electronic service contract (3.11.7)' })
+  @UseGuards(PermissionsGuard)
+  @RequirePermissions('sales.leads.manage')
+  @ApiOperation({ summary: 'Create a contract draft for a sales lead (UC-63)' })
+  @ApiHeader({ name: 'Idempotency-Key', required: true, description: 'UUID reused only when retrying the same contract submission' })
+  @ApiResponse({ status: 201, description: 'Contract draft created or an identical retry reconciled' })
+  @ApiResponse({ status: 400, description: 'Invalid contract data, lead state, or quote association' })
+  @ApiResponse({ status: 401, description: 'Authentication is required' })
+  @ApiResponse({ status: 403, description: 'The user lacks sales.leads.manage permission' })
+  @ApiResponse({ status: 404, description: 'Lead or selected quote not found' })
+  @ApiResponse({ status: 409, description: 'Idempotency key reuse or concurrent lead change' })
+  @ApiResponse({ status: 503, description: 'The database transaction could not be completed' })
   async createContract(
     @CurrentUser() user: AuthenticatedUser,
     @Param('id') id: string,
     @Body() dto: CreateContractDto,
+    @Headers('idempotency-key') requestId?: string,
   ) {
-    return this.crmService.createContract(user.userId, id, dto);
+    return this.createContractService.execute(id, dto, user, requestId);
   }
 
   @Post('leads/:id/contracts/:contractId/sign')

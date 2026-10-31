@@ -67,11 +67,19 @@ export class Lead {
   }>;
   @Prop({ type: [Object], default: [] }) contracts!: Array<{
     id: string;
+    requestId?: string;
+    requestFingerprint?: string;
     quoteId?: string;
-    documentTitle: string;
+    contractNumber?: string;
+    title?: string;
+    documentTitle?: string;
+    plan?: string;
+    annualValue?: number;
     status: 'DRAFT' | 'SENT_FOR_SIGNATURE' | 'SIGNED' | 'DECLINED';
+    effectiveDate?: string;
     envelopeId?: string;
     signedAt?: Date;
+    createdByUserId?: string;
     createdAt: Date;
   }>;
   @Prop({ trim: true }) assignedTo?: string;
