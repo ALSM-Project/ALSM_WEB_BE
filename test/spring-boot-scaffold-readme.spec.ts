@@ -53,13 +53,15 @@ describe('Java export: programs that are called but not converted', () => {
   });
 
   it('writes a stand-in only for a called program that is not in the export', () => {
-    const stub = find(tree, 'cobolprogramclasses/vsbabend/VsbabendTasklet.java');
-    expect(stub?.content).toContain('package cobolprogramclasses.vsbabend;');
+    const stub = find(tree, 'jp/co/alsm/batch/vsbabend/VsbabendTasklet.java');
+    expect(stub?.content).toContain('package jp.co.alsm.batch.vsbabend;');
     expect(stub?.content).toContain('public class VsbabendTasklet');
     expect(stub?.content).toContain('COBOL program VSBABEND was not converted');
-    expect(find(tree, 'cobolprogramclasses/vsba2280/Vsba2280Tasklet.java')).toBeDefined();
+    expect(find(tree, 'jp/co/alsm/batch/vsba2280/Vsba2280Tasklet.java')).toBeDefined();
     // Vbka1210 is converted, so its own file is kept and no stand-in replaces it.
-    expect(find(tree, 'cobolprogramclasses/vbka1210/Vbka1210Tasklet.java')?.content).toBe(converted.content);
+    expect(find(tree, 'jp/co/alsm/batch/vbka1210/Vbka1210Tasklet.java')?.content).toBe(
+      converted.content.replace('cobolprogramclasses.', 'jp.co.alsm.batch.'),
+    );
   });
 
   it('lists the stand-ins in the README so the reader knows what to convert next', () => {
@@ -77,17 +79,20 @@ describe('Java export README: how to run', () => {
 
   it('shows the commands with a real job name and the jobs that exist', () => {
     expect(readme).toContain('mvn spring-boot:run -Dspring-boot.run.arguments=Vbka1200');
-    expect(readme).toContain('java -jar target/*.jar Vbka1200');
+    expect(readme).toContain('java -jar target/acme.jar Vbka1200');
+    expect(readme).toContain('java -jar target/acme.jar\n');
     expect(readme).toContain('- `Vbka1200`');
     expect(readme).toContain('mvn clean package');
     expect(readme).toContain('status: [COMPLETED]');
   });
 
-  it('explains why nothing runs without a job name, and the in-memory database', () => {
-    expect(readme).toContain('spring.batch.job.enabled');
-    expect(readme).toContain('does nothing');
+  it('explains which job runs without a name, the exit code, Config.properties and the in-memory database', () => {
+    expect(readme).toContain('**No argument:** it runs the first job');
+    expect(readme).toContain('exits - with code 0 only when the job ended `COMPLETED`');
+    expect(readme).toContain('Config.properties');
     expect(readme).toContain('jdbc:h2:mem:batchdb');
-    expect(readme).toContain('JDK 11 or newer');
+    expect(readme).toContain('JDK 8 or newer (8, 11, 17 and 21 all work)');
+    expect(readme).not.toContain('does nothing');
   });
 });
 
