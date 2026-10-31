@@ -17,6 +17,7 @@ import { GetSalesLeadService } from './modules/crm/application/get-sales-lead.se
 import { SalesController } from './modules/crm/presentation/sales.controller';
 import { SalesCrmController } from './modules/crm/presentation/sales-crm.controller';
 import { SalesCrmService } from './modules/crm/application/sales-crm.service';
+import { CreateContractService } from './modules/crm/application/create-contract.service';
 import { AdminModule } from './modules/admin/admin.module';
 import { CurrentSessionGuard } from './shared/security/current-session.guard';
 import { SessionAssuranceModule } from './modules/auth/session-assurance.module';
@@ -404,6 +405,7 @@ import { AuditModule } from './modules/audit/audit.module';
     RecordSalesRevenueService,
     GetSalesLeadService,
     SalesCrmService,
+    CreateContractService,
     {
       provide: SALES_UNIT_OF_WORK,
       inject: [
