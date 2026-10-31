@@ -104,7 +104,7 @@ export class CreateContractService {
       if (!created.replayed) {
         await audit.append({
           actorUserId: actor.userId,
-          organizationId: created.lead.organizationId,
+          organizationId: created.organizationId,
           action: 'LEAD_CONTRACT_CREATED',
           resourceType: 'LEAD',
           resourceId: leadId,

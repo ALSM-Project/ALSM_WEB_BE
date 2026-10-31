@@ -617,12 +617,26 @@ export class SalesCrmService {
   }
 
   private mapLead(doc: LeadDocument) {
+    const company = [doc.company, doc.companyName].find(
+      (value) => typeof value === 'string' && value.trim().length > 0,
+    ) ?? (
+      typeof doc.title === 'string' &&
+      doc.title.trim().length > 0 &&
+      !/^[a-f\d]{24}$/i.test(doc.title.trim())
+        ? doc.title.trim()
+        : undefined
+    ) ?? (
+      typeof doc.contactName === 'string' && doc.contactName.trim().length > 0
+        ? doc.contactName.trim()
+        : 'Unnamed company'
+    );
     return {
       id: doc.id || doc._id.toString(),
       organizationId: doc.organizationId?.toString(),
       title: doc.title,
       contactName: doc.contactName,
-      company: doc.company,
+      company,
+      email: doc.contactEmail,
       contactEmail: doc.contactEmail,
       phone: doc.phone,
       source: doc.source,
