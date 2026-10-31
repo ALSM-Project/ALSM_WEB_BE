@@ -4,22 +4,44 @@ import {
   ServiceUnavailableException,
   UnauthorizedException,
 } from '@nestjs/common';
-import { Types } from 'mongoose';
+import { Connection, Model, Types } from 'mongoose';
+import { AuditLog } from '../src/modules/audit/infrastructure/audit-log.schema';
+import { Organization } from '../src/modules/organizations/infrastructure/organization.schema';
+import { User } from '../src/modules/users/infrastructure/user.schema';
 import { ActivateCrmLeadService } from '../src/modules/crm/application/activate-crm-lead.service';
+import { Lead } from '../src/modules/crm/infrastructure/lead.schema';
 import { LeadStatus } from '../src/modules/crm/domain/lead.types';
+
+type MockFn = jest.Mock;
+
+interface TestLead {
+  _id: Types.ObjectId;
+  id: string;
+  status: LeadStatus;
+  revision: number;
+  stage: 'NEW' | 'CONTACTED' | 'QUALIFIED' | 'PROPOSAL' | 'WON' | 'LOST';
+  company: string;
+  contactName: string;
+  contactEmail: string;
+  organizationId: Types.ObjectId;
+  contracts: Array<{ id: string; plan?: string; status: string }>;
+  convertedOrganizationId?: Types.ObjectId;
+  provisioning?: { status: 'COMPLETED'; organizationId: string; adminLinked: boolean };
+  save: MockFn;
+}
 
 describe('ActivateCrmLeadService (UC-64)', () => {
   const ACTOR_ID = '6a8d90b0569ea93e27ad862c';
   const LEAD_ID = '6ad586fe9f2215c9ebcac858';
   const ORG_ID = '6a9cdbda5e82fb42d449ac03';
-  let lead: any;
-  let session: any;
-  let connection: any;
-  let leads: any;
-  let organizations: any;
-  let users: any;
-  let audits: any;
-  let crm: any;
+  let lead: TestLead;
+  let session: { withTransaction: MockFn; endSession: MockFn };
+  let connection: { startSession: MockFn };
+  let leads: { findById: MockFn };
+  let organizations: { findOne: MockFn; create: MockFn };
+  let users: { findOne: MockFn };
+  let audits: { create: MockFn };
+  let crm: { mapLead: MockFn };
   let service: ActivateCrmLeadService;
 
   const query = (value: unknown) => ({
@@ -54,8 +76,15 @@ describe('ActivateCrmLeadService (UC-64)', () => {
     };
     users = { findOne: jest.fn().mockReturnValue(query(null)) };
     audits = { create: jest.fn().mockResolvedValue([]) };
-    crm = { mapLead: jest.fn((doc) => ({ id: doc.id, stage: doc.stage, convertedOrganizationId: doc.convertedOrganizationId?.toString(), provisioning: doc.provisioning })) };
-    service = new ActivateCrmLeadService(connection, leads, organizations, users, audits, crm);
+    crm = { mapLead: jest.fn((doc: TestLead) => ({ id: doc.id, stage: doc.stage, convertedOrganizationId: doc.convertedOrganizationId?.toString(), provisioning: doc.provisioning })) };
+    service = new ActivateCrmLeadService(
+      connection as unknown as Connection,
+      leads as unknown as Model<Lead>,
+      organizations as unknown as Model<Organization>,
+      users as unknown as Model<User>,
+      audits as unknown as Model<AuditLog>,
+      crm as unknown as ActivateCrmLeadService['crm'],
+    );
   });
 
   it('rejects invalid actor and lead identifiers before opening a transaction', async () => {
@@ -100,7 +129,7 @@ describe('ActivateCrmLeadService (UC-64)', () => {
       members: [{ userId: customerUserId, role: 'ADMIN' }],
     })], { session });
     expect(lead).toMatchObject({ status: LeadStatus.CONVERTED, stage: 'WON', revision: 5 });
-    expect(lead.convertedOrganizationId.toString()).toBe(ORG_ID);
+    expect(lead.convertedOrganizationId?.toString()).toBe(ORG_ID);
     expect(lead.provisioning).toMatchObject({ status: 'COMPLETED', adminLinked: true, organizationId: ORG_ID });
     expect(lead.save).toHaveBeenCalledWith({ session });
     expect(audits.create).toHaveBeenCalledWith([expect.objectContaining({
@@ -116,7 +145,7 @@ describe('ActivateCrmLeadService (UC-64)', () => {
 
     expect(organizations.create).toHaveBeenCalledWith([expect.objectContaining({ members: [] })], { session });
     expect(result.adminLinked).toBe(false);
-    expect(lead.provisioning.adminLinked).toBe(false);
+    expect(lead.provisioning?.adminLinked).toBe(false);
   });
 
   it('returns the persisted conversion on retry without creating another organization or audit', async () => {

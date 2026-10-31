@@ -14,7 +14,7 @@ import { AuditLog } from '../../audit/infrastructure/audit-log.schema';
 import { Organization } from '../../organizations/infrastructure/organization.schema';
 import { OrganizationRole, OrganizationType } from '../../organizations/domain/organization.types';
 import { User } from '../../users/infrastructure/user.schema';
-import { Lead, LeadDocument } from '../infrastructure/lead.schema';
+import { Lead } from '../infrastructure/lead.schema';
 import { LeadStatus } from '../domain/lead.types';
 import { SalesCrmService } from './sales-crm.service';
 
