@@ -102,6 +102,7 @@ describe('Internal Staff Portal & Platform Administration Workflows', () => {
       findById: jest.Mock;
       findOne: jest.Mock;
       create: jest.Mock;
+      updateOne: jest.Mock;
     };
     let userModel: {
       findOne?: jest.Mock;
@@ -142,6 +143,9 @@ describe('Internal Staff Portal & Platform Administration Workflows', () => {
           .mockImplementation((dto) =>
             Promise.resolve({ id: 'lead-new-1', ...dto, save: jest.fn() }),
           ),
+        updateOne: jest.fn().mockReturnValue({
+          exec: jest.fn().mockResolvedValue({ matchedCount: 1 }),
+        }),
       };
 
       userModel = {
@@ -221,7 +225,10 @@ describe('Internal Staff Portal & Platform Administration Workflows', () => {
 
       expect(updated.stage).toBe('NEW');
       expect(mockLead.contracts[0].status).toBe('SIGNED');
-      expect(mockLead.markModified).toHaveBeenCalledWith('contracts');
+      expect(leadModel.updateOne).toHaveBeenCalledWith(
+        expect.objectContaining({ contracts: expect.any(Object) }),
+        expect.objectContaining({ $set: expect.objectContaining({ 'contracts.$.status': 'SIGNED' }) }),
+      );
       expect(auditRepo.append).toHaveBeenCalledWith(
         expect.objectContaining({ action: 'LEAD_CONTRACT_SIGNED' }),
       );

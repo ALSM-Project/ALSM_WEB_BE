@@ -128,12 +128,8 @@ export class ActivateCrmLeadService {
 
         const organizationId = organization._id.toString();
         const convertedAt = new Date();
-        lead.status = LeadStatus.CONVERTED;
-        lead.stage = 'WON';
-        lead.convertedAt = convertedAt;
-        lead.convertedOrganizationId = organization._id;
-        lead.provisioning = {
-          status: 'COMPLETED',
+        const provisioning = {
+          status: 'COMPLETED' as const,
           organizationId,
           organizationName: organization.name,
           domain,
@@ -141,8 +137,39 @@ export class ActivateCrmLeadService {
           adminLinked,
           completedAt: convertedAt,
         };
-        lead.revision = (lead.revision || 0) + 1;
-        await lead.save({ session: activeSession });
+        const expectedRevision = lead.revision;
+        const leadFilter: Record<string, unknown> = { _id: lead._id };
+        if (typeof expectedRevision === 'number') {
+          leadFilter.revision = expectedRevision;
+        } else {
+          leadFilter.revision = { $exists: false };
+        }
+        const update = await this.leads.updateOne(
+          leadFilter,
+          {
+            $set: {
+              status: LeadStatus.CONVERTED,
+              stage: 'WON',
+              convertedAt,
+              convertedOrganizationId: organization._id,
+              provisioning,
+              revision: (expectedRevision || 0) + 1,
+            },
+          },
+          { session: activeSession },
+        ).exec();
+        if (update.matchedCount !== 1) {
+          throw new ConflictException({
+            code: 'LEAD_CONVERSION_CONFLICT',
+            message: 'This lead changed during customer activation. Refresh it and try again.',
+          });
+        }
+        lead.status = LeadStatus.CONVERTED;
+        lead.stage = 'WON';
+        lead.convertedAt = convertedAt;
+        lead.convertedOrganizationId = organization._id;
+        lead.provisioning = provisioning;
+        lead.revision = (expectedRevision || 0) + 1;
         await this.audits.create([{
           actorUserId: new Types.ObjectId(actorUserId),
           organizationId: lead.organizationId,
