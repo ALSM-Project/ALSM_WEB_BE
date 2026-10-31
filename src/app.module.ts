@@ -197,6 +197,7 @@ import { SaveMethodMappingService } from './modules/conversions/application/save
 import { MethodMappingController } from './modules/conversions/presentation/method-mapping.controller';
 import { OnboardUserService } from './modules/users/application/onboard-user.service';
 import { UpdateUserStatusService } from './modules/users/application/update-user-status.service';
+import { UserOffboardingService } from './modules/users/application/user-offboarding.service';
 import { UsersController } from './modules/users/presentation/users.controller';
 import { AuthService } from './modules/auth/application/auth.service';
 import { ListActiveSessionsService } from './modules/auth/application/list-active-sessions.service';
@@ -507,6 +508,7 @@ import { NotificationsService } from './modules/notifications/notifications.serv
     SaveMethodMappingService,
     OnboardUserService,
     UpdateUserStatusService,
+    UserOffboardingService,
     RuleValidatorService,
     LegacyValidationService,
     ExportCodeService,
