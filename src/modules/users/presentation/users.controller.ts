@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Param, Patch, Post, UseGuards } from '@nestjs/common';
+import { Body, Controller, Get, Optional, Param, Patch, Post, UseGuards } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagger';
 import { CurrentUser } from '../../../shared/security/current-user.decorator';
 import { JwtAuthGuard } from '../../../shared/security/jwt-auth.guard';
@@ -21,8 +21,8 @@ export class UsersController {
   constructor(
     private readonly onboardUserService: OnboardUserService,
     private readonly updateUserStatusService: UpdateUserStatusService,
-    private readonly offboardingService: UserOffboardingService,
     private readonly rbacService: RbacService,
+    @Optional() private readonly offboardingService?: UserOffboardingService,
   ) {}
 
   @Get()
@@ -67,7 +67,7 @@ export class UsersController {
     @CurrentUser() user: AuthenticatedUser,
     @Param('id') id: string,
   ) {
-    return this.offboardingService.getOffboardingSummary(
+    return this.offboardingService?.getOffboardingSummary(
       user.userId,
       id,
       user.isPlatformAdmin,
@@ -89,7 +89,7 @@ export class UsersController {
     @Param('id') id: string,
     @Body() dto: ExecuteUserOffboardingDto,
   ) {
-    return this.offboardingService.executeOffboarding(
+    return this.offboardingService?.executeOffboarding(
       user.userId,
       id,
       user.isPlatformAdmin,
