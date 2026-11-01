@@ -1,4 +1,4 @@
-import { BadRequestException, ConflictException, ForbiddenException, NotFoundException } from '@nestjs/common';
+import { BadRequestException, ForbiddenException } from '@nestjs/common';
 import { Types } from 'mongoose';
 import { TemporaryRoleService } from '../src/modules/rbac/application/temporary-role.service';
 import { EffectivePermissionsService } from '../src/modules/rbac/application/effective-permissions.service';
@@ -7,12 +7,12 @@ const exec = <T>(value: T) => ({ exec: jest.fn().mockResolvedValue(value) });
 const REASON = 'Urgent batch migration needed for production issue';
 
 describe('UC-95 Request Temporary Role Specification Tests', () => {
-  let tempRoleModel: any;
-  let userModel: any;
-  let roleModel: any;
-  let userRoleModel: any;
-  let audit: any;
-  let notifications: any;
+  let tempRoleModel: Record<string, jest.Mock>;
+  let userModel: Record<string, jest.Mock>;
+  let roleModel: Record<string, jest.Mock>;
+  let userRoleModel: Record<string, jest.Mock>;
+  let audit: { append: jest.Mock };
+  let notifications: { createForUsers: jest.Mock };
   let service: TemporaryRoleService;
 
   const staffUserId = new Types.ObjectId().toString();
@@ -28,7 +28,7 @@ describe('UC-95 Request Temporary Role Specification Tests', () => {
           }),
         }),
       }),
-      create: jest.fn().mockImplementation(async (dto: any) => ({
+      create: jest.fn().mockImplementation(async (dto: Record<string, unknown>) => ({
         id: 'tr-req-123',
         _id: new Types.ObjectId(),
         ...dto,
@@ -72,12 +72,12 @@ describe('UC-95 Request Temporary Role Specification Tests', () => {
     };
 
     service = new TemporaryRoleService(
-      tempRoleModel as any,
-      userModel as any,
-      roleModel as any,
-      audit as any,
-      userRoleModel as any,
-      notifications as any,
+      tempRoleModel as never,
+      userModel as never,
+      roleModel as never,
+      audit as never,
+      userRoleModel as never,
+      notifications as never,
     );
   });
 
@@ -292,8 +292,8 @@ describe('UC-95 Request Temporary Role Specification Tests', () => {
       };
 
       const permService = new EffectivePermissionsService(
-        mockRbacRepo as any,
-        mockActiveTempModel as any,
+        mockRbacRepo as never,
+        mockActiveTempModel as never,
       );
 
       const roles = await permService.getUserRoles(staffUserId);
