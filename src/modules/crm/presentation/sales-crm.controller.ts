@@ -29,6 +29,8 @@ import { CreateContractService } from '../application/create-contract.service';
 import { ActivateCrmLeadService } from '../application/activate-crm-lead.service';
 import { CreateContractDto } from './sales.dto';
 import { SalesPipelineQueryDto } from './sales-pipeline-query.dto';
+import { SalesReportQueryDto } from './sales-report-query.dto';
+import { TeamAccessService } from '../../teams/application/team-access.service';
 
 @ApiTags('CRM & Sales (Sections 3.11 & 3.12)')
 @ApiBearerAuth()
@@ -40,6 +42,7 @@ export class SalesCrmController {
     private readonly crmService: SalesCrmService,
     private readonly createContractService: CreateContractService,
     private readonly activateCrmLeadService: ActivateCrmLeadService,
+    private readonly teamAccess: TeamAccessService,
   ) {}
 
   @Get('pipeline')
@@ -182,15 +185,30 @@ export class SalesCrmController {
   }
 
   @Get('reports')
-  @ApiOperation({ summary: 'View comprehensive sales reports (3.12.1)' })
-  async getReports(@Query('teamId') teamId?: string) {
-    return this.crmService.getSalesReports(teamId);
+  @UseGuards(CurrentSessionGuard, PermissionsGuard)
+  @RequirePermissions('sales.reports.view')
+  @ApiOperation({ summary: 'View organization-scoped sales reports (UC-68)' })
+  async getReports(
+    @CurrentUser() user: AuthenticatedUser,
+    @Headers('x-organization-id') organizationId: string | undefined,
+    @Query() query: SalesReportQueryDto,
+  ) {
+    const organization = await this.teamAccess.reportingOrganization(user.userId, organizationId);
+    return this.crmService.getSalesReports(organization.id, query.dateRange);
   }
 
   @Get('reports/export')
-  @ApiOperation({ summary: 'Export sales reports to CSV (3.12.1)' })
-  async exportCsv(@Res() res: Response) {
-    const csv = await this.crmService.exportSalesReportsCsv();
+  @UseGuards(CurrentSessionGuard, PermissionsGuard)
+  @RequirePermissions('sales.reports.view')
+  @ApiOperation({ summary: 'Export organization-scoped sales reports to CSV (UC-68)' })
+  async exportCsv(
+    @CurrentUser() user: AuthenticatedUser,
+    @Headers('x-organization-id') organizationId: string | undefined,
+    @Query() query: SalesReportQueryDto,
+    @Res() res: Response,
+  ) {
+    const organization = await this.teamAccess.reportingOrganization(user.userId, organizationId);
+    const csv = await this.crmService.exportSalesReportsCsv(organization.id, query.dateRange);
     res.setHeader('Content-Type', 'text/csv');
     res.setHeader('Content-Disposition', 'attachment; filename="sales-report.csv"');
     res.send(csv);
