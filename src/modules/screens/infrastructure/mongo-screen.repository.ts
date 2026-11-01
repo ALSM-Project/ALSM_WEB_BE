@@ -24,8 +24,8 @@ export class MongoScreenRepository implements ScreenRepository {
     );
   }
 
-  async findById(id: string, organizationId: string): Promise<ScreenRecord | null> {
-    const doc = await this.model.findOne({ _id: id, organizationId }).exec();
+  async findById(id: string, organizationId?: string): Promise<ScreenRecord | null> {
+    const filter: any = { _id: id }; if (organizationId) filter.organizationId = organizationId; const doc = await this.model.findOne(filter).exec();
     return doc ? this.map(doc) : null;
   }
 
