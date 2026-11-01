@@ -408,11 +408,11 @@ export class SalesCrmService {
       throw new BadRequestException({ code: 'INVALID_DISCOUNT', message: 'Discount must be between 0 and 100 percent.' });
     }
     const discountReason = dto.discountReason?.trim() || undefined;
-    if (discount > 15 && !discountReason) {
-      throw new BadRequestException({ code: 'DISCOUNT_REASON_REQUIRED', message: 'Discounts above 15% require a justification.' });
+    if (discount >= 15 && !discountReason) {
+      throw new BadRequestException({ code: 'DISCOUNT_REASON_REQUIRED', message: 'Discounts of 15% or more require a justification.' });
     }
     const doc = await this.findLeadById(leadId, organizationId);
-    const requiresApproval = discount > 15;
+    const requiresApproval = discount >= 15;
     const quoteStatus = requiresApproval ? 'PENDING_APPROVAL' : 'SENT';
 
     const quote = {

@@ -43,8 +43,8 @@ export class SendQuoteService {
     if (!Number.isFinite(discount) || discount < 0 || discount > 100) {
       throw new BadRequestException({ code: 'INVALID_DISCOUNT', message: 'Discount must be between 0 and 100 percent' });
     }
-    if (discount > 15 && !dto.discountReason?.trim()) {
-      throw new BadRequestException({ code: 'DISCOUNT_REASON_REQUIRED', message: 'Discounts above 15% require a justification' });
+    if (discount >= 15 && !dto.discountReason?.trim()) {
+      throw new BadRequestException({ code: 'DISCOUNT_REASON_REQUIRED', message: 'Discounts of 15% or more require a justification' });
     }
     const validityDays = dto.validityDays ?? 30;
     if (!Number.isInteger(validityDays) || validityDays < 1 || validityDays > 365) {
@@ -87,7 +87,7 @@ export class SendQuoteService {
         throw new BadRequestException({ code: 'INVALID_STATUS', message: `Cannot send a quote to a ${lead.status.toLowerCase()} lead` });
       }
 
-      const requiresApproval = discount > 15;
+      const requiresApproval = discount >= 15;
       const quoteStatus: LeadQuoteItem['status'] = requiresApproval ? 'PENDING_APPROVAL' : 'SENT';
       const finalAmount = Math.round(dto.amount * (1 - discount / 100));
       const quoteNumber = `QT-${new Date().getFullYear()}-${Math.floor(10000 + Math.random() * 90000)}`;

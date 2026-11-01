@@ -84,7 +84,8 @@ describe('SendQuoteService (UC-62)', () => {
     const result = await service.execute(VALID_ID, payload({ discountPercent: 10, recipientEmail: 'BUYER@example.com' }));
 
     expect(result.quote.status).toBe('SENT');
-    expect(result.quote.amount).toBe(45000);
+    expect(result.quote.amount).toBe(50000);
+    expect(result.quote.finalPrice).toBe(45000);
     expect(result.quote.recipientEmail).toBe('buyer@example.com');
     expect(result.lead.status).toBe(LeadStatus.PROPOSAL);
     expect(leads.addQuoteOnce).toHaveBeenCalledWith(VALID_ID, expect.objectContaining({ requestId: REQUEST_ID }), LeadStatus.QUALIFIED, LeadStatus.PROPOSAL);
