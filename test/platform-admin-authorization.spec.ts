@@ -147,7 +147,15 @@ describe('real AdminModule authorization HTTP boundary', () => {
     findUserRoles: jest.fn(),
     findRolePermissionsByRoleIds: jest.fn(),
   };
-  const audit = { append: jest.fn() };
+  const audit = { append: jest.fn(), inTransaction: jest.fn() };
+  const transactionSession = {
+    withTransaction: jest.fn(),
+    endSession: jest.fn().mockResolvedValue(undefined),
+  };
+  const transactionConnection = {
+    db: { admin: () => ({ command: jest.fn().mockResolvedValue({ setName: 'rs0' }) }) },
+    startSession: jest.fn(),
+  };
   const email = { send: jest.fn() };
   const projectRepository = {
     assignTeamLead: jest.fn(),
@@ -188,6 +196,7 @@ describe('real AdminModule authorization HTTP boundary', () => {
       },
     ]),
   );
+  Object.defineProperty(models.Organization, 'db', { value: transactionConnection, enumerable: false });
   const save = jest.fn();
   const query = (value: unknown) => {
     const chain = {
@@ -196,6 +205,7 @@ describe('real AdminModule authorization HTTP boundary', () => {
       populate: () => chain,
       skip: () => chain,
       limit: () => chain,
+      session: () => chain,
       exec: async () => value,
     };
     return chain;
@@ -338,6 +348,9 @@ describe('real AdminModule authorization HTTP boundary', () => {
       members: [{ userId: actorId, role: 'MEMBER' }],
     });
     audit.append.mockResolvedValue(undefined);
+    audit.inTransaction.mockImplementation(() => audit);
+    transactionSession.withTransaction.mockImplementation(async (work: () => Promise<unknown>) => work());
+    transactionConnection.startSession.mockResolvedValue(transactionSession);
     email.send.mockResolvedValue(undefined);
     for (const model of Object.values(models)) {
       model.find.mockImplementation(() => query([]));

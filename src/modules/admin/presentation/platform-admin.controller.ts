@@ -10,6 +10,7 @@ import { AuditLogService } from '../application/audit-log.service';
 import { RequirePermissions } from '../../../shared/security/require-permissions.decorator';
 import { CheckOffboardingTransfer, DisabledSupportImpersonation, PlatformAdminAuthorizationGuard } from './platform-admin-authorization.guard';
 import { ListOrganizationsQueryDto } from './dto/list-organizations-query.dto';
+import { UpdateOrganizationEngagementDto } from './dto/update-organization-engagement.dto';
 
 @ApiTags('Platform Administration (Sections 3.10, 3.13 & 3.14)')
 @ApiBearerAuth()
@@ -64,13 +65,7 @@ export class PlatformAdminController {
   async updateEngagement(
     @CurrentUser() user: AuthenticatedUser,
     @Param('id') id: string,
-    @Body()
-    body: {
-      engagementType?: string;
-      status?: 'ACTIVE' | 'SUSPENDED' | 'TRIAL';
-      trialExpiresAt?: string;
-      limits?: { maxScreens: number; maxPrograms: number; maxStorageGb: number };
-    },
+    @Body() body: UpdateOrganizationEngagementDto,
   ) {
     return this.adminService.updateOrganizationEngagement(user.userId, id, body);
   }
