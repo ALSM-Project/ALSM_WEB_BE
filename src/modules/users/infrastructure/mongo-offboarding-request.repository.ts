@@ -149,7 +149,16 @@ export class MongoOffboardingRequestRepository implements IOffboardingRequestRep
     return updated ? this.mapToRecord(updated) : null;
   }
 
-  private mapToRecord(doc: any): OffboardingRequestRecord {
+  private mapToRecord(
+    doc:
+      | OffboardingRequestDocument
+      | (OffboardingRequest & {
+          _id?: Types.ObjectId;
+          id?: string;
+          createdAt?: Date;
+          updatedAt?: Date;
+        }),
+  ): OffboardingRequestRecord {
     return {
       id: doc._id?.toString() || doc.id,
       organizationId: doc.organizationId?.toString(),

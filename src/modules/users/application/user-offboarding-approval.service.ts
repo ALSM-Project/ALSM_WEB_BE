@@ -16,13 +16,19 @@ import {
   IOffboardingRequestRepository,
   OFFBOARDING_REQUEST_REPOSITORY,
   OffboardingRequestRecord,
+  OffboardingRequestStatus,
 } from '../domain/offboarding-request.types';
+import {
+  UserOffboardingResult,
+  UserOffboardingSummary,
+} from '../domain/user-offboarding.types';
 import {
   ApproveOffboardingRequestDto,
   CreateOffboardingRequestDto,
   ListOffboardingRequestsQueryDto,
   RejectOffboardingRequestDto,
 } from '../presentation/offboarding-request.dto';
+import { ProjectTransferItemDto as OffboardingProjectTransferItemDto } from '../presentation/user-offboarding.dto';
 import { UserOffboardingService } from './user-offboarding.service';
 
 function toObjectId(id: string): Types.ObjectId {
@@ -162,13 +168,15 @@ export class UserOffboardingApprovalService {
 
     const organizationId =
       targetTeam?.organizationId?.toString() ||
-      (targetUser as any).organizationId?.toString() ||
-      (actorUser as any).organizationId?.toString() ||
+      ((targetUser as unknown as { organizationId?: { toString(): string } }).organizationId?.toString()) ||
+      ((actorUser as unknown as { organizationId?: { toString(): string } }).organizationId?.toString()) ||
       '000000000000000000000001';
 
     const createdRecord = await this.requestRepo.create({
       organizationId,
-      teamId: targetTeam ? (targetTeam as any)._id?.toString() : undefined,
+      teamId: targetTeam
+        ? (targetTeam as unknown as { _id?: { toString(): string } })._id?.toString()
+        : undefined,
       teamName: targetTeam ? targetTeam.name : undefined,
       targetUserId: dto.targetUserId,
       targetUserName: targetUser.fullName || targetUser.email,
@@ -238,7 +246,7 @@ export class UserOffboardingApprovalService {
     const filter: {
       teamId?: string;
       targetUserId?: string;
-      status?: any;
+      status?: OffboardingRequestStatus;
     } = {};
 
     if (query?.status) filter.status = query.status;
@@ -256,7 +264,9 @@ export class UserOffboardingApprovalService {
       .exec();
 
     const managedTeamIds = new Set(
-      managedTeams.map((t) => (t as any)._id?.toString()),
+      managedTeams.map((t) =>
+        (t as unknown as { _id?: { toString(): string } })._id?.toString(),
+      ),
     );
     const managedMemberIds = new Set(
       managedTeams.flatMap((t) => t.memberIds || []),
@@ -285,7 +295,7 @@ export class UserOffboardingApprovalService {
     isPlatformAdmin = false,
   ): Promise<{
     request: OffboardingRequestRecord;
-    liveSummary: any;
+    liveSummary: UserOffboardingSummary | Record<string, unknown>;
     isAuthorizedToReview: boolean;
   }> {
     const request = await this.requestRepo.findById(requestId);
@@ -310,16 +320,18 @@ export class UserOffboardingApprovalService {
     }
 
     // Call UC-83 to get live resource & security summary
-    let liveSummary: any = null;
+    let liveSummary: UserOffboardingSummary | Record<string, unknown>;
     try {
       liveSummary = await this.offboardingService.getOffboardingSummary(
         actorUserId,
         request.targetUserId,
         isPlatformAdmin,
       );
-    } catch (err: any) {
+    } catch (err: unknown) {
+      const msg =
+        err instanceof Error ? err.message : 'Failed to retrieve live resource summary';
       liveSummary = {
-        error: err.message || 'Failed to retrieve live resource summary',
+        error: msg,
         activeSessionsCount: 0,
         apiKeysCount: 0,
         assignedProjects: [],
@@ -345,7 +357,7 @@ export class UserOffboardingApprovalService {
     isPlatformAdmin = false,
   ): Promise<{
     request: OffboardingRequestRecord;
-    executionResult: any;
+    executionResult: UserOffboardingResult;
   }> {
     const request = await this.requestRepo.findById(requestId);
     if (!request) {
@@ -395,7 +407,7 @@ export class UserOffboardingApprovalService {
       {
         reason: request.reason,
         transferToUserId: effectiveTransferToUserId,
-        projectTransfers: effectiveProjectTransfers as any,
+        projectTransfers: effectiveProjectTransfers as unknown as OffboardingProjectTransferItemDto[],
       },
     );
 
@@ -555,7 +567,9 @@ export class UserOffboardingApprovalService {
 
     const managesTarget = managedTeams.some(
       (t) =>
-        (request.teamId && (t as any)._id?.toString() === request.teamId) ||
+        (request.teamId &&
+          (t as unknown as { _id?: { toString(): string } })._id?.toString() ===
+            request.teamId) ||
         t.memberIds.includes(request.targetUserId),
     );
 

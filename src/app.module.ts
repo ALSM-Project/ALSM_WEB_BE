@@ -519,6 +519,8 @@ import { NotificationsService } from './modules/notifications/notifications.serv
     OnboardUserService,
     UpdateUserStatusService,
     UserOffboardingService,
+    UserOffboardingApprovalService,
+    { provide: OFFBOARDING_REQUEST_REPOSITORY, useClass: MongoOffboardingRequestRepository },
     RuleValidatorService,
     LegacyValidationService,
     ExportCodeService,
