@@ -1,6 +1,6 @@
 import { BadRequestException } from '@nestjs/common';
 import { ReviewDiscountService } from '../src/modules/crm/application/review-discount.service';
-import { SalesUnitOfWork } from '../src/modules/crm/application/sales-unit-of-work.port';
+import { SalesMutationRepositories, SalesUnitOfWork } from '../src/modules/crm/application/sales-unit-of-work.port';
 
 describe('ReviewDiscountService (UC-70)', () => {
   const actorUserId = '6a8d90b0569ea93e27ad862c';
@@ -20,8 +20,12 @@ describe('ReviewDiscountService (UC-70)', () => {
       replayed: false,
     });
     append = jest.fn().mockResolvedValue(undefined);
-    run = jest.fn(async (work: (repositories: any) => Promise<unknown>) =>
-      work({ leads: { reviewDiscount }, audit: { append }, revenue: {} }),
+    run = jest.fn(async (work: (repositories: SalesMutationRepositories) => Promise<unknown>) =>
+      work({
+        leads: { reviewDiscount } as unknown as SalesMutationRepositories['leads'],
+        audit: { append } as unknown as SalesMutationRepositories['audit'],
+        revenue: {} as SalesMutationRepositories['revenue'],
+      }),
     );
     service = new ReviewDiscountService({ run } as unknown as SalesUnitOfWork);
   });
