@@ -22,8 +22,6 @@ import { TemporaryRoleController } from './presentation/temporary-role.controlle
 import { RBAC_REPOSITORY } from './domain/rbac.repository.interface';
 import { MongoRbacRepository } from './infrastructure/persistence/mongo-rbac.repository';
 import { TemporaryRole, TemporaryRoleSchema } from './infrastructure/schemas/temporary-role.schema';
-import { INTERNAL_SUPPORT_ASSIGNMENT } from './domain/internal-support-assignment.port';
-import { MongoInternalSupportAssignmentReader } from './infrastructure/mongo-internal-support-assignment.reader';
 
 @Module({
   imports: [
@@ -40,7 +38,6 @@ import { MongoInternalSupportAssignmentReader } from './infrastructure/mongo-int
   ],
   controllers: [RbacController, TemporaryRoleController],
   providers: [
-    { provide: INTERNAL_SUPPORT_ASSIGNMENT, useClass: MongoInternalSupportAssignmentReader },
     MongoRbacRepository,
     {
       provide: RBAC_REPOSITORY,
@@ -51,6 +48,6 @@ import { MongoInternalSupportAssignmentReader } from './infrastructure/mongo-int
     RbacSeedService,
     TemporaryRoleService,
   ],
-  exports: [INTERNAL_SUPPORT_ASSIGNMENT, RBAC_REPOSITORY, RbacService, EffectivePermissionsService, TemporaryRoleService],
+  exports: [RBAC_REPOSITORY, RbacService, EffectivePermissionsService, TemporaryRoleService],
 })
 export class RbacModule {}
