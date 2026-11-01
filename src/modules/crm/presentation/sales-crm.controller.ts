@@ -270,4 +270,30 @@ export class SalesCrmController {
     const organization = await this.teamAccess.reportingOrganization(user.userId, organizationId);
     return this.reviewDiscountService.execute({ ...body, organizationId: organization.id, actorUserId: user.userId, outcome: 'ESCALATE' });
   }
+
+  @Post('discounts/executive/approve')
+  @UseGuards(CurrentSessionGuard, PermissionsGuard)
+  @RequirePermissions('sales.discounts.executive.review')
+  @ApiOperation({ summary: 'Approve an escalated discount above the Sales Manager authority limit (UC-70)' })
+  async approveEscalatedDiscount(
+    @CurrentUser() user: AuthenticatedUser,
+    @Headers('x-organization-id') organizationId: string | undefined,
+    @Body() body: DiscountRequestDto,
+  ) {
+    const organization = await this.teamAccess.reportingOrganization(user.userId, organizationId);
+    return this.reviewDiscountService.execute({ ...body, organizationId: organization.id, actorUserId: user.userId, outcome: 'EXECUTIVE_APPROVE' });
+  }
+
+  @Post('discounts/executive/reject')
+  @UseGuards(CurrentSessionGuard, PermissionsGuard)
+  @RequirePermissions('sales.discounts.executive.review')
+  @ApiOperation({ summary: 'Reject an escalated discount with a recorded reason (UC-70)' })
+  async rejectEscalatedDiscount(
+    @CurrentUser() user: AuthenticatedUser,
+    @Headers('x-organization-id') organizationId: string | undefined,
+    @Body() body: RejectDiscountDto,
+  ) {
+    const organization = await this.teamAccess.reportingOrganization(user.userId, organizationId);
+    return this.reviewDiscountService.execute({ ...body, organizationId: organization.id, actorUserId: user.userId, outcome: 'EXECUTIVE_REJECT' });
+  }
 }

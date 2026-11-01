@@ -68,6 +68,7 @@ export class Lead {
     planName: string;
     projectScope?: string;
     amount: number;
+    finalPrice?: number;
     discountPercent?: number;
     discountApproved?: boolean;
     discountReason?: string;
@@ -77,6 +78,8 @@ export class Lead {
     rejectionReason?: string;
     escalatedBy?: string;
     escalatedAt?: Date;
+    executiveReviewedBy?: string;
+    executiveReviewedAt?: Date;
     status: 'DRAFT' | 'PENDING_APPROVAL' | 'SENT' | 'ACCEPTED' | 'REJECTED';
     sentAt?: Date;
     pdfUrl?: string;

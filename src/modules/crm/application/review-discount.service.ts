@@ -29,7 +29,8 @@ export class ReviewDiscountService {
       throw new BadRequestException({ code: 'INVALID_QUOTE_ID', message: 'The quote identifier is invalid.' });
     }
     const reason = typeof input.reason === 'string' ? input.reason.trim() : undefined;
-    if (input.outcome === 'REJECT' && (!reason || reason.length < 5 || reason.length > 500)) {
+    if ((input.outcome === 'REJECT' || input.outcome === 'EXECUTIVE_REJECT') &&
+      (!reason || reason.length < 5 || reason.length > 500)) {
       throw new BadRequestException({ code: 'INVALID_REJECTION_REASON', message: 'Provide a rejection reason between 5 and 500 characters.' });
     }
 
@@ -46,11 +47,15 @@ export class ReviewDiscountService {
         await audit.append({
           actorUserId: input.actorUserId,
           organizationId: result.organizationId,
-          action: input.outcome === 'APPROVE'
-            ? 'DISCOUNT_APPROVED'
-            : input.outcome === 'REJECT'
-              ? 'DISCOUNT_REJECTED'
-              : 'DISCOUNT_ESCALATED',
+          action: input.outcome === 'EXECUTIVE_APPROVE'
+            ? 'DISCOUNT_EXECUTIVE_APPROVED'
+            : input.outcome === 'EXECUTIVE_REJECT'
+              ? 'DISCOUNT_EXECUTIVE_REJECTED'
+              : input.outcome === 'APPROVE'
+                ? 'DISCOUNT_APPROVED'
+                : input.outcome === 'REJECT'
+                  ? 'DISCOUNT_REJECTED'
+                  : 'DISCOUNT_ESCALATED',
           resourceType: 'QUOTE',
           resourceId: quoteId,
           metadata: {
@@ -67,9 +72,9 @@ export class ReviewDiscountService {
         quote: result.quote,
         message: result.replayed
           ? 'This discount request was already processed; no duplicate change was made.'
-          : input.outcome === 'APPROVE'
-            ? 'Discount approved and quote sent.'
-            : input.outcome === 'REJECT'
+          : input.outcome === 'APPROVE' || input.outcome === 'EXECUTIVE_APPROVE'
+            ? 'Discount approved. The quote is now marked as sent.'
+            : input.outcome === 'REJECT' || input.outcome === 'EXECUTIVE_REJECT'
               ? 'Discount rejected.'
               : 'Discount escalated for higher approval.',
       };

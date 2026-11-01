@@ -85,6 +85,7 @@ export class Lead {
     planName: string;
     projectScope?: string;
     amount: number;
+    finalPrice?: number;
     discountPercent?: number;
     discountApproved?: boolean;
     discountReason?: string;
