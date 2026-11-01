@@ -200,6 +200,7 @@ describe('real AdminModule authorization HTTP boundary', () => {
     ]),
   );
   Object.defineProperty(models.Organization, 'db', { value: transactionConnection, enumerable: false });
+  Object.defineProperty(models.EngagementType, 'db', { value: transactionConnection, enumerable: false });
   const save = jest.fn();
   const query = (value: unknown) => {
     const chain = {
@@ -392,7 +393,20 @@ describe('real AdminModule authorization HTTP boundary', () => {
         models.UserRole.updateOne.mockImplementation(() => ({ exec: async () => ({ upsertedCount: 1 }) }));
         models.Organization.updateOne.mockImplementation(() => ({ exec: async () => ({ modifiedCount: 1 }) }));
       }
-      const body = {
+      if (path === 'engagement-types') {
+        models.EngagementType.create.mockResolvedValue([{
+          _id: new Types.ObjectId(),
+          name: 'Created Plan',
+          code: 'CREATED_PLAN',
+          price: 12000,
+          trialLimits: { maxScreens: 10, maxPrograms: 5, maxStorageGb: 2 },
+          usageLimits: { maxScreens: 100, maxPrograms: 50, maxStorageGb: 20 },
+          features: [],
+          isActive: true,
+          toObject() { return this; },
+        }]);
+      }
+      const body: Record<string, unknown> = {
         name: 'Created',
         contactEmail: 'new@example.test',
         engagementType: 'Enterprise Pilot',
@@ -401,6 +415,22 @@ describe('real AdminModule authorization HTTP boundary', () => {
         projectId: targetId,
         newAssigneeId: otherId,
       };
+      if (path === 'engagement-types') {
+        body.name = 'Created Plan';
+        delete body.contactEmail;
+        delete body.status;
+        delete body.projectId;
+        delete body.newAssigneeId;
+        Object.assign(body, {
+          code: 'CREATED_PLAN',
+          price: 12000,
+          trialLimits: { maxScreens: 10, maxPrograms: 5, maxStorageGb: 2 },
+          usageLimits: { maxScreens: 100, maxPrograms: 50, maxStorageGb: 20 },
+          features: [],
+          includesCobolConversion: false,
+          requestId: 'b286dd90-fba3-4ead-a8c5-c2ac88c1b2cb',
+        });
+      }
       const response = await call(method, path, {}, body);
       expect(response.status).toBe(method === 'post' ? 201 : 200);
       expect(rbac.findPermissions).toHaveBeenCalled();

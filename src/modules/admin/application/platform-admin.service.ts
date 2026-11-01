@@ -38,6 +38,7 @@ import { Role, RoleDocument } from '../../rbac/infrastructure/schemas/role.schem
 import { UserRole, UserRoleDocument } from '../../rbac/infrastructure/schemas/user-role.schema';
 import { EMAIL_PORT, EmailPort } from '../../auth/domain/email.port';
 import { createHash, randomBytes, randomUUID } from 'crypto';
+import { CreateEngagementTypeDto } from '../presentation/dto/create-engagement-type.dto';
 
 type TransactionAwareAuditRepository = AuditRepository & {
   inTransaction(session: ClientSession, connection: Connection): AuditRepository;
@@ -574,19 +575,155 @@ export class PlatformAdminService {
       ]);
       list = await this.engagementModel.find({ isActive: true }).sort({ price: 1 }).exec();
     }
-    return list;
+    return list.map((item) => this.toEngagementTypeResponse(item));
   }
 
-  async createEngagementType(actorUserId: string, dto: Record<string, unknown>) {
-    const created = await this.engagementModel.create(dto);
-    await this.audit.append({
-      actorUserId,
-      action: 'ENGAGEMENT_TYPE_CREATED',
-      resourceType: 'ENGAGEMENT_TYPE',
-      resourceId: created.id,
-      metadata: { name: created.name },
-    });
-    return created;
+  async createEngagementType(actorUserId: string, dto: CreateEngagementTypeDto) {
+    if (!Types.ObjectId.isValid(actorUserId)) {
+      throw new BadRequestException({ code: 'INVALID_ACTOR_ID', message: 'A valid platform administrator is required.' });
+    }
+    const name = dto.name.trim().replace(/\s+/g, ' ');
+    const normalizedName = name.toLowerCase();
+    const code = (dto.code?.trim().toUpperCase() || this.generateEngagementCode(name));
+    if (!/^[A-Z][A-Z0-9_]{1,49}$/.test(code)) {
+      throw new BadRequestException({ code: 'INVALID_ENGAGEMENT_CODE', message: 'Enter a plan code using 2–50 letters, numbers, or underscores; it must start with a letter.' });
+    }
+    const requestId = dto.requestId || randomUUID();
+    const data = {
+      name,
+      normalizedName,
+      code,
+      description: dto.description?.trim() || undefined,
+      price: dto.price,
+      trialLimits: dto.trialLimits,
+      usageLimits: dto.usageLimits,
+      features: dto.features?.map((feature) => feature.trim()).filter(Boolean) || [],
+      includesCobolConversion: dto.includesCobolConversion ?? false,
+      supportTier: dto.supportTier || (dto.price > 25_000 ? 'PREMIER' : 'STANDARD'),
+      slaHours: dto.slaHours ?? (dto.price > 25_000 ? 4 : 12),
+      isActive: true,
+    };
+    const fingerprint = createHash('sha256').update(JSON.stringify(data)).digest('hex');
+    const findRequest = () => this.engagementModel
+      .findOne({ provisioningRequestId: requestId })
+      .select('+provisioningRequestId +provisioningFingerprint')
+      .exec();
+    const prior = await findRequest();
+    if (prior) {
+      if (prior.provisioningFingerprint !== fingerprint) {
+        throw new ConflictException({ code: 'IDEMPOTENCY_KEY_REUSED', message: 'This request identifier was already used for different engagement type details.' });
+      }
+      return { engagementType: this.toEngagementTypeResponse(prior), replayed: true };
+    }
+
+    let created: EngagementTypeDocument | null = null;
+    let replayed = false;
+    try {
+      const transactionRunner = new MongoTransactionRunner(this.engagementModel.db);
+      await transactionRunner.run(async (session) => {
+        const requestMatch = await this.engagementModel
+          .findOne({ provisioningRequestId: requestId })
+          .select('+provisioningRequestId +provisioningFingerprint')
+          .session(session)
+          .exec();
+        if (requestMatch) {
+          if (requestMatch.provisioningFingerprint !== fingerprint) {
+            throw new ConflictException({ code: 'IDEMPOTENCY_KEY_REUSED', message: 'This request identifier was already used for different engagement type details.' });
+          }
+          created = requestMatch;
+          replayed = true;
+          return;
+        }
+
+        const escapedName = name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+        const existingName = await this.engagementModel.findOne({
+          $or: [{ normalizedName }, { name: new RegExp(`^${escapedName}$`, 'i') }],
+        }).session(session).exec();
+        if (existingName) {
+          throw new ConflictException({ code: 'ENGAGEMENT_TYPE_NAME_EXISTS', message: 'An engagement type with this name already exists.' });
+        }
+        const existingCode = await this.engagementModel.findOne({ code }).session(session).exec();
+        const legacyCodeMatch = existingCode ? null : (await this.engagementModel
+          .find({ code: { $exists: false } })
+          .session(session)
+          .exec())
+          .find((item) => this.generateEngagementCode(item.name) === code);
+        if (existingCode || legacyCodeMatch) {
+          throw new ConflictException({ code: 'ENGAGEMENT_TYPE_CODE_EXISTS', message: 'An engagement type with this code already exists.' });
+        }
+
+        const [createdRecord] = await this.engagementModel.create([{
+          ...data,
+          provisioningRequestId: requestId,
+          provisioningFingerprint: fingerprint,
+        }], { session });
+        created = createdRecord;
+        const transactionAudit = (this.audit as TransactionAwareAuditRepository).inTransaction(session, this.engagementModel.db);
+        await transactionAudit.append({
+          actorUserId,
+          action: 'ENGAGEMENT_TYPE_CREATED',
+          resourceType: 'ENGAGEMENT_TYPE',
+          resourceId: createdRecord._id.toString(),
+          metadata: { name, code, price: String(data.price), supportTier: data.supportTier },
+        });
+      }, requestId);
+    } catch (error) {
+      if (error instanceof ConflictException || error instanceof BadRequestException) throw error;
+      if (error instanceof ServiceUnavailableException) {
+        const concurrent = await findRequest();
+        if (concurrent?.provisioningFingerprint === fingerprint) {
+          return { engagementType: this.toEngagementTypeResponse(concurrent), replayed: true };
+        }
+        const [nameMatch, codeMatch] = await Promise.all([
+          this.engagementModel.findOne({ $or: [{ normalizedName }, { name: new RegExp(`^${name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`, 'i') }] }).exec(),
+          this.engagementModel.findOne({ code }).exec(),
+        ]);
+        if (nameMatch) throw new ConflictException({ code: 'ENGAGEMENT_TYPE_NAME_EXISTS', message: 'An engagement type with this name already exists.' });
+        if (codeMatch) throw new ConflictException({ code: 'ENGAGEMENT_TYPE_CODE_EXISTS', message: 'An engagement type with this code already exists.' });
+        throw error;
+      }
+      if ((error as { code?: number })?.code === 11000) {
+        const concurrent = await findRequest();
+        if (concurrent?.provisioningFingerprint === fingerprint) {
+          return { engagementType: this.toEngagementTypeResponse(concurrent), replayed: true };
+        }
+        throw new ConflictException({ code: 'ENGAGEMENT_TYPE_ALREADY_EXISTS', message: 'This engagement type conflicts with an existing name or code.' });
+      }
+      this.logger.error('Engagement type creation failed', error instanceof Error ? error.name : 'unknown error');
+      throw new ServiceUnavailableException({ code: 'ENGAGEMENT_TYPE_CREATE_FAILED', message: 'The engagement type could not be created. Please retry.' });
+    }
+    if (!created) {
+      throw new ServiceUnavailableException({ code: 'ENGAGEMENT_TYPE_CREATE_FAILED', message: 'The engagement type could not be created. Please retry.' });
+    }
+    return { engagementType: this.toEngagementTypeResponse(created), replayed };
+  }
+
+  private generateEngagementCode(name: string): string {
+    const base = name.toUpperCase().replace(/[^A-Z0-9]+/g, '_').replace(/^_+|_+$/g, '').slice(0, 45);
+    const code = /^[A-Z]/.test(base) ? base : `PLAN_${base}`;
+    return code.length >= 2 ? code : 'PLAN_TYPE';
+  }
+
+  private toEngagementTypeResponse(item: EngagementTypeDocument) {
+    const value = (item.toObject ? item.toObject() : item) as typeof item & { id?: string };
+    const name = value.name;
+    const code = value.code || this.generateEngagementCode(name);
+    return {
+      id: item._id?.toString?.() || (value as unknown as { id?: string }).id || '',
+      name,
+      code,
+      description: value.description || '',
+      price: value.price ?? 0,
+      trialLimits: value.trialLimits,
+      usageLimits: value.usageLimits,
+      features: value.features || [],
+      includesCobolConversion: value.includesCobolConversion ?? false,
+      supportTier: value.supportTier || 'STANDARD',
+      slaHours: value.slaHours ?? 12,
+      isActive: value.isActive ?? true,
+      createdAt: value.createdAt,
+      updatedAt: value.updatedAt,
+    };
   }
 
   async editEngagementType(actorUserId: string, id: string, dto: Record<string, unknown>) {
