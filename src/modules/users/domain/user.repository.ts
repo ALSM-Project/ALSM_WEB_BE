@@ -21,6 +21,8 @@ export interface UserRecord {
   mustChangePassword: boolean;
   isLocked: boolean;
   lockReason?: string;
+  role?: string;
+  roles?: string[];
   mfa: MfaState;
   createdAt: Date;
   updatedAt: Date;
