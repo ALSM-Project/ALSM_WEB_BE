@@ -181,6 +181,7 @@ describe('real AdminModule authorization HTTP boundary', () => {
         findById: jest.fn(),
         findOne: jest.fn(),
         countDocuments: jest.fn(),
+        aggregate: jest.fn(() => ({ exec: async () => [] })),
         create: jest.fn(),
         findByIdAndUpdate: jest.fn(),
         updateMany: jest.fn(),
@@ -343,6 +344,7 @@ describe('real AdminModule authorization HTTP boundary', () => {
       model.findById.mockImplementation(() => query(selectedUser()));
       model.findOne.mockImplementation(() => query(null));
       model.countDocuments.mockResolvedValue(0);
+      model.aggregate.mockImplementation(() => ({ exec: async () => [] }));
       model.create.mockResolvedValue({ _id: targetId, id: targetId, name: 'Created' });
       model.findByIdAndUpdate.mockImplementation(() => query({ id: targetId, name: 'Edited' }));
       model.updateMany.mockResolvedValue({ modifiedCount: 1 });

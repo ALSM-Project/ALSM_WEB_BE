@@ -9,6 +9,7 @@ import { LockUserService } from '../application/lock-user.service';
 import { AuditLogService } from '../application/audit-log.service';
 import { RequirePermissions } from '../../../shared/security/require-permissions.decorator';
 import { CheckOffboardingTransfer, DisabledSupportImpersonation, PlatformAdminAuthorizationGuard } from './platform-admin-authorization.guard';
+import { ListOrganizationsQueryDto } from './dto/list-organizations-query.dto';
 
 @ApiTags('Platform Administration (Sections 3.10, 3.13 & 3.14)')
 @ApiBearerAuth()
@@ -26,12 +27,8 @@ export class PlatformAdminController {
   @Get('organizations')
   @RequirePermissions('organizations.view')
   @ApiOperation({ summary: 'View all organisations (3.13.1)' })
-  async listOrganizations(
-    @Query('search') search?: string,
-    @Query('type') type?: string,
-    @Query('status') status?: string,
-  ) {
-    return this.adminService.listOrganizations({ search, type, status });
+  async listOrganizations(@Query() query: ListOrganizationsQueryDto) {
+    return this.adminService.listOrganizations(query);
   }
 
   @Get('organizations/:id')
