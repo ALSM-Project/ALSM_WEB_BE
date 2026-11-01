@@ -71,6 +71,12 @@ export class Lead {
     discountPercent?: number;
     discountApproved?: boolean;
     discountReason?: string;
+    approvalStatus?: 'PENDING' | 'APPROVED' | 'REJECTED' | 'REQUIRES_HIGHER_APPROVAL';
+    approvedBy?: string;
+    approvedAt?: Date;
+    rejectionReason?: string;
+    escalatedBy?: string;
+    escalatedAt?: Date;
     status: 'DRAFT' | 'PENDING_APPROVAL' | 'SENT' | 'ACCEPTED' | 'REJECTED';
     sentAt?: Date;
     pdfUrl?: string;

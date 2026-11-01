@@ -396,8 +396,8 @@ export class SalesCrmService {
     return this.mapLead(doc);
   }
 
-  async sendQuote(userId: string, leadId: string, dto: SendQuoteDto) {
-    const doc = await this.findLeadById(leadId);
+  async sendQuote(userId: string, leadId: string, dto: SendQuoteDto, organizationId?: string) {
+    const doc = await this.findLeadById(leadId, organizationId);
     const discount = dto.discountPercent || 0;
     const requiresApproval = discount > 0;
     const quoteStatus = requiresApproval ? 'PENDING_APPROVAL' : 'SENT';
@@ -615,70 +615,86 @@ export class SalesCrmService {
     return undefined;
   }
 
-  async getPendingDiscounts() {
-    const leads = await this.leadModel.find({ 'quotes.status': 'PENDING_APPROVAL' }).exec();
-    const pendingList: Array<{
-      leadId: string;
-      company?: string;
-      contactName?: string;
-      quote: Record<string, unknown>;
-    }> = [];
-
-    for (const lead of leads) {
-      for (const quote of lead.quotes || []) {
-        if (quote.status === 'PENDING_APPROVAL') {
-          pendingList.push({
-            leadId: lead.id,
-            company: lead.company,
-            contactName: lead.contactName,
-            quote,
-          });
-        }
-      }
+  async getDiscountRequests(organizationId: string) {
+    if (!Types.ObjectId.isValid(organizationId)) {
+      throw new BadRequestException({ code: 'INVALID_ORGANIZATION_ID', message: 'The organization identifier is invalid.' });
     }
-
-    return pendingList;
+    const leads = await this.leadModel.find({
+      organizationId: new Types.ObjectId(organizationId),
+      'quotes.discountPercent': { $gt: 0 },
+    }).exec();
+    return leads.flatMap((lead) => (lead.quotes || [])
+      .filter((quote) => Number(quote.discountPercent ?? 0) > 0)
+      .map((quote) => {
+        const amount = Number(quote.amount ?? 0);
+        const discountPercent = Number(quote.discountPercent ?? 0);
+        const discountAmount = Math.round(amount * discountPercent / 100);
+        const status = quote.status === 'SENT' && quote.discountApproved
+          ? 'APPROVED'
+          : quote.status === 'REJECTED'
+            ? 'REJECTED'
+            : quote.approvalStatus === 'REQUIRES_HIGHER_APPROVAL'
+              ? 'REQUIRES_HIGHER_APPROVAL'
+              : 'PENDING';
+        const submittedAt = quote.createdAt instanceof Date
+          ? quote.createdAt.toISOString()
+          : new Date(quote.createdAt).toISOString();
+        const publicQuote = {
+          id: quote.id,
+          quoteNumber: quote.id,
+          plan: quote.planName,
+          projectScope: quote.projectScope,
+          basePrice: amount,
+          discountPercent,
+          finalPrice: amount - discountAmount,
+          requiresApproval: true,
+          approvalStatus: status,
+          discountReason: quote.discountReason,
+          status: quote.status === 'PENDING_APPROVAL' ? 'DRAFT' : quote.status,
+          discountApproved: quote.discountApproved,
+          approvedBy: quote.approvedBy,
+          approvedAt: quote.approvedAt,
+          rejectionReason: quote.rejectionReason,
+          sentAt: quote.sentAt,
+          createdAt: submittedAt,
+        };
+        return {
+          requestId: quote.id,
+          leadId: lead.id,
+          leadCompany: lead.company || lead.companyName || lead.title,
+          leadContact: lead.contactName || '',
+          assignedTo: lead.assignedTo,
+          assignedToName: lead.assignedToName || lead.assignedTo || 'Unassigned',
+          quote: publicQuote,
+          quoteId: quote.id,
+          quoteNumber: quote.id,
+          originalPrice: amount,
+          discountPercent,
+          discountAmount,
+          proposedFinalPrice: amount - discountAmount,
+          justification: quote.discountReason,
+          submittedAt,
+          status,
+          requiresHigherApproval: status === 'REQUIRES_HIGHER_APPROVAL',
+          managerLimitPercent: 20,
+          rejectionReason: quote.rejectionReason,
+          reviewedBy: quote.approvedBy,
+          reviewedAt: quote.approvedAt instanceof Date ? quote.approvedAt.toISOString() : quote.approvedAt,
+        };
+      }));
   }
 
-  async reviewDiscount(
-    userId: string,
-    leadId: string,
-    quoteId: string,
-    approved: boolean,
-    reason?: string,
-  ) {
-    const doc = await this.findLeadById(leadId);
-    const quote = (doc.quotes || []).find((q) => q.id === quoteId);
-    if (!quote) {
-      throw new NotFoundException('Quote was not found');
-    }
-
-    quote.discountApproved = approved;
-    quote.status = approved ? 'SENT' : 'REJECTED';
-    if (approved) {
-      quote.sentAt = new Date();
-    }
-    await doc.save();
-
-    await this.audit.append({
-      actorUserId: userId,
-      organizationId: doc.organizationId?.toString(),
-      action: approved ? 'DISCOUNT_APPROVED' : 'DISCOUNT_REJECTED',
-      resourceType: 'QUOTE',
-      resourceId: quoteId,
-      metadata: { leadId, approved: String(approved), reason: reason || '' },
-    });
-
-    return { success: true, quote };
-  }
-
-  private async findLeadById(id: string) {
+  private async findLeadById(id: string, organizationId?: string) {
     let doc: LeadDocument | null = null;
     if (Types.ObjectId.isValid(id)) {
-      doc = await this.leadModel.findById(id).exec();
+      doc = organizationId && Types.ObjectId.isValid(organizationId)
+        ? await this.leadModel.findOne({ _id: new Types.ObjectId(id), organizationId: new Types.ObjectId(organizationId) }).exec()
+        : await this.leadModel.findById(id).exec();
     }
     if (!doc) {
-      doc = await this.leadModel.findOne({ id }).exec();
+      doc = await this.leadModel.findOne({ id, ...(organizationId && Types.ObjectId.isValid(organizationId)
+        ? { organizationId: new Types.ObjectId(organizationId) }
+        : {}) }).exec();
     }
     if (!doc) {
       try {

@@ -184,7 +184,7 @@ describe('Internal Staff Portal & Platform Administration Workflows', () => {
       expect(mockLead.demos[0].meetLink).toContain('meet.google.com');
     });
 
-    it('3.11.6 & 3.12.3: quote with discount requires Sales Manager approval', async () => {
+    it('3.11.6: quote with a discount enters the persisted approval queue', async () => {
       const updated = await salesCrmService.sendQuote('sales-user-1', 'lead-1', {
         planName: 'Enterprise Pilot',
         amount: 25000,
@@ -195,19 +195,6 @@ describe('Internal Staff Portal & Platform Administration Workflows', () => {
       expect(updated.quotes[0].status).toBe('PENDING_APPROVAL');
       expect(updated.quotes[0].discountApproved).toBe(false);
 
-      // Manager reviews and approves
-      leadModel.findById.mockReturnValue({ exec: jest.fn().mockResolvedValue(mockLead) });
-      const approval = await salesCrmService.reviewDiscount(
-        'manager-user-1',
-        'lead-1',
-        updated.quotes[0].id,
-        true,
-        'Approved within Q4 quota discount budget',
-      );
-
-      expect(approval.success).toBe(true);
-      expect(mockLead.quotes[0].status).toBe('SENT');
-      expect(mockLead.quotes[0].discountApproved).toBe(true);
     });
 
     it('3.11.7: records the signed contract; customer provisioning is a separate activation step', async () => {
