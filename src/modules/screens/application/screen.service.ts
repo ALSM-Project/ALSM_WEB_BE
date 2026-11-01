@@ -69,7 +69,13 @@ export class ScreenService {
     screenId: string,
   ): Promise<ScreenRecord> {
     const organization = await this.organizationContext.resolve(userId, organizationHeader);
-    const screen = await this.screens.findById(screenId, organization.id);
+    let screen = await this.screens.findById(screenId, organization.id);
+    if (!screen) {
+      screen = await this.screens.findById(screenId);
+      if (screen) {
+        await this.organizationContext.resolve(userId, organizationHeader, screen.projectId);
+      }
+    }
     if (!screen) {
       throw new NotFoundException({ code: 'SCREEN_NOT_FOUND', message: 'Screen was not found' });
     }

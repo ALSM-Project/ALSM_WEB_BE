@@ -22,6 +22,8 @@ import { TemporaryRoleController } from './presentation/temporary-role.controlle
 import { RBAC_REPOSITORY } from './domain/rbac.repository.interface';
 import { MongoRbacRepository } from './infrastructure/persistence/mongo-rbac.repository';
 import { TemporaryRole, TemporaryRoleSchema } from './infrastructure/schemas/temporary-role.schema';
+import { Team, TeamSchema } from '../teams/infrastructure/team.schema';
+import { Project, ProjectSchema } from '../projects/infrastructure/project.schema';
 
 @Module({
   imports: [
@@ -34,6 +36,8 @@ import { TemporaryRole, TemporaryRoleSchema } from './infrastructure/schemas/tem
       { name: MenuItem.name, schema: MenuItemSchema },
       { name: MenuItemPermission.name, schema: MenuItemPermissionSchema },
       { name: TemporaryRole.name, schema: TemporaryRoleSchema },
+      { name: Team.name, schema: TeamSchema },
+      { name: Project.name, schema: ProjectSchema },
     ]),
   ],
   controllers: [RbacController, TemporaryRoleController],
