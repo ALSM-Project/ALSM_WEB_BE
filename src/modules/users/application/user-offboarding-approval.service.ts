@@ -320,13 +320,19 @@ export class UserOffboardingApprovalService {
     }
 
     // Call UC-83 to get live resource & security summary
-    let liveSummary: UserOffboardingSummary | Record<string, unknown>;
+    let liveSummary:
+      | (UserOffboardingSummary & { eligibleSuccessors?: unknown[] })
+      | Record<string, unknown>;
     try {
-      liveSummary = await this.offboardingService.getOffboardingSummary(
+      const summary = await this.offboardingService.getOffboardingSummary(
         actorUserId,
         request.targetUserId,
         isPlatformAdmin,
       );
+      liveSummary = {
+        ...summary,
+        eligibleSuccessors: summary.eligibleStaff,
+      };
     } catch (err: unknown) {
       const msg =
         err instanceof Error ? err.message : 'Failed to retrieve live resource summary';
@@ -336,6 +342,7 @@ export class UserOffboardingApprovalService {
         apiKeysCount: 0,
         assignedProjects: [],
         pendingJobsCount: 0,
+        eligibleStaff: [],
         eligibleSuccessors: [],
       };
     }
