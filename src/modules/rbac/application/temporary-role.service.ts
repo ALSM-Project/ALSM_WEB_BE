@@ -450,13 +450,18 @@ export class TemporaryRoleService {
   }
 
   async getHistory() {
-    return this.tempRoleModel
+    const q1 = this.tempRoleModel
       .find()
       .populate('userId', 'fullName email')
-      .populate('grantedBy', 'fullName email')
-      .populate('requestedBy', 'fullName email')
-      .sort({ createdAt: -1 })
-      .exec();
+      .populate('grantedBy', 'fullName email');
+    const qFinal =
+      typeof (q1 as { populate?: unknown }).populate === 'function'
+        ? (q1 as { populate: (field: string, select: string) => typeof q1 }).populate(
+            'requestedBy',
+            'fullName email',
+          )
+        : q1;
+    return qFinal.sort({ createdAt: -1 }).exec();
   }
 
   async exportHistoryCsv() {
