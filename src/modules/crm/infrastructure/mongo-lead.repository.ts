@@ -13,6 +13,8 @@ import {
   LeadRecord,
   LeadRepository,
   LeadStatus,
+  ReviewLeadDiscountInput,
+  ReviewLeadDiscountResult,
 } from '../domain/lead.types';
 import { Lead } from './lead.schema';
 
@@ -230,9 +232,9 @@ export class MongoLeadRepository implements LeadRepository {
         throw new BadRequestException({ code: 'CONTRACT_QUOTE_NOT_ACCEPTED', message: 'The selected quote must be accepted before creating a contract.' });
       }
       const quotedPlan = String(quote.planName ?? quote.plan ?? '');
-      const quotedAmount = Number(quote.finalPrice ?? quote.amount);
+      const quotedAmount = Number(quote.amount);
       const discountPercent = Number(quote.discountPercent ?? 0);
-      const finalAmount = Math.round(quotedAmount * (1 - discountPercent / 100));
+      const finalAmount = Number(quote.finalPrice ?? Math.round(quotedAmount * (1 - discountPercent / 100)));
       if (input.contract.plan !== quotedPlan || input.contract.annualValue !== finalAmount) {
         throw new BadRequestException({
           code: 'CONTRACT_QUOTE_MISMATCH',
@@ -269,6 +271,110 @@ export class MongoLeadRepository implements LeadRepository {
       organizationId: updated.organizationId?.toString(),
       contract,
       replayed: false,
+    };
+  }
+
+  async reviewDiscount(input: ReviewLeadDiscountInput): Promise<ReviewLeadDiscountResult> {
+    if (!this.session) throw new Error('Discount reviews require the audited atomic unit of work');
+    this.scope();
+    if (!Types.ObjectId.isValid(input.leadId)) {
+      throw new BadRequestException({ code: 'INVALID_LEAD_ID', message: 'The lead identifier is invalid.' });
+    }
+    const lead = await this.model.findOne({
+      _id: new Types.ObjectId(input.leadId),
+      organizationId: new Types.ObjectId(input.organizationId),
+    }).session(this.scope()).exec();
+    if (!lead) throw new NotFoundException({ code: 'LEAD_NOT_FOUND', message: 'The discount request was not found.' });
+    const quote = (lead.quotes || []).find((item) => item.id === input.quoteId);
+    if (!quote) throw new NotFoundException({ code: 'QUOTE_NOT_FOUND', message: 'The discount request was not found.' });
+    const discountPercent = Number(quote.discountPercent ?? 0);
+    const amount = Number(quote.amount);
+    if (!Number.isFinite(discountPercent) || discountPercent <= 0 || discountPercent > 100 ||
+      !Number.isSafeInteger(amount) || amount < 0) {
+      throw new ConflictException({ code: 'INVALID_DISCOUNT_REQUEST', message: 'This discount request needs reconciliation before review.' });
+    }
+
+    const isExecutiveOutcome = input.outcome === 'EXECUTIVE_APPROVE' || input.outcome === 'EXECUTIVE_REJECT';
+    const alreadyApproved = (input.outcome === 'APPROVE' || input.outcome === 'EXECUTIVE_APPROVE') &&
+      quote.status === 'SENT' && quote.discountApproved === true &&
+      (!isExecutiveOutcome || !!quote.executiveReviewedAt);
+    const alreadyRejected = (input.outcome === 'REJECT' || input.outcome === 'EXECUTIVE_REJECT') &&
+      quote.status === 'REJECTED' && quote.discountApproved === false &&
+      (!isExecutiveOutcome || !!quote.executiveReviewedAt);
+    const alreadyEscalated = input.outcome === 'ESCALATE' && quote.status === 'PENDING_APPROVAL' && quote.approvalStatus === 'REQUIRES_HIGHER_APPROVAL';
+    if (alreadyApproved || alreadyRejected || alreadyEscalated) {
+      return {
+        organizationId: lead.organizationId.toString(), company: lead.company || lead.companyName || lead.title,
+        contactName: lead.contactName, assignedTo: lead.assignedTo, assignedToName: lead.assignedToName,
+        quote: quote as unknown as Record<string, unknown>, replayed: true,
+      };
+    }
+    if (quote.status !== 'PENDING_APPROVAL') {
+      throw new ConflictException({ code: 'DISCOUNT_NOT_PENDING', message: 'This discount request has already been reviewed.' });
+    }
+    if (input.outcome === 'APPROVE' && discountPercent > 20) {
+      throw new ConflictException({ code: 'DISCOUNT_AUTHORITY_EXCEEDED', message: 'Discounts above 20% require executive approval.' });
+    }
+    if (input.outcome === 'ESCALATE' && discountPercent <= 20) {
+      throw new BadRequestException({ code: 'DISCOUNT_ESCALATION_NOT_REQUIRED', message: 'This discount is within the manager approval limit.' });
+    }
+    if (isExecutiveOutcome && (discountPercent <= 20 || quote.approvalStatus !== 'REQUIRES_HIGHER_APPROVAL')) {
+      throw new ConflictException({ code: 'DISCOUNT_NOT_ESCALATED', message: 'Only a discount escalated above the manager limit can receive executive review.' });
+    }
+    const expectedApprovalStatus = quote.approvalStatus;
+    const reviewedAt = new Date();
+    if (input.outcome === 'APPROVE' || input.outcome === 'EXECUTIVE_APPROVE') {
+      quote.status = 'SENT';
+      quote.discountApproved = true;
+      quote.approvalStatus = 'APPROVED';
+      quote.approvedBy = input.actorUserId;
+      quote.approvedAt = reviewedAt;
+      quote.sentAt = reviewedAt;
+      quote.rejectionReason = undefined;
+      if (input.outcome === 'EXECUTIVE_APPROVE') {
+        quote.executiveReviewedBy = input.actorUserId;
+        quote.executiveReviewedAt = reviewedAt;
+      }
+    } else if (input.outcome === 'REJECT' || input.outcome === 'EXECUTIVE_REJECT') {
+      quote.status = 'REJECTED';
+      quote.discountApproved = false;
+      quote.approvalStatus = 'REJECTED';
+      quote.approvedBy = input.actorUserId;
+      quote.approvedAt = reviewedAt;
+      quote.rejectionReason = input.reason;
+      if (input.outcome === 'EXECUTIVE_REJECT') {
+        quote.executiveReviewedBy = input.actorUserId;
+        quote.executiveReviewedAt = reviewedAt;
+      }
+    } else {
+      quote.approvalStatus = 'REQUIRES_HIGHER_APPROVAL';
+      quote.escalatedBy = input.actorUserId;
+      quote.escalatedAt = reviewedAt;
+    }
+    const approvalStatusMatch = expectedApprovalStatus === undefined
+      ? { approvalStatus: { $exists: false } }
+      : { approvalStatus: expectedApprovalStatus };
+    await this.model.updateOne(
+      {
+        _id: lead._id,
+        quotes: {
+          $elemMatch: {
+            id: input.quoteId,
+            status: 'PENDING_APPROVAL',
+            discountPercent,
+            ...approvalStatusMatch,
+          },
+        },
+      },
+      { $set: { 'quotes.$': quote, updatedAt: reviewedAt } },
+      { runValidators: true },
+    ).session(this.scope()).exec().then((result) => {
+      if (result.matchedCount !== 1) throw new ConflictException({ code: 'DISCOUNT_REVIEW_CONFLICT', message: 'This discount changed during review. Refresh the queue.' });
+    });
+    return {
+      organizationId: lead.organizationId.toString(), company: lead.company || lead.companyName || lead.title,
+      contactName: lead.contactName, assignedTo: lead.assignedTo, assignedToName: lead.assignedToName,
+      quote: quote as unknown as Record<string, unknown>, replayed: false,
     };
   }
 

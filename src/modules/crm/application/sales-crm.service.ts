@@ -396,20 +396,34 @@ export class SalesCrmService {
     return this.mapLead(doc);
   }
 
-  async sendQuote(userId: string, leadId: string, dto: SendQuoteDto) {
-    const doc = await this.findLeadById(leadId);
-    const discount = dto.discountPercent || 0;
-    const requiresApproval = discount > 0;
+  async sendQuote(userId: string, leadId: string, dto: SendQuoteDto, organizationId?: string) {
+    if (!dto.planName?.trim()) {
+      throw new BadRequestException({ code: 'INVALID_PLAN_NAME', message: 'Plan name cannot be empty.' });
+    }
+    if (!Number.isSafeInteger(dto.amount) || dto.amount <= 0) {
+      throw new BadRequestException({ code: 'INVALID_AMOUNT', message: 'Quote amount must be a positive whole VND amount.' });
+    }
+    const discount = dto.discountPercent ?? 0;
+    if (!Number.isFinite(discount) || discount < 0 || discount > 100) {
+      throw new BadRequestException({ code: 'INVALID_DISCOUNT', message: 'Discount must be between 0 and 100 percent.' });
+    }
+    const discountReason = dto.discountReason?.trim() || undefined;
+    if (discount >= 15 && !discountReason) {
+      throw new BadRequestException({ code: 'DISCOUNT_REASON_REQUIRED', message: 'Discounts of 15% or more require a justification.' });
+    }
+    const doc = await this.findLeadById(leadId, organizationId);
+    const requiresApproval = discount >= 15;
     const quoteStatus = requiresApproval ? 'PENDING_APPROVAL' : 'SENT';
 
     const quote = {
       id: randomUUID(),
-      planName: dto.planName,
-      projectScope: dto.projectScope,
+      planName: dto.planName.trim(),
+      projectScope: dto.projectScope?.trim() || undefined,
       amount: dto.amount,
+      finalPrice: Math.round(dto.amount * (1 - discount / 100)),
       discountPercent: discount,
       discountApproved: !requiresApproval,
-      discountReason: dto.discountReason,
+      discountReason,
       status: (requiresApproval ? 'PENDING_APPROVAL' : 'SENT') as 'DRAFT' | 'PENDING_APPROVAL' | 'SENT' | 'ACCEPTED' | 'REJECTED',
       sentAt: requiresApproval ? undefined : new Date(),
       pdfUrl: `/quotes/quote-${Date.now()}.pdf`,
@@ -615,70 +629,95 @@ export class SalesCrmService {
     return undefined;
   }
 
-  async getPendingDiscounts() {
-    const leads = await this.leadModel.find({ 'quotes.status': 'PENDING_APPROVAL' }).exec();
-    const pendingList: Array<{
-      leadId: string;
-      company?: string;
-      contactName?: string;
-      quote: Record<string, unknown>;
-    }> = [];
-
-    for (const lead of leads) {
-      for (const quote of lead.quotes || []) {
-        if (quote.status === 'PENDING_APPROVAL') {
-          pendingList.push({
-            leadId: lead.id,
-            company: lead.company,
-            contactName: lead.contactName,
-            quote,
-          });
-        }
-      }
+  async getDiscountRequests(organizationId: string) {
+    if (!Types.ObjectId.isValid(organizationId)) {
+      throw new BadRequestException({ code: 'INVALID_ORGANIZATION_ID', message: 'The organization identifier is invalid.' });
     }
-
-    return pendingList;
+    const leads = await this.leadModel.find({
+      organizationId: new Types.ObjectId(organizationId),
+      'quotes.discountPercent': { $gt: 0 },
+    }).exec();
+    return leads.flatMap((lead) => (lead.quotes || [])
+      .filter((quote) => Number(quote.discountPercent ?? 0) > 0)
+      .map((quote) => {
+        const amount = Number(quote.amount ?? 0);
+        const discountPercent = Number(quote.discountPercent ?? 0);
+        const finalPrice = Number(quote.finalPrice ?? Math.round(amount * (1 - discountPercent / 100)));
+        const discountAmount = amount - finalPrice;
+        const status = quote.status === 'SENT' && quote.discountApproved
+          ? 'APPROVED'
+          : quote.status === 'REJECTED'
+            ? 'REJECTED'
+            : quote.approvalStatus === 'REQUIRES_HIGHER_APPROVAL'
+              ? 'REQUIRES_HIGHER_APPROVAL'
+              : 'PENDING';
+        const submittedAt = quote.createdAt instanceof Date
+          ? quote.createdAt.toISOString()
+          : new Date(quote.createdAt).toISOString();
+        const publicQuote = {
+          id: quote.id,
+          quoteNumber: quote.id,
+          plan: quote.planName,
+          projectScope: quote.projectScope,
+          basePrice: amount,
+          discountPercent,
+          finalPrice,
+          requiresApproval: true,
+          approvalStatus: status,
+          discountReason: quote.discountReason,
+          status: quote.status === 'PENDING_APPROVAL' ? 'DRAFT' : quote.status,
+          discountApproved: quote.discountApproved,
+          approvedBy: quote.approvedBy,
+          approvedAt: quote.approvedAt,
+          rejectionReason: quote.rejectionReason,
+          escalatedBy: quote.escalatedBy,
+          escalatedAt: quote.escalatedAt,
+          executiveReviewedBy: quote.executiveReviewedBy,
+          executiveReviewedAt: quote.executiveReviewedAt,
+          sentAt: quote.sentAt,
+          createdAt: submittedAt,
+        };
+        return {
+          requestId: quote.id,
+          leadId: lead.id,
+          leadCompany: lead.company || lead.companyName || lead.title,
+          leadContact: lead.contactName || '',
+          assignedTo: lead.assignedTo,
+          assignedToName: lead.assignedToName || lead.assignedTo || 'Unassigned',
+          quote: publicQuote,
+          quoteId: quote.id,
+          quoteNumber: quote.id,
+          originalPrice: amount,
+          discountPercent,
+          discountAmount,
+          proposedFinalPrice: amount - discountAmount,
+          justification: quote.discountReason,
+          submittedAt,
+          status,
+          requiresHigherApproval: status === 'REQUIRES_HIGHER_APPROVAL',
+          managerLimitPercent: 20,
+          rejectionReason: quote.rejectionReason,
+          reviewedBy: quote.approvedBy,
+          reviewedAt: quote.approvedAt instanceof Date ? quote.approvedAt.toISOString() : quote.approvedAt,
+          escalatedBy: quote.escalatedBy,
+          escalatedAt: quote.escalatedAt instanceof Date ? quote.escalatedAt.toISOString() : quote.escalatedAt,
+          executiveReviewedBy: quote.executiveReviewedBy,
+          executiveReviewedAt: quote.executiveReviewedAt instanceof Date ? quote.executiveReviewedAt.toISOString() : quote.executiveReviewedAt,
+        };
+      }));
   }
 
-  async reviewDiscount(
-    userId: string,
-    leadId: string,
-    quoteId: string,
-    approved: boolean,
-    reason?: string,
-  ) {
-    const doc = await this.findLeadById(leadId);
-    const quote = (doc.quotes || []).find((q) => q.id === quoteId);
-    if (!quote) {
-      throw new NotFoundException('Quote was not found');
-    }
-
-    quote.discountApproved = approved;
-    quote.status = approved ? 'SENT' : 'REJECTED';
-    if (approved) {
-      quote.sentAt = new Date();
-    }
-    await doc.save();
-
-    await this.audit.append({
-      actorUserId: userId,
-      organizationId: doc.organizationId?.toString(),
-      action: approved ? 'DISCOUNT_APPROVED' : 'DISCOUNT_REJECTED',
-      resourceType: 'QUOTE',
-      resourceId: quoteId,
-      metadata: { leadId, approved: String(approved), reason: reason || '' },
-    });
-
-    return { success: true, quote };
-  }
-
-  private async findLeadById(id: string) {
+  private async findLeadById(id: string, organizationId?: string) {
     let doc: LeadDocument | null = null;
     if (Types.ObjectId.isValid(id)) {
-      doc = await this.leadModel.findById(id).exec();
+      doc = organizationId && Types.ObjectId.isValid(organizationId)
+        ? await this.leadModel.findOne({ _id: new Types.ObjectId(id), organizationId: new Types.ObjectId(organizationId) }).exec()
+        : await this.leadModel.findById(id).exec();
     }
     if (!doc) {
-      doc = await this.leadModel.findOne({ id }).exec();
+      doc = await this.leadModel.findOne({ id, ...(organizationId && Types.ObjectId.isValid(organizationId)
+        ? { organizationId: new Types.ObjectId(organizationId) }
+        : {}) }).exec();
     }
     if (!doc) {
       try {

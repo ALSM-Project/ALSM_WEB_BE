@@ -31,6 +31,8 @@ import { CreateContractDto } from './sales.dto';
 import { SalesPipelineQueryDto } from './sales-pipeline-query.dto';
 import { SalesReportQueryDto } from './sales-report-query.dto';
 import { TeamAccessService } from '../../teams/application/team-access.service';
+import { ReviewDiscountService } from '../application/review-discount.service';
+import { DiscountRequestDto, RejectDiscountDto } from './discount-review.dto';
 
 @ApiTags('CRM & Sales (Sections 3.11 & 3.12)')
 @ApiBearerAuth()
@@ -43,6 +45,7 @@ export class SalesCrmController {
     private readonly createContractService: CreateContractService,
     private readonly activateCrmLeadService: ActivateCrmLeadService,
     private readonly teamAccess: TeamAccessService,
+    private readonly reviewDiscountService: ReviewDiscountService,
   ) {}
 
   @Get('pipeline')
@@ -73,7 +76,8 @@ export class SalesCrmController {
     @Headers('x-organization-id') organizationId: string | undefined,
     @Body() dto: CreateCrmLeadDto,
   ) {
-    return this.crmService.createLead(user.userId, organizationId, dto);
+    const organization = await this.teamAccess.reportingOrganization(user.userId, organizationId);
+    return this.crmService.createLead(user.userId, organization.id, dto);
   }
 
   @Get('leads/:id')
@@ -135,8 +139,10 @@ export class SalesCrmController {
     @CurrentUser() user: AuthenticatedUser,
     @Param('id') id: string,
     @Body() dto: SendQuoteDto,
+    @Headers('x-organization-id') organizationId: string | undefined,
   ) {
-    return this.crmService.sendQuote(user.userId, id, dto);
+    const organization = await this.teamAccess.reportingOrganization(user.userId, organizationId);
+    return this.crmService.sendQuote(user.userId, id, dto, organization.id);
   }
 
   @Post('leads/:id/contracts')
@@ -214,24 +220,80 @@ export class SalesCrmController {
     res.send(csv);
   }
 
-  @Get('discounts/pending')
-  @ApiOperation({ summary: 'List pending discount approval requests (3.12.3)' })
-  async getPendingDiscounts() {
-    return this.crmService.getPendingDiscounts();
+  @Get('discounts/requests')
+  @UseGuards(CurrentSessionGuard, PermissionsGuard)
+  @RequirePermissions('sales.discounts.view')
+  @ApiOperation({ summary: 'List persisted discount requests for authorized Sales staff (UC-70)' })
+  async getDiscountRequests(
+    @CurrentUser() user: AuthenticatedUser,
+    @Headers('x-organization-id') organizationId: string | undefined,
+  ) {
+    const organization = await this.teamAccess.reportingOrganization(user.userId, organizationId);
+    return this.crmService.getDiscountRequests(organization.id);
   }
 
-  @Post('discounts/review')
-  @ApiOperation({ summary: 'Approve or reject discount request (3.12.3)' })
-  async reviewDiscount(
+  @Post('discounts/approve')
+  @UseGuards(CurrentSessionGuard, PermissionsGuard)
+  @RequirePermissions('sales.discounts.approve')
+  @ApiOperation({ summary: 'Approve a discount within the Sales Manager authority limit (UC-70)' })
+  async approveDiscount(
     @CurrentUser() user: AuthenticatedUser,
-    @Body() body: { leadId: string; quoteId: string; approved: boolean; reason?: string },
+    @Headers('x-organization-id') organizationId: string | undefined,
+    @Body() body: DiscountRequestDto,
   ) {
-    return this.crmService.reviewDiscount(
-      user.userId,
-      body.leadId,
-      body.quoteId,
-      body.approved,
-      body.reason,
-    );
+    const organization = await this.teamAccess.reportingOrganization(user.userId, organizationId);
+    return this.reviewDiscountService.execute({ ...body, organizationId: organization.id, actorUserId: user.userId, outcome: 'APPROVE' });
+  }
+
+  @Post('discounts/reject')
+  @UseGuards(CurrentSessionGuard, PermissionsGuard)
+  @RequirePermissions('sales.discounts.reject')
+  @ApiOperation({ summary: 'Reject a discount with a recorded reason' })
+  async rejectDiscount(
+    @CurrentUser() user: AuthenticatedUser,
+    @Headers('x-organization-id') organizationId: string | undefined,
+    @Body() body: RejectDiscountDto,
+  ) {
+    const organization = await this.teamAccess.reportingOrganization(user.userId, organizationId);
+    return this.reviewDiscountService.execute({ ...body, organizationId: organization.id, actorUserId: user.userId, outcome: 'REJECT' });
+  }
+
+  @Post('discounts/escalate')
+  @UseGuards(CurrentSessionGuard, PermissionsGuard)
+  @RequirePermissions('sales.discounts.approve')
+  @ApiOperation({ summary: 'Escalate a discount above the manager limit for higher approval' })
+  async escalateDiscount(
+    @CurrentUser() user: AuthenticatedUser,
+    @Headers('x-organization-id') organizationId: string | undefined,
+    @Body() body: DiscountRequestDto,
+  ) {
+    const organization = await this.teamAccess.reportingOrganization(user.userId, organizationId);
+    return this.reviewDiscountService.execute({ ...body, organizationId: organization.id, actorUserId: user.userId, outcome: 'ESCALATE' });
+  }
+
+  @Post('discounts/executive/approve')
+  @UseGuards(CurrentSessionGuard, PermissionsGuard)
+  @RequirePermissions('sales.discounts.executive.review')
+  @ApiOperation({ summary: 'Approve an escalated discount above the Sales Manager authority limit (UC-70)' })
+  async approveEscalatedDiscount(
+    @CurrentUser() user: AuthenticatedUser,
+    @Headers('x-organization-id') organizationId: string | undefined,
+    @Body() body: DiscountRequestDto,
+  ) {
+    const organization = await this.teamAccess.reportingOrganization(user.userId, organizationId);
+    return this.reviewDiscountService.execute({ ...body, organizationId: organization.id, actorUserId: user.userId, outcome: 'EXECUTIVE_APPROVE' });
+  }
+
+  @Post('discounts/executive/reject')
+  @UseGuards(CurrentSessionGuard, PermissionsGuard)
+  @RequirePermissions('sales.discounts.executive.review')
+  @ApiOperation({ summary: 'Reject an escalated discount with a recorded reason (UC-70)' })
+  async rejectEscalatedDiscount(
+    @CurrentUser() user: AuthenticatedUser,
+    @Headers('x-organization-id') organizationId: string | undefined,
+    @Body() body: RejectDiscountDto,
+  ) {
+    const organization = await this.teamAccess.reportingOrganization(user.userId, organizationId);
+    return this.reviewDiscountService.execute({ ...body, organizationId: organization.id, actorUserId: user.userId, outcome: 'EXECUTIVE_REJECT' });
   }
 }

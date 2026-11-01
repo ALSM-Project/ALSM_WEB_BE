@@ -33,6 +33,7 @@ export class RbacSeedService implements OnApplicationBootstrap {
     await this.ensureRole('ADMIN', 'Platform Administrator', 'Platform administrator with unrestricted access', true);
     await this.ensureRole('TEAM_LEAD', 'Team Lead', 'Internal team lead managing staff, conversions, and operations', true);
     await this.ensureRole('SALES_MANAGER', 'Sales Manager', 'Sales manager managing leads, quotes, and commercial metrics', true);
+    await this.ensureRole('SALES_VP', 'VP of Sales', 'Executive reviewer for discounts above Sales Manager authority', true);
     await this.ensureRole('INTERNAL_SALES', 'Internal Sales', 'Internal sales representative managing quotes and client leads', true);
     await this.ensureRole('INTERNAL_SUPPORT', 'Internal Support', 'Customer and operational support staff', true);
     await this.ensureRole('CONVERSION_STAFF', 'Conversion Staff', 'Modernization and conversion execution staff', true);
@@ -80,6 +81,7 @@ export class RbacSeedService implements OnApplicationBootstrap {
     await this.ensurePermission('sales.discounts.view', 'View Discount Approval Queue', 'sales', 'View discount approval requests queue');
     await this.ensurePermission('sales.discounts.approve', 'Approve Discount Requests', 'sales', 'Authorize and approve requested sales discounts');
     await this.ensurePermission('sales.discounts.reject', 'Reject Discount Requests', 'sales', 'Reject sales representative discount requests with mandatory justification');
+    await this.ensurePermission('sales.discounts.executive.review', 'Review Escalated Discounts', 'sales', 'Approve or reject discounts escalated above the Sales Manager authority limit');
     // Platform Administration (Section 3.13)
     await this.ensurePermission('organizations.view', 'View Organisations', 'admin', 'View customer and enterprise organisations');
     await this.ensurePermission('organizations.manage', 'Manage Organisations', 'admin', 'Create enterprise organisations and manage engagements');
@@ -178,6 +180,7 @@ export class RbacSeedService implements OnApplicationBootstrap {
       'sales.discounts.view',
       'sales.discounts.approve',
       'sales.discounts.reject',
+      'sales.discounts.executive.review',
       'projects.demo.view',
       'projects.demo.create',
       'organizations.impersonate',
@@ -283,6 +286,13 @@ export class RbacSeedService implements OnApplicationBootstrap {
       'meetings.view',
       'partner.view',
       'partner_project.view',
+    ]);
+
+    await this.grantRolePermissions('SALES_VP', [
+      'sales.discounts.view',
+      'sales.discounts.executive.review',
+      'sales.reports.view',
+      'sales.team-performance.view',
     ]);
 
     await this.grantRolePermissions('INTERNAL_SALES', [
