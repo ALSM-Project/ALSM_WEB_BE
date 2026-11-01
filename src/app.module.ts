@@ -199,6 +199,14 @@ import { OnboardUserService } from './modules/users/application/onboard-user.ser
 import { UpdateUserStatusService } from './modules/users/application/update-user-status.service';
 import { UserOffboardingService } from './modules/users/application/user-offboarding.service';
 import { UsersController } from './modules/users/presentation/users.controller';
+import { UserOffboardingApprovalService } from './modules/users/application/user-offboarding-approval.service';
+import { OffboardingApprovalController } from './modules/users/presentation/offboarding-approval.controller';
+import {
+  OffboardingRequest,
+  OffboardingRequestSchema,
+} from './modules/users/infrastructure/offboarding-request.schema';
+import { OFFBOARDING_REQUEST_REPOSITORY } from './modules/users/domain/offboarding-request.types';
+import { MongoOffboardingRequestRepository } from './modules/users/infrastructure/mongo-offboarding-request.repository';
 import { AuthService } from './modules/auth/application/auth.service';
 import { ListActiveSessionsService } from './modules/auth/application/list-active-sessions.service';
 import { RevokeSessionService } from './modules/auth/application/revoke-session.service';
@@ -365,6 +373,7 @@ import { NotificationsService } from './modules/notifications/notifications.serv
       { name: ExportBundle.name, schema: ExportBundleSchema },
       { name: SupportPatch.name, schema: SupportPatchSchema },
       { name: SystemNotification.name, schema: SystemNotificationSchema },
+      { name: OffboardingRequest.name, schema: OffboardingRequestSchema },
     ]),
     RbacModule,
     MenuModule,
@@ -390,6 +399,7 @@ import { NotificationsService } from './modules/notifications/notifications.serv
     LeadController,
     PartnerController,
     UsersController,
+    OffboardingApprovalController,
     ExportController,
     PartnerExportController,
     SupportPatchController,
