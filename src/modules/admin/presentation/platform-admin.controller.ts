@@ -12,6 +12,7 @@ import { CheckOffboardingTransfer, DisabledSupportImpersonation, PlatformAdminAu
 import { ListOrganizationsQueryDto } from './dto/list-organizations-query.dto';
 import { UpdateOrganizationEngagementDto } from './dto/update-organization-engagement.dto';
 import { CreateEnterpriseOrganizationDto } from './dto/create-enterprise-organization.dto';
+import { CreateEngagementTypeDto } from './dto/create-engagement-type.dto';
 
 @ApiTags('Platform Administration (Sections 3.10, 3.13 & 3.14)')
 @ApiBearerAuth()
@@ -95,7 +96,7 @@ export class PlatformAdminController {
   @ApiOperation({ summary: 'Create new engagement type (3.13.7)' })
   async createEngagementType(
     @CurrentUser() user: AuthenticatedUser,
-    @Body() body: Record<string, unknown>,
+    @Body() body: CreateEngagementTypeDto,
   ) {
     return this.adminService.createEngagementType(user.userId, body);
   }
