@@ -296,6 +296,18 @@ import { SubmitConversionQualityReviewService } from './modules/conversions/appl
 import { QualityReviewController } from './modules/conversions/presentation/quality-review.controller';
 
 import { AuditModule } from './modules/audit/audit.module';
+import { OwnerSupportTicketAccessService } from './modules/organizations/application/owner-support-ticket-access.service';
+import { SUPPORT_TICKET_ACCESS } from './modules/support/application/support-ticket-access.port';
+import { CreateSupportTicketService } from './modules/support/application/create-support-ticket.service';
+import { GetSupportTicketService } from './modules/support/application/get-support-ticket.service';
+import { ListSupportTicketsService } from './modules/support/application/list-support-tickets.service';
+import { TransitionSupportTicketService } from './modules/support/application/transition-support-ticket.service';
+import { SUPPORT_TICKET_REPOSITORY } from './modules/support/domain/support-ticket.repository';
+import { SUPPORT_TICKET_LISTING } from './modules/support/domain/support-ticket-listing.port';
+import { MongoSupportTicketRepository } from './modules/support/infrastructure/mongo-support-ticket.repository';
+import { SupportTicket, SupportTicketSchema } from './modules/support/infrastructure/support-ticket.schema';
+import { SupportTicketController } from './modules/support/presentation/support-ticket.controller';
+import { SupportTicketOwnerGuard } from './modules/support/presentation/support-ticket-owner.guard';
 
 @Module({
   imports: [
@@ -305,6 +317,7 @@ import { AuditModule } from './modules/audit/audit.module';
     SessionAssuranceModule,
     AuditModule,
     MongooseModule.forFeature([
+      { name: SupportTicket.name, schema: SupportTicketSchema },
       { name: Lead.name, schema: LeadSchema },
       { name: User.name, schema: UserSchema },
       { name: Organization.name, schema: OrganizationSchema },
@@ -343,6 +356,7 @@ import { AuditModule } from './modules/audit/audit.module';
     AdminModule,
   ],
   controllers: [
+    SupportTicketController,
     SalesController,
     SalesCrmController,
     TeamsController,
@@ -372,6 +386,22 @@ import { AuditModule } from './modules/audit/audit.module';
     PaymentController,
   ],
   providers: [
+    CreateSupportTicketService,
+    GetSupportTicketService,
+    ListSupportTicketsService,
+    TransitionSupportTicketService,
+    OwnerSupportTicketAccessService,
+    SupportTicketOwnerGuard,
+    { provide: SUPPORT_TICKET_ACCESS, useExisting: OwnerSupportTicketAccessService },
+    { provide: SUPPORT_TICKET_LISTING, useExisting: SUPPORT_TICKET_REPOSITORY },
+    {
+      provide: SUPPORT_TICKET_REPOSITORY,
+      inject: [getModelToken(SupportTicket.name), getModelToken(AuditLog.name)],
+      useFactory: (tickets: Model<SupportTicket>, audits: Model<AuditLog>) =>
+        new MongoSupportTicketRepository(tickets, (session, connection) =>
+          new MongoAuditRepository(audits).inTransaction(session, connection),
+        ),
+    },
     { provide: LEAD_REPOSITORY, useClass: MongoLeadRepository },
     { provide: SALES_PERFORMANCE_SOURCE, useClass: MongoSalesPerformanceSource },
     { provide: SALES_REVENUE_REPOSITORY, useClass: MongoSalesRevenueRepository },
