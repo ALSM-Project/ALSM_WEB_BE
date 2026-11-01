@@ -13,6 +13,7 @@ import { ListOrganizationsQueryDto } from './dto/list-organizations-query.dto';
 import { UpdateOrganizationEngagementDto } from './dto/update-organization-engagement.dto';
 import { CreateEnterpriseOrganizationDto } from './dto/create-enterprise-organization.dto';
 import { CreateEngagementTypeDto } from './dto/create-engagement-type.dto';
+import { UpdateEngagementTypeDto } from './dto/update-engagement-type.dto';
 
 @ApiTags('Platform Administration (Sections 3.10, 3.13 & 3.14)')
 @ApiBearerAuth()
@@ -107,7 +108,7 @@ export class PlatformAdminController {
   async editEngagementType(
     @CurrentUser() user: AuthenticatedUser,
     @Param('id') id: string,
-    @Body() body: Record<string, unknown>,
+    @Body() body: UpdateEngagementTypeDto,
   ) {
     return this.adminService.editEngagementType(user.userId, id, body);
   }
