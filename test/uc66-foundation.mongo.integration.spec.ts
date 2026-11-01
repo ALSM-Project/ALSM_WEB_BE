@@ -1,4 +1,5 @@
 import 'reflect-metadata';
+import { registerUc66WorkspaceMongoCases } from './uc66-workspace.mongo.cases';
 import { ForbiddenException, INestApplication, ValidationPipe } from '@nestjs/common';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { JwtModule, JwtService } from '@nestjs/jwt';
@@ -1004,4 +1005,17 @@ owned('UC66-01/02 isolated HTTP module with real owned Mongo transactions', () =
       fault.restore();
     }
   });
+
+  registerUc66WorkspaceMongoCases(() => ({
+    app: app!,
+    connection,
+    external: ownership!,
+    contexts: model,
+    audits: auditModel,
+    clock,
+    control,
+    enter,
+    token,
+    fault: injectCommitAcknowledgementLoss,
+  }));
 });

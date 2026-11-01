@@ -7,14 +7,16 @@ are not prerequisites. UC-67 remains in the Conversions module.
 ## Deployment boundary
 
 `SupportFoundationModule` is deliberately **not imported by AppModule or the worker**.
-There is no environment switch that activates it. All four routes below are
+There is no environment switch that activates it. The four foundation handlers and
+four UC66-03 workspace handlers below are
 implemented, exercised through an isolated test module, and **unregistered in the
 production application**. Hoang's independent QA/Security review and separate
 activation approval are required before registration.
 
 The existing authenticated `POST /api/v1/admin/organizations/:id/impersonate`
 continues returning `503 SUPPORT_IMPERSONATION_UNAVAILABLE`. It is not replaced
-or called by this foundation. No customer workspace facade is implemented.
+or called by this foundation. The UC66-03 workspace facade is isolated in the same
+unregistered module; it grants no authority to ordinary customer APIs.
 
 ## HTTP contract
 
@@ -109,8 +111,8 @@ needs no identity restoration because the original staff identity never changed.
 `AuthorizeSupportContextReadService` is an explicit operation boundary. Its only
 allowed operation in this slice is `CONTEXT_STATUS`. It validates the exact actor,
 original session/generation, current staff binding, Organisation and context, then
-audits and advances activity in one transaction. All Project/Screen/Program/Finding/
-Log operations remain denied until separately implemented and reviewed. An HTTP GET
+audits and advances activity in one transaction. UC66-03 resource projections use
+the separate explicit workspace allowlist described below. An HTTP GET
 does not make an operation eligible; an exporter or other GET with effects is not
 implicitly admitted. Existing customer APIs continue using their own membership
 and resource policies and do not interpret support contexts or support headers.
@@ -203,8 +205,90 @@ production database. Test bootstrap and actual results are recorded in
 `docs/engineering/UC66_01_02_IMPLEMENTATION_20261101.md` and the subsequent
 [transaction replay fix handoff](../../../docs/engineering/UC66_TRANSACTION_REPLAY_FIX_20261101.md).
 
-Next, implement explicitly named, bounded customer read projections in their owning
-resource modules, verify exact resource Organisation ownership on every read, bind
-attributed audit and successful activity to those operations, and test cross-scope,
-side-effect, expiry and revocation races before extending the allowlist. This is
-separate work; no customer workspace reads or writes are enabled by this foundation.
+## UC66-03 workspace contract (unregistered)
+
+Prefix: `/api/v1/support/organizations/:organizationId/contexts/:contextId/workspace`.
+Four handlers expose these twelve concrete named operations:
+
+| GET suffix                                   | Result                |
+| -------------------------------------------- | --------------------- |
+| `/projects`                                  | Bounded Project list  |
+| `/projects/:projectId`                       | Exact Project detail  |
+| `/projects/:projectId/:resource`             | Bounded resource list |
+| `/projects/:projectId/:resource/:resourceId` | Exact resource detail |
+
+`:resource` is strictly one of `screens`, `programs`, `findings`, `conversion-logs`,
+`error-logs`. Operation pairs are `WORKSPACE_PROJECT_LIST/DETAIL`,
+`WORKSPACE_SCREEN_LIST/DETAIL`, `WORKSPACE_PROGRAM_LIST/DETAIL`,
+`WORKSPACE_FINDING_LIST/DETAIL`, `WORKSPACE_CONVERSION_LOG_LIST/DETAIL` and
+`WORKSPACE_ERROR_LOG_LIST/DETAIL`; the implementation spells out all twelve names.
+No other method/action or generic GET permission is admitted.
+
+List query: `limit` 1–25 (default 10), optional canonical ObjectId `afterId`.
+Lists sort by ObjectId ascending, fetch limit+1, and return
+`{items, nextAfterId, operationId}`. Detail returns `{item, operationId}`.
+All body fields, unknown query fields and malformed path IDs are rejected.
+Each database query has a 2-second bound. Responses use `Cache-Control: no-store`.
+There are no totals, arbitrary filters, search regexes, raw payloads or downloads.
+
+Explicit response fields (missing dates/numbers become null; unrecognized enum
+values become UNKNOWN; name labels are limited to 120 characters with control and
+format characters removed):
+
+- Every item: `id`, `createdAt`, `updatedAt`.
+- Project: `name`, `status`, `conversionType`.
+- Screen/Program: `name`, `sourceType`, `status`, `dependencyStatus`, `sizeBytes`.
+- Finding: `source`, `category`, `severity`, `status`, `confidence`,
+  `conversionJobId`, `validationRunId`.
+- Conversion Log: `status`, `conversionType`, `attemptCount`, `maxAttempts`.
+- Error Log: `severity`, `status`, `lineNumber`.
+
+These are diagnostic metadata views. Source/generated code, finding prose/snippets,
+free-form errors, errorCode, storage paths, input/result references, tokens,
+processing leases, credentials, member identities, billing and suggested patches
+are excluded. Resource names are customer-authored labels, not raw source content.
+
+Public owner-module projection factories use the existing collections without
+registering models, creating schemas/indexes or invoking customer read services.
+Projects must belong to the exact Organisation and be undeleted. Screen/Program
+rows require that Project; older rows with no organizationId inherit ownership
+through the validated Project. Explicit conflicting organizationId values deny.
+Programs are COBOL Screen rows, not a new Program schema. Findings require matching
+Project, Validation Run and Conversion Job ownership; old findings may inherit the
+Organisation from their run. Broken or ambiguous ownership fails closed for the
+page. Conversion/Error Logs require the exact Organisation and Project. Error Log
+screenName is never treated as an ownership key.
+
+Every projection and ownership query uses the same snapshot transaction/session as
+context revision/activity and the required `SUPPORT_WORKSPACE_READ` audit. A list
+has one collection-read event recording every returned resource ID; details record
+their exact ID. Audit also records actor, original session, Organisation, context,
+operation, server `operationId`, project, cursor/limit and server authorization time.
+The audit timestamp is server-generated. Failure rolls pending activity/audit back.
+The absolute 30-minute/idle 15-minute policy remains unchanged.
+
+The Core transaction path never replays a business callback. Uncertain commit errors
+retain contextId, add operationId, and return mutationCommitted:unknown/retrySafe:false;
+they return no resource body. Reconcile through an authorized, read-only check of
+the exact context/operation audit identity, never by resubmitting a read-activity
+mutation. No new reconciliation API is activated in this task. Resource projection
+metadata is buffered until commit is confirmed.
+
+Live admission runs before work, after projection, before commit and after commit
+before delivery. Observed post-commit authorization loss withholds resource data
+with `SUPPORT_WORKSPACE_DELIVERY_WITHHELD`, contextId, operationId,
+activityCommitted:true and retrySafe:false. This does not claim the earlier activity
+rolled back. HTTP delivery and committed audit/activity are not atomic: a response
+can be lost after commit, and a revocation after the final check can still race
+delivery. Exit fences subsequent context writes through the same revision row;
+responses to reads committed before Exit can still be in flight.
+
+Real tests explicitly demonstrate both narrowed windows and the remaining unfenced
+role/session/account revocation window using another database connection. Local
+scheduling is not a distributed revocation fence. Before activation, the Technical
+Owner must approve revocation/in-flight ordering, with fencing where required and
+cross-instance tests. Independent QA/Security review, storage/index/retention checks
+and separate activation approval remain required. No operational impersonation is
+enabled by accepting UC66-03.
+
+See [UC66-03 implementation and verification](../../../docs/engineering/UC66_03_IMPLEMENTATION_20261101.md).

@@ -8,6 +8,7 @@ import { SupportFoundationModule } from '../src/modules/support/support-foundati
 import { SupportContextController } from '../src/modules/support/presentation/support-context.controller';
 import { SupportStaffAuthorityModule } from '../src/modules/rbac/support-staff-authority.module';
 import { SupportOrganizationDirectoryModule } from '../src/modules/organizations/support-organization-directory.module';
+import { SupportWorkspaceController } from '../src/modules/support/presentation/support-workspace.controller';
 
 describe('UC-66 production activation stays closed', () => {
   const modules = new Set<unknown>(),
@@ -49,9 +50,12 @@ describe('UC-66 production activation stays closed', () => {
     expect(modules.has(SupportStaffAuthorityModule)).toBe(false);
     expect(modules.has(SupportOrganizationDirectoryModule)).toBe(false);
     expect(controllers.has(SupportContextController)).toBe(false);
+    expect(controllers.has(SupportWorkspaceController)).toBe(false);
     expect(
       [...tokens].some((token) =>
-        /SupportContext|SUPPORT_STAFF_AUTHORITY|SUPPORT_ORGANIZATION_DIRECTORY/.test(token),
+        /SupportContext|SupportWorkspace|SUPPORT_.*READER|SUPPORT_STAFF_AUTHORITY|SUPPORT_ORGANIZATION_DIRECTORY/.test(
+          token,
+        ),
       ),
     ).toBe(false);
     expect(

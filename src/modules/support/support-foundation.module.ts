@@ -18,6 +18,12 @@ import {
   SupportContextSchema,
 } from './infrastructure/support-context.schema';
 import { SupportContextController } from './presentation/support-context.controller';
+import { SupportProjectReaderModule } from '../projects/support-project-reader.module';
+import { SupportScreenReaderModule } from '../screens/support-screen-reader.module';
+import { SupportConversionReaderModule } from '../conversions/support-conversion-reader.module';
+import { SupportFindingReaderModule } from '../validation/support-finding-reader.module';
+import { ReadSupportWorkspaceService } from './application/read-support-workspace.service';
+import { SupportWorkspaceController } from './presentation/support-workspace.controller';
 
 /** ISOLATED: deliberately not imported by AppModule/worker or enabled by any config flag.
  * Hoang's independent QA/Security review and separate activation approval are required.
@@ -30,15 +36,20 @@ import { SupportContextController } from './presentation/support-context.control
     AuditModule,
     SupportStaffAuthorityModule,
     SupportOrganizationDirectoryModule,
+    SupportProjectReaderModule,
+    SupportScreenReaderModule,
+    SupportConversionReaderModule,
+    SupportFindingReaderModule,
     MongooseModule.forFeature([{ name: SUPPORT_CONTEXT_MODEL, schema: SupportContextSchema }]),
   ],
-  controllers: [SupportContextController],
+  controllers: [SupportContextController, SupportWorkspaceController],
   providers: [
     SupportStaffAccessService,
     SearchSupportOrganizationsService,
     EnterSupportContextService,
     ExitSupportContextService,
     AuthorizeSupportContextReadService,
+    ReadSupportWorkspaceService,
     { provide: SUPPORT_CLOCK, useValue: { now: () => new Date() } },
     { provide: SUPPORT_CONTEXT_UNIT_OF_WORK, useClass: MongoSupportContextUnitOfWork },
   ],

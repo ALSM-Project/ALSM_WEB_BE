@@ -99,6 +99,7 @@ export class MongoSupportContextUnitOfWork implements SupportContextUnitOfWork {
       const result = await work({
         contexts: new MongoSupportContextRepository(this.contexts, session, this.connection),
         audit: this.audit.bind({ session, connection: this.connection }),
+        readTransaction: { session, connection: this.connection },
       });
       // Core API only: the installed driver may retry this same commit command,
       // but no convenience API can restart the business callback after uncertainty.
