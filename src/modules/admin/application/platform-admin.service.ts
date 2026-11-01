@@ -8,7 +8,7 @@ import {
   ServiceUnavailableException,
 } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
-import { FilterQuery, Model, Types } from 'mongoose';
+import { ClientSession, Connection, FilterQuery, Model, Types } from 'mongoose';
 import {
   Organization,
   OrganizationDocument,
@@ -29,6 +29,12 @@ import {
 import { AuditLog, AuditLogDocument } from '../../audit/infrastructure/audit-log.schema';
 import { AUDIT_REPOSITORY, AuditRepository } from '../../audit/domain/audit.repository';
 import { toValidObjectId } from '../../../shared/utils/object-id.util';
+import { MongoTransactionRunner } from '../../../shared/database/mongo-transaction-runner';
+import { OrganizationEngagementLimitsDto } from '../presentation/dto/update-organization-engagement.dto';
+
+type TransactionAwareAuditRepository = AuditRepository & {
+  inTransaction(session: ClientSession, connection: Connection): AuditRepository;
+};
 
 @Injectable()
 export class PlatformAdminService {
@@ -264,30 +270,98 @@ export class PlatformAdminService {
       engagementType?: string;
       status?: 'ACTIVE' | 'SUSPENDED' | 'TRIAL';
       trialExpiresAt?: string;
-      limits?: { maxScreens: number; maxPrograms: number; maxStorageGb: number };
+      limits?: OrganizationEngagementLimitsDto;
     },
   ) {
-    const org = await this.findOrgById(id);
-    if (dto.engagementType) org.engagementType = dto.engagementType;
-    if (dto.status) org.status = dto.status;
-    if (dto.trialExpiresAt) org.trialExpiresAt = new Date(dto.trialExpiresAt);
-    if (dto.limits) org.limits = { ...org.limits, ...dto.limits };
+    if (!Types.ObjectId.isValid(actorUserId)) {
+      throw new BadRequestException({ code: 'INVALID_ACTOR_ID', message: 'A valid administrator is required.' });
+    }
+    if (!Types.ObjectId.isValid(id || '')) {
+      throw new BadRequestException({ code: 'INVALID_ORGANIZATION_ID', message: 'The organisation identifier is invalid.' });
+    }
 
-    await org.save();
+    const engagementType = dto.engagementType?.trim();
+    if (dto.engagementType !== undefined && (!engagementType || engagementType.length > 100)) {
+      throw new BadRequestException({ code: 'INVALID_ENGAGEMENT_TYPE', message: 'Select a valid engagement type.' });
+    }
+    if (dto.status !== undefined && !['ACTIVE', 'SUSPENDED', 'TRIAL'].includes(dto.status)) {
+      throw new BadRequestException({ code: 'INVALID_ORGANIZATION_STATUS', message: 'Select a valid organisation status.' });
+    }
+    if (dto.trialExpiresAt !== undefined && Number.isNaN(Date.parse(dto.trialExpiresAt))) {
+      throw new BadRequestException({ code: 'INVALID_TRIAL_EXPIRY', message: 'Enter a valid trial expiry date.' });
+    }
+    const allowedLimitKeys = new Set([
+      'maxProjects', 'maxConversionsPerMonth', 'maxStorageGb', 'aiValidationEnabled',
+      'trialScreens', 'trialPrograms', 'trialStorageGb',
+    ]);
+    const limitEntries = Object.entries(dto.limits ?? {});
+    if (Object.keys(dto).length === 0 || dto.limits === null || (dto.limits && limitEntries.length === 0)) {
+      throw new BadRequestException({ code: 'EMPTY_ENGAGEMENT_UPDATE', message: 'Change at least one engagement setting.' });
+    }
+    for (const [key, value] of limitEntries) {
+      if (!allowedLimitKeys.has(key)) {
+        throw new BadRequestException({ code: 'INVALID_ENGAGEMENT_LIMIT', message: 'The submitted engagement limit is not supported.' });
+      }
+      if (key === 'aiValidationEnabled') {
+        if (typeof value !== 'boolean') {
+          throw new BadRequestException({ code: 'INVALID_ENGAGEMENT_LIMIT', message: 'AI validation must be enabled or disabled.' });
+        }
+        continue;
+      }
+      const isStorage = key === 'maxStorageGb' || key === 'trialStorageGb';
+      if (typeof value !== 'number' || !Number.isFinite(value) || value < (isStorage ? 0.1 : 1) ||
+        value > 1_000_000 || (!isStorage && !Number.isInteger(value))) {
+        throw new BadRequestException({ code: 'INVALID_ENGAGEMENT_LIMIT', message: 'Limits must be positive values within the supported range.' });
+      }
+    }
 
-    await this.audit.append({
-      actorUserId,
-      organizationId: org._id.toString(),
-      action: 'ORGANISATION_ENGAGEMENT_UPDATED',
-      resourceType: 'ORGANIZATION',
-      resourceId: org._id.toString(),
-      metadata: {
-        engagementType: org.engagementType,
+    const transactionRunner = new MongoTransactionRunner(this.orgModel.db);
+    await transactionRunner.run(async (session) => {
+      const org = await this.orgModel
+        .findById(new Types.ObjectId(id))
+        .session(session)
+        .exec();
+      if (!org) throw new NotFoundException({ code: 'ORGANIZATION_NOT_FOUND', message: 'The organisation was not found.' });
+
+      const previous = {
         status: org.status,
-      },
-    });
+        engagementType: org.engagementType,
+        trialExpiresAt: org.trialExpiresAt?.toISOString(),
+        limits: JSON.stringify(org.limits ?? {}),
+      };
+      if (dto.status !== undefined) org.status = dto.status;
+      if (engagementType !== undefined) org.engagementType = engagementType;
+      if (dto.trialExpiresAt !== undefined) org.trialExpiresAt = new Date(dto.trialExpiresAt);
+      if (dto.limits) org.limits = { ...org.limits, ...dto.limits };
 
-    return this.getOrganizationDetails(org.id);
+      const changedFields = [
+        previous.status !== org.status ? 'status' : undefined,
+        previous.engagementType !== org.engagementType ? 'engagementType' : undefined,
+        previous.trialExpiresAt !== org.trialExpiresAt?.toISOString() ? 'trialExpiresAt' : undefined,
+        previous.limits !== JSON.stringify(org.limits ?? {}) ? 'limits' : undefined,
+      ].filter((field): field is string => Boolean(field));
+      if (changedFields.length === 0) return;
+
+      await org.save({ session });
+      const transactionAudit = (this.audit as TransactionAwareAuditRepository).inTransaction(
+        session,
+        this.orgModel.db,
+      );
+      await transactionAudit.append({
+        actorUserId,
+        organizationId: org._id.toString(),
+        action: 'ORGANISATION_ENGAGEMENT_UPDATED',
+        resourceType: 'ORGANIZATION',
+        resourceId: org._id.toString(),
+        metadata: {
+          changedFields: changedFields.join(','),
+          engagementType: org.engagementType,
+          status: org.status,
+        },
+      });
+    }, id);
+
+    return this.getOrganizationDetails(id);
   }
 
   // ─── 3.10.4 Impersonate Organisation ─────────────────────────────

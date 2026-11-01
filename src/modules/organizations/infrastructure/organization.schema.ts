@@ -25,6 +25,12 @@ export class Organization {
       maxScreens: { type: Number, default: 20 },
       maxPrograms: { type: Number, default: 10 },
       maxStorageGb: { type: Number, default: 5 },
+      maxProjects: { type: Number, default: 10 },
+      maxConversionsPerMonth: { type: Number, default: 100 },
+      aiValidationEnabled: { type: Boolean, default: true },
+      trialScreens: { type: Number, default: 15 },
+      trialPrograms: { type: Number, default: 8 },
+      trialStorageGb: { type: Number, default: 5 },
     },
     default: () => ({ maxScreens: 20, maxPrograms: 10, maxStorageGb: 5 }),
   })
@@ -32,6 +38,12 @@ export class Organization {
     maxScreens: number;
     maxPrograms: number;
     maxStorageGb: number;
+    maxProjects: number;
+    maxConversionsPerMonth: number;
+    aiValidationEnabled: boolean;
+    trialScreens: number;
+    trialPrograms: number;
+    trialStorageGb: number;
   };
   createdAt!: Date;
   updatedAt!: Date;
