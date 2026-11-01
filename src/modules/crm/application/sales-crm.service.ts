@@ -22,6 +22,7 @@ import {
   SalesPipelineStage,
   SalesPipelineView,
 } from '../domain/sales-pipeline.types';
+import { SalesReportPeriod } from '../presentation/sales-report-query.dto';
 
 export interface CreateCrmLeadDto {
   contactName: string;
@@ -530,8 +531,17 @@ export class SalesCrmService {
   }
 
   // Section 3.12: Sales Reports & Approvals
-  async getSalesReports(teamId?: string) {
-    const leads = await this.leadModel.find().exec();
+  async getSalesReports(organizationId?: string, period: SalesReportPeriod = 'ALL') {
+    const filter: FilterQuery<LeadDocument> = {};
+    if (organizationId) {
+      if (!Types.ObjectId.isValid(organizationId)) {
+        throw new BadRequestException({ code: 'INVALID_ORGANIZATION_ID', message: 'The organization ID is invalid.' });
+      }
+      filter.organizationId = new Types.ObjectId(organizationId);
+    }
+    const start = this.salesReportStart(period);
+    if (start) filter.createdAt = { $gte: start };
+    const leads = await this.leadModel.find(filter).exec();
     const totalLeads = leads.length;
     const wonLeads = leads.filter((l) => l.stage === 'WON').length;
     const conversionRate = totalLeads > 0 ? Math.round((wonLeads / totalLeads) * 100) : 0;
@@ -569,19 +579,40 @@ export class SalesCrmService {
       pipelineBreakdown,
       sourceDistribution: leadSources,
       leadSources,
-      teamId: teamId || 'all',
+      organizationId,
+      period,
       lastUpdated: new Date().toISOString(),
     };
   }
 
-  async exportSalesReportsCsv() {
-    const leads = await this.leadModel.find().sort({ createdAt: -1 }).exec();
+  async exportSalesReportsCsv(organizationId?: string, period: SalesReportPeriod = 'ALL') {
+    const filter: FilterQuery<LeadDocument> = {};
+    if (organizationId) {
+      if (!Types.ObjectId.isValid(organizationId)) {
+        throw new BadRequestException({ code: 'INVALID_ORGANIZATION_ID', message: 'The organization ID is invalid.' });
+      }
+      filter.organizationId = new Types.ObjectId(organizationId);
+    }
+    const start = this.salesReportStart(period);
+    if (start) filter.createdAt = { $gte: start };
+    const leads = await this.leadModel.find(filter).sort({ createdAt: -1 }).exec();
     const headers = 'ID,Company,Contact,Email,Phone,Source,Stage,Score,LastContactAt,Created\n';
     const rows = leads.map((l) => {
       const createdAtStr = l.createdAt ? new Date(l.createdAt).toISOString() : '';
       return `"${l.id}","${l.company || ''}","${l.contactName || ''}","${l.contactEmail || ''}","${l.phone || ''}","${l.source || ''}","${l.stage}","${l.score}","${l.lastContactAt ? l.lastContactAt.toISOString() : ''}","${createdAtStr}"`;
     });
     return headers + rows.join('\n');
+  }
+
+  private salesReportStart(period: SalesReportPeriod): Date | undefined {
+    const now = new Date();
+    if (period === '30D' || period === '90D') {
+      const start = new Date(now);
+      start.setUTCDate(start.getUTCDate() - (period === '30D' ? 30 : 90));
+      return start;
+    }
+    if (period === 'YTD') return new Date(Date.UTC(now.getUTCFullYear(), 0, 1));
+    return undefined;
   }
 
   async getPendingDiscounts() {
