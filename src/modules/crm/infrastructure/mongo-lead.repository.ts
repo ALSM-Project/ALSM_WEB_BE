@@ -232,9 +232,9 @@ export class MongoLeadRepository implements LeadRepository {
         throw new BadRequestException({ code: 'CONTRACT_QUOTE_NOT_ACCEPTED', message: 'The selected quote must be accepted before creating a contract.' });
       }
       const quotedPlan = String(quote.planName ?? quote.plan ?? '');
-      const quotedAmount = Number(quote.finalPrice ?? quote.amount);
+      const quotedAmount = Number(quote.amount);
       const discountPercent = Number(quote.discountPercent ?? 0);
-      const finalAmount = Math.round(quotedAmount * (1 - discountPercent / 100));
+      const finalAmount = Number(quote.finalPrice ?? Math.round(quotedAmount * (1 - discountPercent / 100)));
       if (input.contract.plan !== quotedPlan || input.contract.annualValue !== finalAmount) {
         throw new BadRequestException({
           code: 'CONTRACT_QUOTE_MISMATCH',
@@ -294,8 +294,13 @@ export class MongoLeadRepository implements LeadRepository {
       throw new ConflictException({ code: 'INVALID_DISCOUNT_REQUEST', message: 'This discount request needs reconciliation before review.' });
     }
 
-    const alreadyApproved = input.outcome === 'APPROVE' && quote.status === 'SENT' && quote.discountApproved === true;
-    const alreadyRejected = input.outcome === 'REJECT' && quote.status === 'REJECTED' && quote.discountApproved === false;
+    const isExecutiveOutcome = input.outcome === 'EXECUTIVE_APPROVE' || input.outcome === 'EXECUTIVE_REJECT';
+    const alreadyApproved = (input.outcome === 'APPROVE' || input.outcome === 'EXECUTIVE_APPROVE') &&
+      quote.status === 'SENT' && quote.discountApproved === true &&
+      (!isExecutiveOutcome || !!quote.executiveReviewedAt);
+    const alreadyRejected = (input.outcome === 'REJECT' || input.outcome === 'EXECUTIVE_REJECT') &&
+      quote.status === 'REJECTED' && quote.discountApproved === false &&
+      (!isExecutiveOutcome || !!quote.executiveReviewedAt);
     const alreadyEscalated = input.outcome === 'ESCALATE' && quote.status === 'PENDING_APPROVAL' && quote.approvalStatus === 'REQUIRES_HIGHER_APPROVAL';
     if (alreadyApproved || alreadyRejected || alreadyEscalated) {
       return {
@@ -313,8 +318,12 @@ export class MongoLeadRepository implements LeadRepository {
     if (input.outcome === 'ESCALATE' && discountPercent <= 20) {
       throw new BadRequestException({ code: 'DISCOUNT_ESCALATION_NOT_REQUIRED', message: 'This discount is within the manager approval limit.' });
     }
+    if (isExecutiveOutcome && (discountPercent <= 20 || quote.approvalStatus !== 'REQUIRES_HIGHER_APPROVAL')) {
+      throw new ConflictException({ code: 'DISCOUNT_NOT_ESCALATED', message: 'Only a discount escalated above the manager limit can receive executive review.' });
+    }
+    const expectedApprovalStatus = quote.approvalStatus;
     const reviewedAt = new Date();
-    if (input.outcome === 'APPROVE') {
+    if (input.outcome === 'APPROVE' || input.outcome === 'EXECUTIVE_APPROVE') {
       quote.status = 'SENT';
       quote.discountApproved = true;
       quote.approvalStatus = 'APPROVED';
@@ -322,20 +331,41 @@ export class MongoLeadRepository implements LeadRepository {
       quote.approvedAt = reviewedAt;
       quote.sentAt = reviewedAt;
       quote.rejectionReason = undefined;
-    } else if (input.outcome === 'REJECT') {
+      if (input.outcome === 'EXECUTIVE_APPROVE') {
+        quote.executiveReviewedBy = input.actorUserId;
+        quote.executiveReviewedAt = reviewedAt;
+      }
+    } else if (input.outcome === 'REJECT' || input.outcome === 'EXECUTIVE_REJECT') {
       quote.status = 'REJECTED';
       quote.discountApproved = false;
       quote.approvalStatus = 'REJECTED';
       quote.approvedBy = input.actorUserId;
       quote.approvedAt = reviewedAt;
       quote.rejectionReason = input.reason;
+      if (input.outcome === 'EXECUTIVE_REJECT') {
+        quote.executiveReviewedBy = input.actorUserId;
+        quote.executiveReviewedAt = reviewedAt;
+      }
     } else {
       quote.approvalStatus = 'REQUIRES_HIGHER_APPROVAL';
       quote.escalatedBy = input.actorUserId;
       quote.escalatedAt = reviewedAt;
     }
+    const approvalStatusMatch = expectedApprovalStatus === undefined
+      ? { approvalStatus: { $exists: false } }
+      : { approvalStatus: expectedApprovalStatus };
     await this.model.updateOne(
-      { _id: lead._id, quotes: { $elemMatch: { id: input.quoteId, status: 'PENDING_APPROVAL' } } },
+      {
+        _id: lead._id,
+        quotes: {
+          $elemMatch: {
+            id: input.quoteId,
+            status: 'PENDING_APPROVAL',
+            discountPercent,
+            ...approvalStatusMatch,
+          },
+        },
+      },
       { $set: { 'quotes.$': quote, updatedAt: reviewedAt } },
       { runValidators: true },
     ).session(this.scope()).exec().then((result) => {

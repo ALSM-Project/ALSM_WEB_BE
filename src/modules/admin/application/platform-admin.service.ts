@@ -3,6 +3,7 @@ import {
   ConflictException,
   Inject,
   Injectable,
+  Logger,
   NotFoundException,
   ServiceUnavailableException,
 } from '@nestjs/common';
@@ -31,6 +32,8 @@ import { toValidObjectId } from '../../../shared/utils/object-id.util';
 
 @Injectable()
 export class PlatformAdminService {
+  private readonly logger = new Logger(PlatformAdminService.name);
+
   constructor(
     @InjectModel(Organization.name) private readonly orgModel: Model<OrganizationDocument>,
     @InjectModel(User.name) private readonly userModel: Model<UserDocument>,
@@ -45,33 +48,63 @@ export class PlatformAdminService {
 
   // ─── 3.13.1 View All Organisations ──────────────────────────────
   async listOrganizations(query?: { search?: string; type?: string; status?: string }) {
-    const filter: FilterQuery<OrganizationDocument> = {};
-    if (query?.type && query.type !== 'ALL') {
-      filter.type = query.type;
-    }
-    if (query?.status && query.status !== 'ALL') {
-      filter.status = query.status;
-    }
-    if (query?.search?.trim()) {
-      const searchRegex = new RegExp(query.search.trim(), 'i');
-      filter.$or = [{ name: searchRegex }, { domain: searchRegex }, { contactEmail: searchRegex }];
-    }
+    try {
+      const filter: FilterQuery<OrganizationDocument> = {};
+      if (query?.type && query.type !== 'ALL') filter.type = query.type;
+      if (query?.status && query.status !== 'ALL') filter.status = query.status;
+      const search = query?.search?.trim();
+      if (search) {
+        const escaped = search.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+        const searchRegex = new RegExp(escaped, 'i');
+        filter.$or = [{ name: searchRegex }, { domain: searchRegex }, { contactEmail: searchRegex }];
+      }
 
-    const orgs = await this.orgModel.find(filter).sort({ createdAt: -1 }).exec();
-    return orgs.map((org) => ({
-      id: org.id || org._id.toString(),
-      name: org.name,
-      type: org.type,
-      status: org.status || 'ACTIVE',
-      domain: org.domain,
-      contactEmail: org.contactEmail,
-      engagementType: org.engagementType || 'Trial',
-      memberCount: (org.members || []).length,
-      limits: org.limits,
-      trialExpiresAt: org.trialExpiresAt,
-      createdAt: org.createdAt,
-      updatedAt: org.updatedAt,
-    }));
+      const orgs = await this.orgModel
+        .find(filter)
+        .select('name type status domain contactEmail engagementType members limits trialExpiresAt createdAt updatedAt')
+        .sort({ createdAt: -1, _id: -1 })
+        .exec();
+      if (!orgs.length) return [];
+
+      const organizationIds = orgs.map((org) => org._id);
+      const projectCounts = await this.projectModel.aggregate([
+        {
+          $match: {
+            organizationId: { $in: organizationIds },
+            deletedAt: { $exists: false },
+          },
+        },
+        { $group: { _id: '$organizationId', count: { $sum: 1 } } },
+      ]).exec();
+      const projectCountByOrganization = new Map(
+        projectCounts.map((entry: { _id: Types.ObjectId | string; count: number }) => [String(entry._id), entry.count]),
+      );
+
+      return orgs.map((org) => ({
+        id: org.id || org._id.toString(),
+        name: org.name,
+        type: org.type,
+        status: org.status || 'ACTIVE',
+        domain: org.domain,
+        contactEmail: org.contactEmail,
+        engagementType: org.engagementType || 'Trial',
+        memberCount: (org.members || []).length,
+        projectCount: projectCountByOrganization.get(org._id.toString()) ?? 0,
+        limits: org.limits,
+        trialExpiresAt: org.trialExpiresAt,
+        createdAt: org.createdAt,
+        updatedAt: org.updatedAt,
+      }));
+    } catch (error) {
+      this.logger.error(
+        'Failed to load platform organisation directory',
+        error instanceof Error ? error.name : 'unknown error',
+      );
+      throw new ServiceUnavailableException({
+        code: 'ORGANIZATION_LIST_UNAVAILABLE',
+        message: 'Organisations are temporarily unavailable. Please retry.',
+      });
+    }
   }
 
   // ─── 3.13.2 View Organisation Details ───────────────────────────

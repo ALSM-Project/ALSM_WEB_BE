@@ -48,7 +48,12 @@ export interface AddLeadContractResult {
   contract: LeadContractRecord;
   replayed: boolean;
 }
-export type DiscountReviewOutcome = 'APPROVE' | 'REJECT' | 'ESCALATE';
+export type DiscountReviewOutcome =
+  | 'APPROVE'
+  | 'REJECT'
+  | 'ESCALATE'
+  | 'EXECUTIVE_APPROVE'
+  | 'EXECUTIVE_REJECT';
 export interface ReviewLeadDiscountInput {
   leadId: string;
   organizationId: string;
