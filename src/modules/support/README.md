@@ -133,24 +133,31 @@ when automatic indexes are disabled. No existing index or collection is changed.
 There is no TTL or purge; expired/terminal records remain for audit/reconciliation.
 Retention requires a separate decision. Old Ticket/Consent collections are not reused.
 
-The context unit of work reuses the **unchanged MongoTransactionRunner** and the
-audit module's new public factory for the existing session-bound MongoAuditRepository.
+The Support-specific unit of work uses the explicit MongoDB **Core Transaction API**,
+not the convenience `withTransaction` callback retry path. The shared
+MongoTransactionRunner and its other callers are unchanged. The audit module's
+public factory binds the existing MongoAuditRepository to this transaction.
 Both writes use the same explicit Mongo session/connection. Required ENTER, EXIT,
 READ and lazy EXPIRED/REVOKED audit writes commit with the context transition or
 roll back together. Events retain the real actor, target Organisation, context ID,
 original session ID and mode; no JWTs, generations, contact queries or secrets are
 written to audit metadata. Only a confirmed commit returns ordinary success.
 
-Optimistic revisions and the active-origin unique index serialize concurrent
-Enter/activity/Exit. The installed driver retains normal transient transaction
-retry semantics; callbacks perform only database operations and use a stable Enter
-context ID. Duplicate Enter is a conflict. Mixed unknown-result errors are never
-turned into a definite conflict or replayed as new business work.
+Each invocation executes its business callback at most once. Same-context calls
+are queued within one adapter instance; this is scheduling, not a distributed lock.
+Across instances, optimistic revisions and the active-origin unique index protect
+Enter/activity/Exit. A definite pre-commit write conflict aborts with 409 and no
+callback replay; duplicate Enter remains a conflict. No application commit retry
+loop is used. The installed Core API may retry the same commit command internally,
+but cannot restart business work. Abort/session cleanup failures are logged without
+replacing the primary outcome.
 
 `503 SUPPORT_CONTEXT_OUTCOME_UNCONFIRMED` includes the original context ID,
 `mutationCommitted: unknown` and `retrySafe: false`. A lost acknowledgement can
 mean the context/activity/audit actually committed; do not claim such a response
-rolled back or blindly replay it. Reconcile Enter through own context status;
+rolled back or blindly replay it. Every rejected commit is conservatively unconfirmed,
+including mixed labels, nested write-concern code 50 and unlabelled failures.
+Reconcile Enter through own context status;
 reconcile Exit through its idempotent endpoint. An inactive/expired context stays
 unusable and a fresh Enter can replace it after fresh authorization.
 
@@ -178,9 +185,12 @@ label `alsm.owner=uc66-foundation-20261101`. It accepts no arbitrary URI or .env
 credentials. Each run uses a new random database with a checked ownership marker;
 only that disposable test database is cleared/dropped. Tests use actual collection
 validators to reject context/ENTER/READ/EXIT writes, demonstrating durable rollback.
-Concurrency and role/session invalidation use real persisted records. The uncertain
-acknowledgement test injects a transport-style exception **after a real confirmed
-commit**; it demonstrates reconciliation/no replay, not a real network fault campaign.
+Concurrency and role/session invalidation use real persisted records. Uncertain
+acknowledgement tests hook `commitTransaction` itself, inside the installed driver's
+transaction path, and throw **after the real commit succeeds**. They verify one
+callback, one durable mutation/audit and an unconfirmed response, including code-50
+mixed-label/nested variants and the code-11000 control. They simulate acknowledgement
+loss; they are not a real network fault campaign.
 
 ```powershell
 node node_modules/jest/bin/jest.js --runInBand --runTestsByPath test/uc66-context.entity.spec.ts test/uc66-foundation.services.spec.ts test/uc66-context.unit-of-work.spec.ts test/uc66-production-boundary.spec.ts
@@ -190,7 +200,8 @@ node node_modules/jest/bin/jest.js --runInBand --runTestsByPath test/uc66-founda
 
 The Mongo suite skips unless explicitly opted in; never point it at a shared or
 production database. Test bootstrap and actual results are recorded in
-`docs/engineering/UC66_01_02_IMPLEMENTATION_20261101.md` and its evidence directory.
+`docs/engineering/UC66_01_02_IMPLEMENTATION_20261101.md` and the subsequent
+[transaction replay fix handoff](../../../docs/engineering/UC66_TRANSACTION_REPLAY_FIX_20261101.md).
 
 Next, implement explicitly named, bounded customer read projections in their owning
 resource modules, verify exact resource Organisation ownership on every read, bind

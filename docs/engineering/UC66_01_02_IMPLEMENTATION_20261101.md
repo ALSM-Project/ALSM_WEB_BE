@@ -9,6 +9,12 @@ The existing authenticated impersonation endpoint remains
 `503 SUPPORT_IMPERSONATION_UNAVAILABLE`. No customer workspace facade, customer
 JWT or membership grant is introduced. No Ticket/Consent prerequisite is restored.
 
+This records the original `dca2da2` delivery and its historical test counts. Hoang's
+review subsequently found P2 transaction callback replay. The
+[transaction replay fix handoff](UC66_TRANSACTION_REPLAY_FIX_20261101.md) records
+the correction, red/green evidence and current verification; it supersedes the
+original transaction retry claims below. Acceptance still requires renewed review.
+
 ## Implemented API and registration
 
 All paths below have the `/api/v1` prefix and are **unregistered in AppModule and
@@ -71,16 +77,19 @@ production by this task. One stored ACTIVE context per real actor/original sessi
 is enforced by the index plus transaction/revision checks. Missing/drifted index
 fails closed. There is no TTL/purge and no reuse of old Ticket/Consent collections.
 
-The unchanged MongoTransactionRunner and existing session-bound audit repository
-are reused through a new public transactional audit factory. Context mutation and
+The corrected Support adapter uses explicit Core transactions with an at-most-once
+business callback, leaving the shared MongoTransactionRunner and its callers
+unchanged. The existing session-bound audit repository is reused through the public
+transactional audit factory. Context mutation and
 required ENTER/EXIT/READ/EXPIRED/REVOKED audit use the same connection/session and
 commit or roll back together. Events retain real actor, Organisation, context ID
 and original session reference without logging credentials or contact queries.
 Mongo collection validators actually rejected context and audit writes in the
 integration tests; rollback claims are not based only on mocks.
 
-Stable Enter IDs, partial uniqueness, optimistic revisions and normal driver
-transaction retry semantics handle concurrent Enter/activity/Exit. Unknown commit
+Stable Enter IDs, partial uniqueness, optimistic revisions and local same-context
+scheduling protect concurrent Enter/activity/Exit. Across adapter instances, known
+pre-commit conflicts abort with 409 without replay. Unknown commit
 outcomes return `SUPPORT_CONTEXT_OUTCOME_UNCONFIRMED` with the original context ID,
 `mutationCommitted: unknown` and `retrySafe: false`. They never claim rollback
 or trigger a new business replay. Own context status/idempotent Exit provide
@@ -217,8 +226,10 @@ No .env/application Mongo credentials or production connection were used. No
 production database data, deployed index, collection or migration was deleted or
 changed. The integration index-removal test affected only the new disposable test
 collection and restored the declared index before later tests. The unknown-commit
-case injected a transport-style exception after a real successful Mongo commit;
-it is a reconciliation/no-replay test, not a real network fault campaign.
+case originally injected a transport-style exception after the convenience wrapper
+returned, missing internal callback replay. The fix moves injection to
+`commitTransaction` after a real successful commit and adds mixed-label/nested
+regressions; this remains simulated acknowledgement loss, not a network fault campaign.
 
 To reproduce in a separately verified disposable environment, start the fixed
 loopback-only topology using the locally available mongo:8 image, wait for ping,

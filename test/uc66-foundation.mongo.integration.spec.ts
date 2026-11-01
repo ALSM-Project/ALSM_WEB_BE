@@ -34,11 +34,21 @@ import {
   SupportStaffAuthorityPort,
 } from '../src/modules/rbac/domain/support-staff-authority.port';
 import { AuditLog } from '../src/modules/audit/infrastructure/audit-log.schema';
+import {
+  TRANSACTIONAL_AUDIT_FACTORY,
+  TransactionalAuditFactory,
+} from '../src/modules/audit/domain/transactional-audit.port';
+import { MongoSupportContextUnitOfWork } from '../src/modules/support/infrastructure/mongo-support-context.unit-of-work';
 import { ProjectsController } from '../src/modules/projects/presentation/projects.controller';
 import { ProjectService } from '../src/modules/projects/application/project.service';
 import { PROJECT_REPOSITORY } from '../src/modules/projects/domain/project.types';
 import { SupportFoundationModule } from '../src/modules/support/support-foundation.module';
-import { SUPPORT_CLOCK } from '../src/modules/support/application/support-context.ports';
+import {
+  SUPPORT_CLOCK,
+  SUPPORT_CONTEXT_UNIT_OF_WORK,
+  SupportContextParticipants,
+  SupportContextUnitOfWork,
+} from '../src/modules/support/application/support-context.ports';
 import { AuthorizeSupportContextReadService } from '../src/modules/support/application/authorize-support-context-read.service';
 import {
   SUPPORT_ACTIVE_ORIGIN_INDEX,
@@ -103,6 +113,37 @@ owned('UC66-01/02 isolated HTTP module with real owned Mongo transactions', () =
     expect(
       await connection.collection('_uc66_test_owner').findOne({ runId, database }),
     ).toBeTruthy();
+  }
+
+  function injectCommitAcknowledgementLoss(error: () => Error) {
+    const counts = { businessCallbacks: 0, commitCalls: 0 };
+    const unit = app!.get<SupportContextUnitOfWork>(SUPPORT_CONTEXT_UNIT_OF_WORK);
+    const originalRun = unit.run.bind(unit);
+    const countedRun = <T>(id: string, work: (ports: SupportContextParticipants) => Promise<T>) =>
+      originalRun(id, async (ports) => {
+        counts.businessCallbacks++;
+        return work(ports);
+      });
+    const run = jest.spyOn(unit, 'run').mockImplementation(countedRun);
+    const originalStart = connection.startSession.bind(connection);
+    const start = jest.spyOn(connection, 'startSession').mockImplementationOnce(async (options) => {
+      const session = await originalStart(options);
+      const commit = session.commitTransaction.bind(session);
+      // Fault the actual Core API commit, inside any installed-driver retry loop.
+      session.commitTransaction = async (...args: Parameters<typeof commit>) => {
+        counts.commitCalls++;
+        await commit(...args);
+        if (counts.commitCalls === 1) throw error();
+      };
+      return session;
+    });
+    return {
+      counts,
+      restore: () => {
+        start.mockRestore();
+        run.mockRestore();
+      },
+    };
   }
 
   const token = (user = supportUserId, claims: object = {}) =>
@@ -612,6 +653,66 @@ owned('UC66-01/02 isolated HTTP module with real owned Mongo transactions', () =
     ).toBe(6);
   });
 
+  it('aborts a cross-instance pre-commit write conflict without replay or orphan audit', async () => {
+    const id = await enter();
+    const factory = app!.get<TransactionalAuditFactory>(TRANSACTIONAL_AUDIT_FACTORY);
+    const units = [
+      new MongoSupportContextUnitOfWork(connection, model, factory),
+      new MongoSupportContextUnitOfWork(connection, model, factory),
+    ];
+    const callbacks = [0, 0];
+    let arrived = 0,
+      release!: () => void;
+    const bothRead = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const results = await Promise.allSettled(
+      units.map((unit, index) =>
+        unit.run(id, async ({ contexts: repository, audit }) => {
+          callbacks[index]++;
+          const context = await repository.scoped({
+            id,
+            actorUserId: supportUserId,
+            originalSessionId: supportSessionId,
+            organizationId: supportOrganizationId,
+          });
+          if (!context) throw new Error('TEST missing context');
+          const revision = context.toProps().revision;
+          if (++arrived === 2) release();
+          await bothRead;
+          context.activity(new Date(control.time + 1000));
+          await repository.save(context, revision);
+          await audit.append({
+            actorUserId: supportUserId,
+            organizationId: supportOrganizationId,
+            action: 'SUPPORT_CONTEXT_READ',
+            resourceType: 'SUPPORT_CONTEXT',
+            resourceId: id,
+            metadata: {
+              originalSessionId: supportSessionId,
+              operation: 'CONTEXT_STATUS',
+              mode: 'READ_ONLY',
+            },
+          });
+        }),
+      ),
+    );
+    expect(callbacks).toEqual([1, 1]);
+    expect(results.filter((result) => result.status === 'fulfilled')).toHaveLength(1);
+    const rejected = results.find((result) => result.status === 'rejected');
+    expect(rejected?.reason).toMatchObject({
+      status: 409,
+      response: {
+        code: 'SUPPORT_CONTEXT_CONFLICT',
+        details: [{ contextId: id, mutationCommitted: false, retrySafe: false }],
+      },
+    });
+    expect((await model.findById(id).lean())!.revision).toBe(2);
+    expect(
+      await auditModel.countDocuments({ resourceId: id, action: 'SUPPORT_CONTEXT_READ' }),
+    ).toBe(1);
+  });
+
   it('concurrent Exit is idempotent, audited once and immediately prevents reuse', async () => {
     const id = await enter();
     const results = await Promise.all(Array.from({ length: 4 }, () => exit(id)));
@@ -720,20 +821,14 @@ owned('UC66-01/02 isolated HTTP module with real owned Mongo transactions', () =
   });
 
   it('reports an uncertain commit without replay; real committed state/audit can be reconciled by context ID', async () => {
-    const original = connection.startSession.bind(connection);
-    const start = jest.spyOn(connection, 'startSession').mockImplementationOnce(async (options) => {
-      const session = await original(options),
-        transaction = session.withTransaction.bind(session);
-      session.withTransaction = async (...args: Parameters<typeof transaction>) => {
-        await transaction(...args);
-        throw new mongo.MongoServerError({
+    const fault = injectCommitAcknowledgementLoss(
+      () =>
+        new mongo.MongoServerError({
           message: 'TEST lost acknowledgement after actual commit',
           code: 11000,
           errorLabels: ['UnknownTransactionCommitResult', 'TransientTransactionError'],
-        });
-      };
-      return session;
-    });
+        }),
+    );
     try {
       const response = await call('post', contexts, {}).expect(503);
       expect(response.body.code).toBe('SUPPORT_CONTEXT_OUTCOME_UNCONFIRMED');
@@ -743,9 +838,170 @@ owned('UC66-01/02 isolated HTTP module with real owned Mongo transactions', () =
       });
       expect(await model.countDocuments()).toBe(1);
       expect(await auditModel.countDocuments({ action: 'SUPPORT_CONTEXT_ENTERED' })).toBe(1);
+      expect(fault.counts).toEqual({ businessCallbacks: 1, commitCalls: 1 });
       await status(response.body.details[0].contextId).expect(200);
     } finally {
-      start.mockRestore();
+      fault.restore();
+    }
+  });
+
+  const commitFaults = [
+    {
+      name: 'code 50 mixed labels',
+      body: { code: 50 },
+      labels: ['UnknownTransactionCommitResult', 'TransientTransactionError'],
+    },
+    {
+      name: 'nested writeConcernError code 50 mixed labels',
+      body: { writeConcernError: { code: 50 } },
+      labels: ['UnknownTransactionCommitResult', 'TransientTransactionError'],
+    },
+    {
+      name: 'top-level 64 and nested code 50 mixed labels',
+      body: { code: 64, writeConcernError: { code: 50 } },
+      labels: ['UnknownTransactionCommitResult', 'TransientTransactionError'],
+    },
+    {
+      name: 'code 11000 control',
+      body: { code: 11000 },
+      labels: ['UnknownTransactionCommitResult', 'TransientTransactionError'],
+    },
+    {
+      name: 'code 50 unknown-only label',
+      body: { code: 50 },
+      labels: ['UnknownTransactionCommitResult'],
+    },
+    { name: 'code 50 without labels', body: { code: 50 }, labels: [] },
+  ];
+
+  it.each(commitFaults)(
+    'keeps committed activity unconfirmed without replay: $name',
+    async ({ body, labels }) => {
+      const id = await enter();
+      const before = (await model.findById(id).lean())!;
+      control.time += 1000;
+      const fault = injectCommitAcknowledgementLoss(
+        () =>
+          new mongo.MongoServerError({
+            message: 'TEST acknowledgement loss after actual commit',
+            ...body,
+            errorLabels: labels,
+          }),
+      );
+      try {
+        const response = await status(id);
+        const row = (await model.findById(id).lean())!;
+        const events = await auditModel
+          .find({ resourceId: id, action: 'SUPPORT_CONTEXT_READ' })
+          .lean();
+        expect({
+          status: response.status,
+          ...fault.counts,
+          durableRevision: row.revision,
+          durableReadAudits: events.length,
+        }).toEqual({
+          status: 503,
+          businessCallbacks: 1,
+          commitCalls: 1,
+          durableRevision: before.revision + 1,
+          durableReadAudits: 1,
+        });
+        expect(response.body).toMatchObject({
+          code: 'SUPPORT_CONTEXT_OUTCOME_UNCONFIRMED',
+          details: [{ contextId: id, mutationCommitted: 'unknown', retrySafe: false }],
+        });
+        expect(events[0]).toMatchObject({
+          actorUserId: new Types.ObjectId(supportUserId),
+          organizationId: new Types.ObjectId(supportOrganizationId),
+          resourceType: 'SUPPORT_CONTEXT',
+          resourceId: id,
+          metadata: {
+            originalSessionId: supportSessionId,
+            operation: 'CONTEXT_STATUS',
+            mode: 'READ_ONLY',
+          },
+        });
+        expect(row.lastActivityAt).toEqual(new Date(control.time));
+        expect(row.expiresAt).toEqual(before.expiresAt);
+        // Read-only reconciliation by the original identity; do not submit another activity.
+        const reconciled = await model
+          .findOne({
+            _id: response.body.details[0].contextId,
+            actorUserId: supportUserId,
+            originalSessionId: supportSessionId,
+            organizationId: supportOrganizationId,
+          })
+          .lean();
+        expect(reconciled!.revision).toBe(before.revision + 1);
+        expect(fault.counts.businessCallbacks).toBe(1);
+      } finally {
+        fault.restore();
+      }
+    },
+  );
+
+  it('keeps a committed ENTER unconfirmed after mixed-label code 50 without replay', async () => {
+    const fault = injectCommitAcknowledgementLoss(
+      () =>
+        new mongo.MongoServerError({
+          message: 'TEST ENTER commit acknowledgement loss',
+          code: 50,
+          errorLabels: ['UnknownTransactionCommitResult', 'TransientTransactionError'],
+        }),
+    );
+    try {
+      const response = await call('post', contexts, {});
+      expect({ status: response.status, ...fault.counts }).toEqual({
+        status: 503,
+        businessCallbacks: 1,
+        commitCalls: 1,
+      });
+      expect(response.body.code).toBe('SUPPORT_CONTEXT_OUTCOME_UNCONFIRMED');
+      const id = response.body.details[0].contextId;
+      expect(await model.countDocuments()).toBe(1);
+      const row = (await model.findById(id).lean())!;
+      expect(row).toMatchObject({
+        state: 'ACTIVE',
+        revision: 1,
+        actorUserId: new Types.ObjectId(supportUserId),
+        originalSessionId: new Types.ObjectId(supportSessionId),
+        organizationId: new Types.ObjectId(supportOrganizationId),
+      });
+      expect(
+        await auditModel.countDocuments({ resourceId: id, action: 'SUPPORT_CONTEXT_ENTERED' }),
+      ).toBe(1);
+    } finally {
+      fault.restore();
+    }
+  });
+
+  it('keeps a committed EXIT unconfirmed after mixed-label code 50 without replay', async () => {
+    const id = await enter();
+    const fault = injectCommitAcknowledgementLoss(
+      () =>
+        new mongo.MongoServerError({
+          message: 'TEST EXIT commit acknowledgement loss',
+          code: 50,
+          errorLabels: ['UnknownTransactionCommitResult', 'TransientTransactionError'],
+        }),
+    );
+    try {
+      const response = await exit(id);
+      expect({ status: response.status, ...fault.counts }).toEqual({
+        status: 503,
+        businessCallbacks: 1,
+        commitCalls: 1,
+      });
+      expect(response.body).toMatchObject({
+        code: 'SUPPORT_CONTEXT_OUTCOME_UNCONFIRMED',
+        details: [{ contextId: id, mutationCommitted: 'unknown', retrySafe: false }],
+      });
+      expect((await model.findById(id).lean())!).toMatchObject({ state: 'EXITED', revision: 2 });
+      expect(
+        await auditModel.countDocuments({ resourceId: id, action: 'SUPPORT_CONTEXT_EXITED' }),
+      ).toBe(1);
+    } finally {
+      fault.restore();
     }
   });
 });
