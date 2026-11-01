@@ -406,6 +406,24 @@ describe('real AdminModule authorization HTTP boundary', () => {
           toObject() { return this; },
         }]);
       }
+      if (path === `engagement-types/${targetId}`) {
+        models.EngagementType.findById.mockImplementation(() => query({
+          _id: new Types.ObjectId(targetId),
+          name: 'Existing Plan',
+          normalizedName: 'existing plan',
+          code: 'EXISTING_PLAN',
+          description: 'Current plan',
+          price: 12000,
+          trialLimits: { maxScreens: 10, maxPrograms: 5, maxStorageGb: 2 },
+          usageLimits: { maxScreens: 100, maxPrograms: 50, maxStorageGb: 20 },
+          features: ['BMS'],
+          includesCobolConversion: false,
+          supportTier: 'STANDARD',
+          slaHours: 12,
+          isActive: true,
+          save,
+        }));
+      }
       const body: Record<string, unknown> = {
         name: 'Created',
         contactEmail: 'new@example.test',
@@ -429,6 +447,26 @@ describe('real AdminModule authorization HTTP boundary', () => {
           features: [],
           includesCobolConversion: false,
           requestId: 'b286dd90-fba3-4ead-a8c5-c2ac88c1b2cb',
+        });
+      }
+      if (path === `engagement-types/${targetId}`) {
+        body.name = 'Updated Plan';
+        delete body.contactEmail;
+        delete body.engagementType;
+        delete body.requestId;
+        delete body.status;
+        delete body.projectId;
+        delete body.newAssigneeId;
+        Object.assign(body, {
+          code: 'UPDATED_PLAN',
+          description: 'Updated description',
+          price: 18000,
+          trialLimits: { maxScreens: 20, maxPrograms: 10, maxStorageGb: 5 },
+          usageLimits: { maxScreens: 200, maxPrograms: 100, maxStorageGb: 30 },
+          features: ['BMS', 'COBOL'],
+          includesCobolConversion: true,
+          supportTier: 'PREMIER',
+          slaHours: 4,
         });
       }
       const response = await call(method, path, {}, body);

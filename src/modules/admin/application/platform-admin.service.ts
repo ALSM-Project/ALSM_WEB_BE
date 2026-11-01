@@ -39,6 +39,7 @@ import { UserRole, UserRoleDocument } from '../../rbac/infrastructure/schemas/us
 import { EMAIL_PORT, EmailPort } from '../../auth/domain/email.port';
 import { createHash, randomBytes, randomUUID } from 'crypto';
 import { CreateEngagementTypeDto } from '../presentation/dto/create-engagement-type.dto';
+import { UpdateEngagementTypeDto } from '../presentation/dto/update-engagement-type.dto';
 
 type TransactionAwareAuditRepository = AuditRepository & {
   inTransaction(session: ClientSession, connection: Connection): AuditRepository;
@@ -726,20 +727,172 @@ export class PlatformAdminService {
     };
   }
 
-  async editEngagementType(actorUserId: string, id: string, dto: Record<string, unknown>) {
-    const updated = await this.engagementModel
-      .findByIdAndUpdate(toValidObjectId(id), { $set: dto }, { new: true })
-      .exec();
-    if (!updated) throw new NotFoundException('Engagement type not found');
+  async editEngagementType(actorUserId: string, id: string, dto: UpdateEngagementTypeDto) {
+    if (!Types.ObjectId.isValid(actorUserId)) {
+      throw new BadRequestException({ code: 'INVALID_ACTOR_ID', message: 'A valid platform administrator is required.' });
+    }
+    if (!Types.ObjectId.isValid(id || '')) {
+      throw new BadRequestException({ code: 'INVALID_ENGAGEMENT_TYPE_ID', message: 'The engagement type identifier is invalid.' });
+    }
+    if (!dto || Object.keys(dto).length === 0) {
+      throw new BadRequestException({ code: 'EMPTY_ENGAGEMENT_TYPE_UPDATE', message: 'Change at least one engagement type setting.' });
+    }
+    if (dto.name !== undefined && (typeof dto.name !== 'string' || dto.name.trim().replace(/\s+/g, ' ').length < 2 || dto.name.trim().replace(/\s+/g, ' ').length > 100)) {
+      throw new BadRequestException({ code: 'INVALID_ENGAGEMENT_TYPE_NAME', message: 'Plan name must be between 2 and 100 characters.' });
+    }
+    if (dto.code !== undefined && (typeof dto.code !== 'string' || !/^[A-Z][A-Z0-9_]{1,49}$/.test(dto.code.trim().toUpperCase()))) {
+      throw new BadRequestException({ code: 'INVALID_ENGAGEMENT_TYPE_CODE', message: 'Enter a valid plan code.' });
+    }
+    if (dto.price !== undefined && (typeof dto.price !== 'number' || !Number.isFinite(dto.price) || dto.price < 0 || dto.price > 1_000_000_000_000 || Math.round(dto.price * 100) !== dto.price * 100)) {
+      throw new BadRequestException({ code: 'INVALID_ENGAGEMENT_TYPE_PRICE', message: 'Price must be a non-negative amount within the supported range.' });
+    }
+    if (dto.trialLimits !== undefined) this.validateEngagementTypeLimits(dto.trialLimits);
+    if (dto.usageLimits !== undefined) this.validateEngagementTypeLimits(dto.usageLimits);
+    if (dto.features !== undefined && (!Array.isArray(dto.features) || dto.features.length > 50 || dto.features.some((feature) => typeof feature !== 'string' || feature.trim().length < 1 || feature.trim().length > 120))) {
+      throw new BadRequestException({ code: 'INVALID_ENGAGEMENT_TYPE_FEATURES', message: 'Add at most 50 features, each between 1 and 120 characters.' });
+    }
+    if (dto.includesCobolConversion !== undefined && typeof dto.includesCobolConversion !== 'boolean') {
+      throw new BadRequestException({ code: 'INVALID_ENGAGEMENT_TYPE_COBOL_SETTING', message: 'COBOL support must be enabled or disabled.' });
+    }
+    if (dto.supportTier !== undefined && !['COMMUNITY', 'STANDARD', 'STANDARD_ENTERPRISE', 'PREMIER'].includes(dto.supportTier)) {
+      throw new BadRequestException({ code: 'INVALID_ENGAGEMENT_TYPE_SUPPORT_TIER', message: 'Select a valid support tier.' });
+    }
+    if (dto.slaHours !== undefined && (!Number.isInteger(dto.slaHours) || dto.slaHours < 1 || dto.slaHours > 8760)) {
+      throw new BadRequestException({ code: 'INVALID_ENGAGEMENT_TYPE_SLA', message: 'SLA must be between 1 and 8760 hours.' });
+    }
+    if (dto.isActive !== undefined && typeof dto.isActive !== 'boolean') {
+      throw new BadRequestException({ code: 'INVALID_ENGAGEMENT_TYPE_STATUS', message: 'Engagement type status must be active or inactive.' });
+    }
 
-    await this.audit.append({
-      actorUserId,
-      action: 'ENGAGEMENT_TYPE_UPDATED',
-      resourceType: 'ENGAGEMENT_TYPE',
-      resourceId: updated.id,
-      metadata: { name: updated.name },
-    });
-    return updated;
+    let updated: EngagementTypeDocument | null = null;
+    const objectId = new Types.ObjectId(id);
+    try {
+      const transactionRunner = new MongoTransactionRunner(this.engagementModel.db);
+      await transactionRunner.run(async (session) => {
+        const engagementType = await this.engagementModel.findById(objectId).session(session).exec();
+        if (!engagementType) {
+          throw new NotFoundException({ code: 'ENGAGEMENT_TYPE_NOT_FOUND', message: 'The engagement type was not found.' });
+        }
+
+        const previous = {
+          name: engagementType.name,
+          normalizedName: engagementType.normalizedName || engagementType.name.toLowerCase(),
+          code: engagementType.code || this.generateEngagementCode(engagementType.name),
+          description: engagementType.description || '',
+          price: engagementType.price,
+          trialLimits: JSON.stringify(engagementType.trialLimits || {}),
+          usageLimits: JSON.stringify(engagementType.usageLimits || {}),
+          features: JSON.stringify(engagementType.features || []),
+          includesCobolConversion: engagementType.includesCobolConversion,
+          supportTier: engagementType.supportTier || 'STANDARD',
+          slaHours: engagementType.slaHours || 12,
+          isActive: engagementType.isActive,
+        };
+        const name = dto.name?.trim().replace(/\s+/g, ' ') ?? engagementType.name;
+        const normalizedName = name.toLowerCase();
+        const code = dto.code?.trim().toUpperCase() ?? (!engagementType.code && dto.name !== undefined
+          ? this.generateEngagementCode(name)
+          : engagementType.code || this.generateEngagementCode(engagementType.name));
+
+        if (normalizedName !== previous.normalizedName) {
+          const escapedName = name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+          const duplicateName = await this.engagementModel.findOne({
+            _id: { $ne: engagementType._id },
+            $or: [{ normalizedName }, { name: new RegExp(`^${escapedName}$`, 'i') }],
+          }).session(session).exec();
+          if (duplicateName) {
+            throw new ConflictException({ code: 'ENGAGEMENT_TYPE_NAME_EXISTS', message: 'An engagement type with this name already exists.' });
+          }
+        }
+        if (code !== previous.code) {
+          const duplicateCode = await this.engagementModel.findOne({ code, _id: { $ne: engagementType._id } }).session(session).exec();
+          const legacyDuplicate = duplicateCode ? null : (await this.engagementModel
+            .find({ code: { $exists: false }, _id: { $ne: engagementType._id } })
+            .session(session)
+            .exec())
+            .find((item) => this.generateEngagementCode(item.name) === code);
+          if (duplicateCode || legacyDuplicate) {
+            throw new ConflictException({ code: 'ENGAGEMENT_TYPE_CODE_EXISTS', message: 'An engagement type with this code already exists.' });
+          }
+        }
+
+        engagementType.name = name;
+        engagementType.normalizedName = normalizedName;
+        engagementType.code = code;
+        if (dto.description !== undefined) engagementType.description = dto.description.trim() || undefined;
+        if (dto.price !== undefined) engagementType.price = dto.price;
+        if (dto.trialLimits !== undefined) engagementType.trialLimits = { ...dto.trialLimits };
+        if (dto.usageLimits !== undefined) engagementType.usageLimits = { ...dto.usageLimits };
+        if (dto.features !== undefined) engagementType.features = dto.features.map((feature) => feature.trim());
+        if (dto.includesCobolConversion !== undefined) engagementType.includesCobolConversion = dto.includesCobolConversion;
+        if (dto.supportTier !== undefined) engagementType.supportTier = dto.supportTier;
+        if (dto.slaHours !== undefined) engagementType.slaHours = dto.slaHours;
+        if (dto.isActive !== undefined) engagementType.isActive = dto.isActive;
+
+        const changedFields = [
+          previous.name !== engagementType.name ? 'name' : undefined,
+          previous.normalizedName !== normalizedName ? 'normalizedName' : undefined,
+          previous.code !== code ? 'code' : undefined,
+          previous.description !== (engagementType.description || '') ? 'description' : undefined,
+          previous.price !== engagementType.price ? 'price' : undefined,
+          previous.trialLimits !== JSON.stringify(engagementType.trialLimits || {}) ? 'trialLimits' : undefined,
+          previous.usageLimits !== JSON.stringify(engagementType.usageLimits || {}) ? 'usageLimits' : undefined,
+          previous.features !== JSON.stringify(engagementType.features || []) ? 'features' : undefined,
+          previous.includesCobolConversion !== engagementType.includesCobolConversion ? 'includesCobolConversion' : undefined,
+          previous.supportTier !== engagementType.supportTier ? 'supportTier' : undefined,
+          previous.slaHours !== engagementType.slaHours ? 'slaHours' : undefined,
+          previous.isActive !== engagementType.isActive ? 'isActive' : undefined,
+        ].filter((field): field is string => Boolean(field));
+        updated = engagementType;
+        if (changedFields.length === 0) return;
+
+        await engagementType.save({ session });
+        const transactionAudit = (this.audit as TransactionAwareAuditRepository).inTransaction(session, this.engagementModel.db);
+        await transactionAudit.append({
+          actorUserId,
+          action: 'ENGAGEMENT_TYPE_UPDATED',
+          resourceType: 'ENGAGEMENT_TYPE',
+          resourceId: engagementType._id.toString(),
+          metadata: { changedFields: changedFields.join(','), name, code },
+        });
+      }, id);
+    } catch (error) {
+      if (error instanceof BadRequestException || error instanceof ConflictException || error instanceof NotFoundException) throw error;
+      if (error instanceof ServiceUnavailableException) {
+        try {
+          const nameMatch = dto.name === undefined ? null : await this.engagementModel.findOne({
+            normalizedName: dto.name.trim().replace(/\s+/g, ' ').toLowerCase(),
+            _id: { $ne: objectId },
+          }).exec();
+          const codeMatch = dto.code === undefined ? null : await this.engagementModel.findOne({
+            code: dto.code.trim().toUpperCase(),
+            _id: { $ne: objectId },
+          }).exec();
+          if (nameMatch) throw new ConflictException({ code: 'ENGAGEMENT_TYPE_NAME_EXISTS', message: 'An engagement type with this name already exists.' });
+          if (codeMatch) throw new ConflictException({ code: 'ENGAGEMENT_TYPE_CODE_EXISTS', message: 'An engagement type with this code already exists.' });
+        } catch (lookupError) {
+          if (lookupError instanceof ConflictException) throw lookupError;
+        }
+        throw error;
+      }
+      if ((error as { code?: number })?.code === 11000) {
+        throw new ConflictException({ code: 'ENGAGEMENT_TYPE_ALREADY_EXISTS', message: 'The updated name or code conflicts with an existing engagement type.' });
+      }
+      this.logger.error('Engagement type update failed', error instanceof Error ? error.name : 'unknown error');
+      throw new ServiceUnavailableException({ code: 'ENGAGEMENT_TYPE_UPDATE_FAILED', message: 'The engagement type could not be updated. Please retry.' });
+    }
+    if (!updated) {
+      throw new ServiceUnavailableException({ code: 'ENGAGEMENT_TYPE_UPDATE_FAILED', message: 'The engagement type could not be updated. Please retry.' });
+    }
+    return this.toEngagementTypeResponse(updated);
+  }
+
+  private validateEngagementTypeLimits(limits: { maxScreens: number; maxPrograms: number; maxStorageGb: number }): void {
+    if (!limits || !Number.isInteger(limits.maxScreens) || limits.maxScreens < 1 || limits.maxScreens > 1_000_000 ||
+      !Number.isInteger(limits.maxPrograms) || limits.maxPrograms < 1 || limits.maxPrograms > 1_000_000 ||
+      typeof limits.maxStorageGb !== 'number' || !Number.isFinite(limits.maxStorageGb) || limits.maxStorageGb < 0.1 || limits.maxStorageGb > 1_000_000) {
+      throw new BadRequestException({ code: 'INVALID_ENGAGEMENT_TYPE_LIMITS', message: 'Screen, program, and storage limits must be within the supported positive ranges.' });
+    }
   }
 
   // ─── 3.14.2 User Offboarding Workflow ────────────────────────────
