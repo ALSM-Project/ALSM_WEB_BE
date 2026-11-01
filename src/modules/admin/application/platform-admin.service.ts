@@ -5,6 +5,7 @@ import {
   Injectable,
   Logger,
   NotFoundException,
+  Optional,
   ServiceUnavailableException,
 } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
@@ -31,6 +32,12 @@ import { AUDIT_REPOSITORY, AuditRepository } from '../../audit/domain/audit.repo
 import { toValidObjectId } from '../../../shared/utils/object-id.util';
 import { MongoTransactionRunner } from '../../../shared/database/mongo-transaction-runner';
 import { OrganizationEngagementLimitsDto } from '../presentation/dto/update-organization-engagement.dto';
+import { CreateEnterpriseOrganizationDto } from '../presentation/dto/create-enterprise-organization.dto';
+import { PasswordReset, PasswordResetDocument } from '../../auth/infrastructure/password-reset.schema';
+import { Role, RoleDocument } from '../../rbac/infrastructure/schemas/role.schema';
+import { UserRole, UserRoleDocument } from '../../rbac/infrastructure/schemas/user-role.schema';
+import { EMAIL_PORT, EmailPort } from '../../auth/domain/email.port';
+import { createHash, randomBytes, randomUUID } from 'crypto';
 
 type TransactionAwareAuditRepository = AuditRepository & {
   inTransaction(session: ClientSession, connection: Connection): AuditRepository;
@@ -50,6 +57,10 @@ export class PlatformAdminService {
     @InjectModel(ConversionJob.name) private readonly jobModel: Model<ConversionJobDocument>,
     @InjectModel(AuditLog.name) private readonly auditModel: Model<AuditLogDocument>,
     @Inject(AUDIT_REPOSITORY) private readonly audit: AuditRepository,
+    @Optional() @InjectModel(PasswordReset.name) private readonly passwordResetModel?: Model<PasswordResetDocument>,
+    @Optional() @InjectModel(Role.name) private readonly roleModel?: Model<RoleDocument>,
+    @Optional() @InjectModel(UserRole.name) private readonly userRoleModel?: Model<UserRoleDocument>,
+    @Optional() @Inject(EMAIL_PORT) private readonly email?: EmailPort,
   ) {}
 
   // ─── 3.13.1 View All Organisations ──────────────────────────────
@@ -193,73 +204,197 @@ export class PlatformAdminService {
   // ─── 3.13.4 Create New Enterprise Organisation ───────────────────
   async createEnterpriseOrganization(
     actorUserId: string,
-    dto: {
-      name: string;
-      domain?: string;
-      contactEmail: string;
-      engagementType?: string;
-      trialDays?: number;
-      maxScreens?: number;
-      maxPrograms?: number;
-      maxStorageGb?: number;
-    },
+    dto: CreateEnterpriseOrganizationDto,
   ) {
-    const existing = await this.orgModel.findOne({ name: dto.name.trim() }).exec();
-    if (existing) {
-      throw new ConflictException(`Organisation with name '${dto.name}' already exists`);
+    if (!Types.ObjectId.isValid(actorUserId)) {
+      throw new BadRequestException({ code: 'INVALID_ACTOR_ID', message: 'A valid administrator is required.' });
+    }
+    if (!this.passwordResetModel || !this.roleModel || !this.userRoleModel || !this.email) {
+      throw new ServiceUnavailableException({ code: 'ORGANIZATION_PROVISIONING_UNAVAILABLE', message: 'Organisation provisioning is temporarily unavailable.' });
+    }
+    const name = dto.name.trim().replace(/\s+/g, ' ');
+    const normalizedName = name.toLocaleLowerCase('en-US');
+    const contactEmail = dto.contactEmail.trim().toLowerCase();
+    const engagementType = dto.engagementType.trim();
+    const domain = dto.domain?.trim().toLowerCase() || undefined;
+    const requestId = dto.requestId || randomUUID();
+    const fingerprint = createHash('sha256').update(JSON.stringify({
+      name, normalizedName, contactEmail, engagementType, domain,
+      trialDays: dto.trialDays ?? null, maxScreens: dto.maxScreens ?? null,
+      maxPrograms: dto.maxPrograms ?? null, maxStorageGb: dto.maxStorageGb ?? null,
+    })).digest('hex');
+    const findByRequestId = async () => this.orgModel.findOne({ provisioningRequestId: requestId }).exec();
+    const prior = await findByRequestId();
+    if (prior) {
+      if (prior.provisioningFingerprint !== fingerprint) {
+        throw new ConflictException({ code: 'IDEMPOTENCY_KEY_REUSED', message: 'This request identifier was already used for different organisation details.' });
+      }
+      return { organization: await this.getOrganizationDetails(prior.id), invitationStatus: prior.initialAdminInviteStatus, replayed: true };
     }
 
-    const trialDays = dto.trialDays || 30;
-    const now = new Date();
-    const trialExpiresAt = new Date(now.getTime() + trialDays * 86400 * 1000);
+    let createdOrgId = '';
+    let inviteToken: string | undefined;
+    let inviteEmail: string | undefined;
+    let shouldSendInvite = false;
+    let replayed = false;
+    let replayInvitationStatus: 'PENDING' | 'SENT' | 'FAILED' | 'NOT_REQUIRED' = 'NOT_REQUIRED';
+    try {
+      const transactionRunner = new MongoTransactionRunner(this.orgModel.db);
+      await transactionRunner.run(async (session) => {
+        const duplicateRequest = await this.orgModel.findOne({ provisioningRequestId: requestId }).session(session).exec();
+        if (duplicateRequest) {
+          if (duplicateRequest.provisioningFingerprint !== fingerprint) {
+            throw new ConflictException({ code: 'IDEMPOTENCY_KEY_REUSED', message: 'This request identifier was already used for different organisation details.' });
+          }
+          createdOrgId = duplicateRequest.id;
+          replayed = true;
+          replayInvitationStatus = duplicateRequest.initialAdminInviteStatus;
+          return;
+        }
+        const escapedName = name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+        const duplicateName = await this.orgModel.findOne({
+          $or: [{ normalizedName }, { name: new RegExp(`^${escapedName}$`, 'i') }],
+        }).session(session).exec();
+        if (duplicateName) {
+          throw new ConflictException({ code: 'ORGANIZATION_NAME_EXISTS', message: 'An organisation with this name already exists.' });
+        }
+        const engagement = await this.engagementModel.findOne({ name: engagementType, isActive: true }).session(session).exec();
+        if (!engagement) {
+          throw new BadRequestException({ code: 'ENGAGEMENT_TYPE_NOT_FOUND', message: 'Select an active engagement type.' });
+        }
+        const role = await this.roleModel!.findOne({ id: 'ENTERPRISE_MEMBER' }).session(session).exec();
+        if (!role) {
+          throw new ServiceUnavailableException({ code: 'ORGANIZATION_ROLE_UNAVAILABLE', message: 'Organisation access cannot be provisioned right now.' });
+        }
 
-    // Resolve limits from engagement type if provided
-    let limits = {
-      maxScreens: dto.maxScreens || 25,
-      maxPrograms: dto.maxPrograms || 10,
-      maxStorageGb: dto.maxStorageGb || 5,
-    };
-    if (dto.engagementType) {
-      const et = await this.engagementModel.findOne({ name: dto.engagementType }).exec();
-      if (et?.trialLimits) {
-        limits = et.trialLimits;
+        let contactUser = await this.userModel.findOne({ email: contactEmail }).session(session).exec();
+        if (contactUser && (!contactUser.isActive || contactUser.isLocked || contactUser.isPlatformAdmin)) {
+          throw new ConflictException({ code: 'CONTACT_USER_UNAVAILABLE', message: 'This email address cannot be assigned as the organisation administrator.' });
+        }
+        if (!contactUser) {
+          const [createdUser] = await this.userModel.create([{
+            email: contactEmail,
+            fullName: `${name} Admin`,
+            isActive: true,
+            isPlatformAdmin: false,
+            isEmailVerified: false,
+            mustChangePassword: true,
+          }], { session });
+          contactUser = createdUser;
+        }
+
+        await this.userRoleModel!.updateOne(
+          { userId: contactUser._id.toString(), roleId: 'ENTERPRISE_MEMBER' },
+          { $setOnInsert: { userId: contactUser._id.toString(), roleId: 'ENTERPRISE_MEMBER' } },
+          { upsert: true, session },
+        ).exec();
+
+        const hasAccount = Boolean(contactUser.isEmailVerified);
+        if (!hasAccount) {
+          inviteToken = randomBytes(32).toString('hex');
+          inviteEmail = contactEmail;
+          shouldSendInvite = true;
+          await this.passwordResetModel!.create([{
+            userId: contactUser._id,
+            tokenHash: createHash('sha256').update(inviteToken).digest('hex'),
+            expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
+          }], { session });
+        }
+
+        const now = new Date();
+        const limits = {
+          ...(engagement.trialLimits || {}),
+          ...(dto.maxScreens !== undefined ? { maxScreens: dto.maxScreens } : {}),
+          ...(dto.maxPrograms !== undefined ? { maxPrograms: dto.maxPrograms } : {}),
+          ...(dto.maxStorageGb !== undefined ? { maxStorageGb: dto.maxStorageGb } : {}),
+        };
+        const [org] = await this.orgModel.create([{
+          name,
+          normalizedName,
+          type: OrganizationType.ENTERPRISE,
+          domain,
+          contactEmail,
+          status: 'TRIAL',
+          engagementType,
+          trialExpiresAt: new Date(now.getTime() + (dto.trialDays ?? 30) * 86400 * 1000),
+          limits,
+          members: [{ userId: contactUser._id, role: OrganizationRole.ADMIN }],
+          provisioningRequestId: requestId,
+          provisioningFingerprint: fingerprint,
+          initialAdminInviteStatus: shouldSendInvite ? 'PENDING' : 'NOT_REQUIRED',
+        }], { session });
+        createdOrgId = org.id;
+        const transactionAudit = (this.audit as TransactionAwareAuditRepository).inTransaction(session, this.orgModel.db);
+        await transactionAudit.append({
+          actorUserId,
+          organizationId: org._id.toString(),
+          action: 'ENTERPRISE_ORGANIZATION_CREATED',
+          resourceType: 'ORGANIZATION',
+          resourceId: org._id.toString(),
+          metadata: { name, contactEmail, engagementType, initialAdminInviteRequired: String(shouldSendInvite) },
+        });
+      }, requestId);
+    } catch (error) {
+      if (error instanceof ConflictException || error instanceof BadRequestException) throw error;
+      if (error instanceof ServiceUnavailableException) {
+        const concurrent = await findByRequestId();
+        if (concurrent?.provisioningFingerprint === fingerprint) {
+          return { organization: await this.getOrganizationDetails(concurrent.id), invitationStatus: concurrent.initialAdminInviteStatus, replayed: true };
+        }
+        const duplicateName = await this.orgModel.findOne({
+          $or: [{ normalizedName }, { name: new RegExp(`^${name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`, 'i') }],
+        }).exec();
+        if (duplicateName) {
+          throw new ConflictException({ code: 'ORGANIZATION_NAME_EXISTS', message: 'An organisation with this name already exists.' });
+        }
+        throw error;
+      }
+      if ((error as { code?: number })?.code === 11000) {
+        const concurrent = await findByRequestId();
+        if (concurrent?.provisioningFingerprint === fingerprint) {
+          return { organization: await this.getOrganizationDetails(concurrent.id), invitationStatus: concurrent.initialAdminInviteStatus, replayed: true };
+        }
+        throw new ConflictException({ code: 'ORGANIZATION_ALREADY_EXISTS', message: 'An organisation with these details already exists.' });
+      }
+      this.logger.error('Enterprise organisation provisioning failed', error instanceof Error ? error.name : 'unknown error');
+      throw new ServiceUnavailableException({ code: 'ORGANIZATION_PROVISIONING_FAILED', message: 'The organisation could not be created. Please retry.' });
+    }
+
+    if (!createdOrgId) throw new ServiceUnavailableException({ code: 'ORGANIZATION_PROVISIONING_FAILED', message: 'The organisation could not be created. Please retry.' });
+    if (replayed) {
+      return { organization: await this.getOrganizationDetails(createdOrgId), invitationStatus: replayInvitationStatus, replayed: true };
+    }
+    let invitationStatus: 'PENDING' | 'SENT' | 'FAILED' | 'NOT_REQUIRED' = shouldSendInvite ? 'PENDING' : 'NOT_REQUIRED';
+    if (shouldSendInvite && inviteToken && inviteEmail) {
+      try {
+        if (!process.env.SMTP_HOST || !process.env.SMTP_USER) {
+          throw new Error('SMTP is not configured');
+        }
+        const baseUrl = (process.env.APP_BASE_URL || 'http://localhost:3002').replace(/\/$/, '');
+        const setupUrl = `${baseUrl}/reset-password?token=${encodeURIComponent(inviteToken)}`;
+        await this.email!.send({
+          to: inviteEmail,
+          subject: 'Set up your ALSM organisation administrator account',
+          text: `An administrator created your organisation account. Set your password using this secure link: ${setupUrl}`,
+          html: `<p>An administrator created your organisation account.</p><p><a href="${setupUrl}">Set your password</a>. This link expires in 7 days.</p>`,
+        });
+        invitationStatus = 'SENT';
+      } catch (error) {
+        this.logger.warn(`Initial organisation admin invite failed (${error instanceof Error ? error.name : 'unknown error'})`);
+        invitationStatus = 'FAILED';
+      }
+      try {
+        await this.orgModel.updateOne({ _id: new Types.ObjectId(createdOrgId) }, { $set: { initialAdminInviteStatus: invitationStatus } }).exec();
+      } catch (error) {
+        this.logger.warn(`Initial organisation invite status update failed (${error instanceof Error ? error.name : 'unknown error'})`);
+        invitationStatus = 'PENDING';
       }
     }
-
-    // Ensure initial contact user exists
-    const contactEmail = dto.contactEmail.trim().toLowerCase();
-    let contactUser = await this.userModel.findOne({ email: contactEmail }).exec();
-    if (!contactUser) {
-      contactUser = await this.userModel.create({
-        email: contactEmail,
-        fullName: `${dto.name} Admin`,
-        isActive: true,
-        isPlatformAdmin: false,
-      });
-    }
-
-    const org = await this.orgModel.create({
-      name: dto.name.trim(),
-      type: OrganizationType.ENTERPRISE,
-      domain: dto.domain,
-      contactEmail,
-      status: 'TRIAL',
-      engagementType: dto.engagementType || 'Trial',
-      trialExpiresAt,
-      limits,
-      members: [{ userId: contactUser._id, role: OrganizationRole.ADMIN }],
-    });
-
-    await this.audit.append({
-      actorUserId,
-      organizationId: org._id.toString(),
-      action: 'ENTERPRISE_ORGANIZATION_CREATED',
-      resourceType: 'ORGANIZATION',
-      resourceId: org._id.toString(),
-      metadata: { name: org.name, contactEmail, engagementType: org.engagementType },
-    });
-
-    return this.getOrganizationDetails(org.id);
+    return {
+      organization: await this.getOrganizationDetails(createdOrgId),
+      invitationStatus,
+      replayed: false,
+    };
   }
 
   // ─── 3.13.5 Update Organisation Engagement ───────────────────────

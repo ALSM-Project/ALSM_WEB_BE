@@ -4,6 +4,7 @@ import { Reflector } from '@nestjs/core';
 import { getModelToken } from '@nestjs/mongoose';
 import { JwtService } from '@nestjs/jwt';
 import { Test } from '@nestjs/testing';
+import { Types } from 'mongoose';
 // eslint-disable-next-line @typescript-eslint/no-require-imports
 const request = require('supertest');
 import { AdminModule } from '../src/modules/admin/admin.module';
@@ -173,6 +174,7 @@ describe('real AdminModule authorization HTTP boundary', () => {
     'Project',
     'ConversionJob',
     'AuditLog',
+    'PasswordReset',
     'Role',
     'Permission',
     'UserRole',
@@ -193,6 +195,7 @@ describe('real AdminModule authorization HTTP boundary', () => {
         create: jest.fn(),
         findByIdAndUpdate: jest.fn(),
         updateMany: jest.fn(),
+        updateOne: jest.fn(),
       },
     ]),
   );
@@ -375,9 +378,25 @@ describe('real AdminModule authorization HTTP boundary', () => {
   it.each(routeCases)(
     'permits persisted admin with current catalog permission: %s %s',
     async (method, path) => {
+      if (path === 'organizations/enterprise') {
+        models.EngagementType.findOne.mockImplementation(() => query({
+          name: 'Enterprise Pilot',
+          isActive: true,
+          trialLimits: { maxScreens: 50, maxPrograms: 25, maxStorageGb: 10 },
+        }));
+        models.Role.findOne.mockImplementation(() => query({ id: 'ENTERPRISE_MEMBER' }));
+        models.User.findOne.mockImplementation(() => query(null));
+        models.User.create.mockResolvedValue([{ _id: new Types.ObjectId(), isEmailVerified: false }]);
+        models.Organization.create.mockResolvedValue([{ ...org(), initialAdminInviteStatus: 'PENDING' }]);
+        models.PasswordReset.create.mockResolvedValue([{}]);
+        models.UserRole.updateOne.mockImplementation(() => ({ exec: async () => ({ upsertedCount: 1 }) }));
+        models.Organization.updateOne.mockImplementation(() => ({ exec: async () => ({ modifiedCount: 1 }) }));
+      }
       const body = {
         name: 'Created',
         contactEmail: 'new@example.test',
+        engagementType: 'Enterprise Pilot',
+        requestId: 'b286dd90-fba3-4ead-a8c5-c2ac88c1b2cb',
         status: 'SUSPENDED',
         projectId: targetId,
         newAssigneeId: otherId,

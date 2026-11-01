@@ -11,6 +11,7 @@ import { RequirePermissions } from '../../../shared/security/require-permissions
 import { CheckOffboardingTransfer, DisabledSupportImpersonation, PlatformAdminAuthorizationGuard } from './platform-admin-authorization.guard';
 import { ListOrganizationsQueryDto } from './dto/list-organizations-query.dto';
 import { UpdateOrganizationEngagementDto } from './dto/update-organization-engagement.dto';
+import { CreateEnterpriseOrganizationDto } from './dto/create-enterprise-organization.dto';
 
 @ApiTags('Platform Administration (Sections 3.10, 3.13 & 3.14)')
 @ApiBearerAuth()
@@ -44,17 +45,7 @@ export class PlatformAdminController {
   @ApiOperation({ summary: 'Create new Enterprise organisation with Trial (3.13.4)' })
   async createEnterprise(
     @CurrentUser() user: AuthenticatedUser,
-    @Body()
-    body: {
-      name: string;
-      domain?: string;
-      contactEmail: string;
-      engagementType?: string;
-      trialDays?: number;
-      maxScreens?: number;
-      maxPrograms?: number;
-      maxStorageGb?: number;
-    },
+    @Body() body: CreateEnterpriseOrganizationDto,
   ) {
     return this.adminService.createEnterpriseOrganization(user.userId, body);
   }
