@@ -18,6 +18,46 @@ const environment = {
 };
 
 describe('Explicit normalized CORS configuration and fail-closed startup validation', () => {
+  it.each(['\u0001', '\u001f'])(
+    'rejects literal trailing control %j in configuration, mixed lists and incoming Origin',
+    async (control) => {
+      for (const configuration of [
+        `${frontend}${control}`,
+        `${frontend},https://other.example.invalid${control}`,
+      ]) {
+        expect(() => parseCorsOrigins(configuration)).toThrow('CORS_ORIGINS');
+        expect(() => createCorsOptions(configuration)).toThrow('CORS_ORIGINS');
+        expect(
+          environmentValidationSchema.validate({ ...environment, CORS_ORIGINS: configuration })
+            .error,
+        ).toBeDefined();
+      }
+      expect(await allowed(frontend, `${frontend}${control}`)).toBe(false);
+    },
+  );
+  it('rejects every ASCII C0/DEL before URL normalization, including controls inside an origin', async () => {
+    const codes = [...Array.from({ length: 32 }, (_, code) => code), 127];
+    const surroundingWhitespace = new Set([9, 10, 11, 12, 13]);
+    for (const code of codes) {
+      const control = String.fromCharCode(code);
+      const inside = `https://front${control}end.example.invalid`;
+      expect(() => parseCorsOrigins(inside)).toThrow('CORS_ORIGINS');
+      expect(
+        environmentValidationSchema.validate({ ...environment, CORS_ORIGINS: inside }).error,
+      ).toBeDefined();
+      expect(await allowed(frontend, inside)).toBe(false);
+      expect(await allowed(frontend, `${frontend}${control}`)).toBe(false);
+      if (!surroundingWhitespace.has(code))
+        expect(() => parseCorsOrigins(`${frontend}${control}`)).toThrow('CORS_ORIGINS');
+    }
+  });
+  it('preserves explicitly trimmed surrounding configuration whitespace and valid canonicalization', () => {
+    expect(
+      parseCorsOrigins(
+        ` \t HTTPS://FRONTEND.EXAMPLE.INVALID:443 , https://bücher.example.invalid \r\n `,
+      ),
+    ).toEqual([frontend, 'https://xn--bcher-kva.example.invalid']);
+  });
   it('normalizes configuration whitespace, host/scheme case and default ports, then deduplicates', async () => {
     const configuration = ` HTTPS://FRONTEND.EXAMPLE.INVALID:443 , ${frontend} , http://localhost:3002 `;
     expect(parseCorsOrigins(configuration)).toEqual([frontend, 'http://localhost:3002']);

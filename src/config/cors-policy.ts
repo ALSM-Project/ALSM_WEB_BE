@@ -4,7 +4,8 @@ import type { CorsOptions } from '@nestjs/common/interfaces/external/cors-option
 const ORIGIN = /^https?:\/\/(?:\[[0-9a-f:.]+\]|[^:/?#\\\s*@%]+)(?::[0-9]+)?$/i;
 
 function normalizeOrigin(value: string): string | null {
-  if (/\s/.test(value) || !ORIGIN.test(value)) return null;
+  // eslint-disable-next-line no-control-regex -- Reject ASCII controls before URL normalization.
+  if (/[\u0000-\u001f\u007f\s]/.test(value) || !ORIGIN.test(value)) return null;
   try {
     return new URL(value).origin;
   } catch {

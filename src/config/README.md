@@ -17,6 +17,13 @@ Whitespace around entries is trimmed; scheme/host case, IDN names and default po
 are normalized with the URL parser, and duplicates are removed. Requests are matched
 by the resulting exact origin tuple, never hostname prefixes/subdomains.
 
+After the documented surrounding configuration-whitespace trim, every remaining
+ASCII C0 control (U+0000–U+001F) and DEL (U+007F) is rejected before URL parsing.
+Controls inside an entry or a non-whitespace control at its boundary invalidate the
+entire allowlist. Incoming Origin callback values are not trimmed: controls and
+whitespace are denied rather than silently normalized. Invalid configuration fails
+Joi startup validation and the production factory's independent pre-listen check.
+
 The same explicit-list rule applies in every environment. There is no automatic
 localhost, 127.0.0.1, IPv6-loopback or private-network allowance in production or
 development. Web 1's current Vite default is `http://localhost:5173`; Web 2 uses
