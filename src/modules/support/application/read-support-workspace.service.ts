@@ -32,6 +32,7 @@ import {
 } from './support-context.ports';
 import { SupportStaffAccessService } from './support-staff-access.service';
 import { randomUUID } from 'node:crypto';
+import { SUPPORT_INSPECTION, SupportInspection } from './support-inspection.port';
 
 export const SUPPORT_WORKSPACE_OPERATIONS = Object.freeze({
   projects: ['WORKSPACE_PROJECT_LIST', 'WORKSPACE_PROJECT_DETAIL'],
@@ -64,6 +65,7 @@ export class ReadSupportWorkspaceService {
     @Inject(SUPPORT_SCREEN_READER) private readonly screens: DiagnosticReaderFactory,
     @Inject(SUPPORT_CONVERSION_READER) private readonly conversions: DiagnosticReaderFactory,
     @Inject(SUPPORT_FINDING_READER) private readonly findings: DiagnosticReaderFactory,
+    @Inject(SUPPORT_INSPECTION) private readonly inspection: SupportInspection,
   ) {}
 
   async execute(principal: SupportPrincipal, input: SupportWorkspaceInput, operation: string) {
@@ -178,22 +180,38 @@ export class ReadSupportWorkspaceService {
               authorizedAt: this.clock.now().toISOString(),
             },
           });
+          // A fresh independent snapshot observes ownership changes made after the
+          // original projection snapshot. It cannot extend or mutate the context.
+          await this.assertCurrentOwnership(query, rows);
+          if (!(await this.organizations.eligible(scope.organizationId, this.clock.now())))
+            throw supportDenied();
           await this.access.recheck(actor, admission, this.clock.now());
           if (!context.isActive(this.clock.now()))
             throw new ConflictException({
               code: 'SUPPORT_CONTEXT_INACTIVE',
               message: 'Support context expired before commit',
             });
-          return { context, value };
+          return { context, value, rows: rows.slice(0, scope.id ? 1 : limit) };
         },
       );
-      // Best-effort final delivery admission, NOT a distributed revocation fence.
-      // A denial here withholds the body; the earlier audit/activity remains committed.
+      // Approved bounded in-flight gate. Persisted context (including another
+      // instance's Exit), current ownership and live authority precede delivery.
+      // Bytes may complete after this gate; committed audit is never rolled back.
       try {
+        await this.assertCurrentOwnership(query, committed.rows);
+        if (!(await this.organizations.eligible(scope.organizationId, this.clock.now())))
+          throw supportDenied();
         await this.access.recheck(actor, admission, this.clock.now());
+        const current = await this.inspection.scoped({
+          id: scope.contextId,
+          organizationId: scope.organizationId,
+          actorUserId: admission.actorUserId,
+          originalSessionId: admission.originalSessionId,
+        });
         if (
-          !committed.context.isActive(this.clock.now()) ||
-          !(await this.organizations.eligible(scope.organizationId, this.clock.now()))
+          !current?.isActive(this.clock.now()) ||
+          current.toProps().authorityBinding !== admission.authorityBinding ||
+          current.toProps().sessionVersion !== admission.sessionVersion
         )
           throw supportDenied();
       } catch (error) {
@@ -233,6 +251,43 @@ export class ReadSupportWorkspaceService {
       }
       return mapSupportContextError(error);
     }
+  }
+  private async assertCurrentOwnership(query: DiagnosticReadQuery, rows: DiagnosticRow[]) {
+    await this.inspection.snapshot(async (transaction) => {
+      if (query.projectId) {
+        const parent = await this.projects.bind(transaction).read({
+          organizationId: query.organizationId,
+          kind: 'projects',
+          id: query.projectId,
+          limit: 1,
+        });
+        if (parent.length !== 1) throw this.missing();
+      }
+      const factory =
+        query.kind === 'projects'
+          ? this.projects
+          : ['screens', 'programs'].includes(query.kind)
+            ? this.screens
+            : query.kind === 'findings'
+              ? this.findings
+              : this.conversions;
+      for (const row of rows) {
+        const current = await factory
+          .bind(transaction)
+          .read({ ...query, id: row.view.id, afterId: undefined, limit: 1 });
+        if (current.length !== 1 || current[0].view.id !== row.view.id) throw this.missing();
+        if (current[0].conversionJobId) {
+          const job = await this.conversions.bind(transaction).read({
+            ...query,
+            kind: 'conversion-logs',
+            id: current[0].conversionJobId,
+            afterId: undefined,
+            limit: 1,
+          });
+          if (job.length !== 1) throw this.missing();
+        }
+      }
+    });
   }
   private missing() {
     return new NotFoundException({

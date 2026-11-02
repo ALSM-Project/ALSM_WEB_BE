@@ -8,7 +8,7 @@ are not prerequisites. UC-67 remains in the Conversions module.
 
 `SupportFoundationModule` is deliberately **not imported by AppModule or the worker**.
 There is no environment switch that activates it. The four foundation handlers and
-four UC66-03 workspace handlers below are
+four UC66-03 workspace handlers plus the UC66-05A recovery handler below are
 implemented, exercised through an isolated test module, and **unregistered in the
 production application**. Hoang's independent QA/Security review and separate
 activation approval are required before registration.
@@ -53,6 +53,12 @@ They contain no session generation, grant binding, customer token or session tok
 An ordinary support JWT is always required; a context ID is not a credential.
 
 ## Authoritative staff and session checks
+
+UC66-05A additionally provides test-only GET
+`/support/organizations/:organizationId/recovery?contextId=...&operationId=...`.
+It discovers own-original-session context metadata or inspects exact durable
+operation evidence, without activity, idle refresh or replay. See the UC66-05A
+handoff below for response fields and unresolved/terminal behavior.
 
 `SupportStaffAccessService` calls the existing exported
 `RequireCurrentSessionService` and SessionRepository public port. It requires the
@@ -159,8 +165,11 @@ replacing the primary outcome.
 mean the context/activity/audit actually committed; do not claim such a response
 rolled back or blindly replay it. Every rejected commit is conservatively unconfirmed,
 including mixed labels, nested write-concern code 50 and unlabelled failures.
-Reconcile Enter through own context status;
-reconcile Exit through its idempotent endpoint. An inactive/expired context stays
+UC66-05A reconciliation uses the separate pure GET
+`/support/organizations/:organizationId/recovery` with the original contextId and
+operationId, or discovers the latest own context in the exact Organisation when
+references were lost. Status GET and Exit are activities, not pure reconciliation.
+An inactive/expired context stays
 unusable and a fresh Enter can replace it after fresh authorization.
 
 Session/role/Organisation checks use live authoritative primary reads before work
@@ -271,7 +280,7 @@ The Core transaction path never replays a business callback. Uncertain commit er
 retain contextId, add operationId, and return mutationCommitted:unknown/retrySafe:false;
 they return no resource body. Reconcile through an authorized, read-only check of
 the exact context/operation audit identity, never by resubmitting a read-activity
-mutation. No new reconciliation API is activated in this task. Resource projection
+mutation. The UC66-05A pure recovery API is registered only in test-owned apps. Resource projection
 metadata is buffered until commit is confirmed.
 
 Live admission runs before work, after projection, before commit and after commit
@@ -285,10 +294,13 @@ responses to reads committed before Exit can still be in flight.
 
 Real tests explicitly demonstrate both narrowed windows and the remaining unfenced
 role/session/account revocation window using another database connection. Local
-scheduling is not a distributed revocation fence. Before activation, the Technical
-Owner must approve revocation/in-flight ordering, with fencing where required and
-cross-instance tests. Independent QA/Security review, storage/index/retention checks
+scheduling is not a distributed revocation fence. The Technical Owner has approved
+bounded in-flight revocation for UC66-05A. Fresh ownership checks, live final
+admission, persisted context delivery checks and MongoDB revision fencing implement
+that policy. Independent QA/Security review, storage/index/retention checks
 and separate activation approval remain required. No operational impersonation is
 enabled by accepting UC66-03.
 
 See [UC66-03 implementation and verification](../../../docs/engineering/UC66_03_IMPLEMENTATION_20261101.md).
+
+See [UC66-05A integration, pure recovery and approved bounded in-flight semantics](../../../docs/engineering/UC66_05A_IMPLEMENTATION_20261102.md) for current test-only configuration and cross-process verification. Historical UC66-01/02/03 notes do not reopen the now-approved policy decision.

@@ -2,6 +2,7 @@ import {
   BadRequestException,
   ConflictException,
   ForbiddenException,
+  HttpException,
   ServiceUnavailableException,
 } from '@nestjs/common';
 import { SupportContextError } from '../domain/support-context.entity';
@@ -43,4 +44,26 @@ export function mapSupportContextError(error: unknown): never {
     throw supportUnavailable();
   }
   throw error;
+}
+
+/** Preserve the original server-generated identity without replaying uncertain work. */
+export function supportOperationError(
+  error: unknown,
+  contextId: string,
+  operationId: string,
+): never {
+  if (error instanceof HttpException) {
+    const body = error.getResponse();
+    if (
+      typeof body === 'object' &&
+      body !== null &&
+      'code' in body &&
+      body.code === 'SUPPORT_CONTEXT_OUTCOME_UNCONFIRMED'
+    )
+      throw new ServiceUnavailableException({
+        ...body,
+        details: [{ contextId, operationId, mutationCommitted: 'unknown', retrySafe: false }],
+      });
+  }
+  return mapSupportContextError(error);
 }

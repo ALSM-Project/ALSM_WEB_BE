@@ -16,6 +16,7 @@ import {
   SupportWorkspaceKind,
 } from '../src/modules/support/application/read-support-workspace.service';
 import { SupportStaffAccessService } from '../src/modules/support/application/support-staff-access.service';
+import { SUPPORT_INSPECTION } from '../src/modules/support/application/support-inspection.port';
 import { ExitSupportContextService } from '../src/modules/support/application/exit-support-context.service';
 import { SupportClock } from '../src/modules/support/application/support-context.ports';
 import { MongoSupportContextUnitOfWork } from '../src/modules/support/infrastructure/mongo-support-context.unit-of-work';
@@ -469,10 +470,12 @@ export function registerUc66WorkspaceMongoCases(getFixture: () => Fixture) {
       ]);
       expect(responses[2].status).toBe(200);
       for (const response of [responses[0], responses[1], responses[3]])
-        expect([200, 409]).toContain(response.status);
+        expect([200, 409, 503]).toContain(response.status);
       expect((await f.contexts.findById(id).lean())!.state).toBe('EXITED');
       expect(await readEvents(id)).toBe(
-        [responses[0], responses[1], responses[3]].filter((r) => r.status === 200).length,
+        [responses[0], responses[1], responses[3]].filter(
+          (r) => r.status === 200 || r.body.code === 'SUPPORT_WORKSPACE_DELIVERY_WITHHELD',
+        ).length,
       );
       expect((await get(path(id))).status).toBe(409);
     });
@@ -549,8 +552,10 @@ export function registerUc66WorkspaceMongoCases(getFixture: () => Fixture) {
         return {
           read: async (query) => {
             const rows = await reader.read(query);
-            if (++arrived === 2) release();
-            await barrier;
+            if (!query.id) {
+              if (++arrived === 2) release();
+              await barrier;
+            }
             return rows;
           },
         };
@@ -569,6 +574,7 @@ export function registerUc66WorkspaceMongoCases(getFixture: () => Fixture) {
           f.app.get(SUPPORT_SCREEN_READER),
           f.app.get(SUPPORT_CONVERSION_READER),
           f.app.get(SUPPORT_FINDING_READER),
+          f.app.get(SUPPORT_INSPECTION),
         );
         const input = {
           organizationId: supportOrganizationId,
@@ -703,7 +709,7 @@ export function registerUc66WorkspaceMongoCases(getFixture: () => Fixture) {
       },
     );
     it.each(['role', 'session', 'account'])(
-      'documents the UNFENCED external %s revocation window after the final delivery check',
+      'documents the approved bounded external %s revocation window after its final authority observation',
       async (state) => {
         const id = await f.enter(),
           access = f.app.get(SupportStaffAccessService),
@@ -714,7 +720,9 @@ export function registerUc66WorkspaceMongoCases(getFixture: () => Fixture) {
           if (++checks === 4) await revoke(state);
         });
         try {
-          // This observed response is an activation blocker, NOT approval of in-flight semantics.
+          // The authority loss occurs after this request's last live observation.
+          // It denies the next request; this is the approved bounded policy, not
+          // a claim that all global revocation commands share a transaction epoch.
           const response = await get(path(id));
           expect(response.status).toBe(200);
           expect(checks).toBe(4);

@@ -11,7 +11,8 @@ import {
   SupportContextUnitOfWork,
   SupportPrincipal,
 } from './support-context.ports';
-import { mapSupportContextError, supportDenied, supportIdentifier } from './support-context.errors';
+import { supportOperationError, supportDenied, supportIdentifier } from './support-context.errors';
+import { randomUUID } from 'node:crypto';
 import { SupportStaffAccessService } from './support-staff-access.service';
 
 /** Explicit allowlist, not HTTP-method inference. No customer resource operation is admitted yet. */
@@ -34,6 +35,7 @@ export class AuthorizeSupportContextReadService {
     operation: string,
   ): Promise<SupportContextEntity> {
     const actor = { ...principal };
+    const operationId = randomUUID();
     supportIdentifier(organizationId);
     supportIdentifier(contextId, true);
     if (!(SUPPORT_READ_OPERATIONS as readonly string[]).includes(operation)) throw supportDenied();
@@ -68,7 +70,13 @@ export class AuthorizeSupportContextReadService {
           action: 'SUPPORT_CONTEXT_READ',
           resourceType: 'SUPPORT_CONTEXT',
           resourceId: contextId,
-          metadata: { originalSessionId: props.originalSessionId, operation, mode: 'READ_ONLY' },
+          metadata: {
+            originalSessionId: props.originalSessionId,
+            operation,
+            mode: 'READ_ONLY',
+            contextId,
+            operationId,
+          },
         });
         await this.access.recheck(actor, admission, this.clock.now());
         if (!context.isActive(this.clock.now()))
@@ -80,7 +88,7 @@ export class AuthorizeSupportContextReadService {
       });
       return result;
     } catch (error) {
-      return mapSupportContextError(error);
+      return supportOperationError(error, contextId, operationId);
     }
   }
 }

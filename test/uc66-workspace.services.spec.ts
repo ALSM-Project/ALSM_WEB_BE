@@ -5,6 +5,7 @@ import {
   SupportWorkspaceKind,
 } from '../src/modules/support/application/read-support-workspace.service';
 import { SupportContextUnitOfWork } from '../src/modules/support/application/support-context.ports';
+import { SupportContextEntity } from '../src/modules/support/domain/support-context.entity';
 import {
   uc66Fixture,
   supportOrganizationId,
@@ -32,6 +33,14 @@ function fixture() {
     factory,
     factory,
     factory,
+    {
+      scoped: async (scope) => {
+        const row = f.rows.get(scope.id);
+        return row ? SupportContextEntity.fromPersistence(row) : null;
+      },
+      latest: async () => null,
+      snapshot: (work) => work({ session: {}, connection: {} }),
+    },
   );
   const read = (contextId: string, kind: SupportWorkspaceKind = 'projects', extra = {}) =>
     service.execute(
@@ -164,7 +173,8 @@ describe('UC66-03 workspace orchestration (Mongo suite separately proves atomici
       },
     });
     expect(invocation).toHaveBeenCalledTimes(1);
-    expect(f.reader.read).toHaveBeenCalledTimes(1);
+    // Original projection plus one fresh ownership validation, without callback replay.
+    expect(f.reader.read).toHaveBeenCalledTimes(2);
     expect(f.rows.get(c.toProps().id)!.revision).toBe(2);
   });
 });

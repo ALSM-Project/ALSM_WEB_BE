@@ -12,7 +12,7 @@ import {
   SupportContextUnitOfWork,
   SupportPrincipal,
 } from './support-context.ports';
-import { mapSupportContextError, supportIdentifier } from './support-context.errors';
+import { supportOperationError, supportIdentifier } from './support-context.errors';
 import { SupportStaffAccessService } from './support-staff-access.service';
 
 @Injectable()
@@ -32,6 +32,7 @@ export class EnterSupportContextService {
     const actor = { ...principal };
     supportIdentifier(organizationId);
     const id = randomUUID();
+    const operationId = randomUUID();
     const admission = await this.access.require(actor, this.clock.now());
     try {
       const context = await this.transactions.run(id, async ({ contexts, audit }) => {
@@ -82,7 +83,13 @@ export class EnterSupportContextService {
           action: 'SUPPORT_CONTEXT_ENTERED',
           resourceType: 'SUPPORT_CONTEXT',
           resourceId: id,
-          metadata: { originalSessionId: admission.originalSessionId, mode: 'READ_ONLY' },
+          metadata: {
+            originalSessionId: admission.originalSessionId,
+            mode: 'READ_ONLY',
+            contextId: id,
+            operationId,
+            operation: 'ENTER',
+          },
         });
         await this.access.recheck(actor, admission, this.clock.now());
         if (!created.isActive(this.clock.now()))
@@ -94,7 +101,7 @@ export class EnterSupportContextService {
       });
       return context;
     } catch (error) {
-      return mapSupportContextError(error);
+      return supportOperationError(error, id, operationId);
     }
   }
 }

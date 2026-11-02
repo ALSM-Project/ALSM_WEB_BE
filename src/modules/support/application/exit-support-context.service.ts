@@ -7,7 +7,8 @@ import {
   SupportContextUnitOfWork,
   SupportPrincipal,
 } from './support-context.ports';
-import { mapSupportContextError, supportDenied, supportIdentifier } from './support-context.errors';
+import { supportOperationError, supportDenied, supportIdentifier } from './support-context.errors';
+import { randomUUID } from 'node:crypto';
 import { SupportStaffAccessService } from './support-staff-access.service';
 
 @Injectable()
@@ -24,6 +25,7 @@ export class ExitSupportContextService {
     contextId: string,
   ): Promise<SupportContextEntity> {
     const actor = { ...principal };
+    const operationId = randomUUID();
     supportIdentifier(organizationId);
     supportIdentifier(contextId, true);
     const admission = await this.access.require(actor, this.clock.now());
@@ -56,14 +58,20 @@ export class ExitSupportContextService {
             action: 'SUPPORT_CONTEXT_EXITED',
             resourceType: 'SUPPORT_CONTEXT',
             resourceId: contextId,
-            metadata: { originalSessionId: props.originalSessionId, mode: 'READ_ONLY' },
+            metadata: {
+              originalSessionId: props.originalSessionId,
+              mode: 'READ_ONLY',
+              contextId,
+              operationId,
+              operation: 'EXIT',
+            },
           });
         }
         await this.access.recheck(actor, admission, this.clock.now());
         return context;
       });
     } catch (error) {
-      return mapSupportContextError(error);
+      return supportOperationError(error, contextId, operationId);
     }
   }
 }

@@ -24,6 +24,11 @@ import { SupportConversionReaderModule } from '../conversions/support-conversion
 import { SupportFindingReaderModule } from '../validation/support-finding-reader.module';
 import { ReadSupportWorkspaceService } from './application/read-support-workspace.service';
 import { SupportWorkspaceController } from './presentation/support-workspace.controller';
+import { SupportOperationEvidenceModule } from '../audit/support-operation-evidence.module';
+import { SUPPORT_INSPECTION } from './application/support-inspection.port';
+import { MongoSupportInspection } from './infrastructure/mongo-support-inspection';
+import { RecoverSupportContextService } from './application/recover-support-context.service';
+import { SupportRecoveryController } from './presentation/support-recovery.controller';
 
 /** ISOLATED: deliberately not imported by AppModule/worker or enabled by any config flag.
  * Hoang's independent QA/Security review and separate activation approval are required.
@@ -34,6 +39,7 @@ import { SupportWorkspaceController } from './presentation/support-workspace.con
     JwtModule.register({}),
     SessionAssuranceModule,
     AuditModule,
+    SupportOperationEvidenceModule,
     SupportStaffAuthorityModule,
     SupportOrganizationDirectoryModule,
     SupportProjectReaderModule,
@@ -42,7 +48,7 @@ import { SupportWorkspaceController } from './presentation/support-workspace.con
     SupportFindingReaderModule,
     MongooseModule.forFeature([{ name: SUPPORT_CONTEXT_MODEL, schema: SupportContextSchema }]),
   ],
-  controllers: [SupportContextController, SupportWorkspaceController],
+  controllers: [SupportContextController, SupportWorkspaceController, SupportRecoveryController],
   providers: [
     SupportStaffAccessService,
     SearchSupportOrganizationsService,
@@ -50,6 +56,8 @@ import { SupportWorkspaceController } from './presentation/support-workspace.con
     ExitSupportContextService,
     AuthorizeSupportContextReadService,
     ReadSupportWorkspaceService,
+    RecoverSupportContextService,
+    { provide: SUPPORT_INSPECTION, useClass: MongoSupportInspection },
     { provide: SUPPORT_CLOCK, useValue: { now: () => new Date() } },
     { provide: SUPPORT_CONTEXT_UNIT_OF_WORK, useClass: MongoSupportContextUnitOfWork },
   ],
