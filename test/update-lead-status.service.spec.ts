@@ -33,7 +33,7 @@ describe('UpdateLeadStatusService (UC-66)', () => {
     source: LeadSource.WEBSITE,
     priority: LeadPriority.HIGH,
     estimatedValue: 120000,
-    currency: 'USD',
+    currency: 'VND',
     notes: undefined,
     assignedToUserId: undefined,
     assignedToEmail: undefined,
@@ -53,6 +53,11 @@ describe('UpdateLeadStatusService (UC-66)', () => {
       countByStatus: jest.fn(),
       updateStatus: jest.fn(),
       addQuote: jest.fn(),
+      addQuoteOnce: jest.fn(),
+      addPhoneCallOnce: jest.fn(),
+      addDemoOnce: jest.fn(),
+      claimEmailNotification: jest.fn(),
+      completeEmailNotification: jest.fn(),
     };
     audit = { append: jest.fn().mockResolvedValue(undefined) };
     service = new UpdateLeadStatusService(repository, audit);

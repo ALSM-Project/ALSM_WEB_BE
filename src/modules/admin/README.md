@@ -30,6 +30,14 @@ Prefix: `/api/v1/admin`.
 | POST resources/transfer | resources.transfer AND resources.transfer.confirm |
 | GET audit-logs | audit.view |
 | GET audit-logs/export | audit.view |
+| GET audit-logs/export/pdf | audit.view |
+
+### Audit logs (UC 3.13.10 — View Audit Logs)
+- Immutable, append-only trail of all system actions.
+- Automatically captures client `ipAddress` via `RequestIpMiddleware` and `requestIpStorage`.
+- Retained for a minimum of 7 years, automatically enforced via MongoDB TTL index on `expiresAt` (`expireAfterSeconds: 0`).
+- Supports filtering by date range (`from`, `to`), `actor`, `action`, and `target` (`resourceType` / `resourceId`).
+- Exports to CSV and PDF with full column support: `timestamp`, `actor`, `action`, `target`, and `ipAddress`.
 
 The related global `PATCH /api/v1/users/:id/status` route also requires persisted
 Platform Admin status and `users.manage`. Otherwise it would provide an alternate

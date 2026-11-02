@@ -26,6 +26,66 @@ export enum LeadPriority {
   CRITICAL = 'CRITICAL',
 }
 
+export type LeadEmailNotificationStatus = 'PENDING' | 'SENDING' | 'SENT' | 'FAILED';
+export enum LeadPhoneCallOutcome {
+  CONNECTED = 'CONNECTED',
+  NO_ANSWER = 'NO_ANSWER',
+  VOICEMAIL = 'VOICEMAIL',
+  CALLBACK_REQUESTED = 'CALLBACK_REQUESTED',
+  NOT_INTERESTED = 'NOT_INTERESTED',
+}
+
+/** Stored call activity. requestFingerprint is internal and must never be returned by the API. */
+export interface LeadPhoneCall {
+  id: string;
+  requestId: string;
+  requestFingerprint: string;
+  durationMinutes: number;
+  outcome: LeadPhoneCallOutcome;
+  summary: string;
+  notes?: string;
+  followUpAt?: Date;
+  performedByUserId: string;
+  performedByEmail: string;
+  createdAt: Date;
+}
+
+export interface LogPhoneCallInput {
+  outcome: LeadPhoneCallOutcome;
+  durationMinutes: number;
+  summary: string;
+  notes?: string;
+  followUpAt?: string;
+}
+
+export type LeadDemoStatus = 'SCHEDULED' | 'COMPLETED' | 'CANCELLED';
+
+/** Stored demo appointment. Idempotency fields are internal and must never be returned by the API. */
+export interface LeadDemo {
+  id: string;
+  requestId: string;
+  requestFingerprint: string;
+  title: string;
+  scheduledAt: Date;
+  durationMinutes: number;
+  attendeeEmails: string[];
+  agenda?: string;
+  internalNotes?: string;
+  status: LeadDemoStatus;
+  scheduledByUserId: string;
+  scheduledByEmail: string;
+  createdAt: Date;
+}
+
+export interface ScheduleDemoInput {
+  title: string;
+  scheduledAt: string;
+  durationMinutes: number;
+  attendeeEmails: string[];
+  agenda?: string;
+  internalNotes?: string;
+}
+
 export interface LeadRecord {
   id: string;
   companyName: string;
@@ -37,26 +97,35 @@ export interface LeadRecord {
   source: LeadSource;
   priority: LeadPriority;
   estimatedValue?: number;
-  currency: string;
+  currency: 'VND';
   notes?: string;
   assignedToUserId?: string;
   assignedToEmail?: string;
   tags: string[];
   lastContactedAt?: Date;
   nextFollowUpAt?: Date;
-  createdByUserId: string;
-  createdByEmail: string;
+  createdByUserId?: string;
+  createdByEmail?: string;
+  emailNotificationStatus?: LeadEmailNotificationStatus;
+  emailNotifiedAt?: Date;
   quotes?: LeadQuoteItem[];
+  phoneCalls?: LeadPhoneCall[];
+  demos?: LeadDemo[];
   createdAt: Date;
   updatedAt: Date;
 }
 
 export interface LeadQuoteItem {
   id: string;
+  requestId: string;
+  requestFingerprint: string;
   quoteNumber: string;
   planName: string;
   projectScope?: string;
+  /** Undiscounted quote amount. */
   amount: number;
+  /** Final amount after applying discountPercent. */
+  finalPrice?: number;
   discountPercent?: number;
   discountApproved?: boolean;
   discountReason?: string;
@@ -69,6 +138,9 @@ export interface LeadQuoteItem {
 }
 
 export interface CreateLeadInput {
+  id: string;
+  creationFingerprint: string;
+  dedupeKey: string;
   companyName: string;
   contactName: string;
   contactEmail: string;
@@ -77,13 +149,18 @@ export interface CreateLeadInput {
   source: LeadSource;
   priority: LeadPriority;
   estimatedValue?: number;
-  currency?: string;
+  currency?: 'VND';
   notes?: string;
   assignedToUserId?: string;
   assignedToEmail?: string;
   tags?: string[];
   createdByUserId: string;
   createdByEmail: string;
+}
+
+export interface CreateLeadResult {
+  lead: LeadRecord;
+  replayed: boolean;
 }
 
 export interface LeadListParams {
@@ -123,7 +200,7 @@ export interface UpdateLeadStatusOptions {
 }
 
 export interface LeadRepository {
-  create(input: CreateLeadInput): Promise<LeadRecord>;
+  create(input: CreateLeadInput): Promise<CreateLeadResult>;
   findById(id: string): Promise<LeadRecord | null>;
   list(params?: LeadListParams): Promise<{ items: LeadRecord[]; total: number }>;
   countByStatus(): Promise<Record<string, number>>;
@@ -136,6 +213,30 @@ export interface LeadRepository {
     id: string,
     quote: LeadQuoteItem,
     newStatus?: LeadStatus,
+  ): Promise<LeadRecord | null>;
+  addQuoteOnce(
+    id: string,
+    quote: LeadQuoteItem,
+    expectedStatus: LeadStatus,
+    newStatus?: LeadStatus,
+  ): Promise<LeadRecord | null>;
+  addPhoneCallOnce(
+    id: string,
+    call: LeadPhoneCall,
+    expectedStatus: LeadStatus,
+    newStatus: LeadStatus,
+  ): Promise<LeadRecord | null>;
+  addDemoOnce(
+    id: string,
+    demo: LeadDemo,
+    expectedStatus: LeadStatus,
+    newStatus: LeadStatus,
+  ): Promise<LeadRecord | null>;
+  claimEmailNotification(id: string, requestId: string): Promise<LeadRecord | null>;
+  completeEmailNotification(
+    id: string,
+    requestId: string,
+    delivered: boolean,
   ): Promise<LeadRecord | null>;
 }
 

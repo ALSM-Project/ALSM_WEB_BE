@@ -24,6 +24,7 @@ import { PlanTier, QuoteRequestStatus } from '../src/modules/billing/domain/bill
 import { RequestEnterpriseQuoteDto } from '../src/modules/billing/presentation/billing.dto';
 import { JwtAuthGuard } from '../src/shared/security/jwt-auth.guard';
 import { AuthenticatedUser } from '../src/shared/logging/request-id.middleware';
+import { EffectivePermissionsService } from '../src/modules/rbac/application/effective-permissions.service';
 
 describe('UC-32: Enterprise Quote Request', () => {
   let service: BillingService;
@@ -54,6 +55,9 @@ describe('UC-32: Enterprise Quote Request', () => {
   };
   let usageService: {
     getUsageStats: jest.Mock;
+  };
+  let effectivePermissions: {
+    getEffectivePermissions: jest.Mock;
   };
   const validQuoteId = '507f1f77bcf86cd799439011';
   const mockSession = {
@@ -111,6 +115,11 @@ describe('UC-32: Enterprise Quote Request', () => {
     usageService = {
       getUsageStats: jest.fn(),
     };
+    effectivePermissions = {
+      getEffectivePermissions: jest.fn(async (userId: string) =>
+        userId === 'sales-manager-1' ? ['billing.quotes.manage'] : [],
+      ),
+    };
 
     const module: TestingModule = await Test.createTestingModule({
       controllers: [BillingController],
@@ -123,6 +132,7 @@ describe('UC-32: Enterprise Quote Request', () => {
         { provide: SUBSCRIPTION_REPOSITORY, useValue: subscriptionRepo },
         { provide: INVOICE_REPOSITORY, useValue: invoiceRepo },
         { provide: PLAN_REPOSITORY, useValue: planRepo },
+        { provide: EffectivePermissionsService, useValue: effectivePermissions },
       ],
     })
       .overrideGuard(JwtAuthGuard)
@@ -449,18 +459,19 @@ describe('UC-32: Enterprise Quote Request', () => {
     });
   });
 
-  describe('Admin: listQuoteRequests', () => {
-    const adminUser: AuthenticatedUser = {
-      userId: 'admin-1',
-      email: 'admin@alsm.io',
-      isPlatformAdmin: true,
+  describe('Authorized staff: listQuoteRequests', () => {
+    const salesManagerUser: AuthenticatedUser = {
+      userId: 'sales-manager-1',
+      email: 'sales-manager@alsm.io',
+      isPlatformAdmin: false,
     };
 
-    it('should throw ForbiddenException if user is not platform admin', async () => {
+    it('should throw ForbiddenException if user lacks billing.quotes.manage', async () => {
       await expect(service.listQuoteRequests(mockUser)).rejects.toThrow(ForbiddenException);
+      expect(quoteRequestRepo.findAll).not.toHaveBeenCalled();
     });
 
-    it('should return list of quote requests and total for platform admin', async () => {
+    it('should return list of quote requests and total for a user with the manage permission', async () => {
       const mockItems = [
         {
           id: 'quote-1',
@@ -475,7 +486,7 @@ describe('UC-32: Enterprise Quote Request', () => {
       ];
       quoteRequestRepo.findAll.mockResolvedValue({ items: mockItems, total: 1 });
 
-      const result = await service.listQuoteRequests(adminUser, {
+      const result = await service.listQuoteRequests(salesManagerUser, {
         status: QuoteRequestStatus.PENDING,
         page: 1,
         limit: 10,
@@ -497,39 +508,40 @@ describe('UC-32: Enterprise Quote Request', () => {
       [{ limit: 101 }],
       [{ limit: 1.5 }],
     ])('rejects invalid pagination %s', async (filters) => {
-      await expect(service.listQuoteRequests(adminUser, filters)).rejects.toThrow(BadRequestException);
+      await expect(service.listQuoteRequests(salesManagerUser, filters)).rejects.toThrow(BadRequestException);
       expect(quoteRequestRepo.findAll).not.toHaveBeenCalled();
     });
 
     it('accepts the maximum page size of 100', async () => {
       quoteRequestRepo.findAll.mockResolvedValue({ items: [], total: 0 });
-      await service.listQuoteRequests(adminUser, { page: 1, limit: 100 });
+      await service.listQuoteRequests(salesManagerUser, { page: 1, limit: 100 });
       expect(quoteRequestRepo.findAll).toHaveBeenCalledWith({ page: 1, limit: 100 }, 1, 100);
     });
   });
 
-  describe('Admin: updateQuoteRequestStatus', () => {
-    const adminUser: AuthenticatedUser = {
-      userId: 'admin-1',
-      email: 'admin@alsm.io',
-      isPlatformAdmin: true,
+  describe('Authorized staff: updateQuoteRequestStatus', () => {
+    const salesManagerUser: AuthenticatedUser = {
+      userId: 'sales-manager-1',
+      email: 'sales-manager@alsm.io',
+      isPlatformAdmin: false,
     };
 
-    it('should throw ForbiddenException if user is not platform admin', async () => {
+    it('should throw ForbiddenException if user lacks billing.quotes.manage', async () => {
       await expect(
         service.updateQuoteRequestStatus(mockUser, validQuoteId, QuoteRequestStatus.CONTACTED),
       ).rejects.toThrow(ForbiddenException);
+      expect(quoteRequestRepo.findById).not.toHaveBeenCalled();
     });
 
     it('should throw NotFoundException if quote request does not exist', async () => {
       quoteRequestRepo.findById.mockResolvedValue(null);
 
       await expect(
-        service.updateQuoteRequestStatus(adminUser, validQuoteId, QuoteRequestStatus.CONTACTED),
+        service.updateQuoteRequestStatus(salesManagerUser, validQuoteId, QuoteRequestStatus.CONTACTED),
       ).rejects.toThrow(NotFoundException);
     });
 
-    it('should update status from PENDING to CONTACTED for admin', async () => {
+    it('should update status from PENDING to CONTACTED for an authorized staff member', async () => {
       quoteRequestRepo.findById.mockResolvedValue({
         id: validQuoteId,
         status: QuoteRequestStatus.PENDING,
@@ -539,7 +551,7 @@ describe('UC-32: Enterprise Quote Request', () => {
         status: QuoteRequestStatus.CONTACTED,
       });
 
-      const result = await service.updateQuoteRequestStatus(adminUser, validQuoteId, QuoteRequestStatus.CONTACTED);
+      const result = await service.updateQuoteRequestStatus(salesManagerUser, validQuoteId, QuoteRequestStatus.CONTACTED);
 
       expect(quoteRequestRepo.updateStatus).toHaveBeenCalledWith(
         validQuoteId,
@@ -563,7 +575,7 @@ describe('UC-32: Enterprise Quote Request', () => {
       });
       quoteRequestRepo.updateStatus.mockResolvedValue({ id: validQuoteId, status: QuoteRequestStatus.APPROVED });
 
-      const result = await service.updateQuoteRequestStatus(adminUser, validQuoteId, QuoteRequestStatus.APPROVED);
+      const result = await service.updateQuoteRequestStatus(salesManagerUser, validQuoteId, QuoteRequestStatus.APPROVED);
 
       expect(subscriptionRepo.updatePlan).toHaveBeenCalledWith('sub-1', expect.objectContaining({
         planTier: PlanTier.ENTERPRISE,
@@ -590,14 +602,14 @@ describe('UC-32: Enterprise Quote Request', () => {
       });
       subscriptionRepo.updatePlan.mockRejectedValue(new Error('subscription repository unavailable'));
 
-      await expect(service.updateQuoteRequestStatus(adminUser, validQuoteId, QuoteRequestStatus.APPROVED))
+      await expect(service.updateQuoteRequestStatus(salesManagerUser, validQuoteId, QuoteRequestStatus.APPROVED))
         .rejects.toThrow(ServiceUnavailableException);
       expect(quoteRequestRepo.updateStatus).not.toHaveBeenCalled();
       expect(mockSession.endSession).toHaveBeenCalled();
     });
 
     it('rejects malformed request ids without opening a transaction', async () => {
-      await expect(service.updateQuoteRequestStatus(adminUser, 'bad-id', QuoteRequestStatus.APPROVED))
+      await expect(service.updateQuoteRequestStatus(salesManagerUser, 'bad-id', QuoteRequestStatus.APPROVED))
         .rejects.toThrow(BadRequestException);
       expect(mockConnection.startSession).not.toHaveBeenCalled();
     });
@@ -609,7 +621,7 @@ describe('UC-32: Enterprise Quote Request', () => {
       });
 
       await expect(
-        service.updateQuoteRequestStatus(adminUser, validQuoteId, QuoteRequestStatus.PENDING),
+        service.updateQuoteRequestStatus(salesManagerUser, validQuoteId, QuoteRequestStatus.PENDING),
       ).rejects.toThrow(BadRequestException);
     });
 
@@ -620,7 +632,7 @@ describe('UC-32: Enterprise Quote Request', () => {
       });
 
       await expect(
-        service.updateQuoteRequestStatus(adminUser, validQuoteId, QuoteRequestStatus.CONTACTED),
+        service.updateQuoteRequestStatus(salesManagerUser, validQuoteId, QuoteRequestStatus.CONTACTED),
       ).rejects.toThrow(BadRequestException);
     });
   });

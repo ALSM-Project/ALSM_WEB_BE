@@ -49,7 +49,7 @@ export class GetConversionQualityReviewService {
     projectId: string,
     conversionJobId: string,
   ): Promise<ConversionQualityReviewResponse> {
-    const organization = await this.organizationContext.resolve(userId, organizationHeader);
+    const organization = await this.organizationContext.resolve(userId, organizationHeader, projectId);
     await this.access.requireAssignment(userId, organization.id, projectId);
     await this.projects.getForOrganization(projectId, organization.id);
 

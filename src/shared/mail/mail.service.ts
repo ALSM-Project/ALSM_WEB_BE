@@ -33,6 +33,156 @@ export class MailService {
     }
   }
 
+  /** Notify a staff member when a project ownership / assignment is transferred to them (UC-84). */
+  async sendProjectOwnershipTransferNotification(params: {
+    to: string;
+    assigneeName: string;
+    projectName: string;
+    projectId: string;
+    transferredByName: string;
+    reason?: string;
+    notes?: string;
+  }): Promise<boolean> {
+    const esc = (value?: string) =>
+      (value || '')
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
+
+    const assigneeName = esc(params.assigneeName);
+    const projectName = esc(params.projectName);
+    const transferredByName = esc(params.transferredByName);
+    const reason = esc(params.reason);
+    const notes = esc(params.notes);
+
+    const subject = `[ALSM] Project Assignment Transferred: ${params.projectName}`;
+    const text = [
+      `Hello ${params.assigneeName},`,
+      '',
+      `Project "${params.projectName}" (ID: ${params.projectId}) has been transferred to you by ${params.transferredByName}.`,
+      params.reason ? `Reason: ${params.reason}` : '',
+      params.notes ? `Notes: ${params.notes}` : '',
+      '',
+      'You can now access and manage this project in your workspace.',
+      '',
+      'Best regards,',
+      'ALSM Team',
+    ]
+      .filter((line) => line !== undefined)
+      .join('\n');
+
+    const html = `
+      <!DOCTYPE html>
+      <html lang="en">
+        <head><meta charset="UTF-8" /><meta name="viewport" content="width=device-width, initial-scale=1.0" /></head>
+        <body style="margin:0;padding:32px;background:#f5f7fa;font-family:Arial,sans-serif;color:#091E42;">
+          <table role="presentation" style="max-width:600px;margin:0 auto;background:#fff;border-radius:12px;padding:32px;width:100%;">
+            <tr><td>
+              <h1 style="font-size:20px;color:#0652CC;margin:0 0 20px;">Project Assignment Transferred (UC-84)</h1>
+              <p>Hello <strong>${assigneeName}</strong>,</p>
+              <p>The ownership and workspace assignment for project <strong>"${projectName}"</strong> has been transferred to you by <strong>${transferredByName}</strong>.</p>
+              ${reason ? `<p><strong>Reason:</strong> ${reason}</p>` : ''}
+              ${notes ? `<p><strong>Briefing / Notes:</strong> ${notes}</p>` : ''}
+              <p style="margin-top:24px;">This project and its modernization queue items are now active in your workspace.</p>
+              <p style="margin-top:28px;">Best regards,<br /><strong>ALSM Enterprise Platform</strong></p>
+            </td></tr>
+          </table>
+        </body>
+      </html>`;
+
+    if (!this.transporter) {
+      this.logger.warn(
+        `[EMAIL SKIPPED - No SMTP] Project transfer notification for ${params.projectName} to ${params.to}`,
+      );
+      return false;
+    }
+
+    try {
+      await this.transporter.sendMail({
+        from: this.fromAddress,
+        to: params.to,
+        subject,
+        text,
+        html,
+      });
+      this.logger.log(`Project transfer notification sent to ${params.to} for project ${params.projectName}`);
+      return true;
+    } catch (error) {
+      this.logger.warn(
+        `Failed to send project transfer notification to ${params.to}: ${(error as Error).message}`,
+      );
+      return false;
+    }
+  }
+
+  /** Notify a new lead contact after the lead has been committed successfully. */
+  async sendLeadCreatedNotification(params: {
+    to: string;
+    contactName: string;
+    companyName: string;
+  }): Promise<boolean> {
+    const escapeHtml = (value: string) =>
+      value
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
+    const contactName = escapeHtml(params.contactName);
+    const companyName = escapeHtml(params.companyName);
+    const subject = '[ALSM] Đội ngũ tư vấn muốn liên hệ với bạn';
+    const text = [
+      `Chào ${params.contactName},`,
+      '',
+      `Đội ngũ tư vấn ALSM đã nhận được thông tin liên hệ về ${params.companyName}.`,
+      'Nhân viên tư vấn sẽ liên hệ để trao đổi về nhu cầu hiện đại hóa hệ thống của công ty.',
+      '',
+      'Nếu bạn không mong muốn nhận liên hệ này, vui lòng bỏ qua email.',
+      '',
+      'Trân trọng,',
+      'Đội ngũ ALSM',
+    ].join('\n');
+    const html = `
+      <!DOCTYPE html>
+      <html lang="vi">
+        <head><meta charset="UTF-8" /><meta name="viewport" content="width=device-width, initial-scale=1.0" /></head>
+        <body style="margin:0;padding:32px;background:#f5f7fa;font-family:Arial,sans-serif;color:#091E42;">
+          <table role="presentation" style="max-width:600px;margin:0 auto;background:#fff;border-radius:12px;padding:32px;width:100%;">
+            <tr><td>
+              <h1 style="font-size:22px;margin:0 0 24px;">ALSM</h1>
+              <p>Chào ${contactName},</p>
+              <p>Đội ngũ tư vấn ALSM đã nhận được thông tin liên hệ về <strong>${companyName}</strong>.</p>
+              <p>Nhân viên tư vấn sẽ liên hệ để trao đổi về nhu cầu hiện đại hóa hệ thống của công ty.</p>
+              <p>Nếu bạn không mong muốn nhận liên hệ này, vui lòng bỏ qua email.</p>
+              <p style="margin-top:28px;">Trân trọng,<br /><strong>Đội ngũ ALSM</strong></p>
+            </td></tr>
+          </table>
+        </body>
+      </html>`;
+
+    if (!this.transporter) {
+      this.logger.warn('Lead contact notification skipped because SMTP is not configured.');
+      return false;
+    }
+
+    try {
+      await this.transporter.sendMail({
+        from: this.fromAddress,
+        to: params.to,
+        subject,
+        html,
+        text,
+      });
+      this.logger.log('Lead contact notification email sent.');
+      return true;
+    } catch {
+      this.logger.error('Lead contact notification email could not be delivered.');
+      return false;
+    }
+  }
+
   /**
    * Send a Google Meet invitation email to a single attendee.
    */
@@ -202,6 +352,69 @@ export class MailService {
     } catch (err: unknown) {
       // Log but don't throw — email failure should not break meeting creation
       this.logger.error(`Failed to send meeting invite to ${to}: ${(err as Error).message}`);
+    }
+  }
+
+  /** Notify one selected attendee that a product demo has been scheduled. */
+  async sendScheduledDemoNotification(params: {
+    to: string;
+    companyName: string;
+    contactName: string;
+    demoTitle: string;
+    scheduledAt: Date;
+    durationMinutes: number;
+    agenda?: string;
+    scheduledByEmail: string;
+  }): Promise<boolean> {
+    if (!this.transporter) {
+      this.logger.warn('Scheduled demo notification skipped because SMTP is not configured.');
+      return false;
+    }
+
+    const escapeHtml = (value: string) => value
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;')
+      .replace(/'/g, '&#39;');
+    const formattedDate = new Intl.DateTimeFormat('vi-VN', {
+      dateStyle: 'full',
+      timeStyle: 'short',
+      timeZone: 'Asia/Ho_Chi_Minh',
+    }).format(params.scheduledAt);
+    const agenda = params.agenda?.trim();
+    const subject = `[ALSM] Demo đã được lên lịch: ${params.demoTitle}`;
+    const text = [
+      'Xin chào,',
+      `Bạn được mời tham dự buổi demo sản phẩm với ${params.companyName}.`,
+      `Chủ đề: ${params.demoTitle}`,
+      `Thời gian: ${formattedDate} (giờ Việt Nam)`,
+      `Thời lượng: ${params.durationMinutes} phút`,
+      ...(agenda ? [`Nội dung: ${agenda}`] : []),
+      `Người lên lịch: ${params.scheduledByEmail}`,
+      `Liên hệ: ${params.contactName}`,
+      'Email này thông báo lịch demo đã được ghi nhận; không bao gồm link họp hoặc lời mời calendar.',
+    ].join('\n\n');
+    const html = `<!DOCTYPE html>
+<html lang="vi"><head><meta charset="UTF-8" /></head>
+<body style="font-family:Arial,sans-serif;color:#091E42;line-height:1.6">
+  <h2>Demo sản phẩm đã được lên lịch</h2>
+  <p>Xin chào, bạn được mời tham dự buổi demo sản phẩm với <strong>${escapeHtml(params.companyName)}</strong>.</p>
+  <p><strong>Chủ đề:</strong> ${escapeHtml(params.demoTitle)}<br />
+     <strong>Thời gian:</strong> ${escapeHtml(formattedDate)} (giờ Việt Nam)<br />
+     <strong>Thời lượng:</strong> ${params.durationMinutes} phút<br />
+     <strong>Người lên lịch:</strong> ${escapeHtml(params.scheduledByEmail)}<br />
+     <strong>Liên hệ:</strong> ${escapeHtml(params.contactName)}</p>
+  ${agenda ? `<p><strong>Nội dung:</strong><br />${escapeHtml(agenda).replace(/\n/g, '<br />')}</p>` : ''}
+  <p>Email này thông báo lịch demo đã được ghi nhận; không bao gồm link họp hoặc lời mời calendar.</p>
+</body></html>`;
+
+    try {
+      await this.transporter.sendMail({ from: this.fromAddress, to: params.to, subject, text, html });
+      return true;
+    } catch {
+      this.logger.error('Scheduled demo notification email could not be delivered.');
+      return false;
     }
   }
 

@@ -7,6 +7,7 @@ const request = require('supertest');
 import { PlatformAdminService } from '../src/modules/admin/application/platform-admin.service';
 import { PlatformAdminController } from '../src/modules/admin/presentation/platform-admin.controller';
 import { LockUserService } from '../src/modules/admin/application/lock-user.service';
+import { AuditLogService } from '../src/modules/admin/application/audit-log.service';
 import { RequireCurrentSessionService } from '../src/modules/auth/application/require-current-session.service';
 import { SessionRepository } from '../src/modules/auth/domain/session.repository';
 import { UserRepository } from '../src/modules/users/domain/user.repository';
@@ -107,6 +108,7 @@ describe('disabled support impersonation HTTP boundary', () => {
         },
         { provide: PlatformAdminService, useValue: f.service },
         { provide: LockUserService, useValue: {} },
+        { provide: AuditLogService, useValue: {} },
         { provide: JwtService, useValue: jwt },
         { provide: ConfigService, useValue: { getOrThrow: () => secret } },
         { provide: RequireCurrentSessionService, useValue: currentSession },

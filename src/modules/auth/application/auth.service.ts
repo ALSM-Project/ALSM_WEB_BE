@@ -75,6 +75,10 @@ export class AuthService {
       action: 'USER_REGISTERED',
       resourceType: 'USER',
       resourceId: user.id,
+      metadata: {
+        email: user.email,
+        fullName: user.fullName,
+      },
     });
     await this.emailVerificationService.sendVerificationEmail(user);
     return {
@@ -115,6 +119,11 @@ export class AuthService {
       action: 'USER_LOGIN',
       resourceType: 'USER',
       resourceId: user.id,
+      metadata: {
+        email: user.email,
+        method: 'PASSWORD',
+        ...(userAgent ? { userAgent } : {}),
+      },
     });
     return tokens;
   }
@@ -127,6 +136,9 @@ export class AuthService {
       action: 'USER_EMAIL_VERIFIED',
       resourceType: 'USER',
       resourceId: user.id,
+      metadata: {
+        email: user.email,
+      },
     });
     return tokens;
   }
@@ -158,6 +170,11 @@ export class AuthService {
         action: 'USER_REGISTERED_GOOGLE',
         resourceType: 'USER',
         resourceId: user.id,
+        metadata: {
+          email: user.email,
+          fullName: user.fullName,
+          authProvider: 'GOOGLE',
+        },
       });
     } else {
       if (user.isActive !== true) {
@@ -184,6 +201,11 @@ export class AuthService {
         action: 'USER_LOGIN_GOOGLE',
         resourceType: 'USER',
         resourceId: user.id,
+        metadata: {
+          email: user.email,
+          authProvider: 'GOOGLE',
+          ...(userAgent ? { userAgent } : {}),
+        },
       });
     }
     return tokens;

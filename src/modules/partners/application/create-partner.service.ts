@@ -81,6 +81,10 @@ export class CreatePartnerService {
       action: 'PARTNER_CREATED',
       resourceType: 'PARTNER',
       resourceId: partner.id,
+      metadata: {
+        partnerName: partner.name,
+        contactEmail: partner.contactEmail,
+      },
     });
 
     return partner;

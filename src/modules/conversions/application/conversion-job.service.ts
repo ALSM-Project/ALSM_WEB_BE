@@ -76,7 +76,7 @@ export class ConversionJobService {
     projectId: string,
     input: { screenId?: string; priority?: ConversionPriority; inputReference?: string },
   ): Promise<ConversionJobRecord> {
-    const organization = await this.organizationContext.resolve(userId, organizationHeader);
+    const organization = await this.organizationContext.resolve(userId, organizationHeader, projectId);
     this.authorization.require(organization, userId, [
       OrganizationRole.OWNER,
       OrganizationRole.ADMIN,
@@ -92,7 +92,7 @@ export class ConversionJobService {
     projectId: string,
     input: { screenIds: string[]; priority?: ConversionPriority; inputReference?: string },
   ): Promise<ConversionJobRecord[]> {
-    const organization = await this.organizationContext.resolve(userId, organizationHeader);
+    const organization = await this.organizationContext.resolve(userId, organizationHeader, projectId);
     this.authorization.require(organization, userId, [
       OrganizationRole.OWNER,
       OrganizationRole.ADMIN,
@@ -341,7 +341,7 @@ export class ConversionJobService {
     organizationHeader: string | undefined,
     projectId: string,
   ): Promise<ConversionJobRecord[]> {
-    const organization = await this.organizationContext.resolve(userId, organizationHeader);
+    const organization = await this.organizationContext.resolve(userId, organizationHeader, projectId);
     await this.access.requireAssignment(userId, organization.id, projectId);
     await this.projects.getForOrganization(projectId, organization.id);
     return this.jobs.listByProject(projectId, organization.id);
@@ -353,7 +353,7 @@ export class ConversionJobService {
     projectId: string,
     screenId: string,
   ): Promise<ConversionJobRecord[]> {
-    const organization = await this.organizationContext.resolve(userId, organizationHeader);
+    const organization = await this.organizationContext.resolve(userId, organizationHeader, projectId);
     await this.access.requireAssignment(userId, organization.id, projectId);
     await this.projects.getForOrganization(projectId, organization.id);
     return this.jobs.listByScreen(projectId, screenId, organization.id);

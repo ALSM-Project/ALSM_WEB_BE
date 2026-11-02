@@ -44,6 +44,7 @@ export class SaveMethodMappingService {
     const organization = await this.organizationContext.resolve(
       input.userId,
       input.organizationHeader,
+      input.projectId,
     );
     this.authorization.require(organization, input.userId, [
       OrganizationRole.OWNER,

@@ -11,6 +11,7 @@ import {
   ConversionJobStatus,
 } from '../domain/conversion-job.types';
 import type { ExportConfiguration, ExportFileItem, BundleMetrics } from '../domain/export.types';
+import { buildSpringBootProjectTree } from './spring-boot-scaffold';
 
 export interface ScreenExport {
   screenId: string;
@@ -169,6 +170,22 @@ export class ExportCodeService {
     const missingScreens = screens.filter((s) => s.files.length === 0);
     const reactScreens = convertedScreens.filter((s) => s.language !== 'java');
     const javaScreens = convertedScreens.filter((s) => s.language === 'java');
+
+    // A COBOL to Java export with the Scaffold format becomes a runnable Maven project
+    // (pom.xml, application.yml, the Spring Boot application class) around the real Java.
+    // A mix with React screens keeps the plain layout below, since one bundle cannot be both.
+    if (config.outputOption === 'scaffold' && javaScreens.length > 0 && reactScreens.length === 0) {
+      return buildSpringBootProjectTree({
+        projectName,
+        programs: javaScreens.map((s) => ({ name: s.screenId, files: s.files })),
+        excludedItems: missingScreens.map((s) => ({
+          name: s.screenId,
+          reason: 'No completed conversion to export yet',
+        })),
+        includeUnitTests: config.includeUnitTests,
+        includeDocumentation: config.includeDocumentation,
+      });
+    }
 
     const componentFiles: ExportFileItem[] = [];
     for (const screen of reactScreens) {

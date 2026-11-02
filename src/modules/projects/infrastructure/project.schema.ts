@@ -13,6 +13,13 @@ export class Project {
   @Prop({ type: MongooseSchema.Types.ObjectId, required: true }) createdBy!: Types.ObjectId;
   @Prop({ default: false }) isDemo?: boolean;
   @Prop({ type: MongooseSchema.Types.ObjectId, ref: 'User', required: false }) assignedTeamLeadId?: Types.ObjectId;
+  @Prop({ type: MongooseSchema.Types.ObjectId, ref: 'User', required: false, index: true })
+  assignedStaffId?: Types.ObjectId;
+  @Prop({ trim: true }) assignedStaffName?: string;
+  @Prop({ trim: true }) staffAssignmentNote?: string;
+  @Prop({ type: MongooseSchema.Types.ObjectId, ref: 'User', required: false })
+  staffAssignedBy?: Types.ObjectId;
+  @Prop() staffAssignedAt?: Date;
   @Prop({ default: false }) isExported?: boolean;
   @Prop() exportedAt?: Date;
   @Prop({ trim: true }) exportedBundleName?: string;

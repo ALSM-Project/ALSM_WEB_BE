@@ -1,4 +1,7 @@
-import { Inject, Injectable } from '@nestjs/common';
+import { Inject, Injectable, Logger } from '@nestjs/common';
+import { STORAGE_PORT, StoragePort } from '../../../shared/storage/storage.port';
+import { ConversionType } from '../../projects/domain/project.types';
+import { validateGeneratedJava } from '../infrastructure/java-conversion-rules.util';
 import { FIELD_MAPPING_REPOSITORY, FieldMappingRepository } from '../domain/field-mapping.types';
 import {
   FindingSeverity,
@@ -16,7 +19,29 @@ export class RuleValidatorService {
   constructor(
     @Inject(VALIDATION_REPOSITORY) private readonly validationRepo: ValidationRepository,
     @Inject(FIELD_MAPPING_REPOSITORY) private readonly mappingRepo: FieldMappingRepository,
+    @Inject(STORAGE_PORT) private readonly storage: StoragePort,
   ) {}
+
+  private readonly logger = new Logger(RuleValidatorService.name);
+
+  /** Reads the Java the converter generated for a job, or null when the job is not a COBOL to Java one. */
+  private async readGeneratedJava(
+    job: ConversionJobRecord,
+  ): Promise<{ relativePath: string; content: string }[] | null> {
+    const isJavaJob =
+      job.toolVersion === 'tool2java' || job.conversionType === ConversionType.COBOL_TO_JAVA;
+    let files: { relativePath: string; content: string }[] = [];
+    if (job.resultReference) {
+      try {
+        files = (await this.storage.readFiles(job.resultReference))
+          .filter((f) => f.relativePath.toLowerCase().endsWith('.java'))
+          .map((f) => ({ relativePath: f.relativePath, content: f.content.toString('utf8') }));
+      } catch (error) {
+        this.logger.warn(`Could not read the result of job ${job.id}: ${String(error)}`);
+      }
+    }
+    return isJavaJob || files.length > 0 ? files : null;
+  }
 
   async runValidation(
     job: ConversionJobRecord,
@@ -26,6 +51,9 @@ export class RuleValidatorService {
     findings: ValidationFindingRecord[];
   }> {
     const screenId = job.screenId ?? 'Screen';
+    const javaFiles = await this.readGeneratedJava(job);
+    if (javaFiles) return this.persist(job, organizationId, screenId, this.javaFindings(job, screenId, javaFiles));
+
     const mappingRecord = await this.mappingRepo.findByScreen(
       job.projectId,
       screenId,
@@ -93,28 +121,46 @@ export class RuleValidatorService {
       });
     }
 
-    // Fallback default rule finding if no mappings are customized yet
-    if (rawFindings.length === 0) {
-      rawFindings.push({
-        conversionJobId: job.id,
-        projectId: job.projectId,
-        screenId,
-        source: 'Rule Validator Engine',
-        validatorType: ValidatorType.RULE_VALIDATOR,
-        issueType: 'DATA_TYPE_MISMATCH',
-        severity: FindingSeverity.HIGH,
-        sourceLocation: 'EXP_DATE (DATE)',
-        targetLocation: 'expiryDate [TextInput]',
-        expectedBehavior: 'DatePicker UI component',
-        actualBehavior: 'TextInput UI component',
-        explanation:
-          'Legacy field EXP_DATE has semantic type DATE, but generated output component is TextInput.',
-        suggestion:
-          'Change component mapping for EXP_DATE to DatePicker and click "Save & Re-convert".',
-        status: FindingStatus.OPEN,
-      });
-    }
+    return this.persist(job, organizationId, screenId, rawFindings);
+  }
 
+  /**
+   * COBOL to Java: the BMS field-mapping rules (DatePicker / TextInput, maxLength) do not apply
+   * to a Java program, so only Java rules run. No findings means the generated code is valid.
+   */
+  private javaFindings(job: ConversionJobRecord, screenId: string, files: { relativePath: string; content: string }[]) {
+    const base = {
+      conversionJobId: job.id,
+      projectId: job.projectId,
+      screenId,
+      source: 'Rule Validator Engine',
+      validatorType: ValidatorType.RULE_VALIDATOR,
+      status: FindingStatus.OPEN,
+    };
+    if (files.length === 0) {
+      return [
+        {
+          ...base,
+          issueType: 'NO_GENERATED_CODE',
+          severity: FindingSeverity.INFO,
+          sourceLocation: screenId,
+          targetLocation: 'no generated Java yet',
+          expectedBehavior: 'Generated Java code to validate',
+          actualBehavior: 'The conversion has not produced any Java files yet',
+          explanation: 'Validation was skipped because there is no generated Java code for this conversion.',
+          suggestion: 'Run the conversion, then validate again.',
+        },
+      ];
+    }
+    return validateGeneratedJava(files).map((finding) => ({ ...base, ...finding }));
+  }
+
+  private async persist(
+    job: ConversionJobRecord,
+    organizationId: string,
+    screenId: string,
+    rawFindings: Omit<ValidationFindingRecord, 'id' | 'createdAt' | 'updatedAt' | 'validationRunId'>[],
+  ): Promise<{ run: ValidationRunRecord; findings: ValidationFindingRecord[] }> {
     const openCount = rawFindings.filter((f) => f.status === FindingStatus.OPEN).length;
 
     const run = await this.validationRepo.createRun({

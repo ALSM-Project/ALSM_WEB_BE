@@ -184,12 +184,14 @@ describe('Partners (UC-44 Create Partner Profile)', () => {
     await service.execute(USER_ID, validRequest);
 
     expect(audit.append).toHaveBeenCalledTimes(1);
-    expect(audit.append).toHaveBeenCalledWith({
-      actorUserId: USER_ID,
-      action: 'PARTNER_CREATED',
-      resourceType: 'PARTNER',
-      resourceId: 'partner-42',
-    });
+    expect(audit.append).toHaveBeenCalledWith(
+      expect.objectContaining({
+        actorUserId: USER_ID,
+        action: 'PARTNER_CREATED',
+        resourceType: 'PARTNER',
+        resourceId: 'partner-42',
+      }),
+    );
   });
 
   // TC11

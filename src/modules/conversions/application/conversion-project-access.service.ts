@@ -31,6 +31,16 @@ export class ConversionProjectAccessService {
     projectId: string,
   ): Promise<void> {
     if (!(await this.isConversionStaff(userId))) return; // Existing customer/admin contract.
+    // A Team Lead's explicit allocation (UC-86) decides who works on the project: the staff
+    // member it names has access, and anyone else loses it, whatever their team says.
+    const allocated = (await this.projects.findById(projectId, organizationId))?.assignedStaffId;
+    if (allocated) {
+      if (allocated === userId) return;
+      throw new ForbiddenException({
+        code: 'CONVERSION_PROJECT_ASSIGNMENT_REQUIRED',
+        message: 'You are not assigned to this conversion project',
+      });
+    }
     const teams = await this.teams.listForMember(userId, organizationId);
     if (
       !teams.some(
@@ -88,11 +98,17 @@ export class ConversionProjectAccessService {
           project &&
           project.id === assignment.projectId &&
           project.organizationId === team.organizationId &&
-          !project.deletedAt
+          !project.deletedAt &&
+          // Allocated to someone else by a Team Lead: it left this person's queue.
+          (!project.assignedStaffId || project.assignedStaffId === userId)
         ) {
           projects.set(project.id, project);
         }
       }
+    }
+    // Projects a Team Lead allocated to this person directly (UC-86).
+    for (const project of await this.projects.findByAssignedStaff(userId, organization?.id)) {
+      if (!project.deletedAt) projects.set(project.id, project);
     }
     return [...projects.values()].sort(
       (a, b) => a.name.localeCompare(b.name) || a.id.localeCompare(b.id),

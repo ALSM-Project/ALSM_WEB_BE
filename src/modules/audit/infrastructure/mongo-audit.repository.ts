@@ -4,6 +4,7 @@ import { InjectModel } from '@nestjs/mongoose';
 import { ClientSession, Connection, Model, Types } from 'mongoose';
 import { AuditLog } from './audit-log.schema';
 import { AuditRepository } from '../domain/audit.repository';
+import { requestIpStorage } from '../../../shared/logging/request-ip.storage';
 @Injectable()
 export class MongoAuditRepository implements AuditRepository {
   constructor(@InjectModel(AuditLog.name) private readonly model: Model<AuditLog>) {}
@@ -35,6 +36,7 @@ export class MongoAuditRepository implements AuditRepository {
           organizationId: input.organizationId
             ? new Types.ObjectId(input.organizationId)
             : undefined,
+          ipAddress: requestIpStorage.getStore() || undefined,
         },
       ],
       { session: this.session },

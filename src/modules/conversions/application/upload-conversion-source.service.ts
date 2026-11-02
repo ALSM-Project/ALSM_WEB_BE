@@ -75,7 +75,7 @@ export class UploadConversionSourceService {
         message: 'At least one file is required',
       });
     }
-    const organization = await this.organizationContext.resolve(userId, organizationHeader);
+    const organization = await this.organizationContext.resolve(userId, organizationHeader, projectId);
     this.authorization.require(organization, userId, [
       OrganizationRole.OWNER,
       OrganizationRole.ADMIN,

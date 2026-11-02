@@ -13,12 +13,27 @@ export class RbacSeedService implements OnApplicationBootstrap {
     @InjectModel(Role.name) private readonly roleModel: Model<RoleDocument>,
   ) {}
 
+  /** Permissions that already exist, read once per seed instead of once per permission. */
+  private existingPermissions = new Map<string, { label?: string; group?: string; description?: string }>();
+
+  // The permission catalogue gates every request, so startup waits for it (and fails if it cannot
+  // be written) instead of opening the port with an incomplete catalogue.
   async onApplicationBootstrap(): Promise<void> {
+    const started = Date.now();
+    await this.seed();
+    this.logger.log(`RBAC seed finished in ${((Date.now() - started) / 1000).toFixed(1)}s`);
+  }
+
+  private async seed(): Promise<void> {
+    this.existingPermissions = new Map(
+      (await this.rbacService.getPermissions()).map((p) => [p.key, p]),
+    );
     // 1. System Roles
     await this.ensureRole('SYSTEM_ADMIN', 'Platform Admin', 'Platform administrator with unrestricted access', true);
     await this.ensureRole('ADMIN', 'Platform Administrator', 'Platform administrator with unrestricted access', true);
     await this.ensureRole('TEAM_LEAD', 'Team Lead', 'Internal team lead managing staff, conversions, and operations', true);
     await this.ensureRole('SALES_MANAGER', 'Sales Manager', 'Sales manager managing leads, quotes, and commercial metrics', true);
+    await this.ensureRole('SALES_VP', 'VP of Sales', 'Executive reviewer for discounts above Sales Manager authority', true);
     await this.ensureRole('INTERNAL_SALES', 'Internal Sales', 'Internal sales representative managing quotes and client leads', true);
     await this.ensureRole('INTERNAL_SUPPORT', 'Internal Support', 'Customer and operational support staff', true);
     await this.ensureRole('CONVERSION_STAFF', 'Conversion Staff', 'Modernization and conversion execution staff', true);
@@ -66,6 +81,7 @@ export class RbacSeedService implements OnApplicationBootstrap {
     await this.ensurePermission('sales.discounts.view', 'View Discount Approval Queue', 'sales', 'View discount approval requests queue');
     await this.ensurePermission('sales.discounts.approve', 'Approve Discount Requests', 'sales', 'Authorize and approve requested sales discounts');
     await this.ensurePermission('sales.discounts.reject', 'Reject Discount Requests', 'sales', 'Reject sales representative discount requests with mandatory justification');
+    await this.ensurePermission('sales.discounts.executive.review', 'Review Escalated Discounts', 'sales', 'Approve or reject discounts escalated above the Sales Manager authority limit');
     // Platform Administration (Section 3.13)
     await this.ensurePermission('organizations.view', 'View Organisations', 'admin', 'View customer and enterprise organisations');
     await this.ensurePermission('organizations.manage', 'Manage Organisations', 'admin', 'Create enterprise organisations and manage engagements');
@@ -164,6 +180,7 @@ export class RbacSeedService implements OnApplicationBootstrap {
       'sales.discounts.view',
       'sales.discounts.approve',
       'sales.discounts.reject',
+      'sales.discounts.executive.review',
       'projects.demo.view',
       'projects.demo.create',
       'organizations.impersonate',
@@ -269,6 +286,13 @@ export class RbacSeedService implements OnApplicationBootstrap {
       'meetings.view',
       'partner.view',
       'partner_project.view',
+    ]);
+
+    await this.grantRolePermissions('SALES_VP', [
+      'sales.discounts.view',
+      'sales.discounts.executive.review',
+      'sales.reports.view',
+      'sales.team-performance.view',
     ]);
 
     await this.grantRolePermissions('INTERNAL_SALES', [
@@ -399,9 +423,10 @@ export class RbacSeedService implements OnApplicationBootstrap {
     description: string,
   ): Promise<void> {
     const normalizedKey = key.trim().toLowerCase().replace(/\s+/g, '.');
-    const existing = await this.rbacService.getPermissions();
-    if (!existing.some((p) => p.key === normalizedKey || p.key === key)) {
+    const existing = this.existingPermissions.get(normalizedKey) ?? this.existingPermissions.get(key);
+    if (!existing) {
       await this.rbacService.createPermission(normalizedKey, label, group, description);
+      this.existingPermissions.set(normalizedKey, { label, group, description });
       this.logger.log(`Seeded permission ${normalizedKey}`);
     } else {
       await this.rbacService.updatePermission(normalizedKey, label, group, description);

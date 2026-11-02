@@ -6,8 +6,14 @@ import { JwtAuthGuard } from '../../../shared/security/jwt-auth.guard';
 import { AuthenticatedUser } from '../../../shared/logging/request-id.middleware';
 import { PlatformAdminService } from '../application/platform-admin.service';
 import { LockUserService } from '../application/lock-user.service';
+import { AuditLogService } from '../application/audit-log.service';
 import { RequirePermissions } from '../../../shared/security/require-permissions.decorator';
 import { CheckOffboardingTransfer, DisabledSupportImpersonation, PlatformAdminAuthorizationGuard } from './platform-admin-authorization.guard';
+import { ListOrganizationsQueryDto } from './dto/list-organizations-query.dto';
+import { UpdateOrganizationEngagementDto } from './dto/update-organization-engagement.dto';
+import { CreateEnterpriseOrganizationDto } from './dto/create-enterprise-organization.dto';
+import { CreateEngagementTypeDto } from './dto/create-engagement-type.dto';
+import { UpdateEngagementTypeDto } from './dto/update-engagement-type.dto';
 
 @ApiTags('Platform Administration (Sections 3.10, 3.13 & 3.14)')
 @ApiBearerAuth()
@@ -19,17 +25,14 @@ export class PlatformAdminController {
   constructor(
     private readonly adminService: PlatformAdminService,
     private readonly lockUserService: LockUserService,
+    private readonly auditLogService: AuditLogService,
   ) {}
 
   @Get('organizations')
   @RequirePermissions('organizations.view')
   @ApiOperation({ summary: 'View all organisations (3.13.1)' })
-  async listOrganizations(
-    @Query('search') search?: string,
-    @Query('type') type?: string,
-    @Query('status') status?: string,
-  ) {
-    return this.adminService.listOrganizations({ search, type, status });
+  async listOrganizations(@Query() query: ListOrganizationsQueryDto) {
+    return this.adminService.listOrganizations(query);
   }
 
   @Get('organizations/:id')
@@ -44,17 +47,7 @@ export class PlatformAdminController {
   @ApiOperation({ summary: 'Create new Enterprise organisation with Trial (3.13.4)' })
   async createEnterprise(
     @CurrentUser() user: AuthenticatedUser,
-    @Body()
-    body: {
-      name: string;
-      domain?: string;
-      contactEmail: string;
-      engagementType?: string;
-      trialDays?: number;
-      maxScreens?: number;
-      maxPrograms?: number;
-      maxStorageGb?: number;
-    },
+    @Body() body: CreateEnterpriseOrganizationDto,
   ) {
     return this.adminService.createEnterpriseOrganization(user.userId, body);
   }
@@ -65,13 +58,7 @@ export class PlatformAdminController {
   async updateEngagement(
     @CurrentUser() user: AuthenticatedUser,
     @Param('id') id: string,
-    @Body()
-    body: {
-      engagementType?: string;
-      status?: 'ACTIVE' | 'SUSPENDED' | 'TRIAL';
-      trialExpiresAt?: string;
-      limits?: { maxScreens: number; maxPrograms: number; maxStorageGb: number };
-    },
+    @Body() body: UpdateOrganizationEngagementDto,
   ) {
     return this.adminService.updateOrganizationEngagement(user.userId, id, body);
   }
@@ -110,7 +97,7 @@ export class PlatformAdminController {
   @ApiOperation({ summary: 'Create new engagement type (3.13.7)' })
   async createEngagementType(
     @CurrentUser() user: AuthenticatedUser,
-    @Body() body: Record<string, unknown>,
+    @Body() body: CreateEngagementTypeDto,
   ) {
     return this.adminService.createEngagementType(user.userId, body);
   }
@@ -121,7 +108,7 @@ export class PlatformAdminController {
   async editEngagementType(
     @CurrentUser() user: AuthenticatedUser,
     @Param('id') id: string,
-    @Body() body: Record<string, unknown>,
+    @Body() body: UpdateEngagementTypeDto,
   ) {
     return this.adminService.editEngagementType(user.userId, id, body);
   }
@@ -187,22 +174,86 @@ export class PlatformAdminController {
     @Query('limit') limit?: string,
     @Query('action') action?: string,
     @Query('resourceType') resourceType?: string,
+    @Query('resourceId') resourceId?: string,
+    @Query('target') target?: string,
+    @Query('actor') actor?: string,
+    @Query('actorUserId') actorUserId?: string,
+    @Query('from') from?: string,
+    @Query('to') to?: string,
   ) {
-    return this.adminService.listAuditLogs({
+    return this.auditLogService.list({
       page: page ? parseInt(page, 10) : 1,
       limit: limit ? parseInt(limit, 10) : 20,
       action,
       resourceType,
+      resourceId,
+      target,
+      actor,
+      actorUserId,
+      from,
+      to,
     });
   }
 
   @Get('audit-logs/export')
   @RequirePermissions('audit.view')
   @ApiOperation({ summary: 'Export audit logs to CSV (3.13.10)' })
-  async exportAuditLogs(@Res() res: Response) {
-    const csv = await this.adminService.exportAuditLogsCsv();
+  async exportAuditLogs(
+    @Res() res: Response,
+    @Query('action') action?: string,
+    @Query('resourceType') resourceType?: string,
+    @Query('resourceId') resourceId?: string,
+    @Query('target') target?: string,
+    @Query('actor') actor?: string,
+    @Query('actorUserId') actorUserId?: string,
+    @Query('from') from?: string,
+    @Query('to') to?: string,
+    @Query('limit') limit?: string,
+  ) {
+    const csv = await this.auditLogService.exportCsv({
+      action,
+      resourceType,
+      resourceId,
+      target,
+      actor,
+      actorUserId,
+      from,
+      to,
+      limit: limit ? parseInt(limit, 10) : undefined,
+    });
     res.setHeader('Content-Type', 'text/csv');
     res.setHeader('Content-Disposition', 'attachment; filename="audit-logs.csv"');
     res.send(csv);
+  }
+
+  @Get('audit-logs/export/pdf')
+  @RequirePermissions('audit.view')
+  @ApiOperation({ summary: 'Export audit logs to PDF (3.13.10)' })
+  async exportAuditLogsPdf(
+    @Res() res: Response,
+    @Query('action') action?: string,
+    @Query('resourceType') resourceType?: string,
+    @Query('resourceId') resourceId?: string,
+    @Query('target') target?: string,
+    @Query('actor') actor?: string,
+    @Query('actorUserId') actorUserId?: string,
+    @Query('from') from?: string,
+    @Query('to') to?: string,
+    @Query('limit') limit?: string,
+  ) {
+    const pdf = await this.auditLogService.exportPdf({
+      action,
+      resourceType,
+      resourceId,
+      target,
+      actor,
+      actorUserId,
+      from,
+      to,
+      limit: limit ? parseInt(limit, 10) : undefined,
+    });
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('Content-Disposition', 'attachment; filename="audit-logs.pdf"');
+    res.send(pdf);
   }
 }

@@ -1,4 +1,4 @@
-import { Inject, Injectable, Logger } from '@nestjs/common';
+import { BadRequestException, Inject, Injectable, Logger, NotFoundException } from '@nestjs/common';
 import {
   LEAD_REPOSITORY,
   LeadListParams,
@@ -34,9 +34,21 @@ export class ListLeadsService {
     };
   }
 
-  async findById(id: string): Promise<LeadRecord | null> {
-    if (!id || !id.match(/^[a-f\d]{24}$/i)) return null;
-    return this.leads.findById(id);
+  async findById(id: string): Promise<LeadRecord> {
+    if (!id || !/^[a-f\d]{24}$/i.test(id)) {
+      throw new BadRequestException({
+        code: 'INVALID_LEAD_ID',
+        message: 'Enter a valid lead identifier.',
+      });
+    }
+    const lead = await this.leads.findById(id);
+    if (!lead) {
+      throw new NotFoundException({
+        code: 'LEAD_NOT_FOUND',
+        message: 'Lead was not found.',
+      });
+    }
+    return lead;
   }
 }
 

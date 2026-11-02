@@ -10,6 +10,8 @@ export interface OrganizationRecord {
 export interface OrganizationRepository {
   create(input: Pick<OrganizationRecord, 'name' | 'type' | 'members'>): Promise<OrganizationRecord>;
   findForMember(organizationId: string, userId: string): Promise<OrganizationRecord | null>;
+  /** The organization itself, whoever is asking; callers must have their own reason to read it. */
+  findById(organizationId: string): Promise<OrganizationRecord | null>;
   findFirstForMember(userId: string): Promise<OrganizationRecord | null>;
   addMember(
     organizationId: string,

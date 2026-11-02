@@ -4,6 +4,7 @@ import { Reflector } from '@nestjs/core';
 import { getModelToken } from '@nestjs/mongoose';
 import { JwtService } from '@nestjs/jwt';
 import { Test } from '@nestjs/testing';
+import { Types } from 'mongoose';
 // eslint-disable-next-line @typescript-eslint/no-require-imports
 const request = require('supertest');
 import { AdminModule } from '../src/modules/admin/admin.module';
@@ -31,6 +32,7 @@ import { OnboardUserService } from '../src/modules/users/application/onboard-use
 import { RbacModule } from '../src/modules/rbac/rbac.module';
 import { ProjectsController } from '../src/modules/projects/presentation/projects.controller';
 import { ProjectService } from '../src/modules/projects/application/project.service';
+import { ProjectStaffAllocationService } from '../src/modules/projects/application/project-staff-allocation.service';
 import { ProjectRepository } from '../src/modules/projects/domain/project.types';
 import { OrganizationContextService } from '../src/modules/organizations/application/organization-context.service';
 import { OrganizationAuthorizationService } from '../src/modules/organizations/application/organization-authorization.service';
@@ -62,6 +64,7 @@ const routeCases = [
   ['post', 'resources/transfer', 'resources.transfer', 'transferResource'],
   ['get', 'audit-logs', 'audit.view', 'listAuditLogs'],
   ['get', 'audit-logs/export', 'audit.view', 'exportAuditLogs'],
+  ['get', 'audit-logs/export/pdf', 'audit.view', 'exportAuditLogsPdf'],
 ] as const;
 const catalog = [
   ...new Set([...routeCases.map((c) => c[2]), 'resources.transfer.confirm', 'users.manage']),
@@ -145,9 +148,21 @@ describe('real AdminModule authorization HTTP boundary', () => {
     findUserRoles: jest.fn(),
     findRolePermissionsByRoleIds: jest.fn(),
   };
-  const audit = { append: jest.fn() };
+  const audit = { append: jest.fn(), inTransaction: jest.fn() };
+  const transactionSession = {
+    withTransaction: jest.fn(),
+    endSession: jest.fn().mockResolvedValue(undefined),
+  };
+  const transactionConnection = {
+    db: { admin: () => ({ command: jest.fn().mockResolvedValue({ setName: 'rs0' }) }) },
+    startSession: jest.fn(),
+  };
   const email = { send: jest.fn() };
-  const projectRepository = { assignTeamLead: jest.fn(), findAll: jest.fn() };
+  const projectRepository = {
+    assignTeamLead: jest.fn(),
+    findAll: jest.fn(),
+    findByAssignedStaff: jest.fn().mockResolvedValue([]),
+  };
   const organizationRepository = { findFirstForMember: jest.fn(), findForMember: jest.fn() };
   // Actual module, guards, RBAC resolver, current-session service and business
   // services. Only database/email ports and bootstrap side effects are fixtures.
@@ -159,6 +174,7 @@ describe('real AdminModule authorization HTTP boundary', () => {
     'Project',
     'ConversionJob',
     'AuditLog',
+    'PasswordReset',
     'Role',
     'Permission',
     'UserRole',
@@ -175,12 +191,16 @@ describe('real AdminModule authorization HTTP boundary', () => {
         findById: jest.fn(),
         findOne: jest.fn(),
         countDocuments: jest.fn(),
+        aggregate: jest.fn(() => ({ exec: async () => [] })),
         create: jest.fn(),
         findByIdAndUpdate: jest.fn(),
         updateMany: jest.fn(),
+        updateOne: jest.fn(),
       },
     ]),
   );
+  Object.defineProperty(models.Organization, 'db', { value: transactionConnection, enumerable: false });
+  Object.defineProperty(models.EngagementType, 'db', { value: transactionConnection, enumerable: false });
   const save = jest.fn();
   const query = (value: unknown) => {
     const chain = {
@@ -189,6 +209,7 @@ describe('real AdminModule authorization HTTP boundary', () => {
       populate: () => chain,
       skip: () => chain,
       limit: () => chain,
+      session: () => chain,
       exec: async () => value,
     };
     return chain;
@@ -267,6 +288,8 @@ describe('real AdminModule authorization HTTP boundary', () => {
       controllers: [UsersController, ProjectsController],
       providers: [
         { provide: OnboardUserService, useValue: {} },
+        // ProjectsController also serves staff allocation (UC-86); these tests never call it.
+        { provide: ProjectStaffAllocationService, useValue: {} },
         {
           provide: ProjectService,
           useValue: new ProjectService(
@@ -329,12 +352,16 @@ describe('real AdminModule authorization HTTP boundary', () => {
       members: [{ userId: actorId, role: 'MEMBER' }],
     });
     audit.append.mockResolvedValue(undefined);
+    audit.inTransaction.mockImplementation(() => audit);
+    transactionSession.withTransaction.mockImplementation(async (work: () => Promise<unknown>) => work());
+    transactionConnection.startSession.mockResolvedValue(transactionSession);
     email.send.mockResolvedValue(undefined);
     for (const model of Object.values(models)) {
       model.find.mockImplementation(() => query([]));
       model.findById.mockImplementation(() => query(selectedUser()));
       model.findOne.mockImplementation(() => query(null));
       model.countDocuments.mockResolvedValue(0);
+      model.aggregate.mockImplementation(() => ({ exec: async () => [] }));
       model.create.mockResolvedValue({ _id: targetId, id: targetId, name: 'Created' });
       model.findByIdAndUpdate.mockImplementation(() => query({ id: targetId, name: 'Edited' }));
       model.updateMany.mockResolvedValue({ modifiedCount: 1 });
@@ -352,13 +379,96 @@ describe('real AdminModule authorization HTTP boundary', () => {
   it.each(routeCases)(
     'permits persisted admin with current catalog permission: %s %s',
     async (method, path) => {
-      const body = {
+      if (path === 'organizations/enterprise') {
+        models.EngagementType.findOne.mockImplementation(() => query({
+          name: 'Enterprise Pilot',
+          isActive: true,
+          trialLimits: { maxScreens: 50, maxPrograms: 25, maxStorageGb: 10 },
+        }));
+        models.Role.findOne.mockImplementation(() => query({ id: 'ENTERPRISE_MEMBER' }));
+        models.User.findOne.mockImplementation(() => query(null));
+        models.User.create.mockResolvedValue([{ _id: new Types.ObjectId(), isEmailVerified: false }]);
+        models.Organization.create.mockResolvedValue([{ ...org(), initialAdminInviteStatus: 'PENDING' }]);
+        models.PasswordReset.create.mockResolvedValue([{}]);
+        models.UserRole.updateOne.mockImplementation(() => ({ exec: async () => ({ upsertedCount: 1 }) }));
+        models.Organization.updateOne.mockImplementation(() => ({ exec: async () => ({ modifiedCount: 1 }) }));
+      }
+      if (path === 'engagement-types') {
+        models.EngagementType.create.mockResolvedValue([{
+          _id: new Types.ObjectId(),
+          name: 'Created Plan',
+          code: 'CREATED_PLAN',
+          price: 12000,
+          trialLimits: { maxScreens: 10, maxPrograms: 5, maxStorageGb: 2 },
+          usageLimits: { maxScreens: 100, maxPrograms: 50, maxStorageGb: 20 },
+          features: [],
+          isActive: true,
+          toObject() { return this; },
+        }]);
+      }
+      if (path === `engagement-types/${targetId}`) {
+        models.EngagementType.findById.mockImplementation(() => query({
+          _id: new Types.ObjectId(targetId),
+          name: 'Existing Plan',
+          normalizedName: 'existing plan',
+          code: 'EXISTING_PLAN',
+          description: 'Current plan',
+          price: 12000,
+          trialLimits: { maxScreens: 10, maxPrograms: 5, maxStorageGb: 2 },
+          usageLimits: { maxScreens: 100, maxPrograms: 50, maxStorageGb: 20 },
+          features: ['BMS'],
+          includesCobolConversion: false,
+          supportTier: 'STANDARD',
+          slaHours: 12,
+          isActive: true,
+          save,
+        }));
+      }
+      const body: Record<string, unknown> = {
         name: 'Created',
         contactEmail: 'new@example.test',
+        engagementType: 'Enterprise Pilot',
+        requestId: 'b286dd90-fba3-4ead-a8c5-c2ac88c1b2cb',
         status: 'SUSPENDED',
         projectId: targetId,
         newAssigneeId: otherId,
       };
+      if (path === 'engagement-types') {
+        body.name = 'Created Plan';
+        delete body.contactEmail;
+        delete body.status;
+        delete body.projectId;
+        delete body.newAssigneeId;
+        Object.assign(body, {
+          code: 'CREATED_PLAN',
+          price: 12000,
+          trialLimits: { maxScreens: 10, maxPrograms: 5, maxStorageGb: 2 },
+          usageLimits: { maxScreens: 100, maxPrograms: 50, maxStorageGb: 20 },
+          features: [],
+          includesCobolConversion: false,
+          requestId: 'b286dd90-fba3-4ead-a8c5-c2ac88c1b2cb',
+        });
+      }
+      if (path === `engagement-types/${targetId}`) {
+        body.name = 'Updated Plan';
+        delete body.contactEmail;
+        delete body.engagementType;
+        delete body.requestId;
+        delete body.status;
+        delete body.projectId;
+        delete body.newAssigneeId;
+        Object.assign(body, {
+          code: 'UPDATED_PLAN',
+          description: 'Updated description',
+          price: 18000,
+          trialLimits: { maxScreens: 20, maxPrograms: 10, maxStorageGb: 5 },
+          usageLimits: { maxScreens: 200, maxPrograms: 100, maxStorageGb: 30 },
+          features: ['BMS', 'COBOL'],
+          includesCobolConversion: true,
+          supportTier: 'PREMIER',
+          slaHours: 4,
+        });
+      }
       const response = await call(method, path, {}, body);
       expect(response.status).toBe(method === 'post' ? 201 : 200);
       expect(rbac.findPermissions).toHaveBeenCalled();
