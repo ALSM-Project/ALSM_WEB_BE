@@ -23,19 +23,37 @@ export class MongoTransactionRunner {
       // concurrent stable-ID insert. Never query a transaction aborted by E11000.
       for (let attempt = 0; attempt < 2; attempt++) {
         try {
-          return await session.withTransaction(() => work(session), {
-            readConcern: { level: 'snapshot' },
-            writeConcern: { w: 'majority' },
-            readPreference: 'primary',
-            maxCommitTimeMS: 10000,
-          });
+          return await session.withTransaction(
+            async () => {
+              try {
+                return await work(session);
+              } catch (error) {
+                // Do not let a mixed transient label trigger a driver callback
+                // retry when the business operation's outcome is uncertain.
+                if (hasUnknownTransactionCommitResult(error)) throw this.unconfirmed(resourceId);
+                throw error;
+              }
+            },
+            {
+              readConcern: { level: 'snapshot' },
+              writeConcern: { w: 'majority' },
+              readPreference: 'primary',
+              maxCommitTimeMS: 10000,
+            },
+          );
         } catch (error) {
-          if (attempt === 0 && (error as { code?: number })?.code === 11000) continue;
+          if (
+            attempt === 0 &&
+            (error as { code?: number })?.code === 11000 &&
+            !hasUnknownTransactionCommitResult(error)
+          )
+            continue;
           throw error;
         }
       }
       throw new Error('Transaction outcome unavailable');
     } catch (error) {
+      if (hasUnknownTransactionCommitResult(error)) throw this.unconfirmed(resourceId);
       if (error instanceof HttpException) throw error;
       const diagnostic = error as {
         name?: string;
@@ -64,16 +82,10 @@ export class MongoTransactionRunner {
           errorLabels: diagnostic?.errorLabels ?? [],
         }),
       );
-      const unknown =
-        (error as { hasErrorLabel?: (label: string) => boolean })?.hasErrorLabel?.(
-          'UnknownTransactionCommitResult',
-        ) === true;
       throw new ServiceUnavailableException({
-        code: unknown ? 'TEAM_MUTATION_OUTCOME_UNCONFIRMED' : 'ATOMIC_MUTATION_ABORTED',
-        message: unknown
-          ? 'Commit outcome is unknown; reconcile by the original resource ID before retrying'
-          : 'Business state and audit were not committed; reconcile before retrying',
-        details: [{ resourceId, mutationCommitted: unknown ? 'unknown' : false, retrySafe: false }],
+        code: 'ATOMIC_MUTATION_ABORTED',
+        message: 'Business state and audit were not committed; reconcile before retrying',
+        details: [{ resourceId, mutationCommitted: false, retrySafe: false }],
       });
     } finally {
       try {
@@ -85,6 +97,22 @@ export class MongoTransactionRunner {
       }
     }
   }
+
+  private unconfirmed(resourceId: string): ServiceUnavailableException {
+    return new ServiceUnavailableException({
+      code: 'TEAM_MUTATION_OUTCOME_UNCONFIRMED',
+      message: 'Commit outcome is unknown; reconcile by the original resource ID before retrying',
+      details: [{ resourceId, mutationCommitted: 'unknown', retrySafe: false }],
+    });
+  }
+}
+
+export function hasUnknownTransactionCommitResult(error: unknown): boolean {
+  const candidate = error as { hasErrorLabel?: (label: string) => boolean } | null;
+  return (
+    typeof candidate?.hasErrorLabel === 'function' &&
+    candidate.hasErrorLabel('UnknownTransactionCommitResult') === true
+  );
 }
 
 export function requireActiveTransaction(session: ClientSession): void {

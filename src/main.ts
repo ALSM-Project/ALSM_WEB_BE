@@ -9,6 +9,7 @@ import { AppModule } from './app.module';
 import { ApiExceptionFilter } from './shared/errors/api-exception.filter';
 import { ConversionWorkerRunner } from './modules/conversions/infrastructure/conversion-worker.runner';
 import { ValidationWorkerRunner } from './modules/validation/infrastructure/validation-worker.runner';
+import { createCorsOptions } from './config/cors-policy';
 
 async function bootstrap(): Promise<void> {
   const app = await NestFactory.create(AppModule);
@@ -20,28 +21,7 @@ async function bootstrap(): Promise<void> {
     }),
   );
 
-  const configuredOrigins = (process.env.CORS_ORIGINS ?? '')
-    .split(',')
-    .map((origin) => origin.trim())
-    .filter(Boolean);
-
-  app.enableCors({
-    origin: (
-      requestOrigin: string | undefined,
-      callback: (err: Error | null, allow?: boolean) => void,
-    ) => {
-      if (!requestOrigin) return callback(null, true);
-      if (
-        configuredOrigins.includes(requestOrigin) ||
-        requestOrigin.startsWith('http://localhost:') ||
-        requestOrigin.startsWith('http://127.0.0.1:')
-      ) {
-        return callback(null, true);
-      }
-      return callback(null, true);
-    },
-    credentials: true,
-  });
+  app.enableCors(createCorsOptions(process.env.CORS_ORIGINS));
 
   app.setGlobalPrefix('api/v1');
   app.useGlobalPipes(
@@ -75,4 +55,3 @@ async function bootstrap(): Promise<void> {
 
 void bootstrap();
 // ALSM backend bootstrap initialized
-
