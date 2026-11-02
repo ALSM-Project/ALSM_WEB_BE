@@ -56,6 +56,7 @@ export class AuthorizeSupportContextReadService {
             message: 'Support context is unavailable',
           });
         const props = context.toProps();
+        const canCommitActivity = context.captureActivityWindow();
         if (
           props.sessionVersion !== admission.sessionVersion ||
           props.authorityBinding !== admission.authorityBinding
@@ -79,7 +80,7 @@ export class AuthorizeSupportContextReadService {
           },
         });
         await this.access.recheck(actor, admission, this.clock.now());
-        if (!context.isActive(this.clock.now()))
+        if (!canCommitActivity(this.clock.now()))
           throw new ConflictException({
             code: 'SUPPORT_CONTEXT_INACTIVE',
             message: 'Support context expired before confirmation',

@@ -42,6 +42,40 @@ describe('Technical Owner-approved UC-66 context lifetime', () => {
     expect(() => c.activity(new Date(start + 30 * 60000))).toThrow('SUPPORT_CONTEXT_INACTIVE');
   });
 
+  it('pending activity cannot extend the captured committed window, including exact equality', () => {
+    const c = context(),
+      start = c.toProps().createdAt.getTime();
+    const canCommit = c.captureActivityWindow();
+    c.activity(new Date(start + 14 * 60000 + 59000));
+    expect(canCommit(new Date(start + 14 * 60000 + 59500))).toBe(true);
+    expect(c.isActive(new Date(start + 15 * 60000))).toBe(true);
+    expect(canCommit(new Date(start + 15 * 60000))).toBe(false);
+    expect(canCommit(new Date(start + 15 * 60000 + 1000))).toBe(false);
+  });
+
+  it('a fresh persisted snapshot uses its newly committed activity window', () => {
+    const c = context(),
+      start = c.toProps().createdAt.getTime();
+    c.activity(new Date(start + 14 * 60000));
+    const next = SupportContextEntity.fromPersistence(c.toProps());
+    const canCommit = next.captureActivityWindow();
+    next.activity(new Date(start + 16 * 60000));
+    expect(canCommit(new Date(start + 16 * 60000 + 1000))).toBe(true);
+    expect(canCommit(new Date(start + 29 * 60000))).toBe(false);
+    expect(next.toProps().expiresAt).toEqual(c.toProps().expiresAt);
+  });
+
+  it('the captured window retains current-state and backwards-clock protection', () => {
+    const c = context(),
+      start = c.toProps().createdAt.getTime();
+    const canCommit = c.captureActivityWindow();
+    const activity = new Date(start + 14 * 60000);
+    c.activity(activity);
+    expect(() => canCommit(new Date(activity.getTime() - 1))).toThrow('SUPPORT_CLOCK_UNAVAILABLE');
+    c.end('EXITED', activity);
+    expect(canCommit(activity)).toBe(false);
+  });
+
   it.each([15, 30])('denies activity at the exact %s-minute idle/absolute boundary', (minutes) => {
     const c = context();
     expect(() => c.activity(new Date(c.toProps().createdAt.getTime() + minutes * 60000))).toThrow(

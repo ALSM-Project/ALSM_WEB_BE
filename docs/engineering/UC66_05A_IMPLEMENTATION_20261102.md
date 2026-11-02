@@ -1,5 +1,9 @@
 # ALSMV2-1050 / UC66-05A — isolated integration, recovery and revocation
 
+The later [P2-01 idle-window correction](UC66_05A_IDLE_WINDOW_FIX_20261102.md)
+records the fix and red/green evidence for pending activity crossing its original
+committed deadline. The implementation/counts below describe the reviewed checkpoint.
+
 2 November 2026. Branch: `feature/alsmv2-1050-uc66-05a-isolated-integration`.
 Backend base `ba9f91e` includes replay correction `a14c6de`; Frontend base `e1e54ec`
 includes the accepted Project pagination correction. The approved Technical Owner

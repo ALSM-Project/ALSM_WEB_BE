@@ -117,6 +117,13 @@ export class SupportContextEntity {
     );
   }
 
+  /** Capture the committed window before provisional activity can advance it. */
+  captureActivityWindow(): (now: Date) => boolean {
+    const committed = SupportContextEntity.fromPersistence(this.props);
+    // Keep current state/backwards-clock checks as well as the detached original deadlines.
+    return (now) => committed.isActive(now) && this.isActive(now);
+  }
+
   activity(now: Date): void {
     if (!this.isActive(now)) throw new SupportContextError('SUPPORT_CONTEXT_INACTIVE');
     this.props.lastActivityAt = new Date(now);
