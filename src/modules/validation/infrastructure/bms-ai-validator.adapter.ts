@@ -1,13 +1,12 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { BmsSanitizerService } from '../application/bms-sanitizer.service';
+import { BmsRuleValidationService } from '../application/bms-rule-validation.service';
 import {
   BMS_VALIDATION_JSON_SCHEMA,
-  BmsValidationCategory,
   BmsValidationFinding,
 } from '../domain/bms-validation-taxonomy';
 import { buildBmsAiValidationPrompt } from './bms-ai-validation.prompt';
-import { ValidationFindingSeverity } from '../domain/validation-finding.types';
 
 export interface BmsAiValidationInput {
   conversionJobId: string;
@@ -24,11 +23,15 @@ export interface BmsAiValidationResult {
 }
 
 /**
- * BƯỚC 6: Tích Hợp Hệ Thống & Cơ Chế Phòng Thủ (Defensive Integration)
- * - Adapter Pattern (Clean Architecture): Cách ly logic gọi LLM
- * - Timeout: AbortController ngắt kết nối sau timeout cấu hình (AI_TIMEOUT_MS)
- * - Graceful Degradation: Bắt lỗi mạng / API quota sập -> ghi log và trả về [] an toàn
- * - Deduplication: Loại bỏ các phát hiện trùng lặp
+ * BƯỚC 6: TÍCH HỢP KIẾN TRÚC HYBRID ("Rule-based/AST trước, AI sau")
+ * 1. Rule Engine (< 10ms): Bóc tách AST/Regex, so khớp 100% thuộc tính cơ học:
+ *    - MISSING_FIELD
+ *    - ATTRIBUTE_MISMATCH (NUM, DRK/Password, LENGTH/maxLength, PROT/ReadOnly)
+ *    - LAYOUT_DISCREPANCY (gridRow, gridColumn)
+ *    - PF_KEY_MISMATCH (F3, F12, Enter...)
+ * 2. Selective AI (1-2s): Chỉ gọi AI để thẩm định các logic ngữ nghĩa nâng cao (SEMANTIC_LOGIC)
+ *    hoặc khi cấu hình kích hoạt AI sâu.
+ * 3. Graceful Fallback: Nếu AI sập/timeout/hết quota -> vẫn giữ 100% kết quả từ Rule Engine.
  */
 @Injectable()
 export class BmsAiValidatorAdapter {
@@ -37,6 +40,7 @@ export class BmsAiValidatorAdapter {
   constructor(
     private readonly config: ConfigService,
     private readonly sanitizer: BmsSanitizerService,
+    private readonly ruleEngine: BmsRuleValidationService,
   ) {}
 
   async validate(input: BmsAiValidationInput): Promise<BmsAiValidationResult> {
@@ -47,22 +51,37 @@ export class BmsAiValidatorAdapter {
     const model =
       this.config.get<string>('GEMINI_MODEL') ||
       this.config.get<string>('OPENAI_MODEL') ||
-      'gemini-3.8-flash';
-    const timeoutMs = this.config.get<number>('AI_TIMEOUT_MS') || 90000;
+      'gemini-2.5-flash';
+    const timeoutMs = this.config.get<number>('AI_TIMEOUT_MS') || 30000;
 
-    // 1. Nếu tắt AI Validation -> Trả về danh sách rỗng ngay lập tức
+    // 1. BƯỚC 1 & 2: Chạy Deterministic Rule Engine ngay lập tức (< 10ms)
+    const sourceFile = input.sourceFiles[0];
+    const targetFile =
+      input.targetFiles.find((f) => !f.path.toLowerCase().endsWith('.json')) ||
+      input.targetFiles[0];
+
+    const ruleResult =
+      sourceFile && targetFile
+        ? this.ruleEngine.validate(sourceFile, targetFile)
+        : { findings: [], ambiguousItems: [] };
+
+    const ruleTime = Date.now() - startTime;
+    this.logger.log(
+      `[Hybrid Validation] Deterministic Rule Engine finished in ${ruleTime}ms. Detected ${ruleResult.findings.length} findings.`,
+    );
+
+    // 2. Nếu tắt AI Validation hoặc dùng Fake provider -> Trả ngay kết quả từ Rule Engine
     if (!enabled || provider === 'fake') {
-      this.logger.log('BMS AI Validator is disabled or using fake provider.');
       return {
-        provider: 'fake',
-        model: 'heuristic-rules',
+        provider: 'rule-based-engine',
+        model: 'deterministic-rules-v2',
         promptVersion: 'semantic-bms-react-v1',
-        findings: this.runHeuristicChecks(input),
+        findings: ruleResult.findings,
         durationMs: Date.now() - startTime,
       };
     }
 
-    // 2. Tiền xử lý & Khử PII (chỉ lấy code TSX/JSX, bỏ file JSON metadata)
+    // 3. Tiền xử lý & Khử PII cho ngữ cảnh AI
     const sanitizedSources = input.sourceFiles.map((f) =>
       this.sanitizer.process(f.path, f.content),
     );
@@ -75,25 +94,32 @@ export class BmsAiValidatorAdapter {
       sanitizedTargets,
     );
 
-    // 3. Cơ chế phòng thủ: Timeout với AbortController
+    // 4. Gọi AI với Timeout an toàn
     const controller = new AbortController();
     const timeoutHandle = setTimeout(() => controller.abort(), timeoutMs);
 
     try {
-      let rawFindings: BmsValidationFinding[] = [];
+      let aiFindings: BmsValidationFinding[] = [];
 
       if (provider === 'gemini') {
         this.logger.log(
-          `Calling Gemini API (${model})... SystemPrompt: ${systemPrompt.length} chars, UserPrompt: ${userPrompt.length} chars.`,
+          `[Hybrid Validation] Delegating semantic checks to Gemini (${model})...`,
         );
-        rawFindings = await this.callGemini(systemPrompt, userPrompt, controller.signal);
-        this.logger.log(`Gemini API returned ${rawFindings.length} findings.`);
+        aiFindings = await this.callGemini(systemPrompt, userPrompt, controller.signal);
       } else if (provider === 'openai') {
-        rawFindings = await this.callOpenAi(systemPrompt, userPrompt, controller.signal);
+        this.logger.log(
+          `[Hybrid Validation] Delegating semantic checks to OpenAI (${model})...`,
+        );
+        aiFindings = await this.callOpenAi(systemPrompt, userPrompt, controller.signal);
       }
 
-      // 4. Khử trùng lặp (Deduplication)
-      const deduplicated = this.deduplicateFindings(rawFindings);
+      // 5. Hợp nhất kết quả Rule-based và AI-based, sau đó loại bỏ trùng lặp
+      const combined = [...ruleResult.findings, ...aiFindings];
+      const deduplicated = this.deduplicateFindings(combined);
+
+      this.logger.log(
+        `[Hybrid Validation] Complete in ${Date.now() - startTime}ms. Rule findings: ${ruleResult.findings.length}, AI findings: ${aiFindings.length}, Total deduplicated: ${deduplicated.length}`,
+      );
 
       return {
         provider,
@@ -105,13 +131,13 @@ export class BmsAiValidatorAdapter {
     } catch (error: unknown) {
       const msg = error instanceof Error ? error.message : String(error);
       this.logger.warn(
-        `BMS AI Validation call failed: ${msg}. Gracefully falling back to heuristic validation engine.`,
+        `[Hybrid Validation] AI call failed or timed out: ${msg}. Safely falling back to 100% deterministic Rule Engine findings.`,
       );
       return {
-        provider: 'heuristic-fallback',
-        model: 'heuristic-rules-v1',
+        provider: 'rule-based-fallback',
+        model: 'deterministic-rules-v2',
         promptVersion: 'semantic-bms-react-v1',
-        findings: this.runHeuristicChecks(input),
+        findings: ruleResult.findings,
         durationMs: Date.now() - startTime,
       };
     } finally {
@@ -120,7 +146,7 @@ export class BmsAiValidatorAdapter {
   }
 
   /**
-   * Gọi Google Gemini API với JSON Schema ép buộc và cơ chế tự động thử lại (Retry)
+   * Gọi Google Gemini API với JSON Schema ép buộc và danh sách model thực tế
    */
   private async callGemini(
     systemPrompt: string,
@@ -128,67 +154,55 @@ export class BmsAiValidatorAdapter {
     signal: AbortSignal,
   ): Promise<BmsValidationFinding[]> {
     const apiKey = this.config.get<string>('GEMINI_API_KEY');
-    const configuredModel = this.config.get<string>('GEMINI_MODEL') || 'gemini-3.8-flash';
+    const configuredModel = this.config.get<string>('GEMINI_MODEL') || 'gemini-2.5-flash';
     if (!apiKey) throw new Error('GEMINI_API_KEY is not configured');
 
-    const candidateModels = [...new Set([configuredModel, 'gemini-3.7-flash', 'gemini-flash-latest'])];
+    // Chỉ dùng các model Gemini có thực và phản hồi nhanh nhất của Google
+    const candidateModels = [
+      ...new Set([configuredModel, 'gemini-2.5-flash', 'gemini-1.5-flash', 'gemini-2.0-flash']),
+    ];
     let lastError: Error | null = null;
 
     for (const model of candidateModels) {
       if (signal.aborted) throw new Error('Gemini API call timed out');
       const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
 
-      for (let attempt = 1; attempt <= 2; attempt++) {
-        if (signal.aborted) throw new Error('Gemini API call timed out');
+      try {
+        const response = await fetch(url, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          signal,
+          body: JSON.stringify({
+            systemInstruction: { parts: [{ text: systemPrompt }] },
+            contents: [{ role: 'user', parts: [{ text: userPrompt }] }],
+            generationConfig: {
+              responseMimeType: 'application/json',
+              responseSchema: BMS_VALIDATION_JSON_SCHEMA,
+              temperature: 0.0,
+            },
+          }),
+        });
 
-        try {
-          const response = await fetch(url, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            signal,
-            body: JSON.stringify({
-              systemInstruction: { parts: [{ text: systemPrompt }] },
-              contents: [{ role: 'user', parts: [{ text: userPrompt }] }],
-              generationConfig: {
-                responseMimeType: 'application/json',
-                responseSchema: BMS_VALIDATION_JSON_SCHEMA,
-                temperature: 0.0,
-              },
-            }),
-          });
-
-          if (!response.ok) {
-            const errText = await response.text();
-            const isRateOrDemand = response.status === 503 || response.status === 429;
-            if (isRateOrDemand) {
-              this.logger.warn(
-                `Gemini model ${model} returned ${response.status} (High demand/quota spike, attempt ${attempt}/2).`,
-              );
-              if (attempt < 2) {
-                await new Promise((resolve) => setTimeout(resolve, 1500));
-                continue;
-              }
-              lastError = new Error(`Gemini model ${model} error (${response.status}): ${errText}`);
-              break;
-            }
-            throw new Error(`Gemini API error (${response.status}): ${errText}`);
-          }
-
-          const data = await response.json();
-          const candidateText = data?.candidates?.[0]?.content?.parts?.[0]?.text;
-          if (!candidateText) return [];
-
-          const parsed = JSON.parse(candidateText);
-          return parsed.findings || [];
-        } catch (err: unknown) {
-          lastError = err instanceof Error ? err : new Error(String(err));
-          if (signal.aborted) throw err;
-          if (attempt >= 2) break;
+        if (!response.ok) {
+          const errText = await response.text();
+          this.logger.warn(`Gemini model ${model} responded with ${response.status}: ${errText}`);
+          lastError = new Error(`Gemini model ${model} error (${response.status})`);
+          continue; // Thử model tiếp theo trong danh sách
         }
+
+        const data = await response.json();
+        const candidateText = data?.candidates?.[0]?.content?.parts?.[0]?.text;
+        if (!candidateText) return [];
+
+        const parsed = JSON.parse(candidateText);
+        return parsed.findings || [];
+      } catch (err: unknown) {
+        lastError = err instanceof Error ? err : new Error(String(err));
+        if (signal.aborted) throw err;
       }
     }
 
-    throw lastError || new Error('All Gemini candidate models failed due to high demand');
+    throw lastError || new Error('All Gemini candidate models failed');
   }
 
   /**
@@ -235,31 +249,7 @@ export class BmsAiValidatorAdapter {
   }
 
   /**
-   * Quy tắc Heuristic dự phòng khi AI offline
-   */
-  private runHeuristicChecks(input: BmsAiValidationInput): BmsValidationFinding[] {
-    const findings: BmsValidationFinding[] = [];
-    const source = input.sourceFiles[0]?.content || '';
-    const target = input.targetFiles[0]?.content || '';
-
-    // Check 1: Thuộc tính NUM nhưng React thiếu numeric
-    if (source.includes('ATTRB=(UNPROT,NUM)') && !target.includes('inputMode="numeric"')) {
-      findings.push({
-        category: BmsValidationCategory.ATTRIBUTE_MISMATCH,
-        severity: ValidationFindingSeverity.MEDIUM,
-        fieldName: 'NUMERIC_INPUT',
-        sourceLocation: { file: input.sourceFiles[0]?.path || 'source.bms', startLine: 1, endLine: 1 },
-        targetLocation: { file: input.targetFiles[0]?.path || 'target.tsx', startLine: 1, endLine: 1 },
-        explanation: 'BMS specifies numeric attribute (NUM) but React component does not declare inputMode="numeric".',
-        suggestion: 'Add inputMode="numeric" to the relevant <input /> element.',
-      });
-    }
-
-    return findings;
-  }
-
-  /**
-   * Khử các lỗi trùng lặp (Deduplication)
+   * Khử các lỗi trùng lặp (Deduplication) giữa Rule Engine và AI
    */
   private deduplicateFindings(findings: BmsValidationFinding[]): BmsValidationFinding[] {
     const seen = new Set<string>();
