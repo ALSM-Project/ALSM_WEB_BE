@@ -1,6 +1,7 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import {
   IsArray,
+  IsBoolean,
   IsEnum,
   IsNotEmpty,
   IsOptional,
@@ -69,6 +70,44 @@ export class CreateOffboardingRequestDto {
   @ValidateNested({ each: true })
   @Type(() => ProjectTransferItemDto)
   projectTransfers?: ProjectTransferItemDto[];
+
+  @ApiPropertyOptional({ description: 'Category type of offboarding (Resignation, etc.)' })
+  @IsString()
+  @IsOptional()
+  offboardingType?: string;
+
+  @ApiPropertyOptional({ description: 'Expected effective date of offboarding' })
+  @IsOptional()
+  effectiveDate?: string;
+
+  @ApiPropertyOptional({ description: 'Target deadline for handover completion' })
+  @IsOptional()
+  handoverDeadline?: string;
+
+  @ApiPropertyOptional({ description: 'Summary of pending tasks and responsibilities' })
+  @IsString()
+  @IsOptional()
+  pendingTasks?: string;
+
+  @ApiPropertyOptional({ description: 'Documentation and knowledge transfer status' })
+  @IsString()
+  @IsOptional()
+  documentationStatus?: string;
+
+  @ApiPropertyOptional({ description: 'Department name' })
+  @IsString()
+  @IsOptional()
+  department?: string;
+
+  @ApiPropertyOptional({ description: 'Direct manager name' })
+  @IsString()
+  @IsOptional()
+  directManager?: string;
+
+  @ApiPropertyOptional({ description: 'Save as draft' })
+  @IsBoolean()
+  @IsOptional()
+  isDraft?: boolean;
 }
 
 export class ApproveOffboardingRequestDto {
@@ -107,12 +146,17 @@ export class RejectOffboardingRequestDto {
   note?: string;
 }
 
+export class CancelOffboardingRequestDto {
+  @ApiPropertyOptional({ description: 'Optional cancellation reason' })
+  @IsString()
+  @IsOptional()
+  reason?: string;
+}
+
 export class ListOffboardingRequestsQueryDto {
   @ApiPropertyOptional({
-    enum: ['PENDING', 'APPROVED', 'REJECTED', 'CANCELLED'],
     description: 'Filter requests by status',
   })
-  @IsEnum(['PENDING', 'APPROVED', 'REJECTED', 'CANCELLED'])
   @IsOptional()
   status?: OffboardingRequestStatus;
 
