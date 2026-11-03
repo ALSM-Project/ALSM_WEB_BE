@@ -21,23 +21,42 @@ export class ApiExceptionFilter implements ExceptionFilter {
     }
 
     const http = exception instanceof HttpException ? exception : undefined;
-    if (!http) {
+    const isPayloadTooLarge =
+      (exception as any)?.type === 'entity.too.large' ||
+      (exception as any)?.status === 413 ||
+      (exception as any)?.statusCode === 413;
+
+    if (!http && !isPayloadTooLarge) {
       console.error('[ApiExceptionFilter] Internal Server Error:', exception);
     }
-    const statusCode = http?.getStatus() ?? HttpStatus.INTERNAL_SERVER_ERROR;
+    const statusCode = http
+      ? http.getStatus()
+      : isPayloadTooLarge
+        ? HttpStatus.PAYLOAD_TOO_LARGE
+        : typeof (exception as any)?.status === 'number'
+          ? (exception as any).status
+          : typeof (exception as any)?.statusCode === 'number'
+            ? (exception as any).statusCode
+            : HttpStatus.INTERNAL_SERVER_ERROR;
+
     const body = http?.getResponse();
     const values =
       typeof body === 'object' && body !== null ? (body as Record<string, unknown>) : {};
-    const messages = values.message;
+    const messages = isPayloadTooLarge
+      ? 'Dung lượng dữ liệu hoặc hình ảnh vượt quá giới hạn cho phép (tối đa 10MB).'
+      : values.message;
+
     response.status(statusCode).json({
       statusCode,
-      code: values.code ?? (statusCode === 400 ? 'VALIDATION_ERROR' : 'INTERNAL_SERVER_ERROR'),
+      code: values.code ?? (statusCode === 400 ? 'VALIDATION_ERROR' : isPayloadTooLarge ? 'PAYLOAD_TOO_LARGE' : 'INTERNAL_SERVER_ERROR'),
       message:
         typeof messages === 'string'
           ? messages
           : statusCode === 400
             ? 'Request validation failed'
-            : 'An unexpected error occurred',
+            : isPayloadTooLarge
+              ? 'Dung lượng dữ liệu hoặc hình ảnh vượt quá giới hạn cho phép (tối đa 10MB).'
+              : 'An unexpected error occurred',
       details: Array.isArray(messages) ? messages : (values.details ?? []),
       requestId: request.requestId,
     });
