@@ -1,4 +1,5 @@
 import * as Joi from 'joi';
+import { parseCorsOrigins } from './cors-policy';
 
 export const environmentValidationSchema = Joi.object({
   NODE_ENV: Joi.string().valid('development', 'test', 'production').default('development'),
@@ -22,10 +23,22 @@ export const environmentValidationSchema = Joi.object({
     }, 'Base64-encoded 32-byte encryption key')
     .required(),
   MFA_ISSUER: Joi.string().trim().min(1).default('ALSM'),
-  CORS_ORIGINS: Joi.string().required(),
+  CORS_ORIGINS: Joi.string()
+    .required()
+    .custom((value: string, helpers) => {
+      try {
+        parseCorsOrigins(value);
+        return value;
+      } catch {
+        return helpers.error('any.invalid');
+      }
+    }, 'Explicit CORS origins'),
   GOOGLE_CLIENT_ID: Joi.string().allow('').default(''),
   CONVERSION_WORKER_ENABLED: Joi.boolean().default(false),
   STORAGE_ROOT: Joi.string().default('./storage'),
+  CONTRACT_EVIDENCE_ENCRYPTION_KEY: Joi.string().allow('').default(''),
+  CONTRACT_PDF_FONT_PATH: Joi.string().allow('').default(''),
+  CONTRACT_PDF_FONT_BOLD_PATH: Joi.string().allow('').default(''),
   PYTHON_EXECUTABLE: Joi.string().default('python'),
   TOOL_CONVERT_DIR: Joi.string().allow('').default(''),
   CONVERSION_TOOL_TIMEOUT_MS: Joi.number().integer().positive().default(120000),
@@ -45,8 +58,26 @@ export const environmentValidationSchema = Joi.object({
   APP_BASE_URL: Joi.string()
     .uri({ scheme: ['http', 'https'] })
     .default('http://localhost:5173'),
+  CONTRACT_PORTAL_URL: Joi.string()
+    .uri({ scheme: ['http', 'https'] })
+    .allow('')
+    .default(''),
+  VNPT_ECONTRACT_ENVIRONMENT: Joi.when('NODE_ENV', {
+    is: 'production',
+    then: Joi.string().valid('DISABLED', 'SANDBOX', 'PRODUCTION').default('DISABLED'),
+    otherwise: Joi.string().valid('DISABLED', 'SANDBOX').default('DISABLED'),
+  }),
+  VNPT_ECONTRACT_CLIENT_ID: Joi.when('VNPT_ECONTRACT_ENVIRONMENT', { is: Joi.valid('SANDBOX', 'PRODUCTION'), then: Joi.string().trim().min(1).required(), otherwise: Joi.string().allow('').default('') }),
+  VNPT_ECONTRACT_CLIENT_SECRET: Joi.when('VNPT_ECONTRACT_ENVIRONMENT', { is: Joi.valid('SANDBOX', 'PRODUCTION'), then: Joi.string().min(1).required(), otherwise: Joi.string().allow('').default('') }),
+  VNPT_ECONTRACT_USERNAME: Joi.when('VNPT_ECONTRACT_ENVIRONMENT', { is: Joi.valid('SANDBOX', 'PRODUCTION'), then: Joi.string().trim().min(1).required(), otherwise: Joi.string().allow('').default('') }),
+  VNPT_ECONTRACT_PASSWORD: Joi.when('VNPT_ECONTRACT_ENVIRONMENT', { is: Joi.valid('SANDBOX', 'PRODUCTION'), then: Joi.string().min(1).required(), otherwise: Joi.string().allow('').default('') }),
+  VNPT_ECONTRACT_CALLBACK_KEY: Joi.when('VNPT_ECONTRACT_ENVIRONMENT', { is: Joi.valid('SANDBOX', 'PRODUCTION'), then: Joi.string().min(1).required(), otherwise: Joi.string().allow('').default('') }),
+  VNPT_ECONTRACT_CALLBACK_SECRET: Joi.when('VNPT_ECONTRACT_ENVIRONMENT', { is: Joi.valid('SANDBOX', 'PRODUCTION'), then: Joi.string().min(1).required(), otherwise: Joi.string().allow('').default('') }),
   /** Partner Portal origin linked from UC-48 export emails; APP_BASE_URL when unset. */
-  PARTNER_PORTAL_URL: Joi.string().uri({ scheme: ['http', 'https'] }).allow('').default(''),
+  PARTNER_PORTAL_URL: Joi.string()
+    .uri({ scheme: ['http', 'https'] })
+    .allow('')
+    .default(''),
   AI_VALIDATION_ENABLED: Joi.boolean().default(false),
   AI_PROVIDER: Joi.string().valid('fake', 'openai', 'gemini').default('fake'),
   OPENAI_API_KEY: Joi.when('AI_VALIDATION_ENABLED', {

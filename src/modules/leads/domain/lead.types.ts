@@ -122,7 +122,10 @@ export interface LeadQuoteItem {
   quoteNumber: string;
   planName: string;
   projectScope?: string;
+  /** Undiscounted quote amount. */
   amount: number;
+  /** Final amount after applying discountPercent. */
+  finalPrice?: number;
   discountPercent?: number;
   discountApproved?: boolean;
   discountReason?: string;

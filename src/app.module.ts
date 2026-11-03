@@ -1,6 +1,51 @@
 import { Lead, LeadSchema } from './modules/crm/infrastructure/lead.schema';
 import { LEAD_REPOSITORY } from './modules/crm/domain/lead.types';
 import { MongoLeadRepository } from './modules/crm/infrastructure/mongo-lead.repository';
+import {
+  ContractAccessGrant,
+  ContractAccessGrantSchema,
+  ContractInvitation,
+  ContractInvitationSchema,
+  PublicInvitationRateLimit,
+  PublicInvitationRateLimitSchema,
+} from './modules/crm/infrastructure/contract-invitation.schema';
+import { CONTRACT_INVITATION_REPOSITORY } from './modules/crm/domain/contract-invitation.types';
+import { MongoContractInvitationRepository } from './modules/crm/infrastructure/mongo-contract-invitation.repository';
+import { ContractInvitationsController } from './modules/crm/presentation/contract-invitations.controller';
+import { ProspectInvitationsController } from './modules/crm/presentation/prospect-invitations.controller';
+import { ContractInvitationAccessService } from './modules/crm/application/contract-invitation-access.service';
+import { PublicInvitationRateLimitService } from './modules/crm/application/public-invitation-rate-limit.service';
+import { CreateContractInvitationService } from './modules/crm/application/create-contract-invitation.service';
+import { ListContractInvitationsService } from './modules/crm/application/list-contract-invitations.service';
+import { ResendContractInvitationService } from './modules/crm/application/resend-contract-invitation.service';
+import { RevokeContractInvitationService } from './modules/crm/application/revoke-contract-invitation.service';
+import { ResolveContractInvitationService } from './modules/crm/application/resolve-contract-invitation.service';
+import { RegisterProspectService } from './modules/crm/application/register-prospect.service';
+import { AcceptContractInvitationService } from './modules/crm/application/accept-contract-invitation.service';
+import { ContractAggregate, ContractAggregateSchema, ContractVersion, ContractVersionSchema } from './modules/crm/infrastructure/contract-aggregate.schema';
+import { CONTRACT_AGGREGATE_REPOSITORY } from './modules/crm/domain/contract-aggregate.types';
+import { MongoContractAggregateRepository } from './modules/crm/infrastructure/mongo-contract-aggregate.repository';
+import { CONTRACT_AGGREGATE_UNIT_OF_WORK } from './modules/crm/application/contract-aggregate-unit-of-work.port';
+import { MongoContractAggregateUnitOfWork } from './modules/crm/infrastructure/mongo-contract-aggregate.unit-of-work';
+import { ContractAggregateService } from './modules/crm/application/contract-aggregate.service';
+import { ContractAggregateController } from './modules/crm/presentation/contract-aggregate.controller';
+import { ContractNotificationEmailOutbox, ContractNotificationEmailOutboxSchema } from './modules/crm/infrastructure/contract-notification-email-outbox.schema';
+import { CONTRACT_NOTIFICATION_EMAIL_OUTBOX_REPOSITORY } from './modules/crm/domain/contract-notification-email-outbox.types';
+import { MongoContractNotificationEmailOutboxRepository } from './modules/crm/infrastructure/mongo-contract-notification-email-outbox.repository';
+import { ContractNotificationEmailOutboxWorker } from './modules/crm/infrastructure/contract-notification-email-outbox.worker';
+import { ContractTemplateVersionDocument, ContractTemplateVersionSchema } from './modules/crm/infrastructure/contract-template.schema';
+import { CONTRACT_TEMPLATE_REPOSITORY } from './modules/crm/domain/contract-template.types';
+import { MongoContractTemplateRepository } from './modules/crm/infrastructure/mongo-contract-template.repository';
+import { CONTRACT_TEMPLATE_UNIT_OF_WORK } from './modules/crm/application/contract-template-unit-of-work.port';
+import { MongoContractTemplateUnitOfWork } from './modules/crm/infrastructure/mongo-contract-template.unit-of-work';
+import { ContractTemplateService } from './modules/crm/application/contract-template.service';
+import { ContractTemplateController } from './modules/crm/presentation/contract-template.controller';
+import { ContractReviewDocumentService } from './modules/crm/application/contract-review-document.service';
+import { CONTRACT_SIGNING_PROVIDER } from './modules/crm/domain/contract-signing-provider.port';
+import { UnconfiguredContractSigningProviderAdapter } from './modules/crm/infrastructure/unconfigured-contract-signing-provider.adapter';
+import { VnptEContractClient } from './modules/crm/infrastructure/vnpt-econtract.client';
+import { CONTRACT_INVITATION_UNIT_OF_WORK } from './modules/crm/application/contract-invitation-unit-of-work.port';
+import { MongoContractInvitationUnitOfWork } from './modules/crm/infrastructure/mongo-contract-invitation.unit-of-work';
 import { SALES_PERFORMANCE_SOURCE } from './modules/crm/domain/sales-performance-source.port';
 import { MongoSalesPerformanceSource } from './modules/crm/infrastructure/mongo-sales-performance.source';
 import { SALES_UNIT_OF_WORK } from './modules/crm/application/sales-unit-of-work.port';
@@ -17,6 +62,9 @@ import { GetSalesLeadService } from './modules/crm/application/get-sales-lead.se
 import { SalesController } from './modules/crm/presentation/sales.controller';
 import { SalesCrmController } from './modules/crm/presentation/sales-crm.controller';
 import { SalesCrmService } from './modules/crm/application/sales-crm.service';
+import { CreateContractService } from './modules/crm/application/create-contract.service';
+import { ActivateCrmLeadService } from './modules/crm/application/activate-crm-lead.service';
+import { ReviewDiscountService } from './modules/crm/application/review-discount.service';
 import { AdminModule } from './modules/admin/admin.module';
 import { CurrentSessionGuard } from './shared/security/current-session.guard';
 import { SessionAssuranceModule } from './modules/auth/session-assurance.module';
@@ -195,7 +243,16 @@ import { SaveMethodMappingService } from './modules/conversions/application/save
 import { MethodMappingController } from './modules/conversions/presentation/method-mapping.controller';
 import { OnboardUserService } from './modules/users/application/onboard-user.service';
 import { UpdateUserStatusService } from './modules/users/application/update-user-status.service';
+import { UserOffboardingService } from './modules/users/application/user-offboarding.service';
 import { UsersController } from './modules/users/presentation/users.controller';
+import { UserOffboardingApprovalService } from './modules/users/application/user-offboarding-approval.service';
+import { OffboardingApprovalController } from './modules/users/presentation/offboarding-approval.controller';
+import {
+  OffboardingRequest,
+  OffboardingRequestSchema,
+} from './modules/users/infrastructure/offboarding-request.schema';
+import { OFFBOARDING_REQUEST_REPOSITORY } from './modules/users/domain/offboarding-request.types';
+import { MongoOffboardingRequestRepository } from './modules/users/infrastructure/mongo-offboarding-request.repository';
 import { AuthService } from './modules/auth/application/auth.service';
 import { ListActiveSessionsService } from './modules/auth/application/list-active-sessions.service';
 import { RevokeSessionService } from './modules/auth/application/revoke-session.service';
@@ -208,6 +265,7 @@ import { ResetPasswordService } from './modules/auth/application/reset-password.
 import { ChangePasswordService } from './modules/auth/application/change-password.service';
 import { SetPasswordService } from './modules/auth/application/set-password.service';
 import { EMAIL_PORT } from './modules/auth/domain/email.port';
+import { EMAIL_VERIFICATION_PORT } from './modules/auth/domain/email-verification.port';
 
 import { SmtpEmailAdapter } from './modules/auth/infrastructure/smtp-email.adapter';
 import { PASSWORD_RESET_REPOSITORY } from './modules/auth/domain/password-reset.repository';
@@ -220,6 +278,14 @@ import { OrganizationAuthorizationService } from './modules/organizations/applic
 import { OrganizationContextService } from './modules/organizations/application/organization-context.service';
 import { ProjectService } from './modules/projects/application/project.service';
 import { ProjectsController } from './modules/projects/presentation/projects.controller';
+import {
+  ResourceTransferRequest,
+  ResourceTransferRequestSchema,
+} from './modules/projects/infrastructure/resource-transfer-request.schema';
+import { RESOURCE_TRANSFER_REQUEST_REPOSITORY } from './modules/projects/domain/resource-transfer-request.types';
+import { MongoResourceTransferRequestRepository } from './modules/projects/infrastructure/mongo-resource-transfer-request.repository';
+import { ResourceTransferApprovalService } from './modules/projects/application/resource-transfer-approval.service';
+import { ResourceTransferController } from './modules/projects/presentation/resource-transfer.controller';
 import { ConversionJobService } from './modules/conversions/application/conversion-job.service';
 import { ConversionProjectAccessService } from './modules/conversions/application/conversion-project-access.service';
 import { ConversionsController } from './modules/conversions/presentation/conversions.controller';
@@ -308,6 +374,9 @@ import { SubmitConversionQualityReviewService } from './modules/conversions/appl
 import { QualityReviewController } from './modules/conversions/presentation/quality-review.controller';
 
 import { AuditModule } from './modules/audit/audit.module';
+import { SystemNotification, SystemNotificationSchema } from './modules/notifications/notification.schema';
+import { NotificationsController } from './modules/notifications/notifications.controller';
+import { NotificationsService } from './modules/notifications/notifications.service';
 
 @Module({
   imports: [
@@ -318,12 +387,20 @@ import { AuditModule } from './modules/audit/audit.module';
     AuditModule,
     MongooseModule.forFeature([
       { name: Lead.name, schema: LeadSchema },
+      { name: ContractInvitation.name, schema: ContractInvitationSchema },
+      { name: ContractAccessGrant.name, schema: ContractAccessGrantSchema },
+      { name: PublicInvitationRateLimit.name, schema: PublicInvitationRateLimitSchema },
+      { name: ContractAggregate.name, schema: ContractAggregateSchema },
+      { name: ContractVersion.name, schema: ContractVersionSchema },
+      { name: ContractNotificationEmailOutbox.name, schema: ContractNotificationEmailOutboxSchema },
+      { name: ContractTemplateVersionDocument.name, schema: ContractTemplateVersionSchema },
       { name: UC58_LEAD_MODEL, schema: Uc58LeadSchema },
       { name: User.name, schema: UserSchema },
       { name: Organization.name, schema: OrganizationSchema },
       { name: UserSession.name, schema: UserSessionSchema },
       { name: AuditLog.name, schema: AuditLogSchema },
       { name: Project.name, schema: ProjectSchema },
+      { name: ResourceTransferRequest.name, schema: ResourceTransferRequestSchema },
       { name: Team.name, schema: TeamSchema },
       { name: TeamJobAssignment.name, schema: TeamJobAssignmentSchema },
       { name: ConversionJob.name, schema: ConversionJobSchema },
@@ -349,6 +426,8 @@ import { AuditModule } from './modules/audit/audit.module';
       { name: ConversionQualityReview.name, schema: ConversionQualityReviewSchema },
       { name: ExportBundle.name, schema: ExportBundleSchema },
       { name: SupportPatch.name, schema: SupportPatchSchema },
+      { name: SystemNotification.name, schema: SystemNotificationSchema },
+      { name: OffboardingRequest.name, schema: OffboardingRequestSchema },
     ]),
     RbacModule,
     MenuModule,
@@ -357,11 +436,16 @@ import { AuditModule } from './modules/audit/audit.module';
   controllers: [
     SalesController,
     SalesCrmController,
+    ContractInvitationsController,
+    ProspectInvitationsController,
+    ContractAggregateController,
+    ContractTemplateController,
     TeamsController,
     TeamReportsController,
     TeamJobAssignmentsController,
     AuthController,
     ProjectsController,
+    ResourceTransferController,
     ConversionsController,
     QualityReviewController,
     ConversionSourceController,
@@ -373,18 +457,42 @@ import { AuditModule } from './modules/audit/audit.module';
     LeadController,
     PartnerController,
     UsersController,
+    OffboardingApprovalController,
     ExportController,
     PartnerExportController,
     SupportPatchController,
     ErrorLogController,
     ValidationController,
     RuleValidationController,
+    NotificationsController,
     HealthController,
     BillingController,
     PaymentController,
   ],
   providers: [
     { provide: LEAD_REPOSITORY, useClass: MongoLeadRepository },
+    { provide: CONTRACT_INVITATION_REPOSITORY, useClass: MongoContractInvitationRepository },
+    { provide: CONTRACT_INVITATION_UNIT_OF_WORK, useClass: MongoContractInvitationUnitOfWork },
+    ContractInvitationAccessService,
+    PublicInvitationRateLimitService,
+    CreateContractInvitationService,
+    ListContractInvitationsService,
+    ResendContractInvitationService,
+    RevokeContractInvitationService,
+    ResolveContractInvitationService,
+    RegisterProspectService,
+    AcceptContractInvitationService,
+    { provide: CONTRACT_AGGREGATE_REPOSITORY, useClass: MongoContractAggregateRepository },
+    { provide: CONTRACT_NOTIFICATION_EMAIL_OUTBOX_REPOSITORY, useClass: MongoContractNotificationEmailOutboxRepository },
+    ContractNotificationEmailOutboxWorker,
+    { provide: CONTRACT_AGGREGATE_UNIT_OF_WORK, useClass: MongoContractAggregateUnitOfWork },
+    ContractAggregateService,
+    VnptEContractClient,
+    { provide: CONTRACT_SIGNING_PROVIDER, useClass: UnconfiguredContractSigningProviderAdapter },
+    ContractReviewDocumentService,
+    { provide: CONTRACT_TEMPLATE_REPOSITORY, useClass: MongoContractTemplateRepository },
+    { provide: CONTRACT_TEMPLATE_UNIT_OF_WORK, useClass: MongoContractTemplateUnitOfWork },
+    ContractTemplateService,
     { provide: SALES_PERFORMANCE_SOURCE, useClass: MongoSalesPerformanceSource },
     { provide: SALES_REVENUE_REPOSITORY, useClass: MongoSalesRevenueRepository },
     { provide: SALES_TEAM_ADMINISTRATION, useClass: SalesTeamAdministrationService },
@@ -394,6 +502,10 @@ import { AuditModule } from './modules/audit/audit.module';
     RecordSalesRevenueService,
     GetSalesLeadService,
     SalesCrmService,
+    CreateContractService,
+    ActivateCrmLeadService,
+    ReviewDiscountService,
+    NotificationsService,
     {
       provide: SALES_UNIT_OF_WORK,
       inject: [
@@ -487,6 +599,9 @@ import { AuditModule } from './modules/audit/audit.module';
     SaveMethodMappingService,
     OnboardUserService,
     UpdateUserStatusService,
+    UserOffboardingService,
+    UserOffboardingApprovalService,
+    { provide: OFFBOARDING_REQUEST_REPOSITORY, useClass: MongoOffboardingRequestRepository },
     RuleValidatorService,
     LegacyValidationService,
     ExportCodeService,
@@ -556,6 +671,8 @@ import { AuditModule } from './modules/audit/audit.module';
     { provide: SESSION_REPOSITORY, useClass: MongoSessionRepository },
     { provide: AUDIT_REPOSITORY, useClass: MongoAuditRepository },
     { provide: PROJECT_REPOSITORY, useClass: MongoProjectRepository },
+    { provide: RESOURCE_TRANSFER_REQUEST_REPOSITORY, useClass: MongoResourceTransferRequestRepository },
+    ResourceTransferApprovalService,
     { provide: CONVERSION_JOB_REPOSITORY, useClass: MongoConversionJobRepository },
     {
       provide: CONVERSION_QUALITY_REVIEW_REPOSITORY,
@@ -607,6 +724,7 @@ import { AuditModule } from './modules/audit/audit.module';
     { provide: BILLING_USAGE_REPOSITORY, useClass: MongoBillingUsageRepository },
     { provide: PASSWORD_RESET_REPOSITORY, useClass: MongoPasswordResetRepository },
     { provide: EMAIL_VERIFICATION_REPOSITORY, useClass: MongoEmailVerificationRepository },
+    { provide: EMAIL_VERIFICATION_PORT, useExisting: EmailVerificationService },
     MongoQuoteRequestRepository,
     { provide: QUOTE_REQUEST_REPOSITORY, useClass: MongoQuoteRequestRepository },
   ],

@@ -16,6 +16,9 @@ import {
   ConversionJobSchema,
 } from '../conversions/infrastructure/conversion-job.schema';
 import { AuditLog, AuditLogSchema } from '../audit/infrastructure/audit-log.schema';
+import { PasswordReset, PasswordResetSchema } from '../auth/infrastructure/password-reset.schema';
+import { Role, RoleSchema } from '../rbac/infrastructure/schemas/role.schema';
+import { UserRole, UserRoleSchema } from '../rbac/infrastructure/schemas/user-role.schema';
 import { EMAIL_PORT } from '../auth/domain/email.port';
 import { SmtpEmailAdapter } from '../auth/infrastructure/smtp-email.adapter';
 import { PlatformAdminService } from './application/platform-admin.service';
@@ -37,6 +40,9 @@ import { PlatformAdminAuthorizationGuard } from './presentation/platform-admin-a
       { name: Project.name, schema: ProjectSchema },
       { name: ConversionJob.name, schema: ConversionJobSchema },
       { name: AuditLog.name, schema: AuditLogSchema },
+      { name: PasswordReset.name, schema: PasswordResetSchema },
+      { name: Role.name, schema: RoleSchema },
+      { name: UserRole.name, schema: UserRoleSchema },
     ]),
   ],
   controllers: [PlatformAdminController],

@@ -27,6 +27,9 @@ export class ResetPasswordService {
     }
 
     await this.users.updatePassword(reset.userId, await bcrypt.hash(newPassword, 12));
+    // A password setup link sent to a newly invited account also proves
+    // ownership of the email address, so activation can complete at setup.
+    await this.users.markEmailVerified(reset.userId);
     await this.passwordResets.consume(reset.id);
   }
 }

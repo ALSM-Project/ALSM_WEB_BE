@@ -5,8 +5,13 @@ export interface MfaState {
   backupCodeHashes: string[];
 }
 
+/** Identity classification only; it does not grant organization or service access. */
+export type UserAccountType = 'STANDARD' | 'PROSPECT';
+
 export interface UserRecord {
   id: string;
+  /** Absent on legacy records; never use this field alone to grant permissions. */
+  accountType?: UserAccountType;
   email: string;
   passwordHash?: string;
   fullName: string;
@@ -28,6 +33,7 @@ export interface MfaSetupFailureResult {
 export interface UserRepository {
   create(
     input: Pick<UserRecord, 'email' | 'passwordHash' | 'fullName'> & {
+      accountType?: UserAccountType;
       isEmailVerified?: boolean;
       isActive?: boolean;
       mustChangePassword?: boolean;

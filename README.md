@@ -64,6 +64,8 @@ GitHub Actions validates pushes to `feature/**`, `fix/**`, `chore/**`, `refactor
 
 Copy `.env.example`. Required values include `MONGODB_URI`, `REDIS_HOST`, `REDIS_PORT`, `JWT_ACCESS_SECRET`, `JWT_REFRESH_SECRET`, `MFA_ENCRYPTION_KEY`, `CORS_ORIGINS`, and `CONVERSION_WORKER_ENABLED`. `MFA_ENCRYPTION_KEY` must be a stable Base64-encoded 32-byte key; changing it makes existing encrypted MFA secrets undecryptable. Use long random JWT secrets; never commit `.env`. The defaults use Docker hostnames and intentionally marked development placeholders.
 
+`CORS_ORIGINS` accepts only explicit valid browser origins; malformed/mixed lists fail startup. No localhost/private-network origin is implicitly trusted. Configure each environment's actual Frontend scheme/host/port as described in [browser-origin configuration](src/config/README.md#browser-origins). JWT/session/RBAC checks remain required, and no-Origin API clients remain supported.
+
 ## APIs and behavior
 
 - `GET /health`

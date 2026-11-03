@@ -453,6 +453,7 @@ export class MongoLeadRepository implements LeadRepository {
         planName: q.planName,
         projectScope: q.projectScope,
         amount: q.amount,
+        finalPrice: q.finalPrice,
         discountPercent: q.discountPercent,
         discountApproved: q.discountApproved,
         discountReason: q.discountReason,

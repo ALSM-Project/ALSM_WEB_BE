@@ -5,10 +5,12 @@ import {
   Injectable,
   Logger,
   NotFoundException,
+  Optional,
   UnauthorizedException,
 } from '@nestjs/common';
 import { createHash, randomUUID } from 'node:crypto';
 import { AuthenticatedUser } from '../../../shared/logging/request-id.middleware';
+import { MailService } from '../../../shared/mail/mail.service';
 import {
   LeadDemo,
   LeadRecord,
@@ -26,6 +28,9 @@ export interface ScheduleDemoResult {
   lead: LeadRecord;
   replayed: boolean;
   message: string;
+  notificationStatus: 'SENT' | 'PARTIAL' | 'FAILED' | 'NOT_SENT';
+  notificationSentCount: number;
+  notificationFailedCount: number;
 }
 
 @Injectable()
@@ -34,6 +39,7 @@ export class ScheduleDemoService {
 
   constructor(
     @Inject(SEND_QUOTE_UNIT_OF_WORK) private readonly unitOfWork: SendQuoteUnitOfWork,
+    @Optional() private readonly mail?: MailService,
   ) {}
 
   async execute(
@@ -117,6 +123,9 @@ export class ScheduleDemoService {
           lead,
           replayed: true,
           message: 'This demo was already scheduled; no duplicate appointment was created.',
+          notificationStatus: 'NOT_SENT' as const,
+          notificationSentCount: 0,
+          notificationFailedCount: 0,
         };
       }
 
@@ -162,6 +171,9 @@ export class ScheduleDemoService {
             lead: latest,
             replayed: true,
             message: 'This demo was already scheduled; no duplicate appointment was created.',
+            notificationStatus: 'NOT_SENT' as const,
+            notificationSentCount: 0,
+            notificationFailedCount: 0,
           };
         }
         throw new ConflictException({
@@ -188,11 +200,39 @@ export class ScheduleDemoService {
         lead: updatedLead,
         replayed: false,
         message: 'Demo scheduled successfully.',
+        notificationStatus: 'NOT_SENT' as const,
+        notificationSentCount: 0,
+        notificationFailedCount: 0,
       };
     }, leadId);
 
     if (!result.replayed) {
       this.logger.log(`Demo ${result.demo.id} scheduled for lead ${leadId}.`);
+      const mail = this.mail;
+      if (!mail) return result;
+      const deliveryResults = await Promise.all(attendeeEmails.map((to) => mail.sendScheduledDemoNotification({
+        to,
+        companyName: result.lead.companyName,
+        contactName: result.lead.contactName,
+        demoTitle: result.demo.title,
+        scheduledAt: result.demo.scheduledAt,
+        durationMinutes: result.demo.durationMinutes,
+        agenda: result.demo.agenda,
+        scheduledByEmail: result.demo.scheduledByEmail,
+      })));
+      const notificationSentCount = deliveryResults.filter(Boolean).length;
+      const notificationFailedCount = deliveryResults.length - notificationSentCount;
+      const notificationStatus = notificationSentCount === deliveryResults.length
+        ? 'SENT' as const
+        : notificationSentCount > 0
+          ? 'PARTIAL' as const
+          : 'FAILED' as const;
+      const message = notificationStatus === 'SENT'
+        ? `Demo scheduled successfully. Email notification sent to ${notificationSentCount} attendee(s).`
+        : notificationStatus === 'PARTIAL'
+          ? `Demo scheduled, but email notification failed for ${notificationFailedCount} attendee(s).`
+          : 'Demo scheduled, but email notifications could not be sent. Check the mail server configuration.';
+      return { ...result, message, notificationStatus, notificationSentCount, notificationFailedCount };
     }
     return result;
   }
