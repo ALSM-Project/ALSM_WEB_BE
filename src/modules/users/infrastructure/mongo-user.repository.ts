@@ -1,21 +1,55 @@
 import { Injectable } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
-import { Model } from 'mongoose';
+import { ClientSession, Connection, Model } from 'mongoose';
+import { requireActiveTransaction } from '../../../shared/database/mongo-transaction-runner';
 import { MfaSetupFailureResult, UserRecord, UserRepository } from '../domain/user.repository';
 import { User, UserDocument } from './user.schema';
 
 @Injectable()
 export class MongoUserRepository implements UserRepository {
   constructor(@InjectModel(User.name) private readonly model: Model<User>) {}
+  private session?: ClientSession;
+  private transaction?: object;
+
+  inTransaction(session: ClientSession, connection: Connection): MongoUserRepository {
+    requireActiveTransaction(session);
+    if (this.model.db !== connection) throw new Error('User transaction connection mismatch');
+    const participant = new MongoUserRepository(this.model);
+    participant.session = session;
+    participant.transaction = session.transaction;
+    return participant;
+  }
+
+  private scope(): ClientSession | null {
+    if (this.session) {
+      requireActiveTransaction(this.session);
+      if (this.transaction !== this.session.transaction)
+        throw new Error('Stale user transaction participant');
+    }
+    return this.session ?? null;
+  }
 
   async create(
-    input: Pick<UserRecord, 'email' | 'passwordHash' | 'fullName'> & { isEmailVerified?: boolean },
+    input: Pick<UserRecord, 'email' | 'passwordHash' | 'fullName'> & {
+      accountType?: UserRecord['accountType'];
+      isEmailVerified?: boolean;
+      isActive?: boolean;
+    },
   ): Promise<UserRecord> {
-    return this.map(await this.model.create(input));
+    const session = this.scope();
+    const user = session
+      ? (await this.model.create([input], { session }))[0]
+      : await this.model.create(input);
+    return this.map(user);
   }
 
   async findByEmail(email: string): Promise<UserRecord | null> {
-    const doc = await this.model.findOne({ email }).select('+passwordHash').read('primary').exec();
+    const doc = await this.model
+      .findOne({ email })
+      .select('+passwordHash')
+      .read('primary')
+      .session(this.scope())
+      .exec();
     return doc ? this.map(doc) : null;
   }
 
@@ -154,6 +188,7 @@ export class MongoUserRepository implements UserRepository {
   private map(doc: UserDocument): UserRecord {
     return {
       id: doc.id,
+      ...(doc.accountType ? { accountType: doc.accountType } : {}),
       email: doc.email,
       passwordHash: doc.passwordHash,
       fullName: doc.fullName,

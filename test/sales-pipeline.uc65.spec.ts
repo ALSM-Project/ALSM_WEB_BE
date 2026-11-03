@@ -4,7 +4,6 @@ import { validate } from 'class-validator';
 import { Model, Types } from 'mongoose';
 import { AuditRepository } from '../src/modules/audit/domain/audit.repository';
 import { SalesCrmService } from '../src/modules/crm/application/sales-crm.service';
-import { Organization } from '../src/modules/organizations/infrastructure/organization.schema';
 import { Lead } from '../src/modules/crm/infrastructure/lead.schema';
 import { User } from '../src/modules/users/infrastructure/user.schema';
 import { PermissionsGuard } from '../src/shared/security/permissions.guard';
@@ -46,7 +45,6 @@ describe('UC-65 View Sales Pipeline', () => {
     (userModel.find as jest.Mock).mockReturnValue(userFindQuery);
     service = new SalesCrmService(
       leadModel,
-      {} as Model<Organization>,
       userModel,
       audit,
     );

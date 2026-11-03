@@ -77,6 +77,7 @@ export class LockUserService {
     if (!user) throw new NotFoundException('User not found');
 
     user.isLocked = false;
+    user.isActive = true;
     user.lockReason = undefined;
     user.lockDuration = undefined;
     user.lockedAt = undefined;

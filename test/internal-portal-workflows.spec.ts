@@ -94,6 +94,7 @@ describe('Internal Staff Portal & Platform Administration Workflows', () => {
       quotes: Record<string, unknown>[];
       contracts: Record<string, unknown>[];
       save: jest.Mock;
+      markModified: jest.Mock;
       [key: string]: unknown;
     };
     let leadModel: {
@@ -101,11 +102,7 @@ describe('Internal Staff Portal & Platform Administration Workflows', () => {
       findById: jest.Mock;
       findOne: jest.Mock;
       create: jest.Mock;
-    };
-    let orgModel: {
-      findOne: jest.Mock;
-      create: jest.Mock;
-      findById?: jest.Mock;
+      updateOne: jest.Mock;
     };
     let userModel: {
       findOne?: jest.Mock;
@@ -129,6 +126,7 @@ describe('Internal Staff Portal & Platform Administration Workflows', () => {
         quotes: [],
         contracts: [],
         save: jest.fn().mockResolvedValue(true),
+        markModified: jest.fn(),
       };
 
       leadModel = {
@@ -145,13 +143,9 @@ describe('Internal Staff Portal & Platform Administration Workflows', () => {
           .mockImplementation((dto) =>
             Promise.resolve({ id: 'lead-new-1', ...dto, save: jest.fn() }),
           ),
-      };
-
-      orgModel = {
-        findOne: jest.fn().mockReturnValue({ exec: jest.fn().mockResolvedValue(null) }),
-        create: jest
-          .fn()
-          .mockResolvedValue({ _id: new Types.ObjectId(), members: [], save: jest.fn() }),
+        updateOne: jest.fn().mockReturnValue({
+          exec: jest.fn().mockResolvedValue({ matchedCount: 1 }),
+        }),
       };
 
       userModel = {
@@ -161,7 +155,6 @@ describe('Internal Staff Portal & Platform Administration Workflows', () => {
 
       salesCrmService = new SalesCrmService(
         leadModel as never,
-        orgModel as never,
         userModel as never,
         auditRepo as never,
       );
@@ -191,7 +184,7 @@ describe('Internal Staff Portal & Platform Administration Workflows', () => {
       expect(mockLead.demos[0].meetLink).toContain('meet.google.com');
     });
 
-    it('3.11.6 & 3.12.3: quote with discount requires Sales Manager approval', async () => {
+    it('3.11.6: quote with a discount enters the persisted approval queue', async () => {
       const updated = await salesCrmService.sendQuote('sales-user-1', 'lead-1', {
         planName: 'Enterprise Pilot',
         amount: 25000,
@@ -202,22 +195,9 @@ describe('Internal Staff Portal & Platform Administration Workflows', () => {
       expect(updated.quotes[0].status).toBe('PENDING_APPROVAL');
       expect(updated.quotes[0].discountApproved).toBe(false);
 
-      // Manager reviews and approves
-      leadModel.findById.mockReturnValue({ exec: jest.fn().mockResolvedValue(mockLead) });
-      const approval = await salesCrmService.reviewDiscount(
-        'manager-user-1',
-        'lead-1',
-        updated.quotes[0].id,
-        true,
-        'Approved within Q4 quota discount budget',
-      );
-
-      expect(approval.success).toBe(true);
-      expect(mockLead.quotes[0].status).toBe('SENT');
-      expect(mockLead.quotes[0].discountApproved).toBe(true);
     });
 
-    it('3.11.7 & 3.11.8: signing contract changes stage to WON and auto-provisions enterprise org', async () => {
+    it('3.11.7: records the signed contract; customer provisioning is a separate activation step', async () => {
       mockLead.contracts = [
         {
           id: 'contract-1',
@@ -228,12 +208,17 @@ describe('Internal Staff Portal & Platform Administration Workflows', () => {
 
       leadModel.findById.mockReturnValue({ exec: jest.fn().mockResolvedValue(mockLead) });
 
-      const updated = await salesCrmService.signContract('manager-user-1', 'lead-1', 'contract-1');
+      await expect(
+        salesCrmService.signContract('manager-user-1', 'lead-1', 'contract-1'),
+      ).rejects.toMatchObject({
+        response: expect.objectContaining({ code: 'REAL_SIGNING_NOT_CONFIGURED' }),
+      });
 
-      expect(updated.stage).toBe('WON');
-      expect(mockLead.contracts[0].status).toBe('SIGNED');
-      expect(orgModel.create).toHaveBeenCalled();
-      expect(userModel.create).toHaveBeenCalled();
+      expect(mockLead.contracts[0].status).toBe('SENT_FOR_SIGNATURE');
+      expect(leadModel.updateOne).not.toHaveBeenCalled();
+      expect(auditRepo.append).not.toHaveBeenCalledWith(
+        expect.objectContaining({ action: 'LEAD_CONTRACT_SIGNED' }),
+      );
     });
 
     it('3.12.1: compiles comprehensive sales reports and CSV export', async () => {
