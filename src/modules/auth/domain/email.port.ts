@@ -5,8 +5,11 @@ export interface EmailMessage {
   text?: string;
 }
 
+export type EmailDeliveryStatus = 'SENT' | 'NOT_CONFIGURED' | 'UNCONFIRMED';
+
 export interface EmailPort {
-  send(message: EmailMessage): Promise<void>;
+  /** `void` remains accepted for existing test adapters; callers must treat it as unconfirmed. */
+  send(message: EmailMessage): Promise<EmailDeliveryStatus | void>;
 }
 
 export const EMAIL_PORT = Symbol('EMAIL_PORT');

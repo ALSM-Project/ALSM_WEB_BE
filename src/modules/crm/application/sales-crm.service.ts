@@ -5,7 +5,6 @@ import {
   Injectable,
   Logger,
   NotFoundException,
-  Optional,
 } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { FilterQuery, Model, Types } from 'mongoose';
@@ -14,7 +13,6 @@ import { Lead, LeadDocument } from '../infrastructure/lead.schema';
 import { User } from '../../users/infrastructure/user.schema';
 import { AUDIT_REPOSITORY, AuditRepository } from '../../audit/domain/audit.repository';
 import { LeadStatus } from '../domain/lead.types';
-import { NotificationsService } from '../../notifications/notifications.service';
 import {
   SALES_PIPELINE_STAGES,
   SalesPipelineLead,
@@ -64,7 +62,6 @@ export class SalesCrmService {
     @InjectModel(Lead.name) private readonly leadModel: Model<Lead>,
     @InjectModel(User.name) private readonly userModel: Model<User>,
     @Inject(AUDIT_REPOSITORY) private readonly audit: AuditRepository,
-    @Optional() @Inject(NotificationsService) private readonly notifications?: NotificationsService,
   ) {}
 
   async listLeads(
@@ -448,100 +445,24 @@ export class SalesCrmService {
     return this.mapLead(doc);
   }
 
-  async signContract(userId: string, leadId: string, contractId: string) {
-    const doc = await this.findLeadById(leadId);
-    const contract = (doc.contracts || []).find((c) => c.id === contractId);
-    if (!contract) {
-      throw new NotFoundException('Contract was not found on this lead');
-    }
-
-    if (contract.status === 'SIGNED' || contract.status === 'FULLY_SIGNED') {
-      return this.mapLead(doc);
-    }
-    if (contract.status !== 'SENT_FOR_SIGNATURE') {
-      throw new BadRequestException({
-        code: 'CONTRACT_NOT_SENT',
-        message: 'Send the contract for signature before recording the customer signature.',
-      });
-    }
-
-    const signedAt = new Date();
-    const update = await this.leadModel.updateOne(
-      { _id: doc._id, contracts: { $elemMatch: { id: contractId, status: 'SENT_FOR_SIGNATURE' } } },
-      { $set: { 'contracts.$.status': 'SIGNED', 'contracts.$.signedAt': signedAt } },
-    ).exec();
-    if (update.matchedCount !== 1) {
-      throw new ConflictException({
-        code: 'CONTRACT_STATE_CHANGED',
-        message: 'The contract changed while it was being signed. Refresh the lead and try again.',
-      });
-    }
-    contract.status = 'SIGNED';
-    contract.signedAt = signedAt;
-
-    await this.audit.append({
-      actorUserId: userId,
-      organizationId: doc.organizationId?.toString(),
-      action: 'LEAD_CONTRACT_SIGNED',
-      resourceType: 'LEAD',
-      resourceId: doc.id,
-      metadata: { contractId, envelopeId: contract.envelopeId || '' },
+  async signContract(_userId: string, _leadId: string, _contractId: string) {
+    void _userId;
+    void _leadId;
+    void _contractId;
+    throw new ConflictException({
+      code: 'REAL_SIGNING_NOT_CONFIGURED',
+      message: 'This legacy signature simulation is disabled. A verified signing provider must confirm the customer signature.',
     });
-
-    return this.mapLead(doc);
   }
 
-  async sendContractForSignature(userId: string, leadId: string, contractId: string) {
-    const doc = await this.findLeadById(leadId);
-    const contract = (doc.contracts || []).find((item) => item.id === contractId);
-    if (!contract) throw new NotFoundException('Contract was not found on this lead');
-    if (contract.status !== 'DRAFT' && contract.status !== 'SENT_FOR_SIGNATURE') {
-      throw new BadRequestException('Only a draft contract can be sent for signature.');
-    }
-
-    const newlySent = contract.status === 'DRAFT';
-    if (newlySent) {
-      const envelopeId = contract.envelopeId || `ENV-${randomUUID()}`;
-      const update = await this.leadModel.updateOne(
-        { _id: doc._id, contracts: { $elemMatch: { id: contractId, status: 'DRAFT' } } },
-        { $set: { 'contracts.$.status': 'SENT_FOR_SIGNATURE', 'contracts.$.envelopeId': envelopeId } },
-      ).exec();
-      if (update.matchedCount !== 1) {
-        throw new ConflictException({
-          code: 'CONTRACT_STATE_CHANGED',
-          message: 'The contract changed while it was being sent. Refresh the lead and try again.',
-        });
-      }
-      contract.status = 'SENT_FOR_SIGNATURE';
-      contract.envelopeId = envelopeId;
-
-      await this.audit.append({
-        actorUserId: userId,
-        organizationId: doc.organizationId?.toString(),
-        action: 'LEAD_CONTRACT_SENT_FOR_SIGNATURE',
-        resourceType: 'LEAD',
-        resourceId: doc.id,
-        metadata: { contractId, contractNumber: contract.contractNumber || '', status: contract.status },
-      });
-    }
-
-    let notificationSent = false;
-    try {
-      const recipientCount = await this.notifications?.createForEmails({
-        recipientEmails: doc.contactEmail ? [doc.contactEmail] : [],
-        type: 'CRM_CONTRACT_SENT_FOR_SIGNATURE',
-        title: 'Contract ready for your signature',
-        message: `Contract ${contract.contractNumber || ''} has been sent to you for electronic signature.`,
-        eventKey: `crm-contract-sent-for-signature:${contractId}`,
-        resourceType: 'CONTRACT',
-        resourceId: contractId,
-      });
-      notificationSent = (recipientCount ?? 0) > 0;
-    } catch (error) {
-      this.logger.warn(`Could not notify contract contact for ${contractId}: ${(error as Error).message}`);
-    }
-
-    return { lead: this.mapLead(doc), notificationSent };
+  async sendContractForSignature(_userId: string, _leadId: string, _contractId: string) {
+    void _userId;
+    void _leadId;
+    void _contractId;
+    throw new ConflictException({
+      code: 'SIGNING_PROVIDER_NOT_CONFIGURED',
+      message: 'Contract signature dispatch is unavailable until an approved signing provider is configured.',
+    });
   }
 
   // Section 3.12: Sales Reports & Approvals

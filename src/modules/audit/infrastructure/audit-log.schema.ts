@@ -9,6 +9,7 @@ export class AuditLog {
   @Prop({ required: true }) action!: string;
   @Prop({ required: true }) resourceType!: string;
   @Prop() resourceId?: string;
+  @Prop() eventKey?: string;
   @Prop() ipAddress?: string;
   @Prop({ type: Object }) metadata?: Record<string, string>;
   // TTL field — MongoDB automatically deletes documents once this date passes.
@@ -30,6 +31,15 @@ AuditLogSchema.index({ resourceType: 1, resourceId: 1, createdAt: -1 });
 AuditLogSchema.index({ createdAt: -1 });
 // 7-year TTL — MongoDB deletes documents when expiresAt is in the past.
 AuditLogSchema.index({ expiresAt: 1 }, { expireAfterSeconds: 0 });
+// Invitation mutations use deterministic event keys so transaction retries/replays cannot duplicate audits.
+AuditLogSchema.index(
+  { eventKey: 1 },
+  {
+    unique: true,
+    name: 'audit_event_key_unique',
+    partialFilterExpression: { eventKey: { $type: 'string' } },
+  },
+);
 
 // ─── Pre-save hook: set expiresAt to 7 years from now if not already set ──
 const SEVEN_YEARS_MS = 7 * 365.25 * 24 * 60 * 60 * 1000;

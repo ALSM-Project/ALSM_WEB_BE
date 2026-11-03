@@ -42,6 +42,10 @@ export class RecordSalesRevenueDto {
 }
 
 export class CreateContractDto {
+  @ApiProperty({ description: 'Mongo identifier of an approved immutable legal template version.' })
+  @IsMongoId()
+  approvedTemplateVersionId!: string;
+
   @ApiProperty({ minLength: 3, maxLength: 200 })
   @Transform(({ value }) => (typeof value === 'string' ? value.trim() : value))
   @IsString()

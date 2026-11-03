@@ -1,6 +1,6 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
-import { Model, Types } from 'mongoose';
+import { ClientSession, Model, Types } from 'mongoose';
 import { SystemNotification } from './notification.schema';
 import { User } from '../users/infrastructure/user.schema';
 
@@ -36,7 +36,7 @@ export class NotificationsService {
     });
   }
 
-  async createForUsers(input: CreateNotificationInput): Promise<number> {
+  async createForUsers(input: CreateNotificationInput, session?: ClientSession): Promise<number> {
     const recipients = [...new Set(input.recipientUserIds.filter((id) => Types.ObjectId.isValid(id)))];
     if (!recipients.length) return 0;
     await this.model.bulkWrite(recipients.map((userId) => ({
@@ -57,7 +57,7 @@ export class NotificationsService {
         },
         upsert: true,
       },
-    })), { ordered: false });
+    })), { ordered: false, ...(session ? { session } : {}) });
     return recipients.length;
   }
 

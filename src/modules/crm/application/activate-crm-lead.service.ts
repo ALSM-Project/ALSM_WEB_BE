@@ -15,8 +15,10 @@ import { Organization } from '../../organizations/infrastructure/organization.sc
 import { OrganizationRole, OrganizationType } from '../../organizations/domain/organization.types';
 import { User } from '../../users/infrastructure/user.schema';
 import { Lead } from '../infrastructure/lead.schema';
+import { ContractAggregate, ContractVersion } from '../infrastructure/contract-aggregate.schema';
 import { LeadStatus } from '../domain/lead.types';
 import { SalesCrmService } from './sales-crm.service';
+import { calculateFinalEvidenceManifestSha256 } from '../domain/contract-final-evidence';
 
 export interface ActivateCrmLeadResult {
   lead: ReturnType<SalesCrmService['mapLead']>;
@@ -35,6 +37,8 @@ export class ActivateCrmLeadService {
     @InjectModel(Organization.name) private readonly organizations: Model<Organization>,
     @InjectModel(User.name) private readonly users: Model<User>,
     @InjectModel(AuditLog.name) private readonly audits: Model<AuditLog>,
+    @InjectModel(ContractAggregate.name) private readonly contracts: Model<ContractAggregate>,
+    @InjectModel(ContractVersion.name) private readonly contractVersions: Model<ContractVersion>,
     private readonly crm: SalesCrmService,
   ) {}
 
@@ -76,20 +80,89 @@ export class ActivateCrmLeadService {
           throw new BadRequestException({ code: 'LEAD_NOT_CONVERTIBLE', message: 'A lost lead cannot be converted.' });
         }
 
-        const signedContract = (lead.contracts || []).find(
-          (contract) => contract.status === 'SIGNED' || contract.status === 'FULLY_SIGNED',
-        );
+        const signedContract = await this.contracts.findOne({
+          leadId: lead._id,
+          lifecycleStatus: 'COMPLETED',
+          providerCompletionStatus: 'CONFIRMED',
+          archiveStatus: 'VERIFIED',
+          activationStatus: 'ELIGIBLE',
+          customerUserId: { $exists: true },
+          'finalEvidence.contractVersionId': { $exists: true },
+          'finalEvidence.manifestSha256': { $type: 'string' },
+          'finalEvidence.signedPdf.kind': 'SIGNED_PDF',
+          'finalEvidence.signedPdf.mimeType': 'application/pdf',
+          'finalEvidence.signedPdf.encryption': 'AES-256-GCM',
+          'finalEvidence.signedPdf.encryptionKeyVersion': 'v1',
+          'finalEvidence.signedPdf.sha256': { $type: 'string' },
+          'finalEvidence.signedPdf.storageReference': { $type: 'string' },
+          'finalEvidence.providerKey': { $type: 'string' },
+          'finalEvidence.providerEnvelopeReference': { $type: 'string' },
+          'finalEvidence.providerCompletionEventReference': { $type: 'string' },
+        }).sort({ completedAt: -1 }).session(activeSession).exec();
         if (!signedContract) {
           throw new BadRequestException({
-            code: 'SIGNED_CONTRACT_REQUIRED',
-            message: 'A fully signed contract is required before converting this lead.',
+            code: 'VERIFIED_CONTRACT_AND_EVIDENCE_REQUIRED',
+            message: 'A provider-confirmed contract with verified stored evidence is required before customer activation.',
           });
         }
 
-        const company = [lead.company, lead.companyName]
-          .find((value) => typeof value === 'string' && value.trim().length > 0)?.trim();
-        const contactName = typeof lead.contactName === 'string' ? lead.contactName.trim() : '';
-        const email = typeof lead.contactEmail === 'string' ? lead.contactEmail.trim().toLowerCase() : '';
+        const signedVersion = await this.contractVersions.findOne({
+          _id: signedContract.currentVersionId,
+          contractId: signedContract._id,
+        }).session(activeSession).exec();
+        if (!signedVersion) {
+          throw new ServiceUnavailableException({
+            code: 'CONTRACT_VERSION_UNAVAILABLE',
+            message: 'The approved contract version could not be verified. Customer activation is blocked.',
+          });
+        }
+        const evidence = signedContract.finalEvidence;
+        if (
+          !evidence
+          || String(evidence.contractVersionId) !== String(signedVersion._id)
+          || !signedVersion.canonicalDocument
+          || signedVersion.canonicalDocument.kind !== 'CANONICAL_UNSIGNED'
+          || evidence.canonicalDocumentSha256 !== signedVersion.canonicalDocument.sha256
+          || !evidence.manifestSha256
+          || !evidence.providerKey
+          || !evidence.providerEnvelopeReference
+          || !evidence.providerCompletionEventReference
+          || !(evidence.providerCompletedAt instanceof Date)
+          || !Number.isFinite(evidence.providerCompletedAt.getTime())
+          || !(evidence.archivedAt instanceof Date)
+          || !Number.isFinite(evidence.archivedAt.getTime())
+          || !(evidence.signedPdf.archivedAt instanceof Date)
+          || !Number.isFinite(evidence.signedPdf.archivedAt.getTime())
+          || !Array.isArray(evidence.supportingArtifacts)
+          || !evidence.supportingArtifacts.every((artifact) => artifact.archivedAt instanceof Date && Number.isFinite(artifact.archivedAt.getTime()))
+          || evidence.manifestSha256 !== calculateFinalEvidenceManifestSha256({
+            contractVersionId: String(evidence.contractVersionId),
+            canonicalDocumentSha256: evidence.canonicalDocumentSha256,
+            providerKey: evidence.providerKey,
+            providerEnvelopeReference: evidence.providerEnvelopeReference,
+            providerCompletionEventReference: evidence.providerCompletionEventReference,
+            providerCompletedAt: evidence.providerCompletedAt,
+            archivedAt: evidence.archivedAt,
+            signedPdf: evidence.signedPdf,
+            supportingArtifacts: evidence.supportingArtifacts,
+          })
+          || !evidence.signedPdf.sha256
+          || !evidence.signedPdf.storageReference
+          || evidence.signedPdf.kind !== 'SIGNED_PDF'
+          || evidence.signedPdf.mimeType !== 'application/pdf'
+          || evidence.signedPdf.encryption !== 'AES-256-GCM'
+          || evidence.signedPdf.encryptionKeyVersion !== 'v1'
+          || evidence.signedPdf.byteLength < 1
+        ) {
+          throw new BadRequestException({
+            code: 'VERIFIED_CONTRACT_EVIDENCE_MANIFEST_REQUIRED',
+            message: 'The signed PDF evidence must be archived and bound to the current approved contract version before customer activation.',
+          });
+        }
+
+        const company = signedVersion.customerName.trim();
+        const contactName = signedVersion.customerContactName.trim();
+        const email = signedVersion.customerEmail.trim().toLowerCase();
         if (!company || company.length > 200) {
           throw new BadRequestException({ code: 'INVALID_CUSTOMER_NAME', message: 'A valid customer organization name is required.' });
         }
@@ -106,20 +179,24 @@ export class ActivateCrmLeadService {
           .session(activeSession)
           .exec();
         const customerUser = await this.users
-          .findOne({ email, isActive: { $ne: false }, isLocked: { $ne: true } })
+          .findOne({ _id: signedContract.customerUserId, email, isEmailVerified: true, isActive: { $ne: false }, isLocked: { $ne: true } })
           .select('_id')
           .session(activeSession)
           .exec();
-        const adminLinked = Boolean(customerUser);
-        const members = customerUser
-          ? [{ userId: customerUser._id, role: OrganizationRole.ADMIN }]
-          : [];
+        if (!customerUser) {
+          throw new BadRequestException({
+            code: 'VERIFIED_SIGNER_ACCOUNT_REQUIRED',
+            message: 'The verified customer account associated with the completed contract is unavailable.',
+          });
+        }
+        const adminLinked = true;
+        const members = [{ userId: customerUser._id, role: OrganizationRole.ADMIN }];
         const domain = email.split('@')[1];
         const organization = existingOrganization || (await this.organizations.create([{
           name: company,
           type: OrganizationType.ENTERPRISE,
           status: 'ACTIVE',
-          engagementType: signedContract.plan || 'Enterprise',
+          engagementType: signedVersion.plan || 'Enterprise',
           contactEmail: email,
           domain,
           sourceLeadId,
