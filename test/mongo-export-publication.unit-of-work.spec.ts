@@ -1,5 +1,5 @@
 import { NotFoundException } from '@nestjs/common';
-import { Types } from 'mongoose';
+import { Types, mongo } from 'mongoose';
 import {
   MongoExportPublicationUnitOfWork,
   PARTNER_PROJECT_CODE_EXPORTED,
@@ -139,4 +139,36 @@ describe('MongoExportPublicationUnitOfWork (UC-48)', () => {
     expect(bundles.create).not.toHaveBeenCalled();
     expect(audit.append).not.toHaveBeenCalled();
   });
+
+  it.each([false, true])(
+    'does not publish again after a simulated uncertain commit with code 11000 (transient=%s)',
+    async (transient) => {
+      const session = {
+        withTransaction: jest.fn(async (work: () => Promise<unknown>) => {
+          await work();
+          throw new mongo.MongoServerError({
+            message: 'TEST unconfirmed export commit',
+            code: 11000,
+            errorLabels: [
+              'UnknownTransactionCommitResult',
+              ...(transient ? ['TransientTransactionError'] : []),
+            ],
+          });
+        }),
+        endSession: jest.fn(),
+      };
+      connection.startSession.mockResolvedValueOnce(session);
+      await expect(unitOfWork.commit(publication)).rejects.toMatchObject({
+        response: {
+          code: 'TEAM_MUTATION_OUTCOME_UNCONFIRMED',
+          details: [{ mutationCommitted: 'unknown', retrySafe: false }],
+        },
+      });
+      expect(session.withTransaction).toHaveBeenCalledTimes(1);
+      expect(projects.updateOne).toHaveBeenCalledTimes(1);
+      expect(partners.findOneAndUpdate).toHaveBeenCalledTimes(1);
+      expect(bundles.create).toHaveBeenCalledTimes(1);
+      expect(audit.append).toHaveBeenCalledTimes(1);
+    },
+  );
 });

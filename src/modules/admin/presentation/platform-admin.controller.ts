@@ -9,6 +9,11 @@ import { LockUserService } from '../application/lock-user.service';
 import { AuditLogService } from '../application/audit-log.service';
 import { RequirePermissions } from '../../../shared/security/require-permissions.decorator';
 import { CheckOffboardingTransfer, DisabledSupportImpersonation, PlatformAdminAuthorizationGuard } from './platform-admin-authorization.guard';
+import { ListOrganizationsQueryDto } from './dto/list-organizations-query.dto';
+import { UpdateOrganizationEngagementDto } from './dto/update-organization-engagement.dto';
+import { CreateEnterpriseOrganizationDto } from './dto/create-enterprise-organization.dto';
+import { CreateEngagementTypeDto } from './dto/create-engagement-type.dto';
+import { UpdateEngagementTypeDto } from './dto/update-engagement-type.dto';
 
 @ApiTags('Platform Administration (Sections 3.10, 3.13 & 3.14)')
 @ApiBearerAuth()
@@ -26,12 +31,8 @@ export class PlatformAdminController {
   @Get('organizations')
   @RequirePermissions('organizations.view')
   @ApiOperation({ summary: 'View all organisations (3.13.1)' })
-  async listOrganizations(
-    @Query('search') search?: string,
-    @Query('type') type?: string,
-    @Query('status') status?: string,
-  ) {
-    return this.adminService.listOrganizations({ search, type, status });
+  async listOrganizations(@Query() query: ListOrganizationsQueryDto) {
+    return this.adminService.listOrganizations(query);
   }
 
   @Get('organizations/:id')
@@ -46,17 +47,7 @@ export class PlatformAdminController {
   @ApiOperation({ summary: 'Create new Enterprise organisation with Trial (3.13.4)' })
   async createEnterprise(
     @CurrentUser() user: AuthenticatedUser,
-    @Body()
-    body: {
-      name: string;
-      domain?: string;
-      contactEmail: string;
-      engagementType?: string;
-      trialDays?: number;
-      maxScreens?: number;
-      maxPrograms?: number;
-      maxStorageGb?: number;
-    },
+    @Body() body: CreateEnterpriseOrganizationDto,
   ) {
     return this.adminService.createEnterpriseOrganization(user.userId, body);
   }
@@ -67,13 +58,7 @@ export class PlatformAdminController {
   async updateEngagement(
     @CurrentUser() user: AuthenticatedUser,
     @Param('id') id: string,
-    @Body()
-    body: {
-      engagementType?: string;
-      status?: 'ACTIVE' | 'SUSPENDED' | 'TRIAL';
-      trialExpiresAt?: string;
-      limits?: { maxScreens: number; maxPrograms: number; maxStorageGb: number };
-    },
+    @Body() body: UpdateOrganizationEngagementDto,
   ) {
     return this.adminService.updateOrganizationEngagement(user.userId, id, body);
   }
@@ -112,7 +97,7 @@ export class PlatformAdminController {
   @ApiOperation({ summary: 'Create new engagement type (3.13.7)' })
   async createEngagementType(
     @CurrentUser() user: AuthenticatedUser,
-    @Body() body: Record<string, unknown>,
+    @Body() body: CreateEngagementTypeDto,
   ) {
     return this.adminService.createEngagementType(user.userId, body);
   }
@@ -123,7 +108,7 @@ export class PlatformAdminController {
   async editEngagementType(
     @CurrentUser() user: AuthenticatedUser,
     @Param('id') id: string,
-    @Body() body: Record<string, unknown>,
+    @Body() body: UpdateEngagementTypeDto,
   ) {
     return this.adminService.editEngagementType(user.userId, id, body);
   }

@@ -145,6 +145,21 @@ export class MenuSeedService implements OnApplicationBootstrap {
         openInNewTab: false,
         permissions: ['quality-review.manage'],
       },
+      {
+        id: 'web2_conv_temporary_roles',
+        key: 'conversions.temporary_roles',
+        application: ApplicationContext.WEB_2,
+        label: 'Temporary Roles',
+        type: MenuItemType.PAGE,
+        icon: 'KeyRound',
+        route: '/admin/temporary-roles',
+        parentId: 'web2_group_conversions',
+        order: 3,
+        visibility: true,
+        status: MenuItemStatus.ACTIVE,
+        openInNewTab: false,
+        permissions: ['roles.temporary.request'],
+      },
 
       // 3. Team Lead Workspace (Group: Team Workload, Projects, Staff & Temporary Roles)
       {
@@ -405,6 +420,21 @@ export class MenuSeedService implements OnApplicationBootstrap {
         status: MenuItemStatus.ACTIVE,
         openInNewTab: false,
         permissions: ['meetings.view'],
+      },
+      {
+        id: 'web2_ops_temporary_roles',
+        key: 'operations.temporary_roles',
+        application: ApplicationContext.WEB_2,
+        label: 'Temporary Roles',
+        type: MenuItemType.PAGE,
+        icon: 'KeyRound',
+        route: '/admin/temporary-roles',
+        parentId: 'web2_group_operations',
+        order: 3,
+        visibility: true,
+        status: MenuItemStatus.ACTIVE,
+        openInNewTab: false,
+        permissions: ['roles.temporary.request'],
       },
 
       // 5.5 Customer Support (Organisation Access & Troubleshooting)

@@ -16,6 +16,12 @@ import { PermissionsGuard } from '../../../shared/security/permissions.guard';
 import { RequirePermissions } from '../../../shared/security/require-permissions.decorator';
 import { AuthenticatedUser } from '../../../shared/logging/request-id.middleware';
 import { TemporaryRoleService } from '../application/temporary-role.service';
+import {
+  GrantTemporaryRoleDto,
+  RequestTemporaryRoleDto,
+  ReviewTemporaryRoleRequestDto,
+  RevokeTemporaryRoleDto,
+} from './dtos/temporary-role.dto';
 
 @ApiTags('Temporary Role Management (Section 3.15)')
 @ApiBearerAuth()
@@ -30,23 +36,15 @@ export class TemporaryRoleController {
   @ApiOperation({ summary: 'Grant temporary role to user (3.15.1)' })
   async grantRole(
     @CurrentUser() user: AuthenticatedUser,
-    @Body()
-    body: {
-      targetUserId: string;
-      roleId: string;
-      durationHours: number;
-      reason: string;
-      /** Optional project the elevation is meant for. */
-      projectId?: string;
-    },
+    @Body() dto: GrantTemporaryRoleDto,
   ) {
     return this.tempRoleService.grantTemporaryRole(
       user.userId,
-      body.targetUserId,
-      body.roleId,
-      body.durationHours,
-      body.reason,
-      body.projectId,
+      dto.targetUserId,
+      dto.roleId,
+      dto.durationHours,
+      dto.reason,
+      dto.projectId,
     );
   }
 
@@ -57,15 +55,22 @@ export class TemporaryRoleController {
     return this.tempRoleService.listTemporaryRoles(status);
   }
 
+  @Get('my-requests')
+  @RequirePermissions('roles.temporary.request')
+  @ApiOperation({ summary: 'View current user temporary role requests and history (UC-95)' })
+  async getMyRequests(@CurrentUser() user: AuthenticatedUser) {
+    return this.tempRoleService.getMyRequests(user.userId);
+  }
+
   @Post(':id/revoke')
   @RequirePermissions('roles.temporary.revoke')
   @ApiOperation({ summary: 'Revoke temporary role (3.15.3)' })
   async revokeRole(
     @CurrentUser() user: AuthenticatedUser,
     @Param('id') id: string,
-    @Body('reason') reason?: string,
+    @Body() dto: RevokeTemporaryRoleDto,
   ) {
-    return this.tempRoleService.revokeTemporaryRole(user.userId, id, reason);
+    return this.tempRoleService.revokeTemporaryRole(user.userId, id, dto?.reason);
   }
 
   @Get('history')
@@ -87,28 +92,35 @@ export class TemporaryRoleController {
 
   @Post('request')
   @RequirePermissions('roles.temporary.request')
-  @ApiOperation({ summary: 'Internal staff request temporary role (3.15.5)' })
+  @ApiOperation({ summary: 'Internal staff request temporary role (3.15.5 & UC-95)' })
   async requestRole(
     @CurrentUser() user: AuthenticatedUser,
-    @Body() body: { roleId: string; durationHours: number; reason: string },
+    @Body() dto: RequestTemporaryRoleDto,
   ) {
     return this.tempRoleService.requestTemporaryRole(
       user.userId,
-      body.roleId,
-      body.durationHours,
-      body.reason,
+      dto.roleId,
+      dto.durationHours,
+      dto.reason,
+      dto.projectId,
     );
   }
 
   @Post('requests/:id/review')
   @RequirePermissions('roles.temporary.requests.review')
-  @ApiOperation({ summary: 'Team Lead approve or reject temporary role request (3.15.5)' })
+  @ApiOperation({ summary: 'Team Lead approve or reject temporary role request (3.15.5 & UC-95)' })
   async reviewRequest(
     @CurrentUser() user: AuthenticatedUser,
     @Param('id') id: string,
-    @Body() body: { approved: boolean; reason?: string },
+    @Body() dto: ReviewTemporaryRoleRequestDto,
   ) {
-    return this.tempRoleService.reviewRequest(user.userId, id, body.approved, body.reason);
+    return this.tempRoleService.reviewRequest(
+      user.userId,
+      id,
+      dto.approved,
+      dto.reason,
+      dto.durationHours,
+    );
   }
 
   @Post('cron/expire')

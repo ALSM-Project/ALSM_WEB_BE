@@ -22,6 +22,6 @@ import { User, UserSchema } from '../users/infrastructure/user.schema';
     { provide: USER_REPOSITORY, useClass: MongoUserRepository },
     RequireCurrentSessionService,
   ],
-  exports: [RequireCurrentSessionService],
+  exports: [RequireCurrentSessionService, SESSION_REPOSITORY],
 })
 export class SessionAssuranceModule {}
