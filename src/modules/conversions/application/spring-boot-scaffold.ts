@@ -522,8 +522,16 @@ public class ${LEGACY_APPLICATION_CLASS} implements CommandLineRunner, ExitCodeG
     if (requested == null && jobs.size() > 1) {
       System.out.println("No job name given, running " + name + ". Jobs you can run: " + jobs.keySet());
     }
-    JobExecution execution = jobLauncher.run(jobs.get(name),
-        new JobParametersBuilder().addLong("run.id", System.currentTimeMillis()).toJobParameters());
+    // NAME=value arguments become job parameters: the converted programs read the path of each
+    // file from the parameter named after its DD (java -jar app.jar CBACT02C CARDFILE=cards.txt).
+    JobParametersBuilder parameters = new JobParametersBuilder().addLong("run.id", System.currentTimeMillis());
+    for (String arg : args) {
+      int eq = arg.indexOf('=');
+      if (!arg.startsWith("-") && eq > 0) {
+        parameters.addString(arg.substring(0, eq), arg.substring(eq + 1));
+      }
+    }
+    JobExecution execution = jobLauncher.run(jobs.get(name), parameters.toJobParameters());
     System.out.println("Job " + name + " finished with status " + execution.getStatus());
     exitCode = execution.getStatus() == BatchStatus.COMPLETED ? 0 : 1;
   }
@@ -533,10 +541,10 @@ public class ${LEGACY_APPLICATION_CLASS} implements CommandLineRunner, ExitCodeG
     return exitCode;
   }
 
-  /** The job name is the first argument that is not a Spring option such as --server.port=0. */
+  /** The job name is the first argument that is neither a Spring option (--server.port=0) nor NAME=value. */
   private static String firstJobArgument(String... args) {
     for (String arg : args) {
-      if (!arg.startsWith("-")) {
+      if (!arg.startsWith("-") && arg.indexOf('=') < 0) {
         return arg;
       }
     }
@@ -648,6 +656,7 @@ function readme(
 
 - **No argument:** it runs the first job (by name). If there are several it also prints the names of the others.
 - **A job name as the first argument:** it runs that job. The name is not case sensitive (\`model01\` finds \`Model01\`); a name that does not exist prints the list of jobs you can run.
+- **Files:** give each file the job reads or writes as \`DDNAME=path\` after the job name (the name in its \`SELECT ... ASSIGN TO\`), for example \`java -jar ${jar} ${exampleJob} CARDFILE=data/carddata.txt\`. Text files with one record per line are read as they are.
 
 \`\`\`bash
 java -jar ${jar}
