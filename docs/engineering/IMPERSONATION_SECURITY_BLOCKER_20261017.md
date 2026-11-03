@@ -1,5 +1,16 @@
 # ALSMV2-1050: operational impersonation SECURITY BLOCKED
 
+> **UC-66 scope superseded on 1 November 2026.** The Technical Owner confirmed
+> the original Report 3 flow: authenticated `internal_support` searches for an
+> Organisation, enters a scoped read-only view of Projects, Screens, Programs,
+> Findings and Logs, has all access audited, and exits to the original context.
+> Support Tickets, Customer Consent, independent customer representative
+> verification and internal approval are not prerequisites for UC-66. The
+> approval/verification proposals below are historical and must not be applied
+> as UC-66 requirements. This cleanup does not implement the Support View;
+> authenticated impersonation still returns `503 SUPPORT_IMPERSONATION_UNAVAILABLE`.
+> See [the cleanup inventory and verification report](UC66_SUPERSEDED_IMPLEMENTATION_CLEANUP_20261101.md).
+
 17 October 2026. Inspected active demo backend `12070af` and preserved security ref `feature/ALSMV2-1051-p0-security-baseline` at `50f14b7106ac2f1dbba1fddf99069bb1e446e3c9` using read-only Git object inspection. No security branch was checked out, copied, merged or activated.
 
 Report 3 UC-54 requires Support Staff to enter an existing customer organization read-only and audit that access. Its support-role precondition is business intent, not proof that the missing security mechanisms exist.

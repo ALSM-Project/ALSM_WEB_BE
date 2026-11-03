@@ -5,13 +5,16 @@ import {
   Inject,
   Injectable,
   NotFoundException,
+  Optional,
 } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { FilterQuery, Model } from 'mongoose';
 import { TemporaryRole, TemporaryRoleDocument } from '../infrastructure/schemas/temporary-role.schema';
 import { User, UserDocument } from '../../users/infrastructure/user.schema';
 import { Role, RoleDocument } from '../infrastructure/schemas/role.schema';
+import { UserRole, UserRoleDocument } from '../infrastructure/schemas/user-role.schema';
 import { AUDIT_REPOSITORY, AuditRepository } from '../../audit/domain/audit.repository';
+import { NotificationsService } from '../../notifications/notifications.service';
 import { toValidObjectId } from '../../../shared/utils/object-id.util';
 
 export const MIN_TEMPORARY_ROLE_HOURS = 1;
@@ -49,6 +52,11 @@ export class TemporaryRoleService {
     @InjectModel(User.name) private readonly userModel: Model<UserDocument>,
     @InjectModel(Role.name) private readonly roleModel: Model<RoleDocument>,
     @Inject(AUDIT_REPOSITORY) private readonly audit: AuditRepository,
+    @Optional()
+    @InjectModel(UserRole.name)
+    private readonly userRoleModel?: Model<UserRoleDocument>,
+    @Optional()
+    private readonly notifications?: NotificationsService,
   ) {}
 
   async grantTemporaryRole(
@@ -58,9 +66,12 @@ export class TemporaryRoleService {
     durationHours: number,
     reason: string,
     projectId?: string,
+    existingDoc?: TemporaryRoleDocument,
   ) {
     requireValidDuration(durationHours);
-    const justification = requireJustification(reason);
+    const justification = existingDoc
+      ? reason?.trim() || existingDoc.reason || 'Approved temporary role request'
+      : requireJustification(reason);
 
     const normalizedRole = roleId.toUpperCase().trim();
     if (PLATFORM_ADMIN_ROLES.has(normalizedRole)) {
@@ -87,12 +98,16 @@ export class TemporaryRoleService {
     }
 
     // A user can only have one active temporary role at a time
-    const activeExisting = await this.tempRoleModel.findOne({
+    const activeFilter: FilterQuery<TemporaryRoleDocument> = {
       userId: toValidObjectId(targetUserId),
       status: 'ACTIVE',
       expiresAt: { $gt: new Date() },
-    }).exec();
+    };
+    if (existingDoc?._id) {
+      activeFilter._id = { $ne: existingDoc._id };
+    }
 
+    const activeExisting = await this.tempRoleModel.findOne(activeFilter).exec();
     if (activeExisting) {
       throw new ConflictException({
         code: 'ACTIVE_TEMPORARY_ROLE_EXISTS',
@@ -102,6 +117,47 @@ export class TemporaryRoleService {
 
     const now = new Date();
     const expiresAt = new Date(now.getTime() + durationHours * 3600 * 1000);
+
+    if (existingDoc) {
+      // Reusing and updating existing approved request document (UC-91 canonical execution)
+      existingDoc.roleId = role.id || normalizedRole;
+      existingDoc.grantedBy = toValidObjectId(actorUserId);
+      existingDoc.grantedAt = now;
+      existingDoc.expiresAt = expiresAt;
+      existingDoc.durationHours = durationHours;
+      existingDoc.status = 'ACTIVE';
+      existingDoc.requestStatus = 'APPROVED';
+      if (projectId) {
+        existingDoc.projectId = toValidObjectId(projectId);
+      }
+      await existingDoc.save();
+
+      await this.audit.append({
+        actorUserId,
+        action: 'TEMPORARY_ROLE_REQUEST_APPROVED',
+        resourceType: 'TEMPORARY_ROLE',
+        resourceId: existingDoc.id,
+        metadata: {
+          targetUserId,
+          roleId: role.id || normalizedRole,
+          durationHours: String(durationHours),
+          grantedAt: now.toISOString(),
+          expiresAt: expiresAt.toISOString(),
+          ...(projectId ? { projectId } : {}),
+          reason: justification,
+        },
+      });
+
+      await this.notifyUser(
+        targetUserId,
+        'TEMPORARY_ROLE_APPROVED',
+        'Temporary Role Request Approved',
+        `Your request for temporary role "${role.id || normalizedRole}" has been approved for ${durationHours} hours.`,
+        existingDoc.id,
+      );
+
+      return existingDoc;
+    }
 
     const created = await this.tempRoleModel.create({
       userId: toValidObjectId(targetUserId),
@@ -132,6 +188,14 @@ export class TemporaryRoleService {
       },
     });
 
+    await this.notifyUser(
+      targetUserId,
+      'TEMPORARY_ROLE_GRANTED',
+      'Temporary Role Granted',
+      `You have been granted temporary role "${role.id || normalizedRole}" for ${durationHours} hours.`,
+      created.id,
+    );
+
     return created;
   }
 
@@ -145,10 +209,21 @@ export class TemporaryRoleService {
       .find(filter)
       .populate('userId', 'fullName email')
       .populate('grantedBy', 'fullName email')
+      .populate('requestedBy', 'fullName email')
       .sort({ createdAt: -1 })
       .exec();
 
     return docs;
+  }
+
+  async getMyRequests(userId: string) {
+    const userObjId = toValidObjectId(userId);
+    return this.tempRoleModel
+      .find({ userId: userObjId })
+      .populate('grantedBy', 'fullName email')
+      .populate('requestedBy', 'fullName email')
+      .sort({ createdAt: -1 })
+      .exec();
   }
 
   async revokeTemporaryRole(actorUserId: string, id: string, reason?: string) {
@@ -189,6 +264,14 @@ export class TemporaryRoleService {
       },
     });
 
+    await this.notifyUser(
+      doc.userId.toString(),
+      'TEMPORARY_ROLE_REVOKED',
+      'Temporary Role Revoked',
+      `Your temporary role "${doc.roleId}" has been revoked early. Reason: ${revocationReason}`,
+      doc.id,
+    );
+
     return doc;
   }
 
@@ -197,6 +280,7 @@ export class TemporaryRoleService {
     roleId: string,
     durationHours: number,
     reason: string,
+    projectId?: string,
   ) {
     requireValidDuration(durationHours);
     const justification = requireJustification(reason);
@@ -206,6 +290,27 @@ export class TemporaryRoleService {
       throw new ForbiddenException('Cannot request Platform Admin role');
     }
 
+    const requesterUser = await this.userModel.findById(toValidObjectId(staffUserId)).exec();
+    if (requesterUser) {
+      if ((requesterUser as { isLocked?: boolean }).isLocked) {
+        throw new BadRequestException('A locked account cannot request a temporary role');
+      }
+      if ((requesterUser as { isActive?: boolean }).isActive === false) {
+        throw new BadRequestException('A deactivated account cannot request a temporary role');
+      }
+      if (requesterUser.isPlatformAdmin) {
+        throw new BadRequestException('Platform Admin already has full privileges');
+      }
+    }
+
+    const role = await this.roleModel.findOne({
+      $or: [{ id: normalizedRole }, { name: normalizedRole }, { _id: toValidObjectId(roleId) }],
+    }).exec();
+    if (role && PLATFORM_ADMIN_ROLES.has((role.id || '').toUpperCase())) {
+      throw new ForbiddenException('Cannot request Platform Admin role');
+    }
+
+    // A user can only have one active temporary role at a time
     const activeExisting = await this.tempRoleModel.findOne({
       userId: toValidObjectId(staffUserId),
       status: 'ACTIVE',
@@ -219,12 +324,25 @@ export class TemporaryRoleService {
       });
     }
 
+    // A user cannot have multiple pending requests simultaneously
+    const pendingExisting = await this.tempRoleModel.findOne({
+      userId: toValidObjectId(staffUserId),
+      requestStatus: 'PENDING',
+    }).exec();
+
+    if (pendingExisting) {
+      throw new ConflictException({
+        code: 'PENDING_TEMPORARY_ROLE_REQUEST_EXISTS',
+        message: 'You already have a pending temporary role request awaiting review',
+      });
+    }
+
     const now = new Date();
     const expiresAt = new Date(now.getTime() + durationHours * 3600 * 1000);
 
     const doc = await this.tempRoleModel.create({
       userId: toValidObjectId(staffUserId),
-      roleId: normalizedRole,
+      roleId: role?.id || normalizedRole,
       grantedBy: toValidObjectId(staffUserId),
       grantedAt: now,
       expiresAt,
@@ -233,6 +351,7 @@ export class TemporaryRoleService {
       reason: justification,
       requestedBy: toValidObjectId(staffUserId),
       requestStatus: 'PENDING',
+      ...(projectId ? { projectId: toValidObjectId(projectId) } : {}),
     });
 
     await this.audit.append({
@@ -240,8 +359,20 @@ export class TemporaryRoleService {
       action: 'TEMPORARY_ROLE_REQUESTED',
       resourceType: 'TEMPORARY_ROLE',
       resourceId: doc.id,
-      metadata: { roleId: normalizedRole, durationHours: String(durationHours), reason: justification },
+      metadata: {
+        roleId: role?.id || normalizedRole,
+        durationHours: String(durationHours),
+        reason: justification,
+        ...(projectId ? { projectId } : {}),
+      },
     });
+
+    await this.notifyTeamLeads(
+      'TEMPORARY_ROLE_REQUESTED',
+      'New Temporary Role Request',
+      `Staff user has submitted a request for temporary role "${role?.id || normalizedRole}" (${durationHours}h).`,
+      doc.id,
+    );
 
     return doc;
   }
@@ -251,6 +382,7 @@ export class TemporaryRoleService {
     requestId: string,
     approved: boolean,
     reason?: string,
+    durationHours?: number,
   ) {
     const doc = await this.tempRoleModel.findById(toValidObjectId(requestId)).exec();
     if (!doc) {
@@ -266,55 +398,70 @@ export class TemporaryRoleService {
     if (doc.userId.toString() === reviewerUserId) {
       throw new ForbiddenException('You cannot review your own temporary role request');
     }
-    if (!approved && !reason?.trim()) {
-      throw new BadRequestException({
-        code: 'REJECTION_REASON_REQUIRED',
-        message: 'A reason is required to reject a request',
-      });
-    }
-    if (approved) {
-      const stillActive = await this.tempRoleModel
-        .findOne({ userId: doc.userId, status: 'ACTIVE', expiresAt: { $gt: new Date() } })
-        .exec();
-      if (stillActive) {
-        throw new ConflictException({
-          code: 'ACTIVE_TEMPORARY_ROLE_EXISTS',
-          message: 'The user already holds an active temporary role',
+    if (!approved) {
+      const cleanReason = reason?.trim();
+      if (!cleanReason) {
+        throw new BadRequestException({
+          code: 'REJECTION_REASON_REQUIRED',
+          message: 'A reason is required to reject a request',
         });
       }
-    }
 
-    doc.requestStatus = approved ? 'APPROVED' : 'REJECTED';
-    if (approved) {
-      const now = new Date();
-      doc.grantedBy = toValidObjectId(reviewerUserId);
-      doc.grantedAt = now;
-      doc.expiresAt = new Date(now.getTime() + doc.durationHours * 3600 * 1000);
-      doc.status = 'ACTIVE';
-    } else {
+      doc.requestStatus = 'REJECTED';
       doc.status = 'REVOKED';
-      doc.revocationReason = reason;
+      doc.revocationReason = cleanReason;
+      await doc.save();
+
+      await this.audit.append({
+        actorUserId: reviewerUserId,
+        action: 'TEMPORARY_ROLE_REQUEST_REJECTED',
+        resourceType: 'TEMPORARY_ROLE',
+        resourceId: doc.id,
+        metadata: {
+          requestId: doc.id,
+          targetUserId: doc.userId.toString(),
+          roleId: doc.roleId,
+          reason: cleanReason,
+        },
+      });
+
+      await this.notifyUser(
+        doc.userId.toString(),
+        'TEMPORARY_ROLE_REJECTED',
+        'Temporary Role Request Rejected',
+        `Your request for temporary role "${doc.roleId}" was rejected. Reason: ${cleanReason}`,
+        doc.id,
+      );
+
+      return doc;
     }
-    await doc.save();
 
-    await this.audit.append({
-      actorUserId: reviewerUserId,
-      action: approved ? 'TEMPORARY_ROLE_REQUEST_APPROVED' : 'TEMPORARY_ROLE_REQUEST_REJECTED',
-      resourceType: 'TEMPORARY_ROLE',
-      resourceId: doc.id,
-      metadata: { approved: String(approved), reason: reason || '' },
-    });
-
-    return doc;
+    // Approved: Reuse existing canonical UC-91 implementation to grant the role
+    const finalDuration = durationHours ?? doc.durationHours;
+    return this.grantTemporaryRole(
+      reviewerUserId,
+      doc.userId.toString(),
+      doc.roleId,
+      finalDuration,
+      doc.reason,
+      doc.projectId?.toString(),
+      doc,
+    );
   }
 
   async getHistory() {
-    return this.tempRoleModel
+    const q1 = this.tempRoleModel
       .find()
       .populate('userId', 'fullName email')
-      .populate('grantedBy', 'fullName email')
-      .sort({ createdAt: -1 })
-      .exec();
+      .populate('grantedBy', 'fullName email');
+    const qFinal =
+      typeof (q1 as { populate?: unknown }).populate === 'function'
+        ? (q1 as { populate: (field: string, select: string) => typeof q1 }).populate(
+            'requestedBy',
+            'fullName email',
+          )
+        : q1;
+    return qFinal.sort({ createdAt: -1 }).exec();
   }
 
   async exportHistoryCsv() {
@@ -335,5 +482,60 @@ export class TemporaryRoleService {
       { $set: { status: 'EXPIRED' } },
     );
     return { expiredCount: result.modifiedCount };
+  }
+
+  private async notifyUser(
+    targetUserId: string,
+    type: string,
+    title: string,
+    message: string,
+    resourceId?: string,
+  ) {
+    if (!this.notifications) return;
+    try {
+      await this.notifications.createForUsers({
+        recipientUserIds: [targetUserId],
+        type,
+        title,
+        message,
+        eventKey: `${type}:${resourceId || Date.now()}`,
+        resourceType: 'TEMPORARY_ROLE',
+        resourceId,
+        link: '/rbac/temporary-roles',
+      });
+    } catch {
+      // Non-blocking notification delivery
+    }
+  }
+
+  private async notifyTeamLeads(
+    type: string,
+    title: string,
+    message: string,
+    resourceId?: string,
+  ) {
+    if (!this.notifications || !this.userRoleModel) return;
+    try {
+      const teamLeadAssignments = await this.userRoleModel
+        .find({ roleId: 'TEAM_LEAD' })
+        .select('userId')
+        .lean()
+        .exec();
+      const userIds = teamLeadAssignments.map((a) => a.userId);
+      if (userIds.length > 0) {
+        await this.notifications.createForUsers({
+          recipientUserIds: userIds,
+          type,
+          title,
+          message,
+          eventKey: `${type}:${resourceId || Date.now()}`,
+          resourceType: 'TEMPORARY_ROLE',
+          resourceId,
+          link: '/rbac/temporary-roles?tab=requests',
+        });
+      }
+    } catch {
+      // Non-blocking notification delivery
+    }
   }
 }

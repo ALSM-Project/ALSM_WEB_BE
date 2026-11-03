@@ -1,4 +1,5 @@
 import * as Joi from 'joi';
+import { parseCorsOrigins } from './cors-policy';
 
 export const environmentValidationSchema = Joi.object({
   NODE_ENV: Joi.string().valid('development', 'test', 'production').default('development'),
@@ -22,7 +23,16 @@ export const environmentValidationSchema = Joi.object({
     }, 'Base64-encoded 32-byte encryption key')
     .required(),
   MFA_ISSUER: Joi.string().trim().min(1).default('ALSM'),
-  CORS_ORIGINS: Joi.string().required(),
+  CORS_ORIGINS: Joi.string()
+    .required()
+    .custom((value: string, helpers) => {
+      try {
+        parseCorsOrigins(value);
+        return value;
+      } catch {
+        return helpers.error('any.invalid');
+      }
+    }, 'Explicit CORS origins'),
   GOOGLE_CLIENT_ID: Joi.string().allow('').default(''),
   CONVERSION_WORKER_ENABLED: Joi.boolean().default(false),
   STORAGE_ROOT: Joi.string().default('./storage'),
@@ -64,7 +74,10 @@ export const environmentValidationSchema = Joi.object({
   VNPT_ECONTRACT_CALLBACK_KEY: Joi.when('VNPT_ECONTRACT_ENVIRONMENT', { is: Joi.valid('SANDBOX', 'PRODUCTION'), then: Joi.string().min(1).required(), otherwise: Joi.string().allow('').default('') }),
   VNPT_ECONTRACT_CALLBACK_SECRET: Joi.when('VNPT_ECONTRACT_ENVIRONMENT', { is: Joi.valid('SANDBOX', 'PRODUCTION'), then: Joi.string().min(1).required(), otherwise: Joi.string().allow('').default('') }),
   /** Partner Portal origin linked from UC-48 export emails; APP_BASE_URL when unset. */
-  PARTNER_PORTAL_URL: Joi.string().uri({ scheme: ['http', 'https'] }).allow('').default(''),
+  PARTNER_PORTAL_URL: Joi.string()
+    .uri({ scheme: ['http', 'https'] })
+    .allow('')
+    .default(''),
   AI_VALIDATION_ENABLED: Joi.boolean().default(false),
   AI_PROVIDER: Joi.string().valid('fake', 'openai', 'gemini').default('fake'),
   OPENAI_API_KEY: Joi.when('AI_VALIDATION_ENABLED', {
