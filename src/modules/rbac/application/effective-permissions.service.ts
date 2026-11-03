@@ -15,7 +15,8 @@ export class EffectivePermissionsService {
   ) {}
 
   async getUserRoles(userId: string): Promise<string[]> {
-    const roleIds = await this.rbacRepo.findUserRoles(userId);
+    const baseRoles = await this.rbacRepo.findUserRoles(userId);
+    const roleIds = [...baseRoles];
 
     const user = await this.rbacRepo.findUserById(userId);
     if (user?.isPlatformAdmin && !roleIds.includes('ADMIN')) {
