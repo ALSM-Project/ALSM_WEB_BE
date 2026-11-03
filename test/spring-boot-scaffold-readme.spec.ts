@@ -78,7 +78,9 @@ describe('Java export README: how to run', () => {
   const readme = find(tree, 'README.md')?.content ?? '';
 
   it('shows the commands with a real job name and the jobs that exist', () => {
-    expect(readme).toContain('mvn spring-boot:run -Dspring-boot.run.arguments=Vbka1200');
+    // Quoted so PowerShell does not split the argument at the first dot.
+    expect(readme).toContain('mvn spring-boot:run "-Dspring-boot.run.arguments=Vbka1200"');
+    expect(readme).toContain('Unknown lifecycle phase');
     expect(readme).toContain('java -jar target/acme.jar Vbka1200');
     expect(readme).toContain('java -jar target/acme.jar\n');
     expect(readme).toContain('- `Vbka1200`');
