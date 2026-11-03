@@ -10,7 +10,9 @@ import { Organization } from '../src/modules/organizations/infrastructure/organi
 import { User } from '../src/modules/users/infrastructure/user.schema';
 import { ActivateCrmLeadService } from '../src/modules/crm/application/activate-crm-lead.service';
 import { Lead } from '../src/modules/crm/infrastructure/lead.schema';
+import { ContractAggregate, ContractVersion } from '../src/modules/crm/infrastructure/contract-aggregate.schema';
 import { LeadStatus } from '../src/modules/crm/domain/lead.types';
+import { calculateFinalEvidenceManifestSha256 } from '../src/modules/crm/domain/contract-final-evidence';
 
 type MockFn = jest.Mock;
 
@@ -41,12 +43,15 @@ describe('ActivateCrmLeadService (UC-64)', () => {
   let organizations: { findOne: MockFn; create: MockFn };
   let users: { findOne: MockFn };
   let audits: { create: MockFn };
+  let contracts: { findOne: MockFn };
+  let contractVersions: { findOne: MockFn };
   let crm: { mapLead: MockFn };
   let service: ActivateCrmLeadService;
 
   const query = (value: unknown) => ({
     session: jest.fn().mockReturnThis(),
     select: jest.fn().mockReturnThis(),
+    sort: jest.fn().mockReturnThis(),
     exec: jest.fn().mockResolvedValue(value),
   });
 
@@ -79,6 +84,58 @@ describe('ActivateCrmLeadService (UC-64)', () => {
     };
     users = { findOne: jest.fn().mockReturnValue(query(null)) };
     audits = { create: jest.fn().mockResolvedValue([]) };
+    const contractId = new Types.ObjectId('6bc2c79ce8463e1ffc7e29da');
+    const versionId = new Types.ObjectId('6bc2c79ce8463e1ffc7e29db');
+    const providerCompletedAt = new Date('2026-10-01T10:00:00.000Z');
+    const archivedAt = new Date('2026-10-01T10:01:00.000Z');
+    const canonicalDocumentSha256 = 'a'.repeat(64);
+    const finalEvidence = {
+      contractVersionId: versionId.toString(),
+      canonicalDocumentSha256,
+      providerKey: 'approved-provider',
+      providerEnvelopeReference: 'envelope-123',
+      providerCompletionEventReference: 'completion-event-123',
+      providerCompletedAt,
+      archivedAt,
+      manifestSha256: '',
+      signedPdf: {
+        kind: 'SIGNED_PDF' as const,
+        storageReference: 'contracts/signed/contract.pdf',
+        fileName: 'contract.pdf',
+        mimeType: 'application/pdf' as const,
+        sha256: 'b'.repeat(64),
+        byteLength: 1024,
+        encryption: 'AES-256-GCM' as const,
+        encryptionKeyVersion: 'v1',
+        archivedAt,
+      },
+      supportingArtifacts: [],
+    };
+    finalEvidence.manifestSha256 = calculateFinalEvidenceManifestSha256(finalEvidence);
+    contracts = {
+      findOne: jest.fn().mockReturnValue(query({
+        _id: contractId,
+        id: contractId.toString(),
+        currentVersionId: versionId,
+        lifecycleStatus: 'COMPLETED',
+        providerCompletionStatus: 'CONFIRMED',
+        archiveStatus: 'VERIFIED',
+        activationStatus: 'ELIGIBLE',
+        customerUserId: new Types.ObjectId('6b8d90b0569ea93e27ad862c'),
+        finalEvidence,
+      })),
+    };
+    contractVersions = {
+      findOne: jest.fn().mockReturnValue(query({
+        _id: versionId,
+        contractId,
+        plan: 'Enterprise Tier 1',
+        customerName: 'Zenith Holdings',
+        customerContactName: 'Clara Oswald',
+        customerEmail: 'Clara@zenith.co',
+        canonicalDocument: { kind: 'CANONICAL_UNSIGNED', sha256: canonicalDocumentSha256 },
+      })),
+    };
     crm = { mapLead: jest.fn((doc: TestLead) => ({ id: doc.id, stage: doc.stage, convertedOrganizationId: doc.convertedOrganizationId?.toString(), provisioning: doc.provisioning })) };
     service = new ActivateCrmLeadService(
       connection as unknown as Connection,
@@ -86,6 +143,8 @@ describe('ActivateCrmLeadService (UC-64)', () => {
       organizations as unknown as Model<Organization>,
       users as unknown as Model<User>,
       audits as unknown as Model<AuditLog>,
+      contracts as unknown as Model<ContractAggregate>,
+      contractVersions as unknown as Model<ContractVersion>,
       crm as unknown as ActivateCrmLeadService['crm'],
     );
   });
@@ -97,10 +156,10 @@ describe('ActivateCrmLeadService (UC-64)', () => {
   });
 
   it('requires a signed contract and leaves all customer records untouched when it is missing', async () => {
-    lead.contracts = [{ id: 'contract-1', status: 'SENT_FOR_SIGNATURE' }];
+    contracts.findOne.mockReturnValue(query(null));
 
     await expect(service.execute(ACTOR_ID, LEAD_ID)).rejects.toMatchObject({
-      response: expect.objectContaining({ code: 'SIGNED_CONTRACT_REQUIRED' }),
+      response: expect.objectContaining({ code: 'VERIFIED_CONTRACT_AND_EVIDENCE_REQUIRED' }),
     });
 
     expect(organizations.create).not.toHaveBeenCalled();
@@ -151,12 +210,13 @@ describe('ActivateCrmLeadService (UC-64)', () => {
     expect(session.endSession).toHaveBeenCalledTimes(1);
   });
 
-  it('does not invent an account when no active ALSM user matches the customer email', async () => {
-    const result = await service.execute(ACTOR_ID, LEAD_ID);
+  it('requires the verified signer account before creating a customer organization', async () => {
+    await expect(service.execute(ACTOR_ID, LEAD_ID)).rejects.toMatchObject({
+      response: expect.objectContaining({ code: 'VERIFIED_SIGNER_ACCOUNT_REQUIRED' }),
+    });
 
-    expect(organizations.create).toHaveBeenCalledWith([expect.objectContaining({ members: [] })], { session });
-    expect(result.adminLinked).toBe(false);
-    expect(lead.provisioning?.adminLinked).toBe(false);
+    expect(organizations.create).not.toHaveBeenCalled();
+    expect(lead.provisioning).toBeUndefined();
   });
 
   it('returns the persisted conversion on retry without creating another organization or audit', async () => {
@@ -173,6 +233,7 @@ describe('ActivateCrmLeadService (UC-64)', () => {
   });
 
   it('returns a safe processing error when audit persistence fails so Mongo can abort the transaction', async () => {
+    users.findOne.mockReturnValue(query({ _id: new Types.ObjectId('6b8d90b0569ea93e27ad862c') }));
     audits.create.mockRejectedValue(new Error('private database connection detail'));
 
     await expect(service.execute(ACTOR_ID, LEAD_ID)).rejects.toBeInstanceOf(ServiceUnavailableException);
