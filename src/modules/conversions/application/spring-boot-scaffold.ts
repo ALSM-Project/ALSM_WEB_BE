@@ -657,14 +657,16 @@ java -jar ${jar} ${exampleJob}
 or without building the jar first:
 
 \`\`\`bash
-mvn spring-boot:run -Dspring-boot.run.arguments=${exampleJob}
+mvn spring-boot:run "-Dspring-boot.run.arguments=${exampleJob}"
 \`\`\`
+
+Keep the quotes: without them PowerShell splits the argument at the first dot and Maven reports \`Unknown lifecycle phase ".run.arguments=..."\`.
 
 The jar is self-contained (every dependency is inside), so it can be copied to any machine with Java ${javaVersion} or newer.`
     : `The application starts the Spring context and then runs the job whose name you pass as the first argument. Without a name it starts and does nothing (\`spring.batch.job.enabled\` is \`false\` on purpose: otherwise every job would run at start-up).
 
 \`\`\`bash
-mvn spring-boot:run -Dspring-boot.run.arguments=${exampleJob}
+mvn spring-boot:run "-Dspring-boot.run.arguments=${exampleJob}"
 \`\`\`
 
 or, after \`mvn package\`:
