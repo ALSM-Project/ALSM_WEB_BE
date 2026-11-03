@@ -1,6 +1,51 @@
 import { Lead, LeadSchema } from './modules/crm/infrastructure/lead.schema';
 import { LEAD_REPOSITORY } from './modules/crm/domain/lead.types';
 import { MongoLeadRepository } from './modules/crm/infrastructure/mongo-lead.repository';
+import {
+  ContractAccessGrant,
+  ContractAccessGrantSchema,
+  ContractInvitation,
+  ContractInvitationSchema,
+  PublicInvitationRateLimit,
+  PublicInvitationRateLimitSchema,
+} from './modules/crm/infrastructure/contract-invitation.schema';
+import { CONTRACT_INVITATION_REPOSITORY } from './modules/crm/domain/contract-invitation.types';
+import { MongoContractInvitationRepository } from './modules/crm/infrastructure/mongo-contract-invitation.repository';
+import { ContractInvitationsController } from './modules/crm/presentation/contract-invitations.controller';
+import { ProspectInvitationsController } from './modules/crm/presentation/prospect-invitations.controller';
+import { ContractInvitationAccessService } from './modules/crm/application/contract-invitation-access.service';
+import { PublicInvitationRateLimitService } from './modules/crm/application/public-invitation-rate-limit.service';
+import { CreateContractInvitationService } from './modules/crm/application/create-contract-invitation.service';
+import { ListContractInvitationsService } from './modules/crm/application/list-contract-invitations.service';
+import { ResendContractInvitationService } from './modules/crm/application/resend-contract-invitation.service';
+import { RevokeContractInvitationService } from './modules/crm/application/revoke-contract-invitation.service';
+import { ResolveContractInvitationService } from './modules/crm/application/resolve-contract-invitation.service';
+import { RegisterProspectService } from './modules/crm/application/register-prospect.service';
+import { AcceptContractInvitationService } from './modules/crm/application/accept-contract-invitation.service';
+import { ContractAggregate, ContractAggregateSchema, ContractVersion, ContractVersionSchema } from './modules/crm/infrastructure/contract-aggregate.schema';
+import { CONTRACT_AGGREGATE_REPOSITORY } from './modules/crm/domain/contract-aggregate.types';
+import { MongoContractAggregateRepository } from './modules/crm/infrastructure/mongo-contract-aggregate.repository';
+import { CONTRACT_AGGREGATE_UNIT_OF_WORK } from './modules/crm/application/contract-aggregate-unit-of-work.port';
+import { MongoContractAggregateUnitOfWork } from './modules/crm/infrastructure/mongo-contract-aggregate.unit-of-work';
+import { ContractAggregateService } from './modules/crm/application/contract-aggregate.service';
+import { ContractAggregateController } from './modules/crm/presentation/contract-aggregate.controller';
+import { ContractNotificationEmailOutbox, ContractNotificationEmailOutboxSchema } from './modules/crm/infrastructure/contract-notification-email-outbox.schema';
+import { CONTRACT_NOTIFICATION_EMAIL_OUTBOX_REPOSITORY } from './modules/crm/domain/contract-notification-email-outbox.types';
+import { MongoContractNotificationEmailOutboxRepository } from './modules/crm/infrastructure/mongo-contract-notification-email-outbox.repository';
+import { ContractNotificationEmailOutboxWorker } from './modules/crm/infrastructure/contract-notification-email-outbox.worker';
+import { ContractTemplateVersionDocument, ContractTemplateVersionSchema } from './modules/crm/infrastructure/contract-template.schema';
+import { CONTRACT_TEMPLATE_REPOSITORY } from './modules/crm/domain/contract-template.types';
+import { MongoContractTemplateRepository } from './modules/crm/infrastructure/mongo-contract-template.repository';
+import { CONTRACT_TEMPLATE_UNIT_OF_WORK } from './modules/crm/application/contract-template-unit-of-work.port';
+import { MongoContractTemplateUnitOfWork } from './modules/crm/infrastructure/mongo-contract-template.unit-of-work';
+import { ContractTemplateService } from './modules/crm/application/contract-template.service';
+import { ContractTemplateController } from './modules/crm/presentation/contract-template.controller';
+import { ContractReviewDocumentService } from './modules/crm/application/contract-review-document.service';
+import { CONTRACT_SIGNING_PROVIDER } from './modules/crm/domain/contract-signing-provider.port';
+import { UnconfiguredContractSigningProviderAdapter } from './modules/crm/infrastructure/unconfigured-contract-signing-provider.adapter';
+import { VnptEContractClient } from './modules/crm/infrastructure/vnpt-econtract.client';
+import { CONTRACT_INVITATION_UNIT_OF_WORK } from './modules/crm/application/contract-invitation-unit-of-work.port';
+import { MongoContractInvitationUnitOfWork } from './modules/crm/infrastructure/mongo-contract-invitation.unit-of-work';
 import { SALES_PERFORMANCE_SOURCE } from './modules/crm/domain/sales-performance-source.port';
 import { MongoSalesPerformanceSource } from './modules/crm/infrastructure/mongo-sales-performance.source';
 import { SALES_UNIT_OF_WORK } from './modules/crm/application/sales-unit-of-work.port';
@@ -220,6 +265,7 @@ import { ResetPasswordService } from './modules/auth/application/reset-password.
 import { ChangePasswordService } from './modules/auth/application/change-password.service';
 import { SetPasswordService } from './modules/auth/application/set-password.service';
 import { EMAIL_PORT } from './modules/auth/domain/email.port';
+import { EMAIL_VERIFICATION_PORT } from './modules/auth/domain/email-verification.port';
 
 import { SmtpEmailAdapter } from './modules/auth/infrastructure/smtp-email.adapter';
 import { PASSWORD_RESET_REPOSITORY } from './modules/auth/domain/password-reset.repository';
@@ -341,6 +387,13 @@ import { NotificationsService } from './modules/notifications/notifications.serv
     AuditModule,
     MongooseModule.forFeature([
       { name: Lead.name, schema: LeadSchema },
+      { name: ContractInvitation.name, schema: ContractInvitationSchema },
+      { name: ContractAccessGrant.name, schema: ContractAccessGrantSchema },
+      { name: PublicInvitationRateLimit.name, schema: PublicInvitationRateLimitSchema },
+      { name: ContractAggregate.name, schema: ContractAggregateSchema },
+      { name: ContractVersion.name, schema: ContractVersionSchema },
+      { name: ContractNotificationEmailOutbox.name, schema: ContractNotificationEmailOutboxSchema },
+      { name: ContractTemplateVersionDocument.name, schema: ContractTemplateVersionSchema },
       { name: UC58_LEAD_MODEL, schema: Uc58LeadSchema },
       { name: User.name, schema: UserSchema },
       { name: Organization.name, schema: OrganizationSchema },
@@ -383,6 +436,10 @@ import { NotificationsService } from './modules/notifications/notifications.serv
   controllers: [
     SalesController,
     SalesCrmController,
+    ContractInvitationsController,
+    ProspectInvitationsController,
+    ContractAggregateController,
+    ContractTemplateController,
     TeamsController,
     TeamReportsController,
     TeamJobAssignmentsController,
@@ -414,6 +471,28 @@ import { NotificationsService } from './modules/notifications/notifications.serv
   ],
   providers: [
     { provide: LEAD_REPOSITORY, useClass: MongoLeadRepository },
+    { provide: CONTRACT_INVITATION_REPOSITORY, useClass: MongoContractInvitationRepository },
+    { provide: CONTRACT_INVITATION_UNIT_OF_WORK, useClass: MongoContractInvitationUnitOfWork },
+    ContractInvitationAccessService,
+    PublicInvitationRateLimitService,
+    CreateContractInvitationService,
+    ListContractInvitationsService,
+    ResendContractInvitationService,
+    RevokeContractInvitationService,
+    ResolveContractInvitationService,
+    RegisterProspectService,
+    AcceptContractInvitationService,
+    { provide: CONTRACT_AGGREGATE_REPOSITORY, useClass: MongoContractAggregateRepository },
+    { provide: CONTRACT_NOTIFICATION_EMAIL_OUTBOX_REPOSITORY, useClass: MongoContractNotificationEmailOutboxRepository },
+    ContractNotificationEmailOutboxWorker,
+    { provide: CONTRACT_AGGREGATE_UNIT_OF_WORK, useClass: MongoContractAggregateUnitOfWork },
+    ContractAggregateService,
+    VnptEContractClient,
+    { provide: CONTRACT_SIGNING_PROVIDER, useClass: UnconfiguredContractSigningProviderAdapter },
+    ContractReviewDocumentService,
+    { provide: CONTRACT_TEMPLATE_REPOSITORY, useClass: MongoContractTemplateRepository },
+    { provide: CONTRACT_TEMPLATE_UNIT_OF_WORK, useClass: MongoContractTemplateUnitOfWork },
+    ContractTemplateService,
     { provide: SALES_PERFORMANCE_SOURCE, useClass: MongoSalesPerformanceSource },
     { provide: SALES_REVENUE_REPOSITORY, useClass: MongoSalesRevenueRepository },
     { provide: SALES_TEAM_ADMINISTRATION, useClass: SalesTeamAdministrationService },
@@ -645,6 +724,7 @@ import { NotificationsService } from './modules/notifications/notifications.serv
     { provide: BILLING_USAGE_REPOSITORY, useClass: MongoBillingUsageRepository },
     { provide: PASSWORD_RESET_REPOSITORY, useClass: MongoPasswordResetRepository },
     { provide: EMAIL_VERIFICATION_REPOSITORY, useClass: MongoEmailVerificationRepository },
+    { provide: EMAIL_VERIFICATION_PORT, useExisting: EmailVerificationService },
     MongoQuoteRequestRepository,
     { provide: QUOTE_REQUEST_REPOSITORY, useClass: MongoQuoteRequestRepository },
   ],

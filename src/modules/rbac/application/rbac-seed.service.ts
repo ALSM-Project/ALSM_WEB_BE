@@ -67,6 +67,9 @@ export class RbacSeedService implements OnApplicationBootstrap {
     await this.ensurePermission('teams.manage', 'Manage Teams', 'teams', 'View and manage team workload and performance');
     await this.ensurePermission('sales.leads.view', 'View Sales Leads', 'sales', 'View sourced commercial leads');
     await this.ensurePermission('sales.leads.manage', 'Manage Sales Leads', 'sales', 'Create and reassign commercial sales leads');
+    await this.ensurePermission('sales.contracts.review', 'Review Contracts', 'sales', 'Review commercial contract drafts in the assigned Sales scope');
+    await this.ensurePermission('sales.contract-templates.manage', 'Manage Contract Template Drafts', 'sales', 'Create immutable draft versions of legal contract templates');
+    await this.ensurePermission('sales.contract-templates.approve', 'Approve Contract Templates', 'sales', 'Approve legal contract template versions with separation of duties');
     // Technical & Support (Section 3.10)
     await this.ensurePermission('conversions.retry', 'Retry failed conversion jobs', 'conversions', 'Retry dead conversion jobs');
     await this.ensurePermission('projects.demo.view', 'View Demo Projects', 'projects', 'View demo projects and sample workspaces');
@@ -175,6 +178,9 @@ export class RbacSeedService implements OnApplicationBootstrap {
       'teams.manage',
       'sales.leads.view',
       'sales.leads.manage',
+      'sales.contracts.review',
+      'sales.contract-templates.manage',
+      'sales.contract-templates.approve',
       'sales.reports.view',
       'sales.team-performance.view',
       'sales.discounts.view',
@@ -277,6 +283,7 @@ export class RbacSeedService implements OnApplicationBootstrap {
       'billing.usage.view',
       'sales.leads.view',
       'sales.leads.manage',
+      'sales.contracts.review',
       'sales.reports.view',
       'sales.team-performance.view',
       'sales.discounts.view',
@@ -293,6 +300,7 @@ export class RbacSeedService implements OnApplicationBootstrap {
       'sales.discounts.executive.review',
       'sales.reports.view',
       'sales.team-performance.view',
+      'sales.contracts.review',
     ]);
 
     await this.grantRolePermissions('INTERNAL_SALES', [

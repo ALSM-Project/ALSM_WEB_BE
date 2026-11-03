@@ -9,10 +9,13 @@ import { AppModule } from './app.module';
 import { ApiExceptionFilter } from './shared/errors/api-exception.filter';
 import { ConversionWorkerRunner } from './modules/conversions/infrastructure/conversion-worker.runner';
 import { ValidationWorkerRunner } from './modules/validation/infrastructure/validation-worker.runner';
+import { ContractNotificationEmailOutboxWorker } from './modules/crm/infrastructure/contract-notification-email-outbox.worker';
 import { createCorsOptions } from './config/cors-policy';
 
 async function bootstrap(): Promise<void> {
-  const app = await NestFactory.create(AppModule);
+  // Signing-provider webhook verification needs the exact bytes that were signed by the provider.
+  // Controllers must still pass rawBody directly to the configured adapter and never log it.
+  const app = await NestFactory.create(AppModule, { rawBody: true });
   app.enableShutdownHooks();
   app.use(
     helmet({
@@ -48,6 +51,8 @@ async function bootstrap(): Promise<void> {
     conversionWorker.start();
     const validationWorker = app.get(ValidationWorkerRunner);
     validationWorker.start();
+    const contractEmailWorker = app.get(ContractNotificationEmailOutboxWorker);
+    contractEmailWorker.start();
   } catch (workerErr) {
     console.error('Failed to start worker runners in main process:', workerErr);
   }

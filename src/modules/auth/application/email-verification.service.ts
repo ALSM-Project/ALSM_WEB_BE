@@ -8,7 +8,8 @@ import { ConfigService } from '@nestjs/config';
 import { createHash, randomBytes, randomInt } from 'crypto';
 import { isAccountAdmitted } from '../domain/account-admission';
 import { USER_REPOSITORY, UserRecord, UserRepository } from '../../users/domain/user.repository';
-import { EMAIL_PORT, EmailPort } from '../domain/email.port';
+import { EMAIL_PORT, EmailPort, EmailDeliveryStatus } from '../domain/email.port';
+import { EmailVerificationPort } from '../domain/email-verification.port';
 import {
   EMAIL_VERIFICATION_REPOSITORY,
   EmailVerificationRepository,
@@ -17,7 +18,7 @@ import {
 const VERIFICATION_TOKEN_TTL_MS = 15 * 60 * 1000; // 15 minutes
 
 @Injectable()
-export class EmailVerificationService {
+export class EmailVerificationService implements EmailVerificationPort {
   constructor(
     private readonly config: ConfigService,
     @Inject(USER_REPOSITORY) private readonly users: UserRepository,
@@ -26,7 +27,7 @@ export class EmailVerificationService {
     private readonly emailVerifications: EmailVerificationRepository,
   ) {}
 
-  async sendVerificationEmail(user: UserRecord): Promise<void> {
+  async sendVerificationEmail(user: UserRecord): Promise<EmailDeliveryStatus> {
     const plainToken = randomBytes(32).toString('hex');
     const tokenHash = hashToken(plainToken);
     const code = randomInt(100000, 1000000).toString();
@@ -41,7 +42,7 @@ export class EmailVerificationService {
 
     const verifyUrl = this.buildVerifyUrl(plainToken, user.email);
 
-    await this.email.send({
+    const delivery = await this.email.send({
       to: user.email,
       subject: 'Verify your ALSM Account Email',
       html:
@@ -53,6 +54,7 @@ export class EmailVerificationService {
         `<p>If you did not sign up for an ALSM account, please ignore this email.</p>`,
       text: `Hi ${user.fullName}, verify your email. Code: ${code}. Link: ${verifyUrl}`,
     });
+    return delivery ?? 'UNCONFIRMED';
   }
 
   async verify(email: string, tokenOrCode: string): Promise<UserRecord> {

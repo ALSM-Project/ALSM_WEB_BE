@@ -208,15 +208,15 @@ describe('Internal Staff Portal & Platform Administration Workflows', () => {
 
       leadModel.findById.mockReturnValue({ exec: jest.fn().mockResolvedValue(mockLead) });
 
-      const updated = await salesCrmService.signContract('manager-user-1', 'lead-1', 'contract-1');
+      await expect(
+        salesCrmService.signContract('manager-user-1', 'lead-1', 'contract-1'),
+      ).rejects.toMatchObject({
+        response: expect.objectContaining({ code: 'REAL_SIGNING_NOT_CONFIGURED' }),
+      });
 
-      expect(updated.stage).toBe('NEW');
-      expect(mockLead.contracts[0].status).toBe('SIGNED');
-      expect(leadModel.updateOne).toHaveBeenCalledWith(
-        expect.objectContaining({ contracts: expect.any(Object) }),
-        expect.objectContaining({ $set: expect.objectContaining({ 'contracts.$.status': 'SIGNED' }) }),
-      );
-      expect(auditRepo.append).toHaveBeenCalledWith(
+      expect(mockLead.contracts[0].status).toBe('SENT_FOR_SIGNATURE');
+      expect(leadModel.updateOne).not.toHaveBeenCalled();
+      expect(auditRepo.append).not.toHaveBeenCalledWith(
         expect.objectContaining({ action: 'LEAD_CONTRACT_SIGNED' }),
       );
     });

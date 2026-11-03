@@ -33,6 +33,7 @@ import { SalesReportQueryDto } from './sales-report-query.dto';
 import { TeamAccessService } from '../../teams/application/team-access.service';
 import { ReviewDiscountService } from '../application/review-discount.service';
 import { DiscountRequestDto, RejectDiscountDto } from './discount-review.dto';
+import { ContractInvitationAccessService } from '../application/contract-invitation-access.service';
 
 @ApiTags('CRM & Sales (Sections 3.11 & 3.12)')
 @ApiBearerAuth()
@@ -46,6 +47,7 @@ export class SalesCrmController {
     private readonly activateCrmLeadService: ActivateCrmLeadService,
     private readonly teamAccess: TeamAccessService,
     private readonly reviewDiscountService: ReviewDiscountService,
+    private readonly leadInvitationAccess: ContractInvitationAccessService,
   ) {}
 
   @Get('pipeline')
@@ -60,16 +62,22 @@ export class SalesCrmController {
   }
 
   @Get('leads')
+  @UseGuards(CurrentSessionGuard, PermissionsGuard)
+  @RequirePermissions('sales.leads.view')
   @ApiOperation({ summary: 'List CRM leads with filters (3.11.1)' })
   async listLeads(
+    @CurrentUser() user: AuthenticatedUser,
     @Headers('x-organization-id') organizationId: string | undefined,
     @Query('stage') stage?: string,
     @Query('search') search?: string,
   ) {
-    return this.crmService.listLeads(organizationId, { stage, search });
+    const organization = await this.teamAccess.reportingOrganization(user.userId, organizationId);
+    return this.crmService.listLeads(organization.id, { stage, search });
   }
 
   @Post('leads')
+  @UseGuards(CurrentSessionGuard, PermissionsGuard)
+  @RequirePermissions('sales.leads.manage')
   @ApiOperation({ summary: 'Create new CRM lead (3.11.3)' })
   async createLead(
     @CurrentUser() user: AuthenticatedUser,
@@ -81,8 +89,20 @@ export class SalesCrmController {
   }
 
   @Get('leads/:id')
+  @UseGuards(CurrentSessionGuard, PermissionsGuard)
+  @RequirePermissions('sales.leads.view')
   @ApiOperation({ summary: 'Get CRM lead details (3.11.2)' })
-  async getLead(@Param('id') id: string) {
+  async getLead(
+    @CurrentUser() user: AuthenticatedUser,
+    @Headers('x-organization-id') organizationId: string | undefined,
+    @Param('id') id: string,
+  ) {
+    await this.leadInvitationAccess.requireLeadAccess(
+      user.userId,
+      organizationId,
+      id,
+      'sales.leads.view',
+    );
     return this.crmService.getLead(id);
   }
 
@@ -114,6 +134,8 @@ export class SalesCrmController {
   }
 
   @Post('leads/:id/interactions')
+  @UseGuards(CurrentSessionGuard, PermissionsGuard)
+  @RequirePermissions('sales.leads.manage')
   @ApiOperation({ summary: 'Log phone call / interaction (3.11.4)' })
   async logInteraction(
     @CurrentUser() user: AuthenticatedUser,
@@ -124,6 +146,8 @@ export class SalesCrmController {
   }
 
   @Post('leads/:id/demos')
+  @UseGuards(CurrentSessionGuard, PermissionsGuard)
+  @RequirePermissions('sales.leads.manage')
   @ApiOperation({ summary: 'Schedule product demo with Meet link (3.11.5)' })
   async scheduleDemo(
     @CurrentUser() user: AuthenticatedUser,
@@ -134,6 +158,8 @@ export class SalesCrmController {
   }
 
   @Post('leads/:id/quotes')
+  @UseGuards(CurrentSessionGuard, PermissionsGuard)
+  @RequirePermissions('sales.leads.manage')
   @ApiOperation({ summary: 'Create and send pricing quote (3.11.6)' })
   async sendQuote(
     @CurrentUser() user: AuthenticatedUser,
@@ -169,7 +195,8 @@ export class SalesCrmController {
   @Post('leads/:id/contracts/:contractId/send')
   @UseGuards(PermissionsGuard)
   @RequirePermissions('sales.leads.manage')
-  @ApiOperation({ summary: 'Send a draft contract for electronic signature and notify the customer account' })
+  @ApiOperation({ summary: 'Deprecated simulation endpoint; real provider dispatch is not configured' })
+  @ApiResponse({ status: 409, description: 'Signing provider is not configured; no signature request was sent' })
   async sendContractForSignature(
     @CurrentUser() user: AuthenticatedUser,
     @Param('id') id: string,
@@ -181,7 +208,8 @@ export class SalesCrmController {
   @Post('leads/:id/contracts/:contractId/sign')
   @UseGuards(CurrentSessionGuard, PermissionsGuard)
   @RequirePermissions('sales.leads.manage')
-  @ApiOperation({ summary: 'Mark a contract as signed; customer conversion is a separate UC-64 action' })
+  @ApiOperation({ summary: 'Deprecated simulation endpoint; only a verified provider event may confirm signature' })
+  @ApiResponse({ status: 409, description: 'Legacy signature simulation is disabled' })
   async signContract(
     @CurrentUser() user: AuthenticatedUser,
     @Param('id') id: string,

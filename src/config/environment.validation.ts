@@ -36,6 +36,9 @@ export const environmentValidationSchema = Joi.object({
   GOOGLE_CLIENT_ID: Joi.string().allow('').default(''),
   CONVERSION_WORKER_ENABLED: Joi.boolean().default(false),
   STORAGE_ROOT: Joi.string().default('./storage'),
+  CONTRACT_EVIDENCE_ENCRYPTION_KEY: Joi.string().allow('').default(''),
+  CONTRACT_PDF_FONT_PATH: Joi.string().allow('').default(''),
+  CONTRACT_PDF_FONT_BOLD_PATH: Joi.string().allow('').default(''),
   PYTHON_EXECUTABLE: Joi.string().default('python'),
   TOOL_CONVERT_DIR: Joi.string().allow('').default(''),
   CONVERSION_TOOL_TIMEOUT_MS: Joi.number().integer().positive().default(120000),
@@ -55,6 +58,21 @@ export const environmentValidationSchema = Joi.object({
   APP_BASE_URL: Joi.string()
     .uri({ scheme: ['http', 'https'] })
     .default('http://localhost:5173'),
+  CONTRACT_PORTAL_URL: Joi.string()
+    .uri({ scheme: ['http', 'https'] })
+    .allow('')
+    .default(''),
+  VNPT_ECONTRACT_ENVIRONMENT: Joi.when('NODE_ENV', {
+    is: 'production',
+    then: Joi.string().valid('DISABLED', 'SANDBOX', 'PRODUCTION').default('DISABLED'),
+    otherwise: Joi.string().valid('DISABLED', 'SANDBOX').default('DISABLED'),
+  }),
+  VNPT_ECONTRACT_CLIENT_ID: Joi.when('VNPT_ECONTRACT_ENVIRONMENT', { is: Joi.valid('SANDBOX', 'PRODUCTION'), then: Joi.string().trim().min(1).required(), otherwise: Joi.string().allow('').default('') }),
+  VNPT_ECONTRACT_CLIENT_SECRET: Joi.when('VNPT_ECONTRACT_ENVIRONMENT', { is: Joi.valid('SANDBOX', 'PRODUCTION'), then: Joi.string().min(1).required(), otherwise: Joi.string().allow('').default('') }),
+  VNPT_ECONTRACT_USERNAME: Joi.when('VNPT_ECONTRACT_ENVIRONMENT', { is: Joi.valid('SANDBOX', 'PRODUCTION'), then: Joi.string().trim().min(1).required(), otherwise: Joi.string().allow('').default('') }),
+  VNPT_ECONTRACT_PASSWORD: Joi.when('VNPT_ECONTRACT_ENVIRONMENT', { is: Joi.valid('SANDBOX', 'PRODUCTION'), then: Joi.string().min(1).required(), otherwise: Joi.string().allow('').default('') }),
+  VNPT_ECONTRACT_CALLBACK_KEY: Joi.when('VNPT_ECONTRACT_ENVIRONMENT', { is: Joi.valid('SANDBOX', 'PRODUCTION'), then: Joi.string().min(1).required(), otherwise: Joi.string().allow('').default('') }),
+  VNPT_ECONTRACT_CALLBACK_SECRET: Joi.when('VNPT_ECONTRACT_ENVIRONMENT', { is: Joi.valid('SANDBOX', 'PRODUCTION'), then: Joi.string().min(1).required(), otherwise: Joi.string().allow('').default('') }),
   /** Partner Portal origin linked from UC-48 export emails; APP_BASE_URL when unset. */
   PARTNER_PORTAL_URL: Joi.string()
     .uri({ scheme: ['http', 'https'] })
