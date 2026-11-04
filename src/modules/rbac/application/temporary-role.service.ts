@@ -274,8 +274,65 @@ export class TemporaryRoleService {
       }
     }
 
-    if (statusFilter && statusFilter !== 'ALL') {
-      filter.status = statusFilter;
+    // 2. Status Filter & Wall-clock Expiry Rules (SRS 3.2)
+    const VALID_STATUSES = new Set(['ACTIVE', 'EXPIRED', 'REVOKED', 'ALL']);
+    const normalizedStatus = statusFilter ? statusFilter.trim().toUpperCase() : undefined;
+    if (normalizedStatus && !VALID_STATUSES.has(normalizedStatus)) {
+      throw new BadRequestException({
+        code: 'INVALID_STATUS',
+        message: 'Status filter must be ACTIVE, EXPIRED, REVOKED, or ALL',
+      });
+    }
+
+    const now = new Date();
+    if (normalizedStatus === 'ACTIVE') {
+      filter.status = 'ACTIVE';
+      filter.expiresAt = { $gt: now };
+    } else if (normalizedStatus === 'EXPIRED') {
+      const expiredClause = [
+        { status: 'EXPIRED' },
+        { status: 'ACTIVE', expiresAt: { $lte: now } },
+      ];
+      if (filter.$or) {
+        filter.$and = [{ $or: filter.$or }, { $or: expiredClause }];
+        delete filter.$or;
+      } else {
+        filter.$or = expiredClause;
+      }
+    } else if (normalizedStatus === 'REVOKED') {
+      filter.status = 'REVOKED';
+    }
+
+    // 3. Search by User Name or Role Name (SRS 3.3)
+    const term = searchQuery?.trim();
+    if (term) {
+      const matchingUsers = await this.userModel
+        .find({
+          $or: [
+            { fullName: { $regex: term, $options: 'i' } },
+            { email: { $regex: term, $options: 'i' } },
+          ],
+        })
+        .select('_id')
+        .lean()
+        .exec();
+
+      const matchingUserIds = matchingUsers.map((u) => u._id);
+      const searchOr: FilterQuery<TemporaryRoleDocument>[] = [
+        { roleId: { $regex: term, $options: 'i' } },
+      ];
+      if (matchingUserIds.length > 0) {
+        searchOr.push({ userId: { $in: matchingUserIds } });
+      }
+
+      if (filter.$and) {
+        filter.$and.push({ $or: searchOr });
+      } else if (filter.$or) {
+        filter.$and = [{ $or: filter.$or }, { $or: searchOr }];
+        delete filter.$or;
+      } else {
+        filter.$or = searchOr;
+      }
     }
 
     let qb: any = this.tempRoleModel.find(filter);
@@ -293,7 +350,33 @@ export class TemporaryRoleService {
     }
 
     const docs = await qb.exec();
-    return docs;
+
+    // 4. Memory Normalization & Search Fallback
+    const nowTime = Date.now();
+    const mappedDocs = (Array.isArray(docs) ? docs : []).map((doc: any) => {
+      if (doc.status === 'ACTIVE' && doc.expiresAt && new Date(doc.expiresAt).getTime() <= nowTime) {
+        if (typeof doc.toObject === 'function') {
+          const obj = doc.toObject();
+          obj.status = 'EXPIRED';
+          return obj;
+        }
+        return { ...doc, status: 'EXPIRED' };
+      }
+      return doc;
+    });
+
+    if (term) {
+      const lower = term.toLowerCase();
+      return mappedDocs.filter((item: any) => {
+        const userObj = typeof item.userId === 'object' && item.userId ? item.userId : null;
+        const name = (userObj?.fullName || '').toLowerCase();
+        const email = (userObj?.email || '').toLowerCase();
+        const role = (item.roleId || item.role || '').toLowerCase();
+        return name.includes(lower) || email.includes(lower) || role.includes(lower);
+      });
+    }
+
+    return mappedDocs;
   }
 
   async getMyRequests(userId: string) {

@@ -77,12 +77,13 @@ export class TemporaryRoleController {
 
   @Get()
   @RequirePermissions('roles.temporary.view')
-  @ApiOperation({ summary: 'View active temporary roles (3.15.2)' })
+  @ApiOperation({ summary: 'View temporary roles with status filter and search (UC-92 & 3.15.2)' })
   async listRoles(
     @CurrentUser() user: AuthenticatedUser,
     @Query('status') status?: string,
+    @Query('search') search?: string,
   ) {
-    return this.tempRoleService.listTemporaryRoles(user?.userId, status);
+    return this.tempRoleService.listTemporaryRoles(user?.userId, status, search);
   }
 
   @Get('my-requests')
