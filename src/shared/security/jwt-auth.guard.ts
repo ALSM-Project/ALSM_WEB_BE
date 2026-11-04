@@ -30,6 +30,8 @@ export class JwtAuthGuard implements CanActivate {
       isPlatformAdmin: boolean;
       sid?: string;
       sv?: string;
+      roles?: string[];
+      role?: string;
     };
     try {
       payload = await this.jwt.verifyAsync<typeof payload>(token, {
@@ -51,6 +53,7 @@ export class JwtAuthGuard implements CanActivate {
       isPlatformAdmin: payload.isPlatformAdmin,
       sessionId: payload.sid,
       sessionVersion: payload.sv,
+      roles: payload.roles || (payload.role ? [payload.role] : (payload.isPlatformAdmin ? ['ADMIN'] : ['STAFF'])),
     };
     return true;
   }
