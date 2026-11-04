@@ -7,6 +7,7 @@ import {
 import { StoragePort } from '../src/shared/storage/storage.port';
 import { OrganizationContextService } from '../src/modules/organizations/application/organization-context.service';
 import { ProjectService } from '../src/modules/projects/application/project.service';
+import { ConversionProjectAccessService } from '../src/modules/conversions/application/conversion-project-access.service';
 
 describe('GetConversionResultService', () => {
   const jobs = { findById: jest.fn() };
@@ -18,6 +19,7 @@ describe('GetConversionResultService', () => {
     storage as unknown as StoragePort,
     organizationContext as unknown as OrganizationContextService,
     projects as unknown as ProjectService,
+    { requireAssignment: jest.fn() } as unknown as ConversionProjectAccessService,
   );
 
   beforeEach(() => {

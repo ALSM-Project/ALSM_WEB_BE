@@ -26,7 +26,7 @@
   "scripts": {
     "build": "nest build",
     "start": "node dist/main",
-    "start:dev": "nest start --watch",
+    "start:dev": "node --max-old-space-size=4096 node_modules/@nestjs/cli/bin/nest.js start --watch",
     "start:prod": "node dist/main",
     "worker": "ts-node -r tsconfig-paths/register src/worker.ts",
     "worker:dev": "node --watch -r ts-node/register -r tsconfig-paths/register src/worker.ts",
@@ -37,7 +37,7 @@
     "docker:logs": "docker compose logs -f",
     "lint": "eslint \"{src,test,evaluation}/**/*.ts\" --max-warnings=0",
     "format": "prettier --write \"{src,test,evaluation}/**/*.ts\"",
-    "test": "jest --runInBand",
+    "test": "node --max-old-space-size=4096 node_modules/jest/bin/jest.js --runInBand",
     "test:watch": "jest --watch",
     "test:e2e": "jest --config ./test/jest-e2e.json --passWithNoTests",
     "eval:ai:validate": "ts-node evaluation/ai-validation/src/validate-dataset.cli.ts",
@@ -75,6 +75,7 @@
     "mongoose": "^8.18.0",
     "nodemailer": "^9.0.5",
     "otpauth": "^9.5.1",
+    "pdfkit": "^0.20.2",
     "qrcode": "^1.5.4",
     "reflect-metadata": "^0.2.2",
     "rxjs": "^7.8.2"
@@ -89,6 +90,7 @@
     "@types/jest": "^30.0.0",
     "@types/multer": "^1.4.13",
     "@types/node": "^24.3.0",
+    "@types/pdfkit": "^0.17.7",
     "@types/qrcode": "^1.5.6",
     "eslint": "^9.33.0",
     "eslint-config-prettier": "^10.1.8",

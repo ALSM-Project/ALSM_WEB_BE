@@ -10,6 +10,8 @@ describe('AuthService user projection', () => {
         fullName: 'Customer',
         isPlatformAdmin: false,
         isActive: true,
+        isLocked: false,
+        isEmailVerified: true,
         mfa: {
           enabled: true,
           secret: 'encrypted-mfa-secret',
@@ -54,6 +56,8 @@ describe('AuthService user projection', () => {
         fullName: 'Google User',
         isPlatformAdmin: false,
         isActive: true,
+        isLocked: false,
+        isEmailVerified: true,
         mfa: { enabled: false },
         createdAt: new Date(),
         updatedAt: new Date(),

@@ -6,6 +6,8 @@ export type EngagementTypeDocument = HydratedDocument<EngagementType>;
 @Schema({ collection: 'engagement_types', timestamps: true })
 export class EngagementType {
   @Prop({ required: true, unique: true, trim: true }) name!: string;
+  @Prop({ trim: true, lowercase: true, index: { unique: true, sparse: true } }) normalizedName?: string;
+  @Prop({ trim: true, uppercase: true, index: { unique: true, sparse: true } }) code?: string;
   @Prop({ trim: true }) description?: string;
   @Prop({ required: true, default: 0 }) price!: number;
   @Prop({
@@ -37,7 +39,14 @@ export class EngagementType {
   };
 
   @Prop({ default: false }) includesCobolConversion!: boolean;
+  @Prop({ type: [String], default: [] }) features!: string[];
+  @Prop({ trim: true, default: 'STANDARD' }) supportTier!: string;
+  @Prop({ min: 1, max: 8760, default: 12 }) slaHours!: number;
   @Prop({ default: true }) isActive!: boolean;
+  @Prop({ trim: true, unique: true, sparse: true, select: false }) provisioningRequestId?: string;
+  @Prop({ select: false }) provisioningFingerprint?: string;
+  createdAt!: Date;
+  updatedAt!: Date;
 }
 
 export const EngagementTypeSchema = SchemaFactory.createForClass(EngagementType);

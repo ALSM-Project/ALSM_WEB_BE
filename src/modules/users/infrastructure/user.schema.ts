@@ -1,8 +1,10 @@
 import { Prop, Schema, SchemaFactory } from '@nestjs/mongoose';
 import { HydratedDocument } from 'mongoose';
+import { UserAccountType } from '../domain/user.repository';
 export type UserDocument = HydratedDocument<User>;
 @Schema({ collection: 'users', timestamps: true })
 export class User {
+  @Prop({ enum: ['STANDARD', 'PROSPECT'], required: false }) accountType?: UserAccountType;
   @Prop({ required: true, unique: true, lowercase: true, trim: true }) email!: string;
   @Prop({ required: false, select: false }) passwordHash?: string;
   @Prop({ required: true, trim: true }) fullName!: string;
@@ -14,6 +16,7 @@ export class User {
   @Prop({ trim: true }) lockReason?: string;
   @Prop() lockedAt?: Date;
   @Prop() lockedBy?: string;
+  @Prop() lockDuration?: string;
   @Prop({
     type: {
       enabled: { type: Boolean, default: false },

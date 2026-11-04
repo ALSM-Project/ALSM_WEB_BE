@@ -13,6 +13,7 @@ try {
 
 async function bootstrapWorker(): Promise<void> {
   const app = await NestFactory.createApplicationContext(AppModule);
+  app.enableShutdownHooks();
   app.get(ConversionWorkerRunner).start();
   app.get(ValidationWorkerRunner).start();
 }

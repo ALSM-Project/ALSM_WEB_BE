@@ -263,3 +263,26 @@ export function analyzeBundle(files: BundleFile[]): Map<string, ProgramAnalysis>
   }
   return results;
 }
+
+/** Flattens the unresolved entries (top-level and nested) of a stored dependency tree into
+ * actionable messages. IBM system copybooks never block, whether stored as SYSTEM_PROVIDED
+ * or (analyses made before that status existed) as MISSING. An empty result means the
+ * program may be converted. */
+export function findCopybookBlockers(dependencies: DependencyEntry[]): string[] {
+  const unresolved: string[] = [];
+  const collect = (entries: DependencyEntry[]) => {
+    for (const entry of entries) {
+      const nonBlocking =
+        entry.status === 'RESOLVED' ||
+        entry.status === 'SYSTEM_PROVIDED' ||
+        (entry.status === 'MISSING' && isSystemCopybook(entry.copyName));
+      if (!nonBlocking) {
+        unresolved.push(entry.message ?? `${entry.copyName}: ${entry.status}`);
+      } else if (entry.dependencies) {
+        collect(entry.dependencies);
+      }
+    }
+  };
+  collect(dependencies);
+  return unresolved;
+}

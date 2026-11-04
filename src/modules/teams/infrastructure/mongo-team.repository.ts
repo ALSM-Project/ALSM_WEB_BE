@@ -68,6 +68,20 @@ export class MongoTeamRepository implements TeamRepository {
     return docs.map((doc) => this.map(doc));
   }
 
+  async listForMember(memberId: string, organizationId?: string): Promise<TeamRecord[]> {
+    this.assertSession();
+    const docs = await this.model
+      .find({
+        kind: TeamKind.CONVERSION,
+        memberIds: memberId,
+        'projectAssignments.memberIds': memberId,
+        ...(organizationId ? { organizationId: new Types.ObjectId(organizationId) } : {}),
+      })
+      .session(this.session ?? null)
+      .exec();
+    return docs.map((doc) => this.map(doc));
+  }
+
   async save(input: SaveTeamInput): Promise<TeamRecord | null> {
     this.assertSession();
     const state = {

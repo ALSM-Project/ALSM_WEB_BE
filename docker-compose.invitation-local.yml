@@ -1,0 +1,50 @@
+# Optional local MongoDB replica set for invitation transaction development.
+# This file is intentionally separate from the default Compose configuration
+# and does not alter the MongoDB URI in .env or any production configuration.
+services:
+  # Web 2's local .env.local targets port 3003; keep the default API port 3000 too.
+  backend:
+    ports:
+      - "3003:3003"
+
+  mongodb-invitation-local:
+    image: mongo:8.0
+    command: ["mongod", "--replSet", "alsmInvitationLocal", "--bind_ip_all"]
+    ports:
+      - "127.0.0.1:${ALSM_LOCAL_MONGO_PORT:-27217}:27017"
+    volumes:
+      - invitation_mongodb_data:/data/db
+    healthcheck:
+      test: ["CMD", "mongosh", "--quiet", "--eval", "db.adminCommand({ ping: 1 }).ok"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+
+  mongo-invitation-rs-init:
+    image: mongo:8.0
+    depends_on:
+      mongodb-invitation-local:
+        condition: service_healthy
+    restart: "no"
+    entrypoint: ["/bin/sh", "-ec"]
+    command:
+      - >-
+        mongosh "mongodb://mongodb-invitation-local:27017/admin?directConnection=true"
+        --quiet --eval '
+        const hello = db.adminCommand({hello: 1});
+        if (hello.setName) {
+          if (hello.setName !== "alsmInvitationLocal") { print("Unexpected replica set name"); quit(2); }
+          const cfg = rs.conf();
+          if (cfg.members.length !== 1 || cfg.members[0].host !== "mongodb-invitation-local:27017") { print("Replica set member configuration differs from the local development configuration"); quit(3); }
+          print("Local replica set is already initialized");
+          quit(0);
+        }
+        if (hello.msg === "isdbgrid") { print("Refusing to initialize a replica set on a sharded router"); quit(4); }
+        const result = rs.initiate({_id: "alsmInvitationLocal", members: [{_id: 0, host: "mongodb-invitation-local:27017"}]});
+        if (result.ok !== 1) { printjson(result); quit(5); }
+        print("Local replica set initialized");
+        '
+
+volumes:
+  invitation_mongodb_data:
+    name: alsm_contract_invitation_mongodb_data

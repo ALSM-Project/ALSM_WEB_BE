@@ -42,3 +42,16 @@ export function detectJavaMembers(
   }
   return members;
 }
+
+const ANY_CLASS_PATTERN =
+  /\b(?:public\s+|private\s+|protected\s+)?(?:static\s+)?(?:final\s+|abstract\s+)*class\s+([A-Za-z_$][A-Za-z0-9_$]*)/g;
+
+/** Every class declared in a generated .java file, nested classes included (tool2java writes
+ * each COBOL group item as an inner class), in declaration order. */
+export function detectAllClassNames(content: string): string[] {
+  const names: string[] = [];
+  const pattern = new RegExp(ANY_CLASS_PATTERN.source, 'g');
+  let match: RegExpExecArray | null;
+  while ((match = pattern.exec(content))) names.push(match[1]);
+  return names;
+}

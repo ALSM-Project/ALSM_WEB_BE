@@ -1,9 +1,7 @@
 import { Injectable, Logger, OnApplicationBootstrap } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model } from 'mongoose';
-import * as bcrypt from 'bcrypt';
 import { RbacService } from './rbac.service';
-import { User, UserDocument } from '../../users/infrastructure/user.schema';
 import { Role, RoleDocument } from '../infrastructure/schemas/role.schema';
 
 @Injectable()
@@ -12,16 +10,30 @@ export class RbacSeedService implements OnApplicationBootstrap {
 
   constructor(
     private readonly rbacService: RbacService,
-    @InjectModel(User.name) private readonly userModel: Model<UserDocument>,
     @InjectModel(Role.name) private readonly roleModel: Model<RoleDocument>,
   ) {}
 
+  /** Permissions that already exist, read once per seed instead of once per permission. */
+  private existingPermissions = new Map<string, { label?: string; group?: string; description?: string }>();
+
+  // The permission catalogue gates every request, so startup waits for it (and fails if it cannot
+  // be written) instead of opening the port with an incomplete catalogue.
   async onApplicationBootstrap(): Promise<void> {
+    const started = Date.now();
+    await this.seed();
+    this.logger.log(`RBAC seed finished in ${((Date.now() - started) / 1000).toFixed(1)}s`);
+  }
+
+  private async seed(): Promise<void> {
+    this.existingPermissions = new Map(
+      (await this.rbacService.getPermissions()).map((p) => [p.key, p]),
+    );
     // 1. System Roles
     await this.ensureRole('SYSTEM_ADMIN', 'Platform Admin', 'Platform administrator with unrestricted access', true);
     await this.ensureRole('ADMIN', 'Platform Administrator', 'Platform administrator with unrestricted access', true);
     await this.ensureRole('TEAM_LEAD', 'Team Lead', 'Internal team lead managing staff, conversions, and operations', true);
     await this.ensureRole('SALES_MANAGER', 'Sales Manager', 'Sales manager managing leads, quotes, and commercial metrics', true);
+    await this.ensureRole('SALES_VP', 'VP of Sales', 'Executive reviewer for discounts above Sales Manager authority', true);
     await this.ensureRole('INTERNAL_SALES', 'Internal Sales', 'Internal sales representative managing quotes and client leads', true);
     await this.ensureRole('INTERNAL_SUPPORT', 'Internal Support', 'Customer and operational support staff', true);
     await this.ensureRole('CONVERSION_STAFF', 'Conversion Staff', 'Modernization and conversion execution staff', true);
@@ -56,6 +68,9 @@ export class RbacSeedService implements OnApplicationBootstrap {
     await this.ensurePermission('teams.manage', 'Manage Teams', 'teams', 'View and manage team workload and performance');
     await this.ensurePermission('sales.leads.view', 'View Sales Leads', 'sales', 'View sourced commercial leads');
     await this.ensurePermission('sales.leads.manage', 'Manage Sales Leads', 'sales', 'Create and reassign commercial sales leads');
+    await this.ensurePermission('sales.contracts.review', 'Review Contracts', 'sales', 'Review commercial contract drafts in the assigned Sales scope');
+    await this.ensurePermission('sales.contract-templates.manage', 'Manage Contract Template Drafts', 'sales', 'Create immutable draft versions of legal contract templates');
+    await this.ensurePermission('sales.contract-templates.approve', 'Approve Contract Templates', 'sales', 'Approve legal contract template versions with separation of duties');
     // Technical & Support (Section 3.10)
     await this.ensurePermission('conversions.retry', 'Retry failed conversion jobs', 'conversions', 'Retry dead conversion jobs');
     await this.ensurePermission('projects.demo.view', 'View Demo Projects', 'projects', 'View demo projects and sample workspaces');
@@ -70,6 +85,7 @@ export class RbacSeedService implements OnApplicationBootstrap {
     await this.ensurePermission('sales.discounts.view', 'View Discount Approval Queue', 'sales', 'View discount approval requests queue');
     await this.ensurePermission('sales.discounts.approve', 'Approve Discount Requests', 'sales', 'Authorize and approve requested sales discounts');
     await this.ensurePermission('sales.discounts.reject', 'Reject Discount Requests', 'sales', 'Reject sales representative discount requests with mandatory justification');
+    await this.ensurePermission('sales.discounts.executive.review', 'Review Escalated Discounts', 'sales', 'Approve or reject discounts escalated above the Sales Manager authority limit');
     // Platform Administration (Section 3.13)
     await this.ensurePermission('organizations.view', 'View Organisations', 'admin', 'View customer and enterprise organisations');
     await this.ensurePermission('organizations.manage', 'Manage Organisations', 'admin', 'Create enterprise organisations and manage engagements');
@@ -163,11 +179,15 @@ export class RbacSeedService implements OnApplicationBootstrap {
       'teams.manage',
       'sales.leads.view',
       'sales.leads.manage',
+      'sales.contracts.review',
+      'sales.contract-templates.manage',
+      'sales.contract-templates.approve',
       'sales.reports.view',
       'sales.team-performance.view',
       'sales.discounts.view',
       'sales.discounts.approve',
       'sales.discounts.reject',
+      'sales.discounts.executive.review',
       'projects.demo.view',
       'projects.demo.create',
       'organizations.impersonate',
@@ -264,6 +284,7 @@ export class RbacSeedService implements OnApplicationBootstrap {
       'billing.usage.view',
       'sales.leads.view',
       'sales.leads.manage',
+      'sales.contracts.review',
       'sales.reports.view',
       'sales.team-performance.view',
       'sales.discounts.view',
@@ -273,6 +294,14 @@ export class RbacSeedService implements OnApplicationBootstrap {
       'meetings.view',
       'partner.view',
       'partner_project.view',
+    ]);
+
+    await this.grantRolePermissions('SALES_VP', [
+      'sales.discounts.view',
+      'sales.discounts.executive.review',
+      'sales.reports.view',
+      'sales.team-performance.view',
+      'sales.contracts.review',
     ]);
 
     await this.grantRolePermissions('INTERNAL_SALES', [
@@ -326,6 +355,7 @@ export class RbacSeedService implements OnApplicationBootstrap {
       'roles.temporary.view',
       'meetings.view',
       'partner.view',
+      'partner.create',
       'partner_project.view',
       'partner_project.manage_files',
       'partner_project.start_conversion',
@@ -372,62 +402,7 @@ export class RbacSeedService implements OnApplicationBootstrap {
       'partner_portal.download',
     ]);
 
-    // 4. Seed Test Accounts
-    await this.ensureTestAccount({
-      email: 'admin@alsm.io',
-      fullName: 'System Administrator',
-      isPlatformAdmin: true,
-      roleId: 'SYSTEM_ADMIN',
-    });
-
-    await this.ensureTestAccount({
-      email: 'teamlead@alsm.io',
-      fullName: 'Team Lead Staff',
-      isPlatformAdmin: false,
-      roleId: 'TEAM_LEAD',
-    });
-
-    await this.ensureTestAccount({
-      email: 'sales@alsm.io',
-      fullName: 'Sales Executive Manager',
-      isPlatformAdmin: false,
-      roleId: 'SALES_MANAGER',
-    });
-
-    await this.ensureTestAccount({
-      email: 'sales_staff@alsm.io',
-      fullName: 'Internal Sales Staff',
-      isPlatformAdmin: false,
-      roleId: 'INTERNAL_SALES',
-    });
-
-    await this.ensureTestAccount({
-      email: 'support@alsm.io',
-      fullName: 'Internal Support Staff',
-      isPlatformAdmin: false,
-      roleId: 'INTERNAL_SUPPORT',
-    });
-
-    await this.ensureTestAccount({
-      email: 'converter@alsm.io',
-      fullName: 'Conversion Specialist',
-      isPlatformAdmin: false,
-      roleId: 'CONVERSION_STAFF',
-    });
-
-    await this.ensureTestAccount({
-      email: 'enterprise@company.com',
-      fullName: 'Enterprise Client Member',
-      isPlatformAdmin: false,
-      roleId: 'ENTERPRISE_MEMBER',
-    });
-
-    await this.ensureTestAccount({
-      email: 'partner@fintechnexus.io',
-      fullName: 'Marcus Vance (Partner Lead)',
-      isPlatformAdmin: false,
-      roleId: 'PARTNER',
-    });
+    // Startup initializes RBAC metadata only. Identity provisioning must never run here.
   }
 
   private async ensureRole(
@@ -457,9 +432,10 @@ export class RbacSeedService implements OnApplicationBootstrap {
     description: string,
   ): Promise<void> {
     const normalizedKey = key.trim().toLowerCase().replace(/\s+/g, '.');
-    const existing = await this.rbacService.getPermissions();
-    if (!existing.some((p) => p.key === normalizedKey || p.key === key)) {
+    const existing = this.existingPermissions.get(normalizedKey) ?? this.existingPermissions.get(key);
+    if (!existing) {
       await this.rbacService.createPermission(normalizedKey, label, group, description);
+      this.existingPermissions.set(normalizedKey, { label, group, description });
       this.logger.log(`Seeded permission ${normalizedKey}`);
     } else {
       await this.rbacService.updatePermission(normalizedKey, label, group, description);
@@ -471,46 +447,6 @@ export class RbacSeedService implements OnApplicationBootstrap {
     const missing = permissionKeys.filter((k) => !current.includes(k));
     if (missing.length > 0) {
       await this.rbacService.updateRolePermissions(roleId, [...current, ...missing]);
-    }
-  }
-
-  private async ensureTestAccount(input: {
-    email: string;
-    fullName: string;
-    isPlatformAdmin: boolean;
-    roleId: string;
-  }): Promise<void> {
-    let user = await this.userModel.findOne({ email: input.email }).exec();
-    const defaultPasswordHash = await bcrypt.hash('Password123!', 10);
-
-    if (!user) {
-      user = await this.userModel.create({
-        email: input.email,
-        fullName: input.fullName,
-        passwordHash: defaultPasswordHash,
-        isPlatformAdmin: input.isPlatformAdmin,
-        isActive: true,
-        isEmailVerified: true,
-        mustChangePassword: false,
-      });
-      this.logger.log(`Seeded test user account: ${input.email}`);
-    } else {
-      await this.userModel.updateOne(
-        { _id: user._id },
-        {
-          $set: {
-            isActive: true,
-            isEmailVerified: true,
-            isPlatformAdmin: input.isPlatformAdmin,
-            passwordHash: defaultPasswordHash,
-          },
-        },
-      );
-    }
-
-    const userRoles = await this.rbacService.getUserRoles(user.id);
-    if (!userRoles.includes(input.roleId)) {
-      await this.rbacService.updateUserRoles(user.id, [...userRoles, input.roleId]);
     }
   }
 }

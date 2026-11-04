@@ -32,3 +32,5 @@ export class ConversionJob {
 export const ConversionJobSchema = SchemaFactory.createForClass(ConversionJob);
 ConversionJobSchema.index({ organizationId: 1, projectId: 1, createdAt: -1 });
 ConversionJobSchema.index({ organizationId: 1, projectId: 1, screenId: 1, createdAt: -1 });
+ConversionJobSchema.index({ status: 1, updatedAt: 1 });
+ConversionJobSchema.index({ status: 1, processingLeaseExpiresAt: 1 });

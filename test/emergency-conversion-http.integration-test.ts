@@ -22,6 +22,11 @@ import { AuditLog, AuditLogSchema } from '../src/modules/audit/infrastructure/au
 import { AUDIT_REPOSITORY } from '../src/modules/audit/domain/audit.repository';
 import { MongoAuditRepository } from '../src/modules/audit/infrastructure/mongo-audit.repository';
 import { ConversionJobService } from '../src/modules/conversions/application/conversion-job.service';
+import { ConversionProjectAccessService } from '../src/modules/conversions/application/conversion-project-access.service';
+import { RbacModule } from '../src/modules/rbac/rbac.module';
+import { TEAM_REPOSITORY } from '../src/modules/teams/domain/team.types';
+import { Team, TeamSchema } from '../src/modules/teams/infrastructure/team.schema';
+import { MongoTeamRepository } from '../src/modules/teams/infrastructure/mongo-team.repository';
 import { GetConversionQualityReviewService } from '../src/modules/conversions/application/get-conversion-quality-review.service';
 import { GetConversionResultService } from '../src/modules/conversions/application/get-conversion-result.service';
 import { SubmitConversionQualityReviewService } from '../src/modules/conversions/application/submit-conversion-quality-review.service';
@@ -179,9 +184,11 @@ async function main(): Promise<void> {
     const secret = randomUUID() + randomUUID();
     const moduleRef = await Test.createTestingModule({
       imports: [
+        RbacModule,
         JwtModule.register({ secret }),
         MongooseModule.forRoot(uri, { serverSelectionTimeoutMS: 5000 }),
         MongooseModule.forFeature([
+          { name: Team.name, schema: TeamSchema },
           { name: Organization.name, schema: OrganizationSchema },
           { name: Project.name, schema: ProjectSchema },
           { name: User.name, schema: UserSchema },
@@ -194,6 +201,8 @@ async function main(): Promise<void> {
       ],
       controllers: [ProjectsController, ConversionsController, QualityReviewController],
       providers: [
+        ConversionProjectAccessService,
+        { provide: TEAM_REPOSITORY, useClass: MongoTeamRepository },
         {
           provide: ConfigService,
           useValue: new ConfigService({

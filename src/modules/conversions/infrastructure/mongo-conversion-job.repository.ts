@@ -6,6 +6,7 @@ import {
   ConversionJobRecord,
   ConversionJobRepository,
   ConversionJobStatus,
+  ConversionPriority,
 } from '../domain/conversion-job.types';
 import { toValidObjectId } from '../../../shared/utils/object-id.util';
 
@@ -80,7 +81,11 @@ export class MongoConversionJobRepository implements ConversionJobRepository {
     return docs.map((doc) => this.map(doc));
   }
 
-  async retry(id: string, organizationId: string): Promise<ConversionJobRecord | null> {
+  async retry(
+    id: string,
+    organizationId: string,
+    options: { priority?: ConversionPriority } = {},
+  ): Promise<ConversionJobRecord | null> {
     const jobObjId = toValidObjectId(id);
     const orgObjId = toValidObjectId(organizationId);
     const doc = await this.model
@@ -94,6 +99,7 @@ export class MongoConversionJobRepository implements ConversionJobRepository {
           $set: {
             status: ConversionJobStatus.QUEUED,
             attemptCount: 0,
+            ...(options.priority ? { priority: options.priority } : {}),
           },
           $unset: {
             errorCode: 1,
@@ -122,6 +128,7 @@ export class MongoConversionJobRepository implements ConversionJobRepository {
       .findOneAndUpdate(
         {
           _id: jobObjId,
+          $expr: { $lt: [{ $ifNull: ['$attemptCount', 0] }, { $ifNull: ['$maxAttempts', 3] }] },
           $and: [
             executionGeneration === 0
               ? { $or: [{ executionGeneration: 0 }, { executionGeneration: { $exists: false } }] }
@@ -206,6 +213,55 @@ export class MongoConversionJobRepository implements ConversionJobRepository {
     return result.modifiedCount === 1;
   }
 
+  async listDeliveryRecoveryCandidates(
+    queuedBefore: Date,
+    afterId?: string,
+  ): Promise<ConversionJobRecord[]> {
+    const docs = await this.model
+      .find({
+        ...(afterId ? { _id: { $gt: toValidObjectId(afterId) } } : {}),
+        $or: [
+          { status: ConversionJobStatus.QUEUED, updatedAt: { $lte: queuedBefore } },
+          {
+            status: ConversionJobStatus.PROCESSING,
+            processingLeaseExpiresAt: { $lte: new Date() },
+          },
+        ],
+      })
+      .sort({ _id: 1 })
+      .limit(100)
+      .exec();
+    return docs.map((doc) => this.map(doc));
+  }
+
+  async markUndeliveredFailed(
+    id: string,
+    executionGeneration: number,
+    queuedBefore: Date,
+  ): Promise<boolean> {
+    const result = await this.model
+      .updateOne(
+        {
+          _id: toValidObjectId(id),
+          status: ConversionJobStatus.QUEUED,
+          updatedAt: { $lte: queuedBefore },
+          ...(executionGeneration === 0
+            ? { $or: [{ executionGeneration: 0 }, { executionGeneration: { $exists: false } }] }
+            : { executionGeneration }),
+        },
+        {
+          $set: {
+            status: ConversionJobStatus.FAILED,
+            errorCode: 'CONVERSION_QUEUE_DELIVERY_LOST',
+            errorMessage: 'Conversion queue delivery was lost; retry is required',
+            completedAt: new Date(),
+          },
+        },
+      )
+      .exec();
+    return result.modifiedCount === 1;
+  }
+
   async markCompleted(
     id: string,
     resultReferenceOrOutput: string | { resultReference: string; toolVersion?: string },
@@ -247,13 +303,27 @@ export class MongoConversionJobRepository implements ConversionJobRepository {
     code: string,
     message: string,
     processingToken?: string,
-  ): Promise<void> {
+    executionGeneration?: number,
+  ): Promise<boolean> {
     const jobObjId = toValidObjectId(id);
-    await this.model
+    const result = await this.model
       .updateOne(
         processingToken
           ? this.processingFilter(id, processingToken)
-          : { _id: jobObjId, status: ConversionJobStatus.QUEUED },
+          : {
+              _id: jobObjId,
+              status: ConversionJobStatus.QUEUED,
+              ...(executionGeneration === undefined
+                ? {}
+                : executionGeneration === 0
+                  ? {
+                      $or: [
+                        { executionGeneration: 0 },
+                        { executionGeneration: { $exists: false } },
+                      ],
+                    }
+                  : { executionGeneration }),
+            },
         {
           $set: {
             status: ConversionJobStatus.FAILED,
@@ -265,6 +335,7 @@ export class MongoConversionJobRepository implements ConversionJobRepository {
         },
       )
       .exec();
+    return result.modifiedCount === 1;
   }
 
   async updateResultReference(id: string, resultReference: string): Promise<void> {

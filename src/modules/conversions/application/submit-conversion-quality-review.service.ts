@@ -12,6 +12,7 @@ import { OrganizationAuthorizationService } from '../../organizations/applicatio
 import { OrganizationContextService } from '../../organizations/application/organization-context.service';
 import { OrganizationRole } from '../../organizations/domain/organization.types';
 import { ProjectService } from '../../projects/application/project.service';
+import { ConversionProjectAccessService } from './conversion-project-access.service';
 import {
   CONVERSION_JOB_REPOSITORY,
   ConversionJobRepository,
@@ -52,12 +53,14 @@ export class SubmitConversionQualityReviewService {
     private readonly projects: ProjectService,
     @Inject(AUDIT_REPOSITORY) private readonly audit: AuditRepository,
     @Inject(STORAGE_PORT) private readonly storage: StoragePort,
+    private readonly access: ConversionProjectAccessService,
   ) {}
 
   async execute(input: SubmitQualityReviewCommand): Promise<ConversionQualityReviewRecord> {
     const organization = await this.organizationContext.resolve(
       input.userId,
       input.organizationHeader,
+      input.projectId,
     );
 
     this.authorization.require(organization, input.userId, [
@@ -66,6 +69,7 @@ export class SubmitConversionQualityReviewService {
       OrganizationRole.MEMBER,
     ]);
 
+    await this.access.requireAssignment(input.userId, organization.id, input.projectId);
     await this.projects.getForOrganization(input.projectId, organization.id);
 
     const job = await this.jobs.findById(input.conversionJobId, organization.id);

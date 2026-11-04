@@ -20,6 +20,7 @@ import { generateInvoicePdfBuffer } from './invoice-pdf.generator';
 import { AuthenticatedUser } from '../../../shared/logging/request-id.middleware';
 import { OrganizationContextService } from '../../organizations/application/organization-context.service';
 import { OrganizationRole } from '../../organizations/domain/organization.types';
+import { EffectivePermissionsService } from '../../rbac/application/effective-permissions.service';
 import { AUDIT_REPOSITORY, AuditRepository } from '../../audit/domain/audit.repository';
 import {
   BillingCycle,
@@ -59,6 +60,7 @@ export class BillingService implements OnModuleInit {
     private readonly planRepo: IPlanRepository,
     @Inject(QUOTE_REQUEST_REPOSITORY)
     private readonly quoteRequestRepo: IQuoteRequestRepository,
+    private readonly effectivePermissions: EffectivePermissionsService,
     @Optional()
     @Inject(AUDIT_REPOSITORY)
     private readonly audit?: AuditRepository,
@@ -661,7 +663,7 @@ export class BillingService implements OnModuleInit {
     decision: 'APPROVED' | 'DECLINED',
     response?: string,
   ): Promise<QuoteRequestProps> {
-    this.assertPlatformAdmin(user);
+    await this.assertQuoteManager(user);
     this.assertQuoteId(quoteId);
     const normalizedResponse = response?.trim();
     if (normalizedResponse && normalizedResponse.length > 1000) {
@@ -705,7 +707,7 @@ export class BillingService implements OnModuleInit {
     user: AuthenticatedUser,
     filters?: { status?: QuoteRequestStatus; page?: number; limit?: number },
   ): Promise<{ items: QuoteRequestProps[]; total: number }> {
-    this.assertPlatformAdmin(user);
+    await this.assertQuoteManager(user);
     if (filters?.page !== undefined && (!Number.isInteger(filters.page) || filters.page < 1)) {
       throw new BadRequestException('Page must be a positive integer.');
     }
@@ -721,7 +723,7 @@ export class BillingService implements OnModuleInit {
     newStatus: QuoteRequestStatus,
     reason?: string,
   ): Promise<QuoteRequestProps> {
-    this.assertPlatformAdmin(user);
+    await this.assertQuoteManager(user);
     this.assertQuoteId(quoteId);
     const normalizedReason = reason?.trim();
     if (newStatus === QuoteRequestStatus.SUSPENDED && !normalizedReason) {
@@ -892,13 +894,14 @@ export class BillingService implements OnModuleInit {
     }, session);
   }
 
-  private assertPlatformAdmin(user: AuthenticatedUser): void {
-    const isAdmin = Boolean(
-      user.isPlatformAdmin ||
-      (user as AuthenticatedUser & { roles?: string[]; role?: string }).roles?.includes('ADMIN') ||
-      (user as AuthenticatedUser & { roles?: string[]; role?: string }).role === 'ADMIN',
-    );
-    if (!isAdmin) throw new ForbiddenException('Only platform admins can manage Enterprise quote requests.');
+  private async assertQuoteManager(user: AuthenticatedUser): Promise<void> {
+    const permissions = await this.effectivePermissions.getEffectivePermissions(user.userId);
+    if (!permissions.includes('billing.quotes.manage')) {
+      throw new ForbiddenException({
+        code: 'FORBIDDEN',
+        message: 'You do not have permission to manage Enterprise quote requests.',
+      });
+    }
   }
 
   private assertQuoteId(quoteId: string): void {

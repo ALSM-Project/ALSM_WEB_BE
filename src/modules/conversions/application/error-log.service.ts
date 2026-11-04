@@ -27,7 +27,7 @@ export class ErrorLogService {
     projectId: string,
     query: ErrorLogListQuery,
   ): Promise<PaginatedErrorLogs> {
-    const organization = await this.organizationContext.resolve(userId, organizationHeader);
+    const organization = await this.organizationContext.resolve(userId, organizationHeader, projectId);
     await this.projects.getForOrganization(projectId, organization.id);
     return this.errorLogs.list(projectId, organization.id, query);
   }
@@ -41,7 +41,7 @@ export class ErrorLogService {
     projectId: string,
     logId: string,
   ): Promise<ErrorLogRecord> {
-    const organization = await this.organizationContext.resolve(userId, organizationHeader);
+    const organization = await this.organizationContext.resolve(userId, organizationHeader, projectId);
     await this.projects.getForOrganization(projectId, organization.id);
     const log = await this.errorLogs.findById(logId, projectId, organization.id);
     if (!log) throw this.notFound();
@@ -56,7 +56,7 @@ export class ErrorLogService {
     organizationHeader: string | undefined,
     projectId: string,
   ): Promise<ErrorLogSummary> {
-    const organization = await this.organizationContext.resolve(userId, organizationHeader);
+    const organization = await this.organizationContext.resolve(userId, organizationHeader, projectId);
     await this.projects.getForOrganization(projectId, organization.id);
     return this.errorLogs.getSummary(projectId, organization.id);
   }
@@ -70,7 +70,7 @@ export class ErrorLogService {
     projectId: string,
     logId: string,
   ): Promise<ErrorLogRecord> {
-    const organization = await this.organizationContext.resolve(userId, organizationHeader);
+    const organization = await this.organizationContext.resolve(userId, organizationHeader, projectId);
     await this.projects.getForOrganization(projectId, organization.id);
 
     const log = await this.errorLogs.resolve(logId, projectId, organization.id, userId);
@@ -92,7 +92,7 @@ export class ErrorLogService {
     projectId: string,
     logId: string,
   ): Promise<ErrorLogRecord> {
-    const organization = await this.organizationContext.resolve(userId, organizationHeader);
+    const organization = await this.organizationContext.resolve(userId, organizationHeader, projectId);
     await this.projects.getForOrganization(projectId, organization.id);
 
     const log = await this.errorLogs.ignore(logId, projectId, organization.id);

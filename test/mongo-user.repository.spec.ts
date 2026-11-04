@@ -3,6 +3,7 @@ import { MongoUserRepository } from '../src/modules/users/infrastructure/mongo-u
 describe('MongoUserRepository MFA query safety', () => {
   const query = {
     select: jest.fn(),
+    read: jest.fn(),
     exec: jest.fn(),
   };
   const model = {
@@ -14,6 +15,7 @@ describe('MongoUserRepository MFA query safety', () => {
   beforeEach(() => {
     jest.clearAllMocks();
     query.select.mockReturnValue(query);
+    query.read.mockReturnValue(query);
     query.exec.mockResolvedValue(null);
     model.findById.mockReturnValue(query);
     model.findOneAndUpdate.mockReturnValue(query);
@@ -23,6 +25,7 @@ describe('MongoUserRepository MFA query safety', () => {
     await repository.findById('user-1');
 
     expect(query.select).toHaveBeenCalledWith('+passwordHash');
+    expect(query.read).toHaveBeenCalledWith('primary');
   });
 
   it('selects secret material only for the dedicated MFA read', async () => {

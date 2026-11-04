@@ -1,0 +1,244 @@
+export enum LeadStatus {
+  NEW = 'NEW',
+  CONTACTED = 'CONTACTED',
+  QUALIFIED = 'QUALIFIED',
+  PROPOSAL = 'PROPOSAL',
+  NEGOTIATION = 'NEGOTIATION',
+  WON = 'WON',
+  LOST = 'LOST',
+}
+
+export enum LeadSource {
+  WEBSITE = 'WEBSITE',
+  REFERRAL = 'REFERRAL',
+  COLD_CALL = 'COLD_CALL',
+  EMAIL_CAMPAIGN = 'EMAIL_CAMPAIGN',
+  SOCIAL_MEDIA = 'SOCIAL_MEDIA',
+  TRADE_SHOW = 'TRADE_SHOW',
+  PARTNER = 'PARTNER',
+  OTHER = 'OTHER',
+}
+
+export enum LeadPriority {
+  LOW = 'LOW',
+  MEDIUM = 'MEDIUM',
+  HIGH = 'HIGH',
+  CRITICAL = 'CRITICAL',
+}
+
+export type LeadEmailNotificationStatus = 'PENDING' | 'SENDING' | 'SENT' | 'FAILED';
+export enum LeadPhoneCallOutcome {
+  CONNECTED = 'CONNECTED',
+  NO_ANSWER = 'NO_ANSWER',
+  VOICEMAIL = 'VOICEMAIL',
+  CALLBACK_REQUESTED = 'CALLBACK_REQUESTED',
+  NOT_INTERESTED = 'NOT_INTERESTED',
+}
+
+/** Stored call activity. requestFingerprint is internal and must never be returned by the API. */
+export interface LeadPhoneCall {
+  id: string;
+  requestId: string;
+  requestFingerprint: string;
+  durationMinutes: number;
+  outcome: LeadPhoneCallOutcome;
+  summary: string;
+  notes?: string;
+  followUpAt?: Date;
+  performedByUserId: string;
+  performedByEmail: string;
+  createdAt: Date;
+}
+
+export interface LogPhoneCallInput {
+  outcome: LeadPhoneCallOutcome;
+  durationMinutes: number;
+  summary: string;
+  notes?: string;
+  followUpAt?: string;
+}
+
+export type LeadDemoStatus = 'SCHEDULED' | 'COMPLETED' | 'CANCELLED';
+
+/** Stored demo appointment. Idempotency fields are internal and must never be returned by the API. */
+export interface LeadDemo {
+  id: string;
+  requestId: string;
+  requestFingerprint: string;
+  title: string;
+  scheduledAt: Date;
+  durationMinutes: number;
+  attendeeEmails: string[];
+  agenda?: string;
+  internalNotes?: string;
+  status: LeadDemoStatus;
+  scheduledByUserId: string;
+  scheduledByEmail: string;
+  createdAt: Date;
+}
+
+export interface ScheduleDemoInput {
+  title: string;
+  scheduledAt: string;
+  durationMinutes: number;
+  attendeeEmails: string[];
+  agenda?: string;
+  internalNotes?: string;
+}
+
+export interface LeadRecord {
+  id: string;
+  companyName: string;
+  contactName: string;
+  contactEmail: string;
+  contactPhone?: string;
+  jobTitle?: string;
+  status: LeadStatus;
+  source: LeadSource;
+  priority: LeadPriority;
+  estimatedValue?: number;
+  currency: 'VND';
+  notes?: string;
+  assignedToUserId?: string;
+  assignedToEmail?: string;
+  tags: string[];
+  lastContactedAt?: Date;
+  nextFollowUpAt?: Date;
+  createdByUserId?: string;
+  createdByEmail?: string;
+  emailNotificationStatus?: LeadEmailNotificationStatus;
+  emailNotifiedAt?: Date;
+  quotes?: LeadQuoteItem[];
+  phoneCalls?: LeadPhoneCall[];
+  demos?: LeadDemo[];
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+export interface LeadQuoteItem {
+  id: string;
+  requestId: string;
+  requestFingerprint: string;
+  quoteNumber: string;
+  planName: string;
+  projectScope?: string;
+  /** Undiscounted quote amount. */
+  amount: number;
+  /** Final amount after applying discountPercent. */
+  finalPrice?: number;
+  discountPercent?: number;
+  discountApproved?: boolean;
+  discountReason?: string;
+  status: 'DRAFT' | 'PENDING_APPROVAL' | 'SENT' | 'ACCEPTED' | 'REJECTED';
+  recipientEmail?: string;
+  expiresAt?: Date;
+  sentAt?: Date;
+  pdfUrl?: string;
+  createdAt: Date;
+}
+
+export interface CreateLeadInput {
+  id: string;
+  creationFingerprint: string;
+  dedupeKey: string;
+  companyName: string;
+  contactName: string;
+  contactEmail: string;
+  contactPhone?: string;
+  jobTitle?: string;
+  source: LeadSource;
+  priority: LeadPriority;
+  estimatedValue?: number;
+  currency?: 'VND';
+  notes?: string;
+  assignedToUserId?: string;
+  assignedToEmail?: string;
+  tags?: string[];
+  createdByUserId: string;
+  createdByEmail: string;
+}
+
+export interface CreateLeadResult {
+  lead: LeadRecord;
+  replayed: boolean;
+}
+
+export interface LeadListParams {
+  status?: LeadStatus;
+  source?: LeadSource;
+  priority?: LeadPriority;
+  assignedToUserId?: string;
+  search?: string;
+  page?: number;
+  limit?: number;
+  sortBy?: string;
+  sortOrder?: 'asc' | 'desc';
+}
+
+export const ALLOWED_LEAD_STATUS_TRANSITIONS: Record<LeadStatus, LeadStatus[]> = {
+  [LeadStatus.NEW]: [LeadStatus.CONTACTED, LeadStatus.QUALIFIED, LeadStatus.LOST],
+  [LeadStatus.CONTACTED]: [LeadStatus.QUALIFIED, LeadStatus.PROPOSAL, LeadStatus.LOST],
+  [LeadStatus.QUALIFIED]: [LeadStatus.PROPOSAL, LeadStatus.NEGOTIATION, LeadStatus.LOST],
+  [LeadStatus.PROPOSAL]: [LeadStatus.NEGOTIATION, LeadStatus.WON, LeadStatus.LOST],
+  [LeadStatus.NEGOTIATION]: [LeadStatus.PROPOSAL, LeadStatus.WON, LeadStatus.LOST],
+  [LeadStatus.WON]: [LeadStatus.NEGOTIATION, LeadStatus.LOST],
+  [LeadStatus.LOST]: [LeadStatus.NEW, LeadStatus.CONTACTED, LeadStatus.QUALIFIED],
+};
+
+export function isAllowedLeadStatusTransition(
+  currentStatus: LeadStatus,
+  targetStatus: LeadStatus,
+): boolean {
+  if (currentStatus === targetStatus) return true;
+  return ALLOWED_LEAD_STATUS_TRANSITIONS[currentStatus]?.includes(targetStatus) ?? false;
+}
+
+export interface UpdateLeadStatusOptions {
+  notes?: string;
+  lastContactedAt?: Date;
+  nextFollowUpAt?: Date;
+}
+
+export interface LeadRepository {
+  create(input: CreateLeadInput): Promise<CreateLeadResult>;
+  findById(id: string): Promise<LeadRecord | null>;
+  list(params?: LeadListParams): Promise<{ items: LeadRecord[]; total: number }>;
+  countByStatus(): Promise<Record<string, number>>;
+  updateStatus(
+    id: string,
+    status: LeadStatus,
+    options?: UpdateLeadStatusOptions,
+  ): Promise<LeadRecord | null>;
+  addQuote(
+    id: string,
+    quote: LeadQuoteItem,
+    newStatus?: LeadStatus,
+  ): Promise<LeadRecord | null>;
+  addQuoteOnce(
+    id: string,
+    quote: LeadQuoteItem,
+    expectedStatus: LeadStatus,
+    newStatus?: LeadStatus,
+  ): Promise<LeadRecord | null>;
+  addPhoneCallOnce(
+    id: string,
+    call: LeadPhoneCall,
+    expectedStatus: LeadStatus,
+    newStatus: LeadStatus,
+  ): Promise<LeadRecord | null>;
+  addDemoOnce(
+    id: string,
+    demo: LeadDemo,
+    expectedStatus: LeadStatus,
+    newStatus: LeadStatus,
+  ): Promise<LeadRecord | null>;
+  claimEmailNotification(id: string, requestId: string): Promise<LeadRecord | null>;
+  completeEmailNotification(
+    id: string,
+    requestId: string,
+    delivered: boolean,
+  ): Promise<LeadRecord | null>;
+}
+
+export const LEAD_REPOSITORY = Symbol('LEAD_REPOSITORY');
+

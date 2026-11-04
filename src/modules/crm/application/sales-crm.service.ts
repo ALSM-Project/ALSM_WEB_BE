@@ -1,18 +1,26 @@
 import {
+  BadRequestException,
   ConflictException,
   Inject,
   Injectable,
+  Logger,
   NotFoundException,
 } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { FilterQuery, Model, Types } from 'mongoose';
 import { randomBytes, randomUUID } from 'node:crypto';
 import { Lead, LeadDocument } from '../infrastructure/lead.schema';
-import { Organization } from '../../organizations/infrastructure/organization.schema';
-import { OrganizationRole, OrganizationType } from '../../organizations/domain/organization.types';
 import { User } from '../../users/infrastructure/user.schema';
 import { AUDIT_REPOSITORY, AuditRepository } from '../../audit/domain/audit.repository';
 import { LeadStatus } from '../domain/lead.types';
+import {
+  SALES_PIPELINE_STAGES,
+  SalesPipelineLead,
+  SalesPipelineQuery,
+  SalesPipelineStage,
+  SalesPipelineView,
+} from '../domain/sales-pipeline.types';
+import { SalesReportPeriod } from '../presentation/sales-report-query.dto';
 
 export interface CreateCrmLeadDto {
   contactName: string;
@@ -46,16 +54,12 @@ export interface SendQuoteDto {
   discountReason?: string;
 }
 
-export interface CreateContractDto {
-  quoteId?: string;
-  documentTitle: string;
-}
-
 @Injectable()
 export class SalesCrmService {
+  private readonly logger = new Logger(SalesCrmService.name);
+
   constructor(
     @InjectModel(Lead.name) private readonly leadModel: Model<Lead>,
-    @InjectModel(Organization.name) private readonly orgModel: Model<Organization>,
     @InjectModel(User.name) private readonly userModel: Model<User>,
     @Inject(AUDIT_REPOSITORY) private readonly audit: AuditRepository,
   ) {}
@@ -87,6 +91,132 @@ export class SalesCrmService {
       .exec();
 
     return docs.map((doc) => this.mapLead(doc));
+  }
+
+  async getSalesPipeline(query: SalesPipelineQuery = {}): Promise<SalesPipelineView> {
+    if (query.organizationId && !Types.ObjectId.isValid(query.organizationId)) {
+      throw new BadRequestException({
+        code: 'INVALID_ORGANIZATION_ID',
+        message: 'The organization ID is invalid.',
+      });
+    }
+
+    const clauses: FilterQuery<LeadDocument>[] = [];
+    if (query.organizationId) {
+      clauses.push({ organizationId: new Types.ObjectId(query.organizationId) });
+    }
+    if (query.stage && query.stage !== 'ALL') {
+      const stageMatches: FilterQuery<LeadDocument>[] = [
+        { stage: query.stage },
+        { status: query.stage },
+      ];
+      if (query.stage === 'NEW') {
+        stageMatches.push({ stage: { $exists: false }, status: LeadStatus.ASSIGNED });
+      }
+      if (query.stage === 'WON') {
+        stageMatches.push({ stage: { $exists: false }, status: LeadStatus.CONVERTED });
+      }
+      clauses.push({ $or: stageMatches } as FilterQuery<LeadDocument>);
+    }
+    const search = query.search?.trim();
+    if (search) {
+      const safeSearch = search.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+      const searchRegex = new RegExp(safeSearch, 'i');
+      clauses.push({
+        $or: [
+          { contactName: searchRegex },
+          { company: searchRegex },
+          { companyName: searchRegex },
+          { contactEmail: searchRegex },
+          { title: searchRegex },
+        ],
+      } as FilterQuery<LeadDocument>);
+    }
+
+    const filter: FilterQuery<LeadDocument> = clauses.length > 0 ? { $and: clauses } : {};
+    const records = await this.leadModel
+      .find(filter)
+      .select('_id id company companyName title contactName source stage status score dealValue estimatedValue currency assignedTo assignedToUserId assignedToName assignments lastContactAt lastContactedAt createdAt updatedAt')
+      .sort({ score: -1, createdAt: -1 })
+      .lean()
+      .exec() as unknown as Array<Record<string, unknown>>;
+
+    const assignedUserIds = Array.from(new Set(records
+      .map((record) => this.pipelineAssigneeId(record))
+      .filter((id): id is string => !!id && Types.ObjectId.isValid(id))));
+    const users = assignedUserIds.length > 0
+      ? await this.userModel
+        .find({ _id: { $in: assignedUserIds.map((id) => new Types.ObjectId(id)) } })
+        .select('_id fullName')
+        .lean()
+        .exec()
+      : [];
+    const namesByUserId = new Map(users.map((user) => [String(user._id), user.fullName]));
+
+    const items = records.map((record) => this.mapPipelineLead(record, namesByUserId));
+    const stageCounts = Object.fromEntries(
+      SALES_PIPELINE_STAGES.map((stage) => [stage, 0]),
+    ) as Record<SalesPipelineStage, number>;
+    for (const item of items) stageCounts[item.stage] += 1;
+
+    return { items, total: items.length, stageCounts, lastUpdated: new Date() };
+  }
+
+  private pipelineAssigneeId(record: Record<string, unknown>): string | undefined {
+    const assignments = Array.isArray(record.assignments) ? record.assignments : [];
+    const latestAssignment = assignments.length > 0 && typeof assignments[assignments.length - 1] === 'object'
+      ? assignments[assignments.length - 1] as Record<string, unknown>
+      : undefined;
+    const assignedId = record.assignedToUserId ?? record.assignedTo ?? latestAssignment?.salespersonId;
+    if (typeof assignedId === 'string') return assignedId;
+    return assignedId instanceof Types.ObjectId ? assignedId.toString() : undefined;
+  }
+
+  private mapPipelineLead(
+    record: Record<string, unknown>,
+    namesByUserId: Map<string, string>,
+  ): SalesPipelineLead {
+    const stageValue = String(record.stage ?? record.status ?? '').trim().toUpperCase();
+    const normalizedStage = stageValue === LeadStatus.ASSIGNED
+      ? 'NEW'
+      : stageValue === LeadStatus.CONVERTED
+        ? 'WON'
+        : stageValue;
+    const stage = SALES_PIPELINE_STAGES.includes(normalizedStage as SalesPipelineStage)
+      ? normalizedStage as SalesPipelineStage
+      : 'UNMAPPED';
+    const assignedToId = this.pipelineAssigneeId(record);
+    const dealValue = this.pipelineNumber(record.dealValue ?? record.estimatedValue);
+
+    return {
+      id: typeof record.id === 'string' ? record.id : String(record._id ?? ''),
+      company: this.pipelineText(record.company) ?? this.pipelineText(record.companyName) ?? this.pipelineText(record.title) ?? 'Unnamed company',
+      contactName: this.pipelineText(record.contactName) ?? 'Contact not specified',
+      source: this.pipelineText(record.source) ?? 'Other',
+      stage,
+      score: this.pipelineNumber(record.score),
+      dealValue,
+      currency: 'VND',
+      assignedToName: this.pipelineText(record.assignedToName)
+        ?? (assignedToId ? namesByUserId.get(assignedToId) : undefined),
+      lastContactAt: this.pipelineDate(record.lastContactAt ?? record.lastContactedAt),
+      createdAt: this.pipelineDate(record.createdAt),
+      updatedAt: this.pipelineDate(record.updatedAt),
+    };
+  }
+
+  private pipelineText(value: unknown): string | undefined {
+    return typeof value === 'string' && value.trim() ? value.trim() : undefined;
+  }
+
+  private pipelineNumber(value: unknown): number | undefined {
+    const normalized = typeof value === 'number' ? value : typeof value === 'string' ? Number(value) : NaN;
+    return Number.isFinite(normalized) ? normalized : undefined;
+  }
+
+  private pipelineDate(value: unknown): Date | undefined {
+    const date = value instanceof Date ? value : typeof value === 'string' ? new Date(value) : undefined;
+    return date && !Number.isNaN(date.getTime()) ? date : undefined;
   }
 
   async getLead(id: string) {
@@ -163,7 +293,22 @@ export class SalesCrmService {
     leadId: string,
     newStage: 'NEW' | 'CONTACTED' | 'QUALIFIED' | 'PROPOSAL' | 'WON' | 'LOST',
   ) {
+    if (!['NEW', 'CONTACTED', 'QUALIFIED', 'PROPOSAL', 'WON', 'LOST'].includes(newStage)) {
+      throw new BadRequestException({ code: 'INVALID_LEAD_STAGE', message: 'Select a valid sales stage.' });
+    }
+    if (newStage === 'WON') {
+      throw new BadRequestException({
+        code: 'LEAD_ACTIVATION_REQUIRED',
+        message: 'Convert the lead to a customer through Customer Activation to mark it Won.',
+      });
+    }
     const doc = await this.findLeadById(leadId);
+    if (doc.stage === 'WON') {
+      throw new ConflictException({
+        code: 'LEAD_ALREADY_WON',
+        message: 'A converted customer cannot be moved back through the lead-stage editor.',
+      });
+    }
     const oldStage = doc.stage;
     doc.stage = newStage;
     await doc.save();
@@ -248,20 +393,34 @@ export class SalesCrmService {
     return this.mapLead(doc);
   }
 
-  async sendQuote(userId: string, leadId: string, dto: SendQuoteDto) {
-    const doc = await this.findLeadById(leadId);
-    const discount = dto.discountPercent || 0;
-    const requiresApproval = discount > 0;
+  async sendQuote(userId: string, leadId: string, dto: SendQuoteDto, organizationId?: string) {
+    if (!dto.planName?.trim()) {
+      throw new BadRequestException({ code: 'INVALID_PLAN_NAME', message: 'Plan name cannot be empty.' });
+    }
+    if (!Number.isSafeInteger(dto.amount) || dto.amount <= 0) {
+      throw new BadRequestException({ code: 'INVALID_AMOUNT', message: 'Quote amount must be a positive whole VND amount.' });
+    }
+    const discount = dto.discountPercent ?? 0;
+    if (!Number.isFinite(discount) || discount < 0 || discount > 100) {
+      throw new BadRequestException({ code: 'INVALID_DISCOUNT', message: 'Discount must be between 0 and 100 percent.' });
+    }
+    const discountReason = dto.discountReason?.trim() || undefined;
+    if (discount >= 15 && !discountReason) {
+      throw new BadRequestException({ code: 'DISCOUNT_REASON_REQUIRED', message: 'Discounts of 15% or more require a justification.' });
+    }
+    const doc = await this.findLeadById(leadId, organizationId);
+    const requiresApproval = discount >= 15;
     const quoteStatus = requiresApproval ? 'PENDING_APPROVAL' : 'SENT';
 
     const quote = {
       id: randomUUID(),
-      planName: dto.planName,
-      projectScope: dto.projectScope,
+      planName: dto.planName.trim(),
+      projectScope: dto.projectScope?.trim() || undefined,
       amount: dto.amount,
+      finalPrice: Math.round(dto.amount * (1 - discount / 100)),
       discountPercent: discount,
       discountApproved: !requiresApproval,
-      discountReason: dto.discountReason,
+      discountReason,
       status: (requiresApproval ? 'PENDING_APPROVAL' : 'SENT') as 'DRAFT' | 'PENDING_APPROVAL' | 'SENT' | 'ACCEPTED' | 'REJECTED',
       sentAt: requiresApproval ? undefined : new Date(),
       pdfUrl: `/quotes/quote-${Date.now()}.pdf`,
@@ -286,106 +445,38 @@ export class SalesCrmService {
     return this.mapLead(doc);
   }
 
-  async createContract(userId: string, leadId: string, dto: CreateContractDto) {
-    const doc = await this.findLeadById(leadId);
-    const envelopeId = `docusign_env_${Date.now()}_${randomBytes(4).toString('hex')}`;
-
-    const contract = {
-      id: randomUUID(),
-      quoteId: dto.quoteId,
-      documentTitle: dto.documentTitle || `${doc.company || 'Customer'} Service Modernization Agreement`,
-      status: 'SENT_FOR_SIGNATURE' as const,
-      envelopeId,
-      signedAt: undefined,
-      createdAt: new Date(),
-    };
-
-    doc.contracts.push(contract);
-    await doc.save();
-
-    await this.audit.append({
-      actorUserId: userId,
-      organizationId: doc.organizationId?.toString(),
-      action: 'LEAD_CONTRACT_CREATED',
-      resourceType: 'LEAD',
-      resourceId: doc.id,
-      metadata: { documentTitle: contract.documentTitle, envelopeId },
+  async signContract(_userId: string, _leadId: string, _contractId: string) {
+    void _userId;
+    void _leadId;
+    void _contractId;
+    throw new ConflictException({
+      code: 'REAL_SIGNING_NOT_CONFIGURED',
+      message: 'This legacy signature simulation is disabled. A verified signing provider must confirm the customer signature.',
     });
-
-    return this.mapLead(doc);
   }
 
-  async signContract(userId: string, leadId: string, contractId: string) {
-    const doc = await this.findLeadById(leadId);
-    const contract = (doc.contracts || []).find((c) => c.id === contractId);
-    if (!contract) {
-      throw new NotFoundException('Contract was not found on this lead');
-    }
-
-    contract.status = 'SIGNED';
-    contract.signedAt = new Date();
-    doc.stage = 'WON';
-    await doc.save();
-
-    await this.audit.append({
-      actorUserId: userId,
-      organizationId: doc.organizationId?.toString(),
-      action: 'LEAD_CONTRACT_SIGNED',
-      resourceType: 'LEAD',
-      resourceId: doc.id,
-      metadata: { contractId, envelopeId: contract.envelopeId || '' },
+  async sendContractForSignature(_userId: string, _leadId: string, _contractId: string) {
+    void _userId;
+    void _leadId;
+    void _contractId;
+    throw new ConflictException({
+      code: 'SIGNING_PROVIDER_NOT_CONFIGURED',
+      message: 'Contract signature dispatch is unavailable until an approved signing provider is configured.',
     });
-
-    // Auto-provision Enterprise Org and Customer Admin user upon won
-    await this.autoProvisionCustomer(userId, doc);
-
-    return this.mapLead(doc);
-  }
-
-  async autoProvisionCustomer(userId: string, leadDoc: LeadDocument) {
-    try {
-      const orgName = leadDoc.company || `${leadDoc.contactName} Enterprise`;
-      let org = await this.orgModel.findOne({ name: orgName }).exec();
-      if (!org) {
-        org = await this.orgModel.create({
-          name: orgName,
-          type: OrganizationType.ENTERPRISE,
-          members: [],
-        });
-      }
-
-      const email = leadDoc.contactEmail || `customer_${Date.now()}@example.com`;
-      let user = await this.userModel.findOne({ email }).exec();
-      if (!user) {
-        user = await this.userModel.create({
-          email,
-          fullName: leadDoc.contactName || orgName,
-          isActive: true,
-          isPlatformAdmin: false,
-        });
-      }
-
-      if (!org.members.some((m) => m.userId.toString() === user!._id.toString())) {
-        org.members.push({ userId: user!._id, role: OrganizationRole.ADMIN });
-        await org.save();
-      }
-
-      await this.audit.append({
-        actorUserId: userId,
-        organizationId: org._id.toString(),
-        action: 'LEAD_CUSTOMER_AUTO_PROVISIONED',
-        resourceType: 'ORGANIZATION',
-        resourceId: org._id.toString(),
-        metadata: { leadId: leadDoc.id, customerEmail: email },
-      });
-    } catch {
-      // Non-blocking provisioning fallback
-    }
   }
 
   // Section 3.12: Sales Reports & Approvals
-  async getSalesReports(teamId?: string) {
-    const leads = await this.leadModel.find().exec();
+  async getSalesReports(organizationId?: string, period: SalesReportPeriod = 'ALL') {
+    const filter: FilterQuery<LeadDocument> = {};
+    if (organizationId) {
+      if (!Types.ObjectId.isValid(organizationId)) {
+        throw new BadRequestException({ code: 'INVALID_ORGANIZATION_ID', message: 'The organization ID is invalid.' });
+      }
+      filter.organizationId = new Types.ObjectId(organizationId);
+    }
+    const start = this.salesReportStart(period);
+    if (start) filter.createdAt = { $gte: start };
+    const leads = await this.leadModel.find(filter).exec();
     const totalLeads = leads.length;
     const wonLeads = leads.filter((l) => l.stage === 'WON').length;
     const conversionRate = totalLeads > 0 ? Math.round((wonLeads / totalLeads) * 100) : 0;
@@ -423,13 +514,23 @@ export class SalesCrmService {
       pipelineBreakdown,
       sourceDistribution: leadSources,
       leadSources,
-      teamId: teamId || 'all',
+      organizationId,
+      period,
       lastUpdated: new Date().toISOString(),
     };
   }
 
-  async exportSalesReportsCsv() {
-    const leads = await this.leadModel.find().sort({ createdAt: -1 }).exec();
+  async exportSalesReportsCsv(organizationId?: string, period: SalesReportPeriod = 'ALL') {
+    const filter: FilterQuery<LeadDocument> = {};
+    if (organizationId) {
+      if (!Types.ObjectId.isValid(organizationId)) {
+        throw new BadRequestException({ code: 'INVALID_ORGANIZATION_ID', message: 'The organization ID is invalid.' });
+      }
+      filter.organizationId = new Types.ObjectId(organizationId);
+    }
+    const start = this.salesReportStart(period);
+    if (start) filter.createdAt = { $gte: start };
+    const leads = await this.leadModel.find(filter).sort({ createdAt: -1 }).exec();
     const headers = 'ID,Company,Contact,Email,Phone,Source,Stage,Score,LastContactAt,Created\n';
     const rows = leads.map((l) => {
       const createdAtStr = l.createdAt ? new Date(l.createdAt).toISOString() : '';
@@ -438,70 +539,106 @@ export class SalesCrmService {
     return headers + rows.join('\n');
   }
 
-  async getPendingDiscounts() {
-    const leads = await this.leadModel.find({ 'quotes.status': 'PENDING_APPROVAL' }).exec();
-    const pendingList: Array<{
-      leadId: string;
-      company?: string;
-      contactName?: string;
-      quote: Record<string, unknown>;
-    }> = [];
-
-    for (const lead of leads) {
-      for (const quote of lead.quotes || []) {
-        if (quote.status === 'PENDING_APPROVAL') {
-          pendingList.push({
-            leadId: lead.id,
-            company: lead.company,
-            contactName: lead.contactName,
-            quote,
-          });
-        }
-      }
+  private salesReportStart(period: SalesReportPeriod): Date | undefined {
+    const now = new Date();
+    if (period === '30D' || period === '90D') {
+      const start = new Date(now);
+      start.setUTCDate(start.getUTCDate() - (period === '30D' ? 30 : 90));
+      return start;
     }
-
-    return pendingList;
+    if (period === 'YTD') return new Date(Date.UTC(now.getUTCFullYear(), 0, 1));
+    return undefined;
   }
 
-  async reviewDiscount(
-    userId: string,
-    leadId: string,
-    quoteId: string,
-    approved: boolean,
-    reason?: string,
-  ) {
-    const doc = await this.findLeadById(leadId);
-    const quote = (doc.quotes || []).find((q) => q.id === quoteId);
-    if (!quote) {
-      throw new NotFoundException('Quote was not found');
+  async getDiscountRequests(organizationId: string) {
+    if (!Types.ObjectId.isValid(organizationId)) {
+      throw new BadRequestException({ code: 'INVALID_ORGANIZATION_ID', message: 'The organization identifier is invalid.' });
     }
-
-    quote.discountApproved = approved;
-    quote.status = approved ? 'SENT' : 'REJECTED';
-    if (approved) {
-      quote.sentAt = new Date();
-    }
-    await doc.save();
-
-    await this.audit.append({
-      actorUserId: userId,
-      organizationId: doc.organizationId?.toString(),
-      action: approved ? 'DISCOUNT_APPROVED' : 'DISCOUNT_REJECTED',
-      resourceType: 'QUOTE',
-      resourceId: quoteId,
-      metadata: { leadId, approved: String(approved), reason: reason || '' },
-    });
-
-    return { success: true, quote };
+    const leads = await this.leadModel.find({
+      organizationId: new Types.ObjectId(organizationId),
+      'quotes.discountPercent': { $gt: 0 },
+    }).exec();
+    return leads.flatMap((lead) => (lead.quotes || [])
+      .filter((quote) => Number(quote.discountPercent ?? 0) > 0)
+      .map((quote) => {
+        const amount = Number(quote.amount ?? 0);
+        const discountPercent = Number(quote.discountPercent ?? 0);
+        const finalPrice = Number(quote.finalPrice ?? Math.round(amount * (1 - discountPercent / 100)));
+        const discountAmount = amount - finalPrice;
+        const status = quote.status === 'SENT' && quote.discountApproved
+          ? 'APPROVED'
+          : quote.status === 'REJECTED'
+            ? 'REJECTED'
+            : quote.approvalStatus === 'REQUIRES_HIGHER_APPROVAL'
+              ? 'REQUIRES_HIGHER_APPROVAL'
+              : 'PENDING';
+        const submittedAt = quote.createdAt instanceof Date
+          ? quote.createdAt.toISOString()
+          : new Date(quote.createdAt).toISOString();
+        const publicQuote = {
+          id: quote.id,
+          quoteNumber: quote.id,
+          plan: quote.planName,
+          projectScope: quote.projectScope,
+          basePrice: amount,
+          discountPercent,
+          finalPrice,
+          requiresApproval: true,
+          approvalStatus: status,
+          discountReason: quote.discountReason,
+          status: quote.status === 'PENDING_APPROVAL' ? 'DRAFT' : quote.status,
+          discountApproved: quote.discountApproved,
+          approvedBy: quote.approvedBy,
+          approvedAt: quote.approvedAt,
+          rejectionReason: quote.rejectionReason,
+          escalatedBy: quote.escalatedBy,
+          escalatedAt: quote.escalatedAt,
+          executiveReviewedBy: quote.executiveReviewedBy,
+          executiveReviewedAt: quote.executiveReviewedAt,
+          sentAt: quote.sentAt,
+          createdAt: submittedAt,
+        };
+        return {
+          requestId: quote.id,
+          leadId: lead.id,
+          leadCompany: lead.company || lead.companyName || lead.title,
+          leadContact: lead.contactName || '',
+          assignedTo: lead.assignedTo,
+          assignedToName: lead.assignedToName || lead.assignedTo || 'Unassigned',
+          quote: publicQuote,
+          quoteId: quote.id,
+          quoteNumber: quote.id,
+          originalPrice: amount,
+          discountPercent,
+          discountAmount,
+          proposedFinalPrice: amount - discountAmount,
+          justification: quote.discountReason,
+          submittedAt,
+          status,
+          requiresHigherApproval: status === 'REQUIRES_HIGHER_APPROVAL',
+          managerLimitPercent: 20,
+          rejectionReason: quote.rejectionReason,
+          reviewedBy: quote.approvedBy,
+          reviewedAt: quote.approvedAt instanceof Date ? quote.approvedAt.toISOString() : quote.approvedAt,
+          escalatedBy: quote.escalatedBy,
+          escalatedAt: quote.escalatedAt instanceof Date ? quote.escalatedAt.toISOString() : quote.escalatedAt,
+          executiveReviewedBy: quote.executiveReviewedBy,
+          executiveReviewedAt: quote.executiveReviewedAt instanceof Date ? quote.executiveReviewedAt.toISOString() : quote.executiveReviewedAt,
+        };
+      }));
   }
 
-  private async findLeadById(id: string) {
+  private async findLeadById(id: string, organizationId?: string) {
     let doc: LeadDocument | null = null;
     if (Types.ObjectId.isValid(id)) {
-      doc = await this.leadModel.findById(id).exec();
+      doc = organizationId && Types.ObjectId.isValid(organizationId)
+        ? await this.leadModel.findOne({ _id: new Types.ObjectId(id), organizationId: new Types.ObjectId(organizationId) }).exec()
+        : await this.leadModel.findById(id).exec();
     }
     if (!doc) {
-      doc = await this.leadModel.findOne({ id }).exec();
+      doc = await this.leadModel.findOne({ id, ...(organizationId && Types.ObjectId.isValid(organizationId)
+        ? { organizationId: new Types.ObjectId(organizationId) }
+        : {}) }).exec();
     }
     if (!doc) {
       try {
@@ -516,13 +653,27 @@ export class SalesCrmService {
     return doc;
   }
 
-  private mapLead(doc: LeadDocument) {
+  mapLead(doc: LeadDocument) {
+    const company = [doc.company, doc.companyName].find(
+      (value) => typeof value === 'string' && value.trim().length > 0,
+    ) ?? (
+      typeof doc.title === 'string' &&
+      doc.title.trim().length > 0 &&
+      !/^[a-f\d]{24}$/i.test(doc.title.trim())
+        ? doc.title.trim()
+        : undefined
+    ) ?? (
+      typeof doc.contactName === 'string' && doc.contactName.trim().length > 0
+        ? doc.contactName.trim()
+        : 'Unnamed company'
+    );
     return {
       id: doc.id || doc._id.toString(),
       organizationId: doc.organizationId?.toString(),
       title: doc.title,
       contactName: doc.contactName,
-      company: doc.company,
+      company,
+      email: doc.contactEmail,
       contactEmail: doc.contactEmail,
       phone: doc.phone,
       source: doc.source,
@@ -531,10 +682,24 @@ export class SalesCrmService {
       lastContactAt: doc.lastContactAt,
       notes: doc.notes,
       assignedTo: doc.assignedTo,
+      convertedAt: doc.convertedAt,
+      convertedOrganizationId: doc.convertedOrganizationId?.toString(),
+      provisioning: doc.provisioning,
       interactions: doc.interactions || [],
       demos: doc.demos || [],
       quotes: doc.quotes || [],
-      contracts: doc.contracts || [],
+      contracts: (doc.contracts || []).map((contract) => {
+        const {
+          requestId: _requestId,
+          requestFingerprint: _requestFingerprint,
+          createdByUserId: _createdByUserId,
+          ...publicContract
+        } = contract as Record<string, unknown>;
+        void _requestId;
+        void _requestFingerprint;
+        void _createdByUserId;
+        return publicContract;
+      }),
       createdAt: doc.createdAt,
       updatedAt: doc.updatedAt,
     };

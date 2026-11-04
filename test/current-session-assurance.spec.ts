@@ -4,13 +4,13 @@ import { UserRepository } from '../src/modules/users/domain/user.repository';
 const userId = '111111111111111111111111',
   sessionId = '222222222222222222222222';
 function fixture() {
-  const account = { isActive: true, mustChangePassword: false };
+  const account = { id: userId, isActive: true, isLocked: false, mustChangePassword: false };
   const session = {
     id: sessionId,
     userId,
     expiresAt: new Date(Date.now() + 60000),
     revokedAt: undefined as Date | undefined,
-    accessVersion: undefined as string | undefined,
+    accessVersion: 'current' as string | undefined,
   };
   const users = { findById: jest.fn().mockResolvedValue(account) };
   const sessions = { findActiveByUserId: jest.fn().mockResolvedValue([session]) };
@@ -53,13 +53,13 @@ describe('ordinary current-session prerequisite, without impersonation admission
   });
   it('accepts a current persisted session bound to the active account and exposes no session secrets', async () => {
     const f = fixture();
-    await expect(f.service.execute(userId, sessionId)).resolves.toBeUndefined();
+    await expect(f.service.execute(userId, sessionId, 'current')).resolves.toBeUndefined();
   });
   it.each([undefined, 'alias', '333333333333333333333333'])(
     'rejects missing, invalid or other-session IDs: %s',
     async (selected) => {
       const f = fixture();
-      await expect(f.service.execute(userId, selected)).rejects.toMatchObject({
+      await expect(f.service.execute(userId, selected, 'current')).rejects.toMatchObject({
         response: { code: 'CURRENT_SESSION_REQUIRED' },
       });
     },
@@ -67,26 +67,26 @@ describe('ordinary current-session prerequisite, without impersonation admission
   it('rejects revocation and expiration despite a still-valid JWT', async () => {
     const f = fixture();
     f.session.revokedAt = new Date();
-    await expect(f.service.execute(userId, sessionId)).rejects.toThrow();
+    await expect(f.service.execute(userId, sessionId, 'current')).rejects.toThrow();
     f.session.revokedAt = undefined;
     f.session.expiresAt = new Date(Date.now() - 1);
-    await expect(f.service.execute(userId, sessionId)).rejects.toThrow();
+    await expect(f.service.execute(userId, sessionId, 'current')).rejects.toThrow();
   });
   it('rejects mismatched accounts, deactivated accounts and required password changes', async () => {
     const f = fixture();
     f.session.userId = '333333333333333333333333';
-    await expect(f.service.execute(userId, sessionId)).rejects.toThrow();
+    await expect(f.service.execute(userId, sessionId, 'current')).rejects.toThrow();
     f.session.userId = userId;
     f.account.isActive = false;
-    await expect(f.service.execute(userId, sessionId)).rejects.toThrow();
+    await expect(f.service.execute(userId, sessionId, 'current')).rejects.toThrow();
     f.account.isActive = true;
     f.account.mustChangePassword = true;
-    await expect(f.service.execute(userId, sessionId)).rejects.toThrow();
+    await expect(f.service.execute(userId, sessionId, 'current')).rejects.toThrow();
   });
   it('fails closed if authoritative session storage cannot be read', async () => {
     const f = fixture();
     f.sessions.findActiveByUserId.mockRejectedValue(new Error('private driver error'));
-    await expect(f.service.execute(userId, sessionId)).rejects.toMatchObject({
+    await expect(f.service.execute(userId, sessionId, 'current')).rejects.toMatchObject({
       status: 503,
       response: { code: 'SESSION_ASSURANCE_UNAVAILABLE' },
     });
@@ -94,7 +94,7 @@ describe('ordinary current-session prerequisite, without impersonation admission
   it('fails closed without disclosing account-store errors', async () => {
     const f = fixture();
     f.users.findById.mockRejectedValue(new Error('private driver credentials'));
-    await expect(f.service.execute(userId, sessionId)).rejects.toMatchObject({
+    await expect(f.service.execute(userId, sessionId, 'current')).rejects.toMatchObject({
       status: 503,
       response: {
         code: 'SESSION_ASSURANCE_UNAVAILABLE',
@@ -106,8 +106,12 @@ describe('ordinary current-session prerequisite, without impersonation admission
   it('rejects a missing account and an invalid persisted expiration', async () => {
     const f = fixture();
     f.users.findById.mockResolvedValueOnce(null);
-    await expect(f.service.execute(userId, sessionId)).rejects.toMatchObject({ status: 401 });
+    await expect(f.service.execute(userId, sessionId, 'current')).rejects.toMatchObject({
+      status: 401,
+    });
     f.session.expiresAt = new Date('invalid');
-    await expect(f.service.execute(userId, sessionId)).rejects.toMatchObject({ status: 401 });
+    await expect(f.service.execute(userId, sessionId, 'current')).rejects.toMatchObject({
+      status: 401,
+    });
   });
 });

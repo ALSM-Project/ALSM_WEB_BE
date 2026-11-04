@@ -248,13 +248,16 @@ export class MongoRbacRepository implements IRbacRepository {
       fullName: u.fullName,
       isPlatformAdmin: u.isPlatformAdmin,
       isActive: u.isActive,
+      isLocked: u.isLocked ?? false,
+      lockReason: u.lockReason,
+      lockDuration: u.lockDuration,
     };
   }
 
   async findAllUsers(): Promise<IRbacUser[]> {
     const users = await this.userModel
       .find()
-      .select('email fullName isPlatformAdmin isActive')
+      .select('email fullName isPlatformAdmin isActive isLocked lockReason lockDuration')
       .exec();
     return users.map((u) => ({
       id: u.id || u._id.toString(),
@@ -262,6 +265,7 @@ export class MongoRbacRepository implements IRbacRepository {
       fullName: u.fullName,
       isPlatformAdmin: u.isPlatformAdmin,
       isActive: u.isActive,
+      isLocked: u.isLocked ?? false,
     }));
   }
 

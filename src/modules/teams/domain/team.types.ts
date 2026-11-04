@@ -34,6 +34,7 @@ export interface SaveTeamInput {
 }
 
 export interface TeamRepository {
+  listForMember(memberId: string, organizationId?: string): Promise<TeamRecord[]>;
   findById(id: string, organizationId: string): Promise<TeamRecord | null>;
   findManaged(
     id: string,

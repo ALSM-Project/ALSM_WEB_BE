@@ -18,10 +18,28 @@ export class Lead {
   // Rich CRM attributes (Report 3 Section 3.11)
   @Prop({ trim: true }) contactName?: string;
   @Prop({ trim: true }) company?: string;
+  // Compatibility fields retained for lead records created by the earlier CRM schema.
+  @Prop({ trim: true }) companyName?: string;
   @Prop({ trim: true }) phone?: string;
   @Prop({ trim: true, default: 'Website' }) source?: string;
   @Prop({ default: 'NEW', index: true }) stage!: 'NEW' | 'CONTACTED' | 'QUALIFIED' | 'PROPOSAL' | 'WON' | 'LOST';
   @Prop({ default: 50 }) score!: number;
+  @Prop({ type: Number, min: 0 }) dealValue?: number;
+  @Prop({ type: Number, min: 0 }) estimatedValue?: number;
+  @Prop({ type: String, trim: true, uppercase: true, default: 'VND' }) currency?: string;
+  @Prop({ type: MongoSchema.Types.ObjectId }) assignedToUserId?: Types.ObjectId;
+  @Prop({ trim: true }) assignedToName?: string;
+  @Prop({ type: MongoSchema.Types.ObjectId }) convertedOrganizationId?: Types.ObjectId;
+  @Prop() convertedAt?: Date;
+  @Prop({ type: Object }) provisioning?: {
+    status: 'COMPLETED';
+    organizationId: string;
+    organizationName: string;
+    domain?: string;
+    adminEmail?: string;
+    adminLinked: boolean;
+    completedAt: Date;
+  };
   @Prop() lastContactAt?: Date;
   @Prop() notes?: string;
   @Prop({ type: [Object], default: [] }) interactions!: Array<{
@@ -50,9 +68,18 @@ export class Lead {
     planName: string;
     projectScope?: string;
     amount: number;
+    finalPrice?: number;
     discountPercent?: number;
     discountApproved?: boolean;
     discountReason?: string;
+    approvalStatus?: 'PENDING' | 'APPROVED' | 'REJECTED' | 'REQUIRES_HIGHER_APPROVAL';
+    approvedBy?: string;
+    approvedAt?: Date;
+    rejectionReason?: string;
+    escalatedBy?: string;
+    escalatedAt?: Date;
+    executiveReviewedBy?: string;
+    executiveReviewedAt?: Date;
     status: 'DRAFT' | 'PENDING_APPROVAL' | 'SENT' | 'ACCEPTED' | 'REJECTED';
     sentAt?: Date;
     pdfUrl?: string;
@@ -60,11 +87,19 @@ export class Lead {
   }>;
   @Prop({ type: [Object], default: [] }) contracts!: Array<{
     id: string;
+    requestId?: string;
+    requestFingerprint?: string;
     quoteId?: string;
-    documentTitle: string;
-    status: 'DRAFT' | 'SENT_FOR_SIGNATURE' | 'SIGNED' | 'DECLINED';
+    contractNumber?: string;
+    title?: string;
+    documentTitle?: string;
+    plan?: string;
+    annualValue?: number;
+    status: 'DRAFT' | 'SENT_FOR_SIGNATURE' | 'SIGNED' | 'FULLY_SIGNED' | 'DECLINED';
+    effectiveDate?: string;
     envelopeId?: string;
     signedAt?: Date;
+    createdByUserId?: string;
     createdAt: Date;
   }>;
   @Prop({ trim: true }) assignedTo?: string;

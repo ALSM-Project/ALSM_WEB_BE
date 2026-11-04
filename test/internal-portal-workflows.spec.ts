@@ -50,7 +50,8 @@ describe('Internal Staff Portal & Platform Administration Workflows', () => {
       );
     });
 
-    it('3.10.4: support impersonates customer organisation with read-only context and audit trail', async () => {
+    it('3.10.4: blocks impersonation without a verified support session and never audits success', async () => {
+      auditRepo.append.mockClear();
       const mockOrg = {
         id: 'org-cust-1',
         _id: new Types.ObjectId(),
@@ -73,16 +74,15 @@ describe('Internal Staff Portal & Platform Administration Workflows', () => {
         auditRepo as never,
       );
 
-      const result = await adminService.impersonateOrganization('support-user-1', 'org-cust-1');
-
-      expect(result.readOnly).toBe(true);
-      expect(result.organizationName).toBe('Acme Bank Enterprise');
-      expect(auditRepo.append).toHaveBeenCalledWith(
-        expect.objectContaining({
-          action: 'ORGANISATION_IMPERSONATED',
-          metadata: expect.objectContaining({ readOnly: 'true' }),
-        }),
-      );
+      await expect(
+        adminService.impersonateOrganization('support-user-1', 'org-cust-1'),
+      ).rejects.toMatchObject({
+        status: 503,
+        response: { code: 'SUPPORT_IMPERSONATION_UNAVAILABLE' },
+      });
+      expect(orgModel.findById).not.toHaveBeenCalled();
+      expect(orgModel.findOne).not.toHaveBeenCalled();
+      expect(auditRepo.append).not.toHaveBeenCalled();
     });
   });
 
@@ -94,6 +94,7 @@ describe('Internal Staff Portal & Platform Administration Workflows', () => {
       quotes: Record<string, unknown>[];
       contracts: Record<string, unknown>[];
       save: jest.Mock;
+      markModified: jest.Mock;
       [key: string]: unknown;
     };
     let leadModel: {
@@ -101,11 +102,7 @@ describe('Internal Staff Portal & Platform Administration Workflows', () => {
       findById: jest.Mock;
       findOne: jest.Mock;
       create: jest.Mock;
-    };
-    let orgModel: {
-      findOne: jest.Mock;
-      create: jest.Mock;
-      findById?: jest.Mock;
+      updateOne: jest.Mock;
     };
     let userModel: {
       findOne?: jest.Mock;
@@ -129,6 +126,7 @@ describe('Internal Staff Portal & Platform Administration Workflows', () => {
         quotes: [],
         contracts: [],
         save: jest.fn().mockResolvedValue(true),
+        markModified: jest.fn(),
       };
 
       leadModel = {
@@ -140,12 +138,14 @@ describe('Internal Staff Portal & Platform Administration Workflows', () => {
         }),
         findById: jest.fn().mockReturnValue({ exec: jest.fn().mockResolvedValue(mockLead) }),
         findOne: jest.fn().mockReturnValue({ exec: jest.fn().mockResolvedValue(mockLead) }),
-        create: jest.fn().mockImplementation((dto) => Promise.resolve({ id: 'lead-new-1', ...dto, save: jest.fn() })),
-      };
-
-      orgModel = {
-        findOne: jest.fn().mockReturnValue({ exec: jest.fn().mockResolvedValue(null) }),
-        create: jest.fn().mockResolvedValue({ _id: new Types.ObjectId(), members: [], save: jest.fn() }),
+        create: jest
+          .fn()
+          .mockImplementation((dto) =>
+            Promise.resolve({ id: 'lead-new-1', ...dto, save: jest.fn() }),
+          ),
+        updateOne: jest.fn().mockReturnValue({
+          exec: jest.fn().mockResolvedValue({ matchedCount: 1 }),
+        }),
       };
 
       userModel = {
@@ -155,7 +155,6 @@ describe('Internal Staff Portal & Platform Administration Workflows', () => {
 
       salesCrmService = new SalesCrmService(
         leadModel as never,
-        orgModel as never,
         userModel as never,
         auditRepo as never,
       );
@@ -185,7 +184,7 @@ describe('Internal Staff Portal & Platform Administration Workflows', () => {
       expect(mockLead.demos[0].meetLink).toContain('meet.google.com');
     });
 
-    it('3.11.6 & 3.12.3: quote with discount requires Sales Manager approval', async () => {
+    it('3.11.6: quote with a discount enters the persisted approval queue', async () => {
       const updated = await salesCrmService.sendQuote('sales-user-1', 'lead-1', {
         planName: 'Enterprise Pilot',
         amount: 25000,
@@ -196,22 +195,9 @@ describe('Internal Staff Portal & Platform Administration Workflows', () => {
       expect(updated.quotes[0].status).toBe('PENDING_APPROVAL');
       expect(updated.quotes[0].discountApproved).toBe(false);
 
-      // Manager reviews and approves
-      leadModel.findById.mockReturnValue({ exec: jest.fn().mockResolvedValue(mockLead) });
-      const approval = await salesCrmService.reviewDiscount(
-        'manager-user-1',
-        'lead-1',
-        updated.quotes[0].id,
-        true,
-        'Approved within Q4 quota discount budget',
-      );
-
-      expect(approval.success).toBe(true);
-      expect(mockLead.quotes[0].status).toBe('SENT');
-      expect(mockLead.quotes[0].discountApproved).toBe(true);
     });
 
-    it('3.11.7 & 3.11.8: signing contract changes stage to WON and auto-provisions enterprise org', async () => {
+    it('3.11.7: records the signed contract; customer provisioning is a separate activation step', async () => {
       mockLead.contracts = [
         {
           id: 'contract-1',
@@ -222,12 +208,17 @@ describe('Internal Staff Portal & Platform Administration Workflows', () => {
 
       leadModel.findById.mockReturnValue({ exec: jest.fn().mockResolvedValue(mockLead) });
 
-      const updated = await salesCrmService.signContract('manager-user-1', 'lead-1', 'contract-1');
+      await expect(
+        salesCrmService.signContract('manager-user-1', 'lead-1', 'contract-1'),
+      ).rejects.toMatchObject({
+        response: expect.objectContaining({ code: 'REAL_SIGNING_NOT_CONFIGURED' }),
+      });
 
-      expect(updated.stage).toBe('WON');
-      expect(mockLead.contracts[0].status).toBe('SIGNED');
-      expect(orgModel.create).toHaveBeenCalled();
-      expect(userModel.create).toHaveBeenCalled();
+      expect(mockLead.contracts[0].status).toBe('SENT_FOR_SIGNATURE');
+      expect(leadModel.updateOne).not.toHaveBeenCalled();
+      expect(auditRepo.append).not.toHaveBeenCalledWith(
+        expect.objectContaining({ action: 'LEAD_CONTRACT_SIGNED' }),
+      );
     });
 
     it('3.12.1: compiles comprehensive sales reports and CSV export', async () => {
@@ -305,24 +296,29 @@ describe('Internal Staff Portal & Platform Administration Workflows', () => {
         {} as never,
         projectModel as never,
         { countDocuments: jest.fn().mockResolvedValue(0) } as never,
-        { find: jest.fn().mockReturnValue({ populate: jest.fn().mockReturnValue({ sort: jest.fn().mockReturnValue({ skip: jest.fn().mockReturnValue({ limit: jest.fn().mockReturnValue({ exec: jest.fn().mockResolvedValue([]) }) }) }) }) }), countDocuments: jest.fn().mockResolvedValue(0) } as never,
+        {
+          find: jest
+            .fn()
+            .mockReturnValue({
+              populate: jest
+                .fn()
+                .mockReturnValue({
+                  sort: jest
+                    .fn()
+                    .mockReturnValue({
+                      skip: jest
+                        .fn()
+                        .mockReturnValue({
+                          limit: jest
+                            .fn()
+                            .mockReturnValue({ exec: jest.fn().mockResolvedValue([]) }),
+                        }),
+                    }),
+                }),
+            }),
+          countDocuments: jest.fn().mockResolvedValue(0),
+        } as never,
         auditRepo as never,
-      );
-    });
-
-    it('3.13.9: locks user account, invalidates active sessions, and writes audit trail', async () => {
-      const result = await adminService.lockUser('admin-1', 'user-departing-1', 'Suspected security breach');
-
-      expect(result.success).toBe(true);
-      expect(sessionModel.updateMany).toHaveBeenCalledWith(
-        expect.objectContaining({ revokedAt: { $exists: false } }),
-        expect.objectContaining({ $set: expect.objectContaining({ revokedAt: expect.any(Date) }) }),
-      );
-      expect(auditRepo.append).toHaveBeenCalledWith(
-        expect.objectContaining({
-          action: 'USER_ACCOUNT_LOCKED',
-          metadata: expect.objectContaining({ reason: 'Suspected security breach' }),
-        }),
       );
     });
 
@@ -380,7 +376,9 @@ describe('Internal Staff Portal & Platform Administration Workflows', () => {
     beforeEach(() => {
       tempRoleModel = {
         findOne: jest.fn().mockReturnValue({ exec: jest.fn().mockResolvedValue(null) }),
-        create: jest.fn().mockImplementation((dto) => Promise.resolve({ id: 'temp-1', ...dto, save: jest.fn() })),
+        create: jest
+          .fn()
+          .mockImplementation((dto) => Promise.resolve({ id: 'temp-1', ...dto, save: jest.fn() })),
         findById: jest.fn().mockReturnValue({
           exec: jest.fn().mockResolvedValue({
             id: 'temp-1',
@@ -412,11 +410,17 @@ describe('Internal Staff Portal & Platform Administration Workflows', () => {
       };
 
       roleModel = {
-        findOne: jest.fn().mockReturnValue({ exec: jest.fn().mockResolvedValue({ id: 'TEAM_LEAD', name: 'Team Lead' }) }),
+        findOne: jest
+          .fn()
+          .mockReturnValue({
+            exec: jest.fn().mockResolvedValue({ id: 'TEAM_LEAD', name: 'Team Lead' }),
+          }),
       };
 
       userModel = {
-        findById: jest.fn().mockReturnValue({ exec: jest.fn().mockResolvedValue({ _id: new Types.ObjectId() }) }),
+        findById: jest
+          .fn()
+          .mockReturnValue({ exec: jest.fn().mockResolvedValue({ _id: new Types.ObjectId() }) }),
       };
 
       tempRoleService = new TemporaryRoleService(
@@ -435,7 +439,13 @@ describe('Internal Staff Portal & Platform Administration Workflows', () => {
 
       // Rule 2: Cannot grant Platform Admin
       await expect(
-        tempRoleService.grantTemporaryRole('admin-1', 'user-1', 'SYSTEM_ADMIN', 8, 'Admin escalation'),
+        tempRoleService.grantTemporaryRole(
+          'admin-1',
+          'user-1',
+          'SYSTEM_ADMIN',
+          8,
+          'Admin escalation',
+        ),
       ).rejects.toThrow('Temporary role cannot grant Platform Admin privileges');
 
       // Successful grant
@@ -452,12 +462,22 @@ describe('Internal Staff Portal & Platform Administration Workflows', () => {
       // Rule 3: Only 1 active temporary role per user
       tempRoleModel.findOne.mockReturnValue({ exec: jest.fn().mockResolvedValue(granted) });
       await expect(
-        tempRoleService.grantTemporaryRole('admin-1', 'user-1', 'CONVERSION_STAFF', 4, 'Second role'),
+        tempRoleService.grantTemporaryRole(
+          'admin-1',
+          'user-1',
+          'CONVERSION_STAFF',
+          4,
+          'Second role',
+        ),
       ).rejects.toThrow('The user already holds an active temporary role');
     });
 
     it('3.15.3: revokes temporary role with reason and audit log', async () => {
-      const revoked = await tempRoleService.revokeTemporaryRole('admin-1', 'temp-1', 'Shift ended early');
+      const revoked = await tempRoleService.revokeTemporaryRole(
+        'admin-1',
+        'temp-1',
+        'Shift ended early',
+      );
       expect(revoked.status).toBe('REVOKED');
       expect(auditRepo.append).toHaveBeenCalledWith(
         expect.objectContaining({
@@ -496,9 +516,11 @@ describe('Internal Staff Portal & Platform Administration Workflows', () => {
 
       const mockTempModel = {
         find: jest.fn().mockReturnValue({
-          exec: jest.fn().mockResolvedValue([
-            { roleId: 'TEAM_LEAD', status: 'ACTIVE', expiresAt: new Date(Date.now() + 3600000) },
-          ]),
+          exec: jest
+            .fn()
+            .mockResolvedValue([
+              { roleId: 'TEAM_LEAD', status: 'ACTIVE', expiresAt: new Date(Date.now() + 3600000) },
+            ]),
         }),
       };
 

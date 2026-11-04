@@ -2,6 +2,7 @@ import {
   analyzeBundle,
   buildCopybookIndex,
   extractCopyStatements,
+  findCopybookBlockers,
   resolveProgram,
   type BundleFile,
 } from '../src/modules/conversions/domain/copybook-dependency-resolver';
@@ -233,6 +234,32 @@ describe('CopybookDependencyResolver', () => {
       const analysis = analyzeBundle(files).get('P.cbl')!;
       expect(analysis.status).toBe('BLOCKED');
       expect(analysis.dependencies[1].status).toBe('MISSING');
+    });
+  });
+
+  describe('findCopybookBlockers', () => {
+    it('returns nothing for a fully resolved tree, including system copybooks', () => {
+      expect(
+        findCopybookBlockers([
+          { copyName: 'A', status: 'RESOLVED', resolvedFile: 'A.cpy' },
+          { copyName: 'DFHAID', status: 'SYSTEM_PROVIDED' },
+          { copyName: 'DFHBMSCA', status: 'MISSING' },
+        ]),
+      ).toEqual([]);
+    });
+
+    it('lists missing application copybooks, nested ones included', () => {
+      expect(
+        findCopybookBlockers([
+          { copyName: 'CVACT01Y', status: 'MISSING', message: 'CVACT01Y missing' },
+          {
+            copyName: 'OUTER',
+            status: 'RESOLVED',
+            resolvedFile: 'OUTER.cpy',
+            dependencies: [{ copyName: 'INNER', status: 'AMBIGUOUS' }],
+          },
+        ]),
+      ).toEqual(['CVACT01Y missing', 'INNER: AMBIGUOUS']);
     });
   });
 });

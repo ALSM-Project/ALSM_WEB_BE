@@ -6,6 +6,7 @@ import {
 } from '@nestjs/common';
 import { SESSION_REPOSITORY, SessionRepository } from '../domain/session.repository';
 import { USER_REPOSITORY, UserRepository } from '../../users/domain/user.repository';
+import { isAccountAdmitted } from '../domain/account-admission';
 
 /** Ordinary live-session prerequisite only; NOT command MFA or support-session admission. */
 @Injectable()
@@ -25,11 +26,24 @@ export class RequireCurrentSessionService {
         code: 'CURRENT_SESSION_REQUIRED',
         message: 'A current active session for this account is required',
       });
-    if (!/^[a-f0-9]{24}$/.test(userId) || !sessionId || !/^[a-f0-9]{24}$/.test(sessionId))
+    if (
+      typeof userId !== 'string' ||
+      !/^[a-f0-9]{24}$/.test(userId) ||
+      typeof sessionId !== 'string' ||
+      !/^[a-f0-9]{24}$/.test(sessionId) ||
+      typeof version !== 'string' ||
+      !version ||
+      version.length > 200
+    )
       throw denied();
     try {
       const account = await this.users.findById(userId);
-      if (!account?.isActive || (account.mustChangePassword && !passwordRemediation))
+      if (
+        !account ||
+        account.id !== userId ||
+        !isAccountAdmitted(account) ||
+        (account.mustChangePassword && !passwordRemediation)
+      )
         throw denied();
       const matching = (await this.sessions.findActiveByUserId(userId)).find(
         (session) => session.id === sessionId,
@@ -41,6 +55,15 @@ export class RequireCurrentSessionService {
         matching.revokedAt ||
         !Number.isFinite(matching.expiresAt.getTime()) ||
         matching.expiresAt.getTime() <= Date.now()
+      )
+        throw denied();
+      // A lock saved while session storage was being read must also deny admission.
+      const current = await this.users.findById(userId);
+      if (
+        !current ||
+        current.id !== userId ||
+        !isAccountAdmitted(current) ||
+        (current.mustChangePassword && !passwordRemediation)
       )
         throw denied();
     } catch (error) {

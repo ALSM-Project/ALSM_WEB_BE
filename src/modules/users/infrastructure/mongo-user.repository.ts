@@ -1,26 +1,60 @@
 import { Injectable } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
-import { Model } from 'mongoose';
+import { ClientSession, Connection, Model } from 'mongoose';
+import { requireActiveTransaction } from '../../../shared/database/mongo-transaction-runner';
 import { MfaSetupFailureResult, UserRecord, UserRepository } from '../domain/user.repository';
 import { User, UserDocument } from './user.schema';
 
 @Injectable()
 export class MongoUserRepository implements UserRepository {
   constructor(@InjectModel(User.name) private readonly model: Model<User>) {}
+  private session?: ClientSession;
+  private transaction?: object;
+
+  inTransaction(session: ClientSession, connection: Connection): MongoUserRepository {
+    requireActiveTransaction(session);
+    if (this.model.db !== connection) throw new Error('User transaction connection mismatch');
+    const participant = new MongoUserRepository(this.model);
+    participant.session = session;
+    participant.transaction = session.transaction;
+    return participant;
+  }
+
+  private scope(): ClientSession | null {
+    if (this.session) {
+      requireActiveTransaction(this.session);
+      if (this.transaction !== this.session.transaction)
+        throw new Error('Stale user transaction participant');
+    }
+    return this.session ?? null;
+  }
 
   async create(
-    input: Pick<UserRecord, 'email' | 'passwordHash' | 'fullName'> & { isEmailVerified?: boolean },
+    input: Pick<UserRecord, 'email' | 'passwordHash' | 'fullName'> & {
+      accountType?: UserRecord['accountType'];
+      isEmailVerified?: boolean;
+      isActive?: boolean;
+    },
   ): Promise<UserRecord> {
-    return this.map(await this.model.create(input));
+    const session = this.scope();
+    const user = session
+      ? (await this.model.create([input], { session }))[0]
+      : await this.model.create(input);
+    return this.map(user);
   }
 
   async findByEmail(email: string): Promise<UserRecord | null> {
-    const doc = await this.model.findOne({ email }).select('+passwordHash').exec();
+    const doc = await this.model
+      .findOne({ email })
+      .select('+passwordHash')
+      .read('primary')
+      .session(this.scope())
+      .exec();
     return doc ? this.map(doc) : null;
   }
 
   async findById(id: string): Promise<UserRecord | null> {
-    const doc = await this.model.findById(id).select('+passwordHash').exec();
+    const doc = await this.model.findById(id).select('+passwordHash').read('primary').exec();
     return doc ? this.map(doc) : null;
   }
 
@@ -30,6 +64,25 @@ export class MongoUserRepository implements UserRepository {
 
   async markEmailVerified(userId: string): Promise<void> {
     await this.model.updateOne({ _id: userId }, { $set: { isEmailVerified: true } }).exec();
+  }
+
+  async markEmailVerifiedIfUnverified(userId: string, email: string): Promise<UserRecord | null> {
+    const doc = await this.model
+      .findOneAndUpdate(
+        {
+          _id: userId,
+          email,
+          isEmailVerified: false,
+          isActive: true,
+          isLocked: false,
+          'mfa.enabled': false,
+        },
+        { $set: { isEmailVerified: true } },
+        { new: true, writeConcern: { w: 'majority', wtimeoutMS: 10000 } },
+      )
+      .select('+passwordHash')
+      .exec();
+    return doc ? this.map(doc) : null;
   }
 
   async updateStatus(id: string, isActive: boolean): Promise<void> {
@@ -135,6 +188,7 @@ export class MongoUserRepository implements UserRepository {
   private map(doc: UserDocument): UserRecord {
     return {
       id: doc.id,
+      ...(doc.accountType ? { accountType: doc.accountType } : {}),
       email: doc.email,
       passwordHash: doc.passwordHash,
       fullName: doc.fullName,
@@ -142,6 +196,8 @@ export class MongoUserRepository implements UserRepository {
       isActive: doc.isActive,
       isEmailVerified: doc.isEmailVerified ?? true,
       mustChangePassword: doc.mustChangePassword ?? false,
+      isLocked: doc.isLocked ?? false,
+      lockReason: doc.lockReason,
       mfa: {
         enabled: doc.mfa?.enabled ?? false,
         secret: doc.mfa?.secret ?? null,

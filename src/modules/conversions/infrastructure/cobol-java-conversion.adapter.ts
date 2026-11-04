@@ -12,8 +12,7 @@ import {
   ErrorLogStatus,
 } from '../domain/error-log.types';
 import { CopybookDependencyBlockedError } from '../domain/copybook-dependency-blocked.error';
-import type { DependencyEntry } from '../domain/copybook-dependency.types';
-import { isSystemCopybook } from '../domain/copybook-dependency-resolver';
+import { findCopybookBlockers } from '../domain/copybook-dependency-resolver';
 import { SCREEN_REPOSITORY, ScreenRepository } from '../../screens/domain/screen.types';
 import { runConversionTool } from './conversion-tool-runner.util';
 import { normalizeBundle } from './cics-source-normalizer';
@@ -52,7 +51,7 @@ export class CobolJavaConversionAdapter {
       // BLOCKED purely because of those, and should convert without a re-upload.
       const blockers =
         screen?.dependencyStatus === 'BLOCKED'
-          ? this.collectBlockers(screen.dependencies ?? [])
+          ? findCopybookBlockers(screen.dependencies ?? [])
           : [];
       if (blockers.length > 0) {
         throw new CopybookDependencyBlockedError(
@@ -93,6 +92,7 @@ export class CobolJavaConversionAdapter {
 
     try {
       const toolSourceDir = await this.prepareSources(sourceDir, path.join(jobWorkDir, 'src'));
+      await this.copyToolConfig(jarPath, jobWorkDir);
       const result = await runConversionTool(
         javaExecutable,
         [
@@ -234,26 +234,22 @@ export class CobolJavaConversionAdapter {
     return result;
   }
 
-  /** Flattens the unresolved entries (top-level and nested) of a dependency tree into
-   * actionable messages — surfaced as the job's errorMessage. IBM system copybooks never
-   * count, whether stored as SYSTEM_PROVIDED or (older analyses) as MISSING. */
-  private collectBlockers(dependencies: DependencyEntry[]): string[] {
-    const unresolved: string[] = [];
-    const collect = (entries: DependencyEntry[]) => {
-      for (const entry of entries) {
-        const nonBlocking =
-          entry.status === 'RESOLVED' ||
-          entry.status === 'SYSTEM_PROVIDED' ||
-          (entry.status === 'MISSING' && isSystemCopybook(entry.copyName));
-        if (!nonBlocking) {
-          unresolved.push(entry.message ?? `${entry.copyName}: ${entry.status}`);
-        } else if (entry.dependencies) {
-          collect(entry.dependencies);
-        }
+  /**
+   * The tool reads Config.properties (package names, data model format) from its working
+   * directory, and every job runs in its own temp directory. Copy the tool's own file next to
+   * the jar (or one level up, where a source checkout keeps it) into the job directory.
+   */
+  private async copyToolConfig(jarPath: string, jobWorkDir: string): Promise<void> {
+    const jarDir = path.dirname(jarPath);
+    for (const candidate of [path.join(jarDir, 'Config.properties'), path.join(jarDir, '..', 'Config.properties')]) {
+      try {
+        await fs.promises.copyFile(candidate, path.join(jobWorkDir, 'Config.properties'));
+        return;
+      } catch {
+        // not there - try the next location
       }
-    };
-    collect(dependencies);
-    return unresolved;
+    }
+    this.logger.warn(`No Config.properties found next to ${jarPath}; the tool will use its defaults`);
   }
 
   private async listJavaFiles(dir: string): Promise<string[]> {
