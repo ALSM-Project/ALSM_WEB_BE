@@ -8,6 +8,7 @@ import { SaveTeamService } from '../application/save-team.service';
 import { ListManagedTeamsService } from '../application/list-managed-teams.service';
 import { SaveTeamDto, TeamKindQuery } from './team.dto';
 import { GetTeamAdministrationService } from '../application/get-team-administration.service';
+import { ListOrganizationTeamMembersService } from '../application/list-organization-team-members.service';
 
 @ApiTags('Teams')
 @ApiBearerAuth()
@@ -19,7 +20,18 @@ export class TeamsController {
     private readonly save: SaveTeamService,
     private readonly list: ListManagedTeamsService,
     private readonly administration: GetTeamAdministrationService,
+    private readonly organizationMembers: ListOrganizationTeamMembersService,
   ) {}
+  @Get('members')
+  @ApiOperation({
+    summary: 'List active members of the current organization; requires organization OWNER/ADMIN and users.manage',
+  })
+  listOrganizationMembers(
+    @CurrentUser() user: AuthenticatedUser,
+    @Headers('x-organization-id') organizationId: string | undefined,
+  ) {
+    return this.organizationMembers.execute(user.userId, organizationId);
+  }
   @Get(':teamId/administration')
   @ApiOperation({
     summary:
