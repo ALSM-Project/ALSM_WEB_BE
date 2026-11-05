@@ -6,9 +6,16 @@ import { JwtAuthGuard } from '../../../shared/security/jwt-auth.guard';
 import { AuthenticatedUser } from '../../../shared/logging/request-id.middleware';
 import { SaveTeamService } from '../application/save-team.service';
 import { ListManagedTeamsService } from '../application/list-managed-teams.service';
-import { SaveTeamDto, TeamKindQuery } from './team.dto';
+import {
+  AddExistingSalesTeamMembersDto,
+  SalesTeamMemberSearchQuery,
+  SaveTeamDto,
+  TeamKindQuery,
+} from './team.dto';
 import { GetTeamAdministrationService } from '../application/get-team-administration.service';
 import { ListOrganizationTeamMembersService } from '../application/list-organization-team-members.service';
+import { SearchSalesTeamMemberCandidatesService } from '../application/search-sales-team-member-candidates.service';
+import { AddExistingSalesTeamMembersService } from '../application/add-existing-sales-team-members.service';
 
 @ApiTags('Teams')
 @ApiBearerAuth()
@@ -21,6 +28,8 @@ export class TeamsController {
     private readonly list: ListManagedTeamsService,
     private readonly administration: GetTeamAdministrationService,
     private readonly organizationMembers: ListOrganizationTeamMembersService,
+    private readonly memberCandidates: SearchSalesTeamMemberCandidatesService,
+    private readonly addSalesMembers: AddExistingSalesTeamMembersService,
   ) {}
   @Get('members')
   @ApiOperation({
@@ -31,6 +40,28 @@ export class TeamsController {
     @Headers('x-organization-id') organizationId: string | undefined,
   ) {
     return this.organizationMembers.execute(user.userId, organizationId);
+  }
+  @Get('members/candidates')
+  @ApiOperation({
+    summary: 'Search active internal Sales accounts that can be added to the current organization',
+  })
+  searchSalesMemberCandidates(
+    @CurrentUser() user: AuthenticatedUser,
+    @Headers('x-organization-id') organizationId: string | undefined,
+    @Query() query: SalesTeamMemberSearchQuery,
+  ) {
+    return this.memberCandidates.execute(user.userId, organizationId, query.q);
+  }
+  @Post('members')
+  @ApiOperation({
+    summary: 'Add existing internal Sales accounts to the current organization as members',
+  })
+  addExistingSalesMembers(
+    @CurrentUser() user: AuthenticatedUser,
+    @Headers('x-organization-id') organizationId: string | undefined,
+    @Body() input: AddExistingSalesTeamMembersDto,
+  ) {
+    return this.addSalesMembers.execute(user.userId, organizationId, input.userIds);
   }
   @Get(':teamId/administration')
   @ApiOperation({
