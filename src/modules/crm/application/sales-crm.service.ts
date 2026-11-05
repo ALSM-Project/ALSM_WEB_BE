@@ -13,7 +13,7 @@ import { Lead, LeadDocument } from '../infrastructure/lead.schema';
 import { User } from '../../users/infrastructure/user.schema';
 import { AUDIT_REPOSITORY, AuditRepository } from '../../audit/domain/audit.repository';
 import { LeadStatus } from '../domain/lead.types';
-import { TEAM_REPOSITORY, TeamKind, TeamRepository } from '../../teams/domain/team.types';
+import { TEAM_REPOSITORY, TeamRepository } from '../../teams/domain/team.types';
 import {
   SALES_PIPELINE_STAGES,
   SalesPipelineLead,
