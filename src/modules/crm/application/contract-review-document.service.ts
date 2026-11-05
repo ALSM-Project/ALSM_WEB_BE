@@ -39,6 +39,74 @@ export class ContractReviewDocumentService {
     return this.renderPdf(value, 'CANONICAL_UNSIGNED');
   }
 
+  async renderDemoSignedPdf(value: ContractWithCurrentVersion, input: { signerName: string; signerEmail: string; signedAt: Date }): Promise<Buffer> {
+    const fontPath = this.config.get<string>('CONTRACT_PDF_FONT_PATH')?.trim();
+    if (!fontPath) throw new ServiceUnavailableException({ code: 'CONTRACT_PDF_FONT_NOT_CONFIGURED', message: 'Vietnamese PDF fonts are not configured.' });
+    const resolvedFontPath = resolve(fontPath);
+    try { await access(resolvedFontPath, constants.R_OK); }
+    catch { throw new ServiceUnavailableException({ code: 'CONTRACT_PDF_FONT_UNAVAILABLE', message: 'The configured Vietnamese PDF font is unavailable.' }); }
+    const configuredBoldPath = this.config.get<string>('CONTRACT_PDF_FONT_BOLD_PATH')?.trim();
+    const boldFontPath = configuredBoldPath ? resolve(configuredBoldPath) : resolvedFontPath;
+    try { await access(boldFontPath, constants.R_OK); }
+    catch { throw new ServiceUnavailableException({ code: 'CONTRACT_PDF_BOLD_FONT_UNAVAILABLE', message: 'The configured contract PDF bold font is unavailable.' }); }
+
+    const { contract, version } = value;
+    const template = version.approvedTemplateSnapshot;
+    if (!template || template.templateVersionId !== version.approvedTemplateVersionId) {
+      throw new ConflictException({ code: 'CONTRACT_TEMPLATE_SNAPSHOT_REQUIRED', message: 'An approved immutable template snapshot is required for demo signing.' });
+    }
+    const chunks: Buffer[] = [];
+    const doc = new PDFDocument({ size: 'A4', margins: { top: 68, bottom: 64, left: 58, right: 58 }, compress: true });
+    doc.info = {
+      Title: `DEMO simulated contract ${contract.contractNumber}`,
+      Subject: 'DEMO ONLY. Simulated signing workflow; not a legally valid electronic signature.',
+      Author: 'ALSM Technologies Corp.',
+      CreationDate: new Date(input.signedAt),
+      ModDate: new Date(input.signedAt),
+    };
+    doc.on('data', (chunk: Buffer | Uint8Array) => chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk)));
+    const completed = new Promise<Buffer>((resolvePdf, rejectPdf) => {
+      doc.once('error', rejectPdf);
+      doc.once('end', () => resolvePdf(Buffer.concat(chunks)));
+    });
+    const markDemo = () => {
+      const y = doc.y;
+      doc.save().font(boldFontPath).fontSize(9).fillColor('#b91c1c')
+        .text('DEMO ONLY — NOT A LEGALLY VALID SIGNATURE', 58, 27, { width: 479, align: 'center', lineBreak: false })
+        .restore();
+      doc.y = y;
+    };
+    doc.on('pageAdded', markDemo);
+    markDemo();
+    doc.font(boldFontPath).fontSize(17).fillColor('#0b1f44').text('ALSM TECHNOLOGIES CORP.', { align: 'center' });
+    doc.moveDown(0.4).font(boldFontPath).fontSize(14).fillColor('#111827').text('DEMO CONTRACT — SIMULATED SIGNING', { align: 'center' });
+    doc.moveDown(0.7).font(resolvedFontPath).fontSize(9).fillColor('#991b1b')
+      .text('This document demonstrates an application workflow only. No cryptographic signature, identity verification, or legally binding execution is provided.', { align: 'center' });
+    doc.moveDown(0.8);
+    doc.font(boldFontPath).fontSize(10).fillColor('#111827').text(`Contract: ${contract.contractNumber} · Version ${version.versionNumber}`);
+    doc.font(resolvedFontPath).fontSize(9).text(`Original approved PDF SHA-256: ${version.canonicalDocument?.sha256 ?? 'unavailable'}`);
+    doc.moveDown(0.6);
+    doc.font(boldFontPath).fontSize(12).fillColor('#0b1f44').text(template.title);
+    doc.font(resolvedFontPath).fontSize(8).fillColor('#64748b').text(`Approved template v${template.templateVersionNumber} · ${template.locale.toUpperCase()} · SHA-256 ${template.contentDigest}`);
+    doc.moveDown(0.4);
+    template.sections.forEach((section, index) => {
+      doc.font(boldFontPath).fontSize(10).fillColor('#111827').text(`${index + 1}. ${section.heading}`, { paragraphGap: 3 });
+      doc.font(resolvedFontPath).fontSize(9).fillColor('#1f2937').text(section.body, { align: 'justify', paragraphGap: 7, lineGap: 2 });
+      doc.moveDown(0.25);
+    });
+    doc.addPage();
+    doc.font(boldFontPath).fontSize(14).fillColor('#0b1f44').text('SIMULATED SIGNING RECORD', { align: 'center' });
+    doc.moveDown(0.8).font(boldFontPath).fontSize(10).fillColor('#111827').text('ALSM Technologies Corp. (demo counter-signature)');
+    doc.font(resolvedFontPath).fontSize(9).fillColor('#475569').text('Simulated as part of the graduation-project demonstration.');
+    doc.moveDown(0.8).font(boldFontPath).fontSize(10).fillColor('#111827').text(`Customer: ${input.signerName}`);
+    doc.font(resolvedFontPath).fontSize(9).fillColor('#475569').text(`Authenticated ALSM demo account: ${input.signerEmail}`);
+    doc.text(`Customer confirmation time: ${input.signedAt.toISOString()}`);
+    doc.moveDown(0.8).font(boldFontPath).fontSize(10).fillColor('#991b1b')
+      .text('DEMO ONLY — ACCOUNT CONFIRMATION IS NOT REAL-WORLD IDENTITY PROOF OR AN ELECTRONIC SIGNATURE.', { align: 'center' });
+    doc.end();
+    return completed;
+  }
+
   private async renderPdf(value: ContractWithCurrentVersion, kind: 'REVIEW_COPY' | 'CANONICAL_UNSIGNED'): Promise<Buffer> {
     const fontPath = this.config.get<string>('CONTRACT_PDF_FONT_PATH')?.trim();
     if (!fontPath) {

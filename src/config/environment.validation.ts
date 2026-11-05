@@ -3,6 +3,11 @@ import { parseCorsOrigins } from './cors-policy';
 
 export const environmentValidationSchema = Joi.object({
   NODE_ENV: Joi.string().valid('development', 'test', 'production').default('development'),
+  CONTRACT_SIGNING_MODE: Joi.when('NODE_ENV', {
+    is: 'production',
+    then: Joi.string().valid('DISABLED').default('DISABLED'),
+    otherwise: Joi.string().valid('DISABLED', 'DEMO').default('DISABLED'),
+  }),
   PORT: Joi.number().port().default(3000),
   MONGODB_URI: Joi.string()
     .uri({ scheme: ['mongodb', 'mongodb+srv'] })

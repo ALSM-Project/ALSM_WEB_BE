@@ -44,6 +44,8 @@ import { ContractReviewDocumentService } from './modules/crm/application/contrac
 import { CONTRACT_SIGNING_PROVIDER } from './modules/crm/domain/contract-signing-provider.port';
 import { UnconfiguredContractSigningProviderAdapter } from './modules/crm/infrastructure/unconfigured-contract-signing-provider.adapter';
 import { VnptEContractClient } from './modules/crm/infrastructure/vnpt-econtract.client';
+import { DemoContractSigningProviderAdapter } from './modules/crm/infrastructure/demo-contract-signing-provider.adapter';
+import { ConfigService } from '@nestjs/config';
 import { CONTRACT_INVITATION_UNIT_OF_WORK } from './modules/crm/application/contract-invitation-unit-of-work.port';
 import { MongoContractInvitationUnitOfWork } from './modules/crm/infrastructure/mongo-contract-invitation.unit-of-work';
 import { SALES_PERFORMANCE_SOURCE } from './modules/crm/domain/sales-performance-source.port';
@@ -488,7 +490,13 @@ import { NotificationsService } from './modules/notifications/notifications.serv
     { provide: CONTRACT_AGGREGATE_UNIT_OF_WORK, useClass: MongoContractAggregateUnitOfWork },
     ContractAggregateService,
     VnptEContractClient,
-    { provide: CONTRACT_SIGNING_PROVIDER, useClass: UnconfiguredContractSigningProviderAdapter },
+    {
+      provide: CONTRACT_SIGNING_PROVIDER,
+      useFactory: (config: ConfigService) => config.get<string>('CONTRACT_SIGNING_MODE') === 'DEMO'
+        ? new DemoContractSigningProviderAdapter()
+        : new UnconfiguredContractSigningProviderAdapter(),
+      inject: [ConfigService],
+    },
     ContractReviewDocumentService,
     { provide: CONTRACT_TEMPLATE_REPOSITORY, useClass: MongoContractTemplateRepository },
     { provide: CONTRACT_TEMPLATE_UNIT_OF_WORK, useClass: MongoContractTemplateUnitOfWork },
