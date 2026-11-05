@@ -5,7 +5,6 @@ import {
   SigningProviderArtifact,
   SigningProviderEnvelopeStatus,
   SigningProviderReadiness,
-  SigningProviderWebhookInput,
   StartSigningEnvelopeInput,
   VerifiedSigningProviderEvent,
 } from '../domain/contract-signing-provider.port';
@@ -65,19 +64,19 @@ export class DemoContractSigningProviderAdapter implements ContractSigningProvid
     };
   }
 
-  async verifyWebhook(_input: SigningProviderWebhookInput) {
+  async verifyWebhook(): Promise<VerifiedSigningProviderEvent | null> {
     return null;
   }
 
-  async getEnvelopeStatus(_providerEnvelopeReference: string): Promise<SigningProviderEnvelopeStatus> {
+  async getEnvelopeStatus(): Promise<SigningProviderEnvelopeStatus> {
     return 'SENT';
   }
 
-  async downloadArtifacts(_providerEnvelopeReference: string): Promise<SigningProviderArtifact[]> {
+  async downloadArtifacts(): Promise<SigningProviderArtifact[]> {
     throw new ServiceUnavailableException({ code: 'DEMO_SIGNING_ACTION_REQUIRED', message: 'Complete the customer demo confirmation to create demo evidence.' });
   }
 
-  async cancelEnvelope(_providerEnvelopeReference: string, _reason: string): Promise<void> {
+  async cancelEnvelope(): Promise<void> {
     throw new ServiceUnavailableException({ code: 'DEMO_SIGNING_CANNOT_CANCEL', message: 'This demo signing session cannot be cancelled after it starts.' });
   }
 }
