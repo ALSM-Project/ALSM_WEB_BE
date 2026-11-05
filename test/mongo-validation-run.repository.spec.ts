@@ -1,5 +1,6 @@
 import { MongoValidationRunRepository } from '../src/modules/validation/infrastructure/mongo-validation-run.repository';
 import { ValidationRunSchema } from '../src/modules/validation/infrastructure/validation-run.schema';
+import { ValidationExecutionOutcome } from '../src/modules/validation/domain/validation-execution-metadata';
 
 describe('MongoValidationRunRepository query isolation', () => {
   it('defines a unique sparse index for the internal active execution key', () => {
@@ -171,6 +172,10 @@ describe('MongoValidationRunRepository query isolation', () => {
       selectedFileCount: 2,
       inputCharacterCount: 100,
       resultsPersistedAt,
+      executionOutcome: ValidationExecutionOutcome.HEURISTIC_FALLBACK,
+      resultProvider: 'heuristic-fallback',
+      resultModel: 'heuristic-rules-v1',
+      providerFailureCode: 'AI_PROVIDER_TIMEOUT',
     });
 
     expect(updateOne).toHaveBeenCalledWith(
@@ -185,6 +190,10 @@ describe('MongoValidationRunRepository query isolation', () => {
           findingCount: 0,
           expectedFindingCount: 0,
           resultsPersistedAt,
+          executionOutcome: ValidationExecutionOutcome.HEURISTIC_FALLBACK,
+          resultProvider: 'heuristic-fallback',
+          resultModel: 'heuristic-rules-v1',
+          providerFailureCode: 'AI_PROVIDER_TIMEOUT',
         }),
       },
     );

@@ -7,16 +7,19 @@ import {
 } from '../domain/validation-finding.types';
 
 // The persistence enum also contains BMS categories; they are not COBOL output categories.
-const COBOL_JAVA_CATEGORIES = Object.values(ValidationFindingCategory).filter(
-  (category) =>
-    ![
-      'MISSING_FIELD',
-      'ATTRIBUTE_MISMATCH',
-      'LAYOUT_DISCREPANCY',
-      'PF_KEY_MISMATCH',
-      'SEMANTIC_LOGIC',
-    ].includes(category),
-);
+const COBOL_JAVA_CATEGORIES = [
+  ValidationFindingCategory.DATA_TYPE_MISMATCH,
+  ValidationFindingCategory.LOGIC_MISMATCH,
+  ValidationFindingCategory.VARIABLE_MAPPING_MISMATCH,
+  ValidationFindingCategory.CONTROL_FLOW_MISMATCH,
+  ValidationFindingCategory.FILE_IO_MISMATCH,
+  ValidationFindingCategory.DATABASE_MISMATCH,
+  ValidationFindingCategory.ENCODING_MISMATCH,
+  ValidationFindingCategory.MISSING_OPERATION,
+  ValidationFindingCategory.UNSUPPORTED_CONSTRUCT,
+  ValidationFindingCategory.POTENTIAL_BEHAVIOR_CHANGE,
+  ValidationFindingCategory.OTHER,
+] as const;
 
 interface RawLocation {
   file: string;

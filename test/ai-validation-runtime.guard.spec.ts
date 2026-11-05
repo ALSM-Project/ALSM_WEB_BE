@@ -1,14 +1,34 @@
 import { ConfigService } from '@nestjs/config';
 import { AiValidationRuntimeGuard } from '../src/modules/validation/application/ai-validation-runtime.guard';
 import { AiValidatorPort } from '../src/modules/validation/domain/ai-validator.port';
+import { ConversionType } from '../src/modules/projects/domain/project.types';
 
 describe('AiValidationRuntimeGuard', () => {
   const validator = { getMetadata: jest.fn() };
+  const bmsValidator = { getMetadata: jest.fn() };
+  beforeEach(() => jest.clearAllMocks());
+
+  it('reads BMS metadata from its own port without consulting the COBOL provider', () => {
+    const metadata = {
+      provider: 'openai',
+      model: 'bms-model',
+      promptVersion: 'semantic-bms-react-v1',
+    };
+    bmsValidator.getMetadata.mockReturnValue(metadata);
+    const guard = new AiValidationRuntimeGuard(
+      configuration(true, 'openai'),
+      validator as unknown as AiValidatorPort,
+      bmsValidator as unknown as AiValidatorPort,
+    );
+    expect(guard.assertAvailable(ConversionType.BMS_DSPF_TO_FRONTEND)).toEqual(metadata);
+    expect(validator.getMetadata).not.toHaveBeenCalled();
+  });
 
   it('rejects disabled execution before consulting the fake adapter', () => {
     const guard = new AiValidationRuntimeGuard(
       configuration(false, 'openai'),
       validator as unknown as AiValidatorPort,
+      bmsValidator as unknown as AiValidatorPort,
     );
 
     expect(() => guard.assertAvailable()).toThrow('AI validation is disabled');
@@ -19,6 +39,7 @@ describe('AiValidationRuntimeGuard', () => {
     const guard = new AiValidationRuntimeGuard(
       configuration(true, 'fake'),
       validator as unknown as AiValidatorPort,
+      bmsValidator as unknown as AiValidatorPort,
     );
 
     expect(() => guard.assertAvailable()).toThrow(
@@ -40,6 +61,7 @@ describe('AiValidationRuntimeGuard', () => {
     const guard = new AiValidationRuntimeGuard(
       configuration(true, configured),
       validator as unknown as AiValidatorPort,
+      bmsValidator as unknown as AiValidatorPort,
     );
 
     expect(() => guard.assertAvailable()).toThrow(
@@ -53,6 +75,7 @@ describe('AiValidationRuntimeGuard', () => {
     const guard = new AiValidationRuntimeGuard(
       configuration(true, provider),
       validator as unknown as AiValidatorPort,
+      bmsValidator as unknown as AiValidatorPort,
     );
     expect(guard.assertAvailable()).toEqual(metadata);
   });

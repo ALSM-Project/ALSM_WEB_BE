@@ -17,7 +17,8 @@ import {
 import { ValidationRunRepository } from '../src/modules/validation/domain/validation-run.repository';
 import { ValidationRunStatus } from '../src/modules/validation/domain/validation-run.types';
 import { ConversionType } from '../src/modules/projects/domain/project.types';
-import { BmsAiValidatorAdapter } from '../src/modules/validation/infrastructure/bms-ai-validator.adapter';
+import { ValidationExecutionOutcome } from '../src/modules/validation/domain/validation-execution-metadata';
+import { withAiResponseMetadata } from '../src/modules/validation/domain/ai-response-metadata';
 
 describe('ExecuteAiValidationService', () => {
   const buildContext = { execute: jest.fn() };
@@ -41,7 +42,7 @@ describe('ExecuteAiValidationService', () => {
     prepareContext as unknown as PrepareAiValidationContextService,
     runtimeGuard as unknown as AiValidationRuntimeGuard,
     reconcileRun as unknown as ReconcileValidationRunService,
-    bmsAiValidator as unknown as BmsAiValidatorAdapter,
+    bmsAiValidator as unknown as AiValidatorPort,
     validator as unknown as AiValidatorPort,
     validationRuns as unknown as ValidationRunRepository,
     validationFindings as unknown as ValidationFindingRepository,
@@ -155,11 +156,156 @@ describe('ExecuteAiValidationService', () => {
       conversionType: ConversionType.BMS_DSPF_TO_FRONTEND,
     });
     validationRuns.findById.mockResolvedValue({ ...run, promptVersion: 'semantic-bms-react-v1' });
+    runtimeGuard.assertAvailable.mockReturnValue({
+      provider: run.provider,
+      model: run.model,
+      promptVersion: 'semantic-bms-react-v1',
+    });
     bmsAiValidator.validate.mockResolvedValue({ findings: [] });
     await service.execute(input);
     expect(bmsAiValidator.validate).toHaveBeenCalledWith(prepared.input);
     expect(validator.validate).not.toHaveBeenCalled();
   });
+
+  it('persists BMS heuristic attribution without inventing model confidence', async () => {
+    buildContext.execute.mockResolvedValue({
+      ...context,
+      conversionType: ConversionType.BMS_DSPF_TO_FRONTEND,
+    });
+    validationRuns.findById.mockResolvedValue({ ...run, promptVersion: 'semantic-bms-react-v1' });
+    runtimeGuard.assertAvailable.mockReturnValue({
+      provider: run.provider,
+      model: run.model,
+      promptVersion: 'semantic-bms-react-v1',
+    });
+    bmsAiValidator.validate.mockResolvedValue({
+      findings: [
+        {
+          ...finding,
+          category: ValidationFindingCategory.ATTRIBUTE_MISMATCH,
+          title: '[ATTRIBUTE_MISMATCH] NUMERIC_INPUT',
+          fieldName: 'NUMERIC_INPUT',
+          confidence: undefined,
+        },
+      ],
+      execution: {
+        outcome: ValidationExecutionOutcome.HEURISTIC_FALLBACK,
+        provider: 'heuristic-fallback',
+        model: 'heuristic-rules-v1',
+        providerFailureCode: 'AI_PROVIDER_RESPONSE_INVALID',
+      },
+    });
+    await service.execute(input);
+    expect(validationFindings.upsertManyForRun).toHaveBeenCalledWith([
+      expect.objectContaining({
+        source: ValidationFindingSource.RULE,
+        modelProvider: 'heuristic-fallback',
+        modelName: 'heuristic-rules-v1',
+        fieldName: 'NUMERIC_INPUT',
+        confidence: undefined,
+        status: ValidationFindingStatus.PENDING,
+      }),
+    ]);
+    expect(validationRuns.markResultsPersisted).toHaveBeenCalledWith(
+      'run-1',
+      'project-1',
+      'org-1',
+      expect.objectContaining({
+        executionOutcome: 'HEURISTIC_FALLBACK',
+        resultProvider: 'heuristic-fallback',
+        resultModel: 'heuristic-rules-v1',
+        providerFailureCode: 'AI_PROVIDER_RESPONSE_INVALID',
+      }),
+    );
+    expect(reconcileRun.execute).toHaveBeenCalledWith(
+      expect.objectContaining({
+        provider: 'openai',
+        model: 'test-model',
+        executionOutcome: 'HEURISTIC_FALLBACK',
+      }),
+    );
+  });
+
+  it('persists zero-finding fallback evidence and reconciles without another provider call', async () => {
+    buildContext.execute.mockResolvedValue({
+      ...context,
+      conversionType: ConversionType.BMS_DSPF_TO_FRONTEND,
+    });
+    validationRuns.findById.mockResolvedValue({ ...run, promptVersion: 'semantic-bms-react-v1' });
+    runtimeGuard.assertAvailable.mockReturnValue({
+      provider: run.provider,
+      model: run.model,
+      promptVersion: 'semantic-bms-react-v1',
+    });
+    bmsAiValidator.validate.mockResolvedValue({
+      findings: [],
+      execution: {
+        outcome: ValidationExecutionOutcome.HEURISTIC_FALLBACK,
+        provider: 'heuristic-fallback',
+        model: 'heuristic-rules-v1',
+        providerFailureCode: 'AI_PROVIDER_TIMEOUT',
+      },
+    });
+    reconcileRun.execute.mockRejectedValueOnce(new Error('persistence unavailable'));
+    await expect(service.execute(input)).rejects.toMatchObject({ retryable: true });
+    const persisted = reconcileRun.execute.mock.calls[0][0];
+    expect(persisted).toMatchObject({
+      expectedFindingCount: 0,
+      executionOutcome: 'HEURISTIC_FALLBACK',
+      providerFailureCode: 'AI_PROVIDER_TIMEOUT',
+    });
+    validationRuns.findById.mockResolvedValue(persisted);
+    runtimeGuard.assertAvailable.mockImplementation(() => {
+      throw new Error('provider config changed');
+    });
+    reconcileRun.execute.mockResolvedValueOnce(0);
+    await expect(service.execute(input)).resolves.toMatchObject({ findingCount: 0 });
+    expect(bmsAiValidator.validate).toHaveBeenCalledTimes(1);
+    expect(validator.validate).not.toHaveBeenCalled();
+  });
+
+  it('retains only response-reported Gemini identity on the run and findings', async () => {
+    validator.validate.mockResolvedValue(
+      withAiResponseMetadata({ findings: [finding] }, 'test-model', 'gemini-observed-v1'),
+    );
+    await service.execute(input);
+    expect(validationFindings.upsertManyForRun).toHaveBeenCalledWith([
+      expect.objectContaining({ modelName: 'test-model', modelVersion: 'gemini-observed-v1' }),
+    ]);
+    expect(validationRuns.markResultsPersisted).toHaveBeenCalledWith(
+      'run-1',
+      'project-1',
+      'org-1',
+      expect.objectContaining({
+        executionOutcome: 'AI_COMPLETED',
+        resultModel: 'test-model',
+        modelVersion: 'gemini-observed-v1',
+      }),
+    );
+  });
+
+  it.each(['provider', 'model', 'promptVersion'] as const)(
+    'rejects queued BMS %s drift before provider execution',
+    async (key) => {
+      buildContext.execute.mockResolvedValue({
+        ...context,
+        conversionType: ConversionType.BMS_DSPF_TO_FRONTEND,
+      });
+      validationRuns.findById.mockResolvedValue({ ...run, promptVersion: 'semantic-bms-react-v1' });
+      runtimeGuard.assertAvailable.mockReturnValue({
+        provider: run.provider,
+        model: run.model,
+        promptVersion: 'semantic-bms-react-v1',
+        [key]: 'changed',
+      });
+      await expect(service.execute(input)).rejects.toMatchObject({
+        code: 'VALIDATION_AI_CONFIGURATION_CHANGED',
+        retryable: false,
+      });
+      expect(bmsAiValidator.validate).not.toHaveBeenCalled();
+      expect(validator.validate).not.toHaveBeenCalled();
+    },
+  );
 
   it('marks zero-finding provider output as persisted before completion', async () => {
     validator.validate.mockResolvedValue({ findings: [] });

@@ -1,4 +1,5 @@
 import { ValidationRunRecord } from './validation-run.types';
+import { ValidationExecutionMetadata } from './validation-execution-metadata';
 
 export type CreateValidationRunInput = Omit<ValidationRunRecord, 'id' | 'createdAt' | 'updatedAt'>;
 
@@ -14,7 +15,8 @@ export interface CompleteValidationRunInput {
   inputCharacterCount: number;
 }
 
-export interface PersistValidationResultsInput extends CompleteValidationRunInput {
+export interface PersistValidationResultsInput
+  extends CompleteValidationRunInput, ValidationExecutionMetadata {
   resultsPersistedAt: Date;
 }
 

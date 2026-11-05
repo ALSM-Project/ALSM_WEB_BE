@@ -8,6 +8,7 @@ import { ReconcileValidationRunService } from './reconcile-validation-run.servic
 import { AiValidatorError } from '../domain/ai-validator.error';
 import {
   AI_VALIDATOR,
+  BMS_AI_VALIDATOR,
   AiValidationFindingDraft,
   AiValidatorPort,
 } from '../domain/ai-validator.port';
@@ -18,7 +19,6 @@ import {
   ValidationFindingRepository,
 } from '../domain/validation-finding.repository';
 import {
-  ValidationFindingCategory,
   ValidationFindingSource,
   ValidationFindingStatus,
 } from '../domain/validation-finding.types';
@@ -27,7 +27,11 @@ import {
   ValidationRunRepository,
 } from '../domain/validation-run.repository';
 import { ValidationRunRecord, ValidationRunStatus } from '../domain/validation-run.types';
-import { BmsAiValidatorAdapter } from '../infrastructure/bms-ai-validator.adapter';
+import { AI_RESPONSE_METADATA } from '../domain/ai-response-metadata';
+import {
+  ValidationExecutionMetadata,
+  ValidationExecutionOutcome,
+} from '../domain/validation-execution-metadata';
 
 export interface ExecuteAiValidationInput {
   validationRunId: string;
@@ -48,7 +52,7 @@ export class ExecuteAiValidationService {
     private readonly prepareContext: PrepareAiValidationContextService,
     private readonly runtimeGuard: AiValidationRuntimeGuard,
     private readonly reconcileRun: ReconcileValidationRunService,
-    private readonly bmsAiValidator: BmsAiValidatorAdapter,
+    @Inject(BMS_AI_VALIDATOR) private readonly bmsAiValidator: AiValidatorPort,
     @Inject(AI_VALIDATOR) private readonly aiValidator: AiValidatorPort,
     @Inject(VALIDATION_RUN_REPOSITORY)
     private readonly validationRuns: ValidationRunRepository,
@@ -59,9 +63,6 @@ export class ExecuteAiValidationService {
   async execute(input: ExecuteAiValidationInput): Promise<ExecuteAiValidationResult> {
     try {
       const run = await this.requireProcessingRun(input);
-      const metadata = this.runtimeGuard.assertAvailable();
-      this.requireStableProvider(run, metadata);
-
       if (run.resultsPersistedAt) {
         return {
           validationRunId: run.id,
@@ -94,31 +95,30 @@ export class ExecuteAiValidationService {
         );
       }
 
+      const metadata = this.runtimeGuard.assertAvailable(context.conversionType);
+      this.requireStableProvider(run, metadata);
       const prepared = this.prepareContext.execute(context);
-      let drafts: AiValidationFindingDraft[] = [];
-
-      if (context.conversionType === ConversionType.BMS_DSPF_TO_FRONTEND) {
-        const bmsResult = await this.bmsAiValidator.validate(prepared.input);
-        drafts = bmsResult.findings.map((finding) => ({
-          category: finding.category as unknown as ValidationFindingCategory,
-          severity: finding.severity,
-          title: `[${finding.category}] ${finding.fieldName}`,
-          explanation: finding.explanation,
-          expectedBehavior: finding.expectedBehavior,
-          actualBehavior: finding.actualBehavior,
-          suggestion: finding.suggestion,
-          sourceLocation: finding.sourceLocation,
-          targetLocation: finding.targetLocation,
-          confidence: finding.confidence ?? 0.95,
-        }));
-      } else {
-        const result = await this.aiValidator.validate(prepared.input);
-        drafts = result.findings;
-      }
+      const validator =
+        context.conversionType === ConversionType.BMS_DSPF_TO_FRONTEND
+          ? this.bmsAiValidator
+          : this.aiValidator;
+      const result = await validator.validate(prepared.input);
+      const execution = result.execution ?? {
+        outcome: ValidationExecutionOutcome.AI_COMPLETED,
+        provider: metadata.provider,
+        model: metadata.model,
+      };
+      const resultMetadata: ValidationExecutionMetadata = {
+        executionOutcome: execution.outcome,
+        resultProvider: execution.provider,
+        resultModel: execution.model,
+        providerFailureCode: execution.providerFailureCode,
+        modelVersion: result[AI_RESPONSE_METADATA]?.modelVersion,
+      };
 
       const findings = this.uniqueFindings(
-        drafts.map((finding) =>
-          this.toPersistenceInput(input, run.screenId, metadata, finding),
+        result.findings.map((finding) =>
+          this.toPersistenceInput(input, run.screenId, resultMetadata, finding),
         ),
       );
 
@@ -134,6 +134,7 @@ export class ExecuteAiValidationService {
           selectedFileCount: prepared.selectedFileCount,
           inputCharacterCount: prepared.inputCharacterCount,
           resultsPersistedAt,
+          ...resultMetadata,
         },
       );
       if (!markerPersisted) {
@@ -146,6 +147,7 @@ export class ExecuteAiValidationService {
 
       const persistedRun: ValidationRunRecord = {
         ...run,
+        ...resultMetadata,
         findingCount: findings.length,
         expectedFindingCount: findings.length,
         resultsPersistedAt,
@@ -188,11 +190,10 @@ export class ExecuteAiValidationService {
     run: ValidationRunRecord,
     metadata: ReturnType<AiValidatorPort['getMetadata']>,
   ): void {
-    const isBmsPrompt = run.promptVersion === 'semantic-bms-react-v1';
     if (
       run.provider !== metadata.provider ||
       run.model !== metadata.model ||
-      (!isBmsPrompt && run.promptVersion !== metadata.promptVersion)
+      run.promptVersion !== metadata.promptVersion
     ) {
       throw new ValidationExecutionError(
         'VALIDATION_AI_CONFIGURATION_CHANGED',
@@ -205,7 +206,7 @@ export class ExecuteAiValidationService {
   private toPersistenceInput(
     input: ExecuteAiValidationInput,
     screenId: string | undefined,
-    metadata: ReturnType<AiValidatorPort['getMetadata']>,
+    metadata: ValidationExecutionMetadata,
     finding: AiValidationFindingDraft,
   ): UpsertValidationFindingInput {
     const base = {
@@ -214,11 +215,15 @@ export class ExecuteAiValidationService {
       conversionJobId: input.conversionJobId,
       validationRunId: input.validationRunId,
       screenId,
-      source: ValidationFindingSource.AI,
+      source:
+        metadata.executionOutcome === ValidationExecutionOutcome.AI_COMPLETED
+          ? ValidationFindingSource.AI
+          : ValidationFindingSource.RULE,
       status: ValidationFindingStatus.PENDING,
       category: finding.category,
       severity: finding.severity,
       title: finding.title,
+      fieldName: finding.fieldName,
       explanation: finding.explanation,
       expectedBehavior: finding.expectedBehavior,
       actualBehavior: finding.actualBehavior,
@@ -226,8 +231,9 @@ export class ExecuteAiValidationService {
       sourceLocation: finding.sourceLocation,
       targetLocation: finding.targetLocation,
       confidence: finding.confidence,
-      modelProvider: metadata.provider,
-      modelName: metadata.model,
+      modelProvider: metadata.resultProvider,
+      modelName: metadata.resultModel,
+      modelVersion: metadata.modelVersion,
     };
     return { ...base, fingerprint: this.fingerprint(finding) };
   }

@@ -4,6 +4,7 @@ import { BmsAiValidatorAdapter } from '../src/modules/validation/infrastructure/
 import { PrepareAiValidationContextService } from '../src/modules/validation/application/prepare-ai-validation-context.service';
 import { ValidationSecretRedactorService } from '../src/modules/validation/application/validation-secret-redactor.service';
 import { ConversionType } from '../src/modules/projects/domain/project.types';
+import { AI_RESPONSE_METADATA } from '../src/modules/validation/domain/ai-response-metadata';
 
 describe('BmsAiValidatorAdapter (mock HTTP only)', () => {
   const originalFetch = global.fetch;
@@ -45,6 +46,7 @@ describe('BmsAiValidatorAdapter (mock HTTP only)', () => {
   afterEach(() => {
     global.fetch = originalFetch;
     jest.restoreAllMocks();
+    jest.useRealTimers();
   });
   function openAi(content: unknown) {
     return {
@@ -53,10 +55,124 @@ describe('BmsAiValidatorAdapter (mock HTTP only)', () => {
     };
   }
 
+  it.each([
+    [401, 'AI_PROVIDER_AUTHENTICATION_FAILED'],
+    [429, 'AI_PROVIDER_UNAVAILABLE'],
+    [503, 'AI_PROVIDER_UNAVAILABLE'],
+  ])('keeps fallback findings with the safe failure code for HTTP %s', async (status, code) => {
+    fetchMock.mockResolvedValue({ ok: false, status, text: async () => 'private-provider-error' });
+    const result = await new BmsAiValidatorAdapter(config).validate({
+      ...input,
+      sourceFiles: [{ ...input.sourceFiles[0], content: '1 | ATTRB=(UNPROT,NUM)' }],
+    });
+    expect(result).toMatchObject({
+      provider: 'heuristic-fallback',
+      model: 'heuristic-rules-v1',
+      execution: { outcome: 'HEURISTIC_FALLBACK', providerFailureCode: code },
+    });
+    expect(result.findings).toHaveLength(1);
+    expect(result.findings[0].confidence).toBeUndefined();
+    expect(Logger.prototype.warn).toHaveBeenCalledWith(
+      expect.not.stringContaining('private-provider-error'),
+    );
+  });
+
+  it('keeps AI disabled as heuristic-only without transmitting files', async () => {
+    config.set('AI_VALIDATION_ENABLED', false);
+    const result = await new BmsAiValidatorAdapter(config).validate(input);
+    expect(result.execution?.outcome).toBe('HEURISTIC_ONLY');
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it('attributes malformed JSON and refusal separately from provider availability', async () => {
+    fetchMock.mockResolvedValueOnce({
+      ok: true,
+      json: async () => ({ choices: [{ message: { content: '{' } }] }),
+    });
+    expect(
+      (await new BmsAiValidatorAdapter(config).validate(input)).execution?.providerFailureCode,
+    ).toBe('AI_PROVIDER_RESPONSE_INVALID');
+    fetchMock.mockResolvedValueOnce({
+      ok: true,
+      json: async () => ({ choices: [{ message: { refusal: 'Refused' } }] }),
+    });
+    expect(
+      (await new BmsAiValidatorAdapter(config).validate(input)).execution?.providerFailureCode,
+    ).toBe('AI_PROVIDER_REFUSED');
+  });
+
+  it('marks timeout fallback without leaking an exception message', async () => {
+    jest.useFakeTimers();
+    fetchMock.mockImplementation(
+      (_url: string, init: RequestInit) =>
+        new Promise((_resolve, reject) => {
+          init.signal?.addEventListener('abort', () =>
+            reject(new Error('private-transport-error')),
+          );
+        }),
+    );
+    const pending = new BmsAiValidatorAdapter(config).validate(input);
+    await jest.runAllTimersAsync();
+    expect((await pending).execution?.providerFailureCode).toBe('AI_PROVIDER_TIMEOUT');
+    expect(Logger.prototype.warn).toHaveBeenCalledWith(
+      expect.not.stringContaining('private-transport-error'),
+    );
+  });
+
+  it.each([500, 503])('records the successful Gemini candidate request after HTTP %s', async (status) => {
+    jest.useFakeTimers();
+    config.set('AI_TIMEOUT_MS', 10_000);
+    config.set('AI_PROVIDER', 'gemini');
+    fetchMock
+      .mockResolvedValueOnce({ ok: false, status })
+      .mockResolvedValueOnce({ ok: false, status })
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({
+          modelVersion: 'gemini-observed-v1',
+          candidates: [{ finishReason: 'STOP', content: { parts: [{ text: '{"findings":[]}' }] } }],
+        }),
+      });
+    const pending = new BmsAiValidatorAdapter(config).validate(input);
+    await jest.advanceTimersByTimeAsync(1_500);
+    const result = await pending;
+    expect(result).toMatchObject({
+      model: 'gemini-3.7-flash',
+      execution: { outcome: 'AI_COMPLETED', model: 'gemini-3.7-flash' },
+    });
+    expect(result[AI_RESPONSE_METADATA]).toEqual({
+      requestedModel: 'gemini-3.7-flash',
+      modelVersion: 'gemini-observed-v1',
+    });
+    expect(fetchMock).toHaveBeenCalledTimes(3);
+    expect(fetchMock.mock.calls[2][0]).toContain('gemini-3.7-flash');
+  });
+
+  it.each([undefined, 'secret response payload', 'gemini-bad\nvalue'])(
+    'does not infer a model version from %p',
+    async (modelVersion) => {
+      config.set('AI_PROVIDER', 'gemini');
+      fetchMock.mockResolvedValue({
+        ok: true,
+        json: async () => ({
+          modelVersion,
+          candidates: [{ content: { parts: [{ text: '{"findings":[]}' }] } }],
+        }),
+      });
+      const result = await new BmsAiValidatorAdapter(config).validate(input);
+      expect(result[AI_RESPONSE_METADATA]?.modelVersion).toBeUndefined();
+    },
+  );
+
   it('accepts valid structured findings and removes duplicate locations', async () => {
     fetchMock.mockResolvedValue(openAi({ findings: [finding, finding] }));
     const result = await new BmsAiValidatorAdapter(config).validate(input);
-    expect(result.findings).toEqual([finding]);
+    expect(result.findings).toEqual([expect.objectContaining(finding)]);
+    expect(result).toMatchObject({
+      provider: 'openai',
+      model: 'test-openai',
+      execution: { outcome: 'AI_COMPLETED', provider: 'openai', model: 'test-openai' },
+    });
     expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 
