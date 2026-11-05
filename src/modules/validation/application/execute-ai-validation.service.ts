@@ -98,11 +98,7 @@ export class ExecuteAiValidationService {
       let drafts: AiValidationFindingDraft[] = [];
 
       if (context.conversionType === ConversionType.BMS_DSPF_TO_FRONTEND) {
-        const bmsResult = await this.bmsAiValidator.validate({
-          conversionJobId: context.conversionJobId,
-          sourceFiles: context.sourceFiles,
-          targetFiles: context.targetFiles,
-        });
+        const bmsResult = await this.bmsAiValidator.validate(prepared.input);
         drafts = bmsResult.findings.map((finding) => ({
           category: finding.category as unknown as ValidationFindingCategory,
           severity: finding.severity,

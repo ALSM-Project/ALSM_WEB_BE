@@ -1,6 +1,5 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { BmsSanitizerService } from '../application/bms-sanitizer.service';
 import {
   BMS_VALIDATION_JSON_SCHEMA,
   BmsValidationCategory,
@@ -8,12 +7,11 @@ import {
 } from '../domain/bms-validation-taxonomy';
 import { buildBmsAiValidationPrompt } from './bms-ai-validation.prompt';
 import { ValidationFindingSeverity } from '../domain/validation-finding.types';
+import { AiValidationInput } from '../domain/ai-validator.port';
+import { AiValidatorError } from '../domain/ai-validator.error';
+import { validateBmsAiValidationOutput } from './bms-ai-validation-output.validator';
 
-export interface BmsAiValidationInput {
-  conversionJobId: string;
-  sourceFiles: { path: string; content: string }[];
-  targetFiles: { path: string; content: string }[];
-}
+export type BmsAiValidationInput = AiValidationInput;
 
 export interface BmsAiValidationResult {
   provider: string;
@@ -34,10 +32,7 @@ export interface BmsAiValidationResult {
 export class BmsAiValidatorAdapter {
   private readonly logger = new Logger(BmsAiValidatorAdapter.name);
 
-  constructor(
-    private readonly config: ConfigService,
-    private readonly sanitizer: BmsSanitizerService,
-  ) {}
+  constructor(private readonly config: ConfigService) {}
 
   async validate(input: BmsAiValidationInput): Promise<BmsAiValidationResult> {
     const startTime = Date.now();
@@ -63,12 +58,15 @@ export class BmsAiValidatorAdapter {
     }
 
     // 2. Tiền xử lý & Khử PII (chỉ lấy code TSX/JSX, bỏ file JSON metadata)
-    const sanitizedSources = input.sourceFiles.map((f) =>
-      this.sanitizer.process(f.path, f.content),
-    );
-    const sanitizedTargets = input.targetFiles
-      .filter((f) => !f.path.toLowerCase().endsWith('.json'))
-      .map((f) => this.sanitizer.process(f.path, f.content));
+    // Input is already selected, redacted and numbered by the shared gateway.
+    const asPromptFile = (file: AiValidationInput['sourceFiles'][number]) => ({
+      path: file.path,
+      lineCount: file.lineCount,
+      sanitizedContent: file.content,
+      numberedContent: file.content,
+    });
+    const sanitizedSources = input.sourceFiles.map(asPromptFile);
+    const sanitizedTargets = input.targetFiles.map(asPromptFile);
 
     const { systemPrompt, userPrompt } = buildBmsAiValidationPrompt(
       sanitizedSources,
@@ -80,17 +78,24 @@ export class BmsAiValidatorAdapter {
     const timeoutHandle = setTimeout(() => controller.abort(), timeoutMs);
 
     try {
-      let rawFindings: BmsValidationFinding[] = [];
+      let output: unknown;
 
       if (provider === 'gemini') {
         this.logger.log(
           `Calling Gemini API (${model})... SystemPrompt: ${systemPrompt.length} chars, UserPrompt: ${userPrompt.length} chars.`,
         );
-        rawFindings = await this.callGemini(systemPrompt, userPrompt, controller.signal);
-        this.logger.log(`Gemini API returned ${rawFindings.length} findings.`);
+        output = await this.callGemini(systemPrompt, userPrompt, controller.signal);
       } else if (provider === 'openai') {
-        rawFindings = await this.callOpenAi(systemPrompt, userPrompt, controller.signal);
+        output = await this.callOpenAi(systemPrompt, userPrompt, controller.signal);
+      } else {
+        throw new AiValidatorError('AI_PROVIDER_REQUEST_REJECTED', 'AI provider is unsupported');
       }
+
+      const rawFindings = validateBmsAiValidationOutput(
+        output,
+        input,
+        this.config.getOrThrow<number>('AI_MAX_FINDINGS'),
+      );
 
       // 4. Khử trùng lặp (Deduplication)
       const deduplicated = this.deduplicateFindings(rawFindings);
@@ -103,10 +108,8 @@ export class BmsAiValidatorAdapter {
         durationMs: Date.now() - startTime,
       };
     } catch (error: unknown) {
-      const msg = error instanceof Error ? error.message : String(error);
-      this.logger.warn(
-        `BMS AI Validation call failed: ${msg}. Gracefully falling back to heuristic validation engine.`,
-      );
+      const code = error instanceof AiValidatorError ? error.code : 'AI_PROVIDER_UNAVAILABLE';
+      this.logger.warn(`BMS AI Validation failed (${code}); using heuristic validation.`);
       return {
         provider: 'heuristic-fallback',
         model: 'heuristic-rules-v1',
@@ -126,17 +129,19 @@ export class BmsAiValidatorAdapter {
     systemPrompt: string,
     userPrompt: string,
     signal: AbortSignal,
-  ): Promise<BmsValidationFinding[]> {
+  ): Promise<unknown> {
     const apiKey = this.config.get<string>('GEMINI_API_KEY');
     const configuredModel = this.config.get<string>('GEMINI_MODEL') || 'gemini-3.8-flash';
     if (!apiKey) throw new Error('GEMINI_API_KEY is not configured');
 
-    const candidateModels = [...new Set([configuredModel, 'gemini-3.7-flash', 'gemini-flash-latest'])];
+    const candidateModels = [
+      ...new Set([configuredModel, 'gemini-3.7-flash', 'gemini-flash-latest']),
+    ];
     let lastError: Error | null = null;
 
     for (const model of candidateModels) {
       if (signal.aborted) throw new Error('Gemini API call timed out');
-      const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
+      const url = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent`;
 
       for (let attempt = 1; attempt <= 2; attempt++) {
         if (signal.aborted) throw new Error('Gemini API call timed out');
@@ -144,7 +149,7 @@ export class BmsAiValidatorAdapter {
         try {
           const response = await fetch(url, {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
+            headers: { 'Content-Type': 'application/json', 'x-goog-api-key': apiKey },
             signal,
             body: JSON.stringify({
               systemInstruction: { parts: [{ text: systemPrompt }] },
@@ -158,7 +163,6 @@ export class BmsAiValidatorAdapter {
           });
 
           if (!response.ok) {
-            const errText = await response.text();
             const isRateOrDemand = response.status === 503 || response.status === 429;
             if (isRateOrDemand) {
               this.logger.warn(
@@ -168,19 +172,36 @@ export class BmsAiValidatorAdapter {
                 await new Promise((resolve) => setTimeout(resolve, 1500));
                 continue;
               }
-              lastError = new Error(`Gemini model ${model} error (${response.status}): ${errText}`);
+              lastError = new AiValidatorError(
+                'AI_PROVIDER_UNAVAILABLE',
+                'AI provider is unavailable',
+              );
               break;
             }
-            throw new Error(`Gemini API error (${response.status}): ${errText}`);
+            throw new AiValidatorError(
+              'AI_PROVIDER_REQUEST_REJECTED',
+              'AI provider rejected the request',
+            );
           }
 
           const data = await response.json();
+          if (
+            data?.promptFeedback?.blockReason ||
+            ['SAFETY', 'BLOCKLIST', 'PROHIBITED_CONTENT'].includes(
+              data?.candidates?.[0]?.finishReason,
+            )
+          ) {
+            throw new AiValidatorError(
+              'AI_PROVIDER_REFUSED',
+              'AI provider refused the validation request',
+            );
+          }
           const candidateText = data?.candidates?.[0]?.content?.parts?.[0]?.text;
-          if (!candidateText) return [];
+          if (typeof candidateText !== 'string') throw this.invalidResponse();
 
-          const parsed = JSON.parse(candidateText);
-          return parsed.findings || [];
+          return this.parseOutput(candidateText);
         } catch (err: unknown) {
+          if (err instanceof AiValidatorError && err.code !== 'AI_PROVIDER_UNAVAILABLE') throw err;
           lastError = err instanceof Error ? err : new Error(String(err));
           if (signal.aborted) throw err;
           if (attempt >= 2) break;
@@ -198,7 +219,7 @@ export class BmsAiValidatorAdapter {
     systemPrompt: string,
     userPrompt: string,
     signal: AbortSignal,
-  ): Promise<BmsValidationFinding[]> {
+  ): Promise<unknown> {
     const apiKey = this.config.get<string>('OPENAI_API_KEY');
     const model = this.config.get<string>('OPENAI_MODEL') || 'gpt-4o-mini';
     if (!apiKey) throw new Error('OPENAI_API_KEY is not configured');
@@ -222,16 +243,40 @@ export class BmsAiValidatorAdapter {
     });
 
     if (!response.ok) {
-      const errText = await response.text();
-      throw new Error(`OpenAI API error (${response.status}): ${errText}`);
+      throw new AiValidatorError(
+        response.status === 429 || response.status >= 500
+          ? 'AI_PROVIDER_UNAVAILABLE'
+          : 'AI_PROVIDER_REQUEST_REJECTED',
+        'AI provider request failed',
+      );
     }
 
     const data = await response.json();
+    if (data?.choices?.[0]?.message?.refusal) {
+      throw new AiValidatorError(
+        'AI_PROVIDER_REFUSED',
+        'AI provider refused the validation request',
+      );
+    }
     const content = data?.choices?.[0]?.message?.content;
-    if (!content) return [];
+    if (typeof content !== 'string') throw this.invalidResponse();
 
-    const parsed = JSON.parse(content);
-    return parsed.findings || [];
+    return this.parseOutput(content);
+  }
+
+  private parseOutput(content: string): unknown {
+    try {
+      return JSON.parse(content);
+    } catch {
+      throw this.invalidResponse();
+    }
+  }
+
+  private invalidResponse(): AiValidatorError {
+    return new AiValidatorError(
+      'AI_PROVIDER_RESPONSE_INVALID',
+      'AI provider returned an invalid validation response',
+    );
   }
 
   /**
@@ -248,9 +293,18 @@ export class BmsAiValidatorAdapter {
         category: BmsValidationCategory.ATTRIBUTE_MISMATCH,
         severity: ValidationFindingSeverity.MEDIUM,
         fieldName: 'NUMERIC_INPUT',
-        sourceLocation: { file: input.sourceFiles[0]?.path || 'source.bms', startLine: 1, endLine: 1 },
-        targetLocation: { file: input.targetFiles[0]?.path || 'target.tsx', startLine: 1, endLine: 1 },
-        explanation: 'BMS specifies numeric attribute (NUM) but React component does not declare inputMode="numeric".',
+        sourceLocation: {
+          file: input.sourceFiles[0]?.path || 'source.bms',
+          startLine: 1,
+          endLine: 1,
+        },
+        targetLocation: {
+          file: input.targetFiles[0]?.path || 'target.tsx',
+          startLine: 1,
+          endLine: 1,
+        },
+        explanation:
+          'BMS specifies numeric attribute (NUM) but React component does not declare inputMode="numeric".',
         suggestion: 'Add inputMode="numeric" to the relevant <input /> element.',
       });
     }
@@ -264,7 +318,12 @@ export class BmsAiValidatorAdapter {
   private deduplicateFindings(findings: BmsValidationFinding[]): BmsValidationFinding[] {
     const seen = new Set<string>();
     return findings.filter((f) => {
-      const key = `${f.category}:${f.fieldName?.toUpperCase()}:${f.sourceLocation?.startLine}:${f.targetLocation?.startLine}`;
+      const key = JSON.stringify([
+        f.category,
+        f.fieldName.toUpperCase(),
+        f.sourceLocation,
+        f.targetLocation,
+      ]);
       if (seen.has(key)) return false;
       seen.add(key);
       return true;

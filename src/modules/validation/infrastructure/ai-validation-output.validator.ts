@@ -6,6 +6,18 @@ import {
   ValidationFindingSeverity,
 } from '../domain/validation-finding.types';
 
+// The persistence enum also contains BMS categories; they are not COBOL output categories.
+const COBOL_JAVA_CATEGORIES = Object.values(ValidationFindingCategory).filter(
+  (category) =>
+    ![
+      'MISSING_FIELD',
+      'ATTRIBUTE_MISMATCH',
+      'LAYOUT_DISCREPANCY',
+      'PF_KEY_MISMATCH',
+      'SEMANTIC_LOGIC',
+    ].includes(category),
+);
+
 interface RawLocation {
   file: string;
   startLine: number;
@@ -53,7 +65,7 @@ export function buildAiValidationJsonSchema(maxFindings: number): Record<string,
         items: {
           type: 'object',
           properties: {
-            category: { type: 'string', enum: Object.values(ValidationFindingCategory) },
+            category: { type: 'string', enum: COBOL_JAVA_CATEGORIES },
             severity: { type: 'string', enum: Object.values(ValidationFindingSeverity) },
             title: { type: 'string' },
             explanation: { type: 'string' },
@@ -91,6 +103,7 @@ export function validateAiValidationOutput(
   value: unknown,
   input: AiValidationInput,
   maxFindings: number,
+  categories: readonly ValidationFindingCategory[] = COBOL_JAVA_CATEGORIES,
 ): AiValidationFindingDraft[] {
   const location = Joi.object({
     file: Joi.string().min(1).required(),
@@ -102,7 +115,7 @@ export function validateAiValidationOutput(
     .required();
   const finding = Joi.object({
     category: Joi.string()
-      .valid(...Object.values(ValidationFindingCategory))
+      .valid(...categories)
       .required(),
     severity: Joi.string()
       .valid(...Object.values(ValidationFindingSeverity))

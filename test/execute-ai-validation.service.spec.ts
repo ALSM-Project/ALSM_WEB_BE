@@ -34,7 +34,7 @@ describe('ExecuteAiValidationService', () => {
     upsertManyForRun: jest.fn(),
   };
   const bmsAiValidator = {
-    validateBmsConversion: jest.fn(),
+    validate: jest.fn(),
   };
   const service = new ExecuteAiValidationService(
     buildContext as unknown as BuildValidationContextService,
@@ -147,6 +147,18 @@ describe('ExecuteAiValidationService', () => {
     await service.execute(input);
 
     expect(validationFindings.upsertManyForRun.mock.calls[0][0]).toHaveLength(1);
+  });
+
+  it('sends exactly the prepared context to BMS instead of raw artifacts', async () => {
+    buildContext.execute.mockResolvedValue({
+      ...context,
+      conversionType: ConversionType.BMS_DSPF_TO_FRONTEND,
+    });
+    validationRuns.findById.mockResolvedValue({ ...run, promptVersion: 'semantic-bms-react-v1' });
+    bmsAiValidator.validate.mockResolvedValue({ findings: [] });
+    await service.execute(input);
+    expect(bmsAiValidator.validate).toHaveBeenCalledWith(prepared.input);
+    expect(validator.validate).not.toHaveBeenCalled();
   });
 
   it('marks zero-finding provider output as persisted before completion', async () => {

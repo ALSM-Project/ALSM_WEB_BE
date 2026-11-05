@@ -66,10 +66,7 @@ export class BmsSanitizerService {
    * Tiền xử lý hoàn chỉnh một file code đầu vào trước khi chuyển sang LLM
    */
   process(path: string, rawContent: string): SanitizedFileResult {
-    const isBms = /\.(bms|dspf)$/i.test(path);
-    let content = isBms ? this.stripBmsComments(rawContent) : rawContent;
-    content = this.maskPii(content);
-    content = this.secretRedactor.redact(content).content;
+    const content = this.sanitize(path, this.secretRedactor.redact(rawContent).content);
 
     const lines = content.split('\n');
     const numbered = this.formatWithLineNumbers(content);
@@ -80,5 +77,16 @@ export class BmsSanitizerService {
       lineCount: lines.length,
       numberedContent: numbered,
     };
+  }
+
+  /** Domain preprocessing only; the shared gateway owns secrets, limits and numbering. */
+  sanitize(path: string, content: string): string {
+    const normalized = content.replace(/\r\n|\r/g, '\n');
+    const stripped = /\.(bms|dspf)$/i.test(path) ? this.stripBmsComments(normalized) : normalized;
+    // PII regex whitespace must never consume a newline and shift source locations.
+    return stripped
+      .split('\n')
+      .map((line) => this.maskPii(line))
+      .join('\n');
   }
 }
