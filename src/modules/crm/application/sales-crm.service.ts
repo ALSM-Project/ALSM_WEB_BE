@@ -13,6 +13,7 @@ import { Lead, LeadDocument } from '../infrastructure/lead.schema';
 import { User } from '../../users/infrastructure/user.schema';
 import { AUDIT_REPOSITORY, AuditRepository } from '../../audit/domain/audit.repository';
 import { LeadStatus } from '../domain/lead.types';
+import { TEAM_REPOSITORY, TeamRepository } from '../../teams/domain/team.types';
 import {
   SALES_PIPELINE_STAGES,
   SalesPipelineLead,
@@ -62,6 +63,7 @@ export class SalesCrmService {
     @InjectModel(Lead.name) private readonly leadModel: Model<Lead>,
     @InjectModel(User.name) private readonly userModel: Model<User>,
     @Inject(AUDIT_REPOSITORY) private readonly audit: AuditRepository,
+    @Inject(TEAM_REPOSITORY) private readonly teams: TeamRepository,
   ) {}
 
   async listLeads(
@@ -241,12 +243,19 @@ export class SalesCrmService {
     const orgId = organizationId && Types.ObjectId.isValid(organizationId)
       ? new Types.ObjectId(organizationId)
       : new Types.ObjectId();
+    const salesTeam = (await this.teams.listForSalesMember(userId, orgId.toString()))[0];
+    if (!salesTeam) {
+      throw new BadRequestException({
+        code: 'SALES_TEAM_REQUIRED',
+        message: 'Assign this user to a Sales team in the organization before creating a contract-ready Lead.',
+      });
+    }
 
     const title = `${dto.company || dto.contactName} - Legacy Modernization`;
     const sourceRef = `crm_${Date.now()}_${randomBytes(4).toString('hex')}`;
     const initialAssignment = {
       id: randomUUID(),
-      teamId: 'internal_sales_team',
+      teamId: salesTeam.id,
       salespersonId: userId,
       startedAt: new Date(),
       actorUserId: userId,
@@ -286,6 +295,84 @@ export class SalesCrmService {
     });
 
     return this.mapLead(doc);
+  }
+
+  async adoptLegacyLead(userId: string, organizationId: string, leadId: string) {
+    if (!Types.ObjectId.isValid(leadId)) {
+      throw new BadRequestException({ code: 'INVALID_LEAD_ID', message: 'A saved Lead identifier is required.' });
+    }
+    const doc = await this.leadModel.findById(leadId).exec();
+    if (!doc) throw new NotFoundException({ code: 'LEAD_NOT_FOUND', message: 'The selected Lead was not found.' });
+
+    if (doc.organizationId) {
+      if (String(doc.organizationId) !== organizationId) {
+        throw new NotFoundException({ code: 'LEAD_NOT_FOUND', message: 'The selected Lead is unavailable in this organization.' });
+      }
+      return this.mapLead(doc);
+    }
+
+    const rawAssignedUserId = doc.assignedToUserId?.toString()
+      ?? (typeof doc.assignedTo === 'string' ? doc.assignedTo : undefined);
+    const assignedUserId = rawAssignedUserId && Types.ObjectId.isValid(rawAssignedUserId)
+      ? rawAssignedUserId
+      : userId;
+    const salesTeams = await this.teams.listForSalesMember(userId, organizationId);
+    const salesTeam = salesTeams.find((team) =>
+      team.memberIds.includes(assignedUserId) || team.managerIds.includes(assignedUserId),
+    );
+    if (!salesTeam) {
+      throw new BadRequestException({
+        code: 'SALES_TEAM_REQUIRED',
+        message: 'The selected Lead must be assigned to a Sales team in your organization before it can be used for a contract.',
+      });
+    }
+
+    const now = new Date();
+    const stage = ['NEW', 'CONTACTED', 'QUALIFIED', 'PROPOSAL', 'WON', 'LOST'].includes(doc.stage)
+      ? doc.stage
+      : 'NEW';
+    const assignment = {
+      id: randomUUID(),
+      teamId: salesTeam.id,
+      salespersonId: assignedUserId,
+      startedAt: now,
+      actorUserId: userId,
+      expectedRevision: Number.isInteger(doc.revision) ? doc.revision : 0,
+    };
+    const adopted = await this.leadModel.findOneAndUpdate(
+      { _id: doc._id, $or: [{ organizationId: { $exists: false } }, { organizationId: null }] },
+      { $set: {
+        organizationId: new Types.ObjectId(organizationId),
+        title: doc.title?.trim() || `${doc.company || doc.companyName || doc.contactName || 'Lead'} - Legacy Modernization`,
+        sourceReference: doc.sourceReference || `legacy-${doc.id}`,
+        contactEmail: doc.contactEmail?.trim().toLowerCase(),
+        contactName: doc.contactName,
+        company: doc.company || doc.companyName,
+        phone: doc.phone || (doc as unknown as { contactPhone?: string }).contactPhone,
+        status: LeadStatus.ASSIGNED,
+        stage,
+        revision: assignment.expectedRevision,
+        creationFingerprint: randomBytes(16).toString('hex'),
+        assignments: [assignment],
+        assignedTo: assignedUserId,
+      } },
+      { new: true },
+    ).exec();
+    if (!adopted) {
+      const current = await this.leadModel.findById(leadId).exec();
+      if (current?.organizationId && String(current.organizationId) === organizationId) return this.mapLead(current);
+      throw new ConflictException({ code: 'LEAD_ADOPTION_CONFLICT', message: 'This Lead changed while it was being linked to the CRM.' });
+    }
+
+    await this.audit.append({
+      actorUserId: userId,
+      organizationId,
+      action: 'LEAD_LINKED_TO_CRM',
+      resourceType: 'LEAD',
+      resourceId: adopted.id,
+      metadata: { teamId: salesTeam.id, source: 'legacy-leads' },
+    });
+    return this.mapLead(adopted);
   }
 
   async updateStage(

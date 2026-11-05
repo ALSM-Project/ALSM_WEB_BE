@@ -88,6 +88,19 @@ export class SalesCrmController {
     return this.crmService.createLead(user.userId, organization.id, dto);
   }
 
+  @Post('leads/:id/adopt')
+  @UseGuards(CurrentSessionGuard, PermissionsGuard)
+  @RequirePermissions('sales.leads.manage')
+  @ApiOperation({ summary: 'Link an existing internal Lead to this organization CRM for contract workflow' })
+  async adoptLegacyLead(
+    @CurrentUser() user: AuthenticatedUser,
+    @Headers('x-organization-id') organizationId: string | undefined,
+    @Param('id') id: string,
+  ) {
+    const organization = await this.teamAccess.reportingOrganization(user.userId, organizationId);
+    return this.crmService.adoptLegacyLead(user.userId, organization.id, id);
+  }
+
   @Get('leads/:id')
   @UseGuards(CurrentSessionGuard, PermissionsGuard)
   @RequirePermissions('sales.leads.view')

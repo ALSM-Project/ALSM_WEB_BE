@@ -82,6 +82,7 @@ import { SaveTeamService } from './modules/teams/application/save-team.service';
 import { ListManagedTeamsService } from './modules/teams/application/list-managed-teams.service';
 import { TeamsController } from './modules/teams/presentation/teams.controller';
 import { GetTeamAdministrationService } from './modules/teams/application/get-team-administration.service';
+import { ListOrganizationTeamMembersService } from './modules/teams/application/list-organization-team-members.service';
 import { GetSalesTeamPerformanceService } from './modules/teams/application/get-sales-team-performance.service';
 import { TeamReportsController } from './modules/teams/presentation/team-reports.controller';
 import { TeamJobAssignment, TeamJobAssignmentSchema } from './modules/teams/infrastructure/team-job-assignment.schema';
@@ -561,6 +562,7 @@ import { NotificationsService } from './modules/notifications/notifications.serv
     },
     TeamAccessService,
     GetTeamAdministrationService,
+    ListOrganizationTeamMembersService,
     GetSalesTeamPerformanceService,
     AssignTeamJobService,
     RevokeTeamJobService,
