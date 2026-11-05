@@ -107,6 +107,7 @@ describe('AI environment validation', () => {
       expect.objectContaining({
         GEMINI_MIN_REQUEST_INTERVAL_MS: 0,
         AI_MAX_RETRIES: 2,
+        AI_PROMPT_VERSION: 'semantic-cobol-java-v1',
         VALIDATION_WORKER_ENABLED: false,
         VALIDATION_WORKER_CONCURRENCY: 1,
         VALIDATION_JOB_ATTEMPTS: 2,

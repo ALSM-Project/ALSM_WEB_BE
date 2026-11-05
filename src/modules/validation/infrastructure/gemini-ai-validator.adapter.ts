@@ -13,7 +13,7 @@ import {
   buildAiValidationJsonSchema,
   validateAiValidationOutput,
 } from './ai-validation-output.validator';
-import { buildAiValidationPrompt } from './ai-validation.prompt';
+import { buildAiValidationPrompt, SEMANTIC_COBOL_JAVA_PROMPT_VERSION } from './ai-validation.prompt';
 import { createGeminiValidationSchema } from './gemini-validation-schema';
 import {
   geminiBackoffMs,
@@ -55,7 +55,7 @@ export class GeminiAiValidatorAdapter implements AiValidatorPort {
     return {
       provider: 'gemini',
       model: this.config.getOrThrow<string>('GEMINI_MODEL'),
-      promptVersion: this.config.getOrThrow<string>('AI_PROMPT_VERSION'),
+      promptVersion: SEMANTIC_COBOL_JAVA_PROMPT_VERSION,
     };
   }
 
