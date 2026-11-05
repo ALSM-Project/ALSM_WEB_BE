@@ -9,7 +9,12 @@ describe('UC-68 sales reports', () => {
 
   beforeEach(() => {
     leadModel = { find: jest.fn().mockReturnValue({ exec: jest.fn().mockResolvedValue([]) }) };
-    service = new SalesCrmService(leadModel as never, {} as never, { append: jest.fn() } as never);
+    service = new SalesCrmService(
+      leadModel as never,
+      {} as never,
+      { append: jest.fn() } as never,
+      { listForSalesMember: jest.fn().mockResolvedValue([]) } as never,
+    );
   });
 
   it('scopes report data to the authorized organization and selected period', async () => {

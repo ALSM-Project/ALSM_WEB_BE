@@ -157,6 +157,7 @@ describe('Internal Staff Portal & Platform Administration Workflows', () => {
         leadModel as never,
         userModel as never,
         auditRepo as never,
+        { listForSalesMember: jest.fn().mockResolvedValue([]) } as never,
       );
     });
 
