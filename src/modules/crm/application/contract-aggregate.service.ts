@@ -564,6 +564,195 @@ export class ContractAggregateService {
     return this.loadOrCreateCanonicalPdf(result, actor, reload);
   }
 
+  async startDemoSigningForCustomer(contractId: string, actor: AuthenticatedUser) {
+    if (this.signingProvider.getReadiness().providerKey !== 'ALSM_DEMO') {
+      throw new ServiceUnavailableException({ code: 'DEMO_SIGNING_DISABLED', message: 'The demo signing flow is not enabled in this environment.' });
+    }
+    const user = await this.getVerifiedContractCustomer(contractId, actor);
+    const current = await this.readRepository().findForGrantedCustomer(contractId, actor.userId, user.email);
+    if (!current || current.contract.customerUserId !== actor.userId) {
+      throw new NotFoundException({ code: 'CONTRACT_NOT_FOUND', message: 'Contract is unavailable to this account.' });
+    }
+    if (current.contract.demoSigningSession?.status === 'SENT'
+      && current.contract.demoSigningSession.expiresAt.getTime() > Date.now()) {
+      return { ...this.presentForCustomer(current), demoNotice: this.demoSigningNotice() };
+    }
+    const readiness = this.getSigningReadiness(current);
+    if (!readiness.canStart || !this.isApprovedForCustomer(current.contract)) {
+      throw new ConflictException({ code: 'DEMO_SIGNING_NOT_READY', message: 'This approved contract is not ready for the demo signing flow.' });
+    }
+    const canonical = await this.getCanonicalPdfForCustomer(contractId, actor);
+    const now = new Date();
+    const expiresAt = new Date(now.getTime() + 24 * 60 * 60_000);
+    const envelope = await this.signingProvider.createEnvelope({
+      idempotencyKey: `demo:${current.contract.id}:${current.version.id}:${actor.userId}`,
+      contractId: current.contract.id,
+      contractVersionId: current.version.id,
+      contractNumber: current.contract.contractNumber,
+      canonicalPdf: canonical.bytes,
+      canonicalPdfSha256: canonical.sha256,
+      signers: [{
+        signerId: actor.userId,
+        party: 'CUSTOMER',
+        fullName: current.version.customerContactName,
+        email: user.email,
+        sequence: 1,
+      }],
+      expiresAt,
+    });
+    const updated = await this.unitOfWork.run(async ({ contracts, audit }) => {
+      const started = await contracts.startDemoSigning({
+        contractId: current.contract.id,
+        versionId: current.version.id,
+        customerUserId: actor.userId,
+        providerEnvelopeReference: envelope.providerEnvelopeReference,
+        now,
+        expiresAt,
+      });
+      if (!started) throw new ConflictException({ code: 'DEMO_SIGNING_STATE_CONFLICT', message: 'The contract changed before the demo signing session could start. Refresh and try again.' });
+      await audit.appendOnce(`contract-demo-signing-started:${current.contract.id}:${current.version.id}`, {
+        actorUserId: actor.userId,
+        organizationId: current.contract.organizationId,
+        action: 'CONTRACT_DEMO_SIGNING_STARTED',
+        resourceType: 'CONTRACT',
+        resourceId: current.contract.id,
+        metadata: {
+          leadId: current.contract.leadId,
+          versionId: current.version.id,
+          providerKey: 'ALSM_DEMO',
+          canonicalDocumentSha256: canonical.sha256,
+          expiresAt: expiresAt.toISOString(),
+          legalEffect: 'NONE_DEMO_ONLY',
+        },
+      });
+      return started;
+    }, `contract-demo-signing:${current.contract.id}`);
+    return { ...this.presentForCustomer(updated), demoNotice: this.demoSigningNotice() };
+  }
+
+  async completeDemoSigningForCustomer(contractId: string, actor: AuthenticatedUser, acknowledged: boolean) {
+    if (!acknowledged) {
+      throw new BadRequestException({ code: 'DEMO_SIGNING_DISCLOSURE_REQUIRED', message: 'Confirm that you understand this is a non-legal demo before continuing.' });
+    }
+    if (this.signingProvider.getReadiness().providerKey !== 'ALSM_DEMO' || !this.signingProvider.completeDemoSignature) {
+      throw new ServiceUnavailableException({ code: 'DEMO_SIGNING_DISABLED', message: 'The demo signing flow is not enabled in this environment.' });
+    }
+    const user = await this.getVerifiedContractCustomer(contractId, actor);
+    const current = await this.readRepository().findForGrantedCustomer(contractId, actor.userId, user.email);
+    const session = current?.contract.demoSigningSession;
+    if (!current || current.contract.customerUserId !== actor.userId || !session
+      || session.status !== 'SENT' || session.expiresAt.getTime() <= Date.now()
+      || session.contractVersionId !== current.version.id
+      || session.canonicalDocumentSha256 !== current.version.canonicalDocument?.sha256) {
+      throw new ConflictException({ code: 'DEMO_SIGNING_SESSION_UNAVAILABLE', message: 'The demo signing session is unavailable or expired. Refresh the contract and start a new version if needed.' });
+    }
+    const signedAt = new Date();
+    const event = await this.signingProvider.completeDemoSignature({
+      providerEnvelopeReference: session.providerEnvelopeReference,
+      signerId: actor.userId,
+      acknowledged: true,
+      occurredAt: signedAt,
+    });
+    const signedPdfBytes = await this.documentService.renderDemoSignedPdf(current, {
+      signerName: current.version.customerContactName,
+      signerEmail: user.email,
+      signedAt,
+    });
+    const certificateBytes = Buffer.from(JSON.stringify({
+      notice: 'DEMO ONLY — NOT A LEGALLY VALID ELECTRONIC SIGNATURE',
+      providerKey: 'ALSM_DEMO',
+      contractNumber: current.contract.contractNumber,
+      contractVersionId: current.version.id,
+      canonicalDocumentSha256: session.canonicalDocumentSha256,
+      providerEnvelopeReference: session.providerEnvelopeReference,
+      providerEventReference: event.providerEventReference,
+      customerUserId: actor.userId,
+      customerEmail: user.email,
+      confirmedAt: signedAt.toISOString(),
+      authentication: 'Authenticated ALSM demo account; no real-world identity proof',
+    }, null, 2));
+    const auditTrailBytes = Buffer.from(JSON.stringify({
+      disclaimer: 'Simulated workflow events only; no legal signature evidence.',
+      events: [
+        { type: 'DEMO_ENVELOPE_SENT', at: session.startedAt.toISOString(), actorUserId: current.contract.createdByUserId },
+        { type: 'DEMO_CUSTOMER_VIEWED_AND_CONFIRMED', at: signedAt.toISOString(), actorUserId: actor.userId },
+        { type: 'DEMO_ENVELOPE_COMPLETED', at: event.occurredAt.toISOString(), eventReference: event.providerEventReference, payloadSha256: event.payloadSha256 },
+      ],
+    }, null, 2));
+    const encryptedSignedPdf = this.documentService.encryptEvidenceArtifact(signedPdfBytes, `contract-${current.contract.contractNumber}-demo-signed.pdf`);
+    const encryptedCertificate = this.documentService.encryptEvidenceArtifact(certificateBytes, `contract-${current.contract.contractNumber}-demo-certificate.json`);
+    const encryptedAudit = this.documentService.encryptEvidenceArtifact(auditTrailBytes, `contract-${current.contract.contractNumber}-demo-audit.json`);
+    const archivedAt = new Date();
+    const storageReference = await this.storage.writeFiles(
+      `private/contracts/${current.contract.id}/${current.version.id}/demo-evidence/${session.providerEnvelopeReference}`,
+      [
+        { relativePath: 'signed-pdf.pdf.aesgcm', content: encryptedSignedPdf.bytes },
+        { relativePath: 'completion-certificate.json.aesgcm', content: encryptedCertificate.bytes },
+        { relativePath: 'audit-trail.json.aesgcm', content: encryptedAudit.bytes },
+      ],
+    );
+    const signedPdfArtifact = {
+      kind: 'SIGNED_PDF' as const,
+      storageReference,
+      fileName: encryptedSignedPdf.fileName,
+      mimeType: 'application/pdf' as const,
+      sha256: encryptedSignedPdf.sha256,
+      byteLength: encryptedSignedPdf.byteLength,
+      encryption: 'AES-256-GCM' as const,
+      encryptionKeyVersion: encryptedSignedPdf.encryptionKeyVersion,
+      archivedAt,
+    };
+    const supportingArtifacts = [
+      { kind: 'COMPLETION_CERTIFICATE' as const, storageReference, fileName: encryptedCertificate.fileName, mimeType: 'application/json' as const, sha256: encryptedCertificate.sha256, byteLength: encryptedCertificate.byteLength, encryption: 'AES-256-GCM' as const, encryptionKeyVersion: encryptedCertificate.encryptionKeyVersion, archivedAt },
+      { kind: 'AUDIT_TRAIL' as const, storageReference, fileName: encryptedAudit.fileName, mimeType: 'application/json' as const, sha256: encryptedAudit.sha256, byteLength: encryptedAudit.byteLength, encryption: 'AES-256-GCM' as const, encryptionKeyVersion: encryptedAudit.encryptionKeyVersion, archivedAt },
+    ];
+    const manifest: NonNullable<ContractWithCurrentVersion['contract']['finalEvidence']> = {
+      contractVersionId: current.version.id,
+      canonicalDocumentSha256: session.canonicalDocumentSha256,
+      providerKey: 'ALSM_DEMO',
+      providerEnvelopeReference: session.providerEnvelopeReference,
+      providerCompletionEventReference: event.providerEventReference,
+      providerCompletedAt: event.occurredAt,
+      archivedAt,
+      manifestSha256: '',
+      signedPdf: signedPdfArtifact,
+      supportingArtifacts,
+    };
+    manifest.manifestSha256 = calculateFinalEvidenceManifestSha256(manifest);
+
+    await this.unitOfWork.run(async ({ contracts, audit }) => {
+      const updated = await contracts.completeDemoSigning({
+        contractId: current.contract.id,
+        versionId: current.version.id,
+        customerUserId: actor.userId,
+        providerEnvelopeReference: session.providerEnvelopeReference,
+        completionEventReference: event.providerEventReference,
+        now: signedAt,
+      });
+      if (!updated) throw new ConflictException({ code: 'DEMO_SIGNING_STATE_CONFLICT', message: 'The demo signature could not be recorded because the contract changed.' });
+      await audit.appendOnce(`contract-demo-signature:${current.contract.id}:${current.version.id}:${event.providerEventReference}`, {
+        actorUserId: actor.userId,
+        organizationId: current.contract.organizationId,
+        action: 'CONTRACT_DEMO_SIGNATURE_CONFIRMED',
+        resourceType: 'CONTRACT',
+        resourceId: current.contract.id,
+        metadata: { versionId: current.version.id, providerKey: 'ALSM_DEMO', eventReference: event.providerEventReference, payloadSha256: event.payloadSha256, legalEffect: 'NONE_DEMO_ONLY' },
+      });
+      return updated;
+    }, `contract-demo-signing:${current.contract.id}`);
+    const finalized = await this.finalizeVerifiedProviderCompletion({
+      contractId: current.contract.id,
+      leadId: current.contract.leadId,
+      organizationId: current.contract.organizationId,
+      versionId: current.version.id,
+      event,
+      manifest,
+    });
+    const refreshed = await this.readRepository().findForGrantedCustomer(contractId, actor.userId, user.email);
+    if (!refreshed) throw new NotFoundException({ code: 'CONTRACT_NOT_FOUND', message: 'Contract is unavailable to this account.' });
+    return { ...this.presentForCustomer(refreshed), demoNotice: this.demoSigningNotice(), emailDelivery: finalized.emailDelivery };
+  }
+
   async getFinalSignedPdfForCustomer(contractId: string, actor: AuthenticatedUser) {
     if (!OBJECT_ID_PATTERN.test(actor?.userId ?? '')) throw new UnauthorizedException({ code: 'UNAUTHORIZED', message: 'Sign in to download this contract.' });
     const user = await this.users.findById(actor.userId);
@@ -644,6 +833,7 @@ export class ContractAggregateService {
     const intendedRecipientIds = [current.contract.createdByUserId, current.contract.customerUserId];
     const emailRecipients = await this.getContractEmailRecipients(intendedRecipientIds);
     const eventKey = `contract-provider-completed:${current.contract.id}:${current.version.id}:${input.event.providerEventReference}`;
+    const demoCompletion = input.manifest.providerKey === 'ALSM_DEMO';
     const result = await this.unitOfWork.run(async ({ contracts, audit, notifications, emailOutbox }) => {
       const archived = await contracts.attachVerifiedFinalEvidence({
         contractId: current.contract.id,
@@ -683,6 +873,7 @@ export class ContractAggregateService {
         title: 'Hợp đồng đã ký hoàn tất',
         message: `Hợp đồng ${completed.contract.contractNumber} đã được nhà cung cấp xác nhận và lưu hồ sơ. Đăng nhập ALSM để tải bản PDF đã ký.`,
         eventKey: `${eventKey}:customer`,
+        ...(demoCompletion ? { title: 'Demo signing flow completed', message: 'This is a simulated workflow. The demo PDF is not a legally valid electronic signature.' } : {}),
         resourceType: 'CONTRACT',
         resourceId: completed.contract.id,
         link: '/contracts',
@@ -693,6 +884,7 @@ export class ContractAggregateService {
         title: 'Hợp đồng đã ký hoàn tất',
         message: `Hợp đồng ${completed.contract.contractNumber} đã được nhà cung cấp xác nhận và lưu hồ sơ.`,
         eventKey: `${eventKey}:sales`,
+        ...(demoCompletion ? { title: 'Demo signing flow completed', message: 'The simulation and demo evidence archive completed. This is not a legally valid electronic signature.' } : {}),
         resourceType: 'CONTRACT',
         resourceId: completed.contract.id,
         link: `/crm/leads/${completed.contract.leadId}`,
@@ -706,6 +898,7 @@ export class ContractAggregateService {
         title: 'Hợp đồng đã ký hoàn tất',
         message: `Hợp đồng ${completed.contract.contractNumber} đã được nhà cung cấp ký xác nhận và lưu PDF cùng hồ sơ bằng chứng trong ALSM.`,
         linkPath: '/contracts',
+        ...(demoCompletion ? { title: 'Demo signing flow completed', message: 'The simulation and demo evidence archive completed. This is not a legally valid electronic signature.' } : {}),
       });
       return completed;
     }, `contract-provider-completion:${current.contract.id}:${current.version.id}`);
@@ -885,6 +1078,25 @@ export class ContractAggregateService {
     return this.contractsRead;
   }
 
+  private async getVerifiedContractCustomer(contractId: string, actor: AuthenticatedUser) {
+    if (!OBJECT_ID_PATTERN.test(actor?.userId ?? '')) {
+      throw new UnauthorizedException({ code: 'UNAUTHORIZED', message: 'Sign in to use demo signing.' });
+    }
+    const user = await this.users.findById(actor.userId);
+    if (!user?.isActive || !user.isEmailVerified) {
+      throw new ForbiddenException({ code: 'VERIFIED_ACCOUNT_REQUIRED', message: 'Verify the invited ALSM account before continuing.' });
+    }
+    const current = await this.readRepository().findForGrantedCustomer(contractId, actor.userId, user.email);
+    if (!current || current.contract.customerUserId !== actor.userId) {
+      throw new NotFoundException({ code: 'CONTRACT_NOT_FOUND', message: 'Contract is unavailable to this account.' });
+    }
+    return user;
+  }
+
+  private demoSigningNotice() {
+    return 'Demo only: this flow simulates application steps. It does not verify real-world identity or create a legally valid electronic signature.';
+  }
+
   private assertAcceptedQuote(quotes: Record<string, unknown>[], quoteId: string, plan: string, annualValue: number) {
     const quote = quotes.find((item) => String(item.id) === quoteId);
     if (!quote) throw new NotFoundException({ code: 'CONTRACT_QUOTE_NOT_FOUND', message: 'The selected quote was not found on this lead.' });
@@ -928,8 +1140,8 @@ export class ContractAggregateService {
       canonicalPdfAvailable: this.isApprovedForCustomer(value.contract),
       reviewPdfAvailable: this.isApprovedForCustomer(value.contract),
       signedPdfAvailable: this.hasVerifiedSignedPdf(value),
-      signingAvailable: false,
-      signingBlockedReason: 'Online signing is unavailable until the signing provider, signer identity method, envelope workflow, and final evidence archive are configured and verified.',
+      signingAvailable: this.getSigningReadiness(value).canStart,
+      signingBlockedReason: this.getSigningReadiness(value).canStart ? undefined : 'Online signing requires the approved template, approved PDF, and configured signing flow.',
       signingReadiness: this.getSigningReadiness(value),
     };
   }
@@ -973,9 +1185,17 @@ export class ContractAggregateService {
       canonicalPdfAvailable: this.isApprovedForCustomer(value.contract),
       reviewPdfAvailable: this.isApprovedForCustomer(value.contract),
       signedPdfAvailable: this.hasVerifiedSignedPdf(value),
-      signingAvailable: false,
-      signingBlockedReason: 'Online signing is unavailable until the signing provider, signer identity method, envelope workflow, and final evidence archive are configured and verified.',
+      signingAvailable: this.getSigningReadiness(value).canStart,
+      signingBlockedReason: this.getSigningReadiness(value).canStart ? undefined : 'Online signing requires the approved template, approved PDF, and configured signing flow.',
       signingReadiness: this.getSigningReadiness(value),
+      demoSigningAvailable: this.signingProvider.getReadiness().providerKey === 'ALSM_DEMO'
+        && (!value.contract.demoSigningSession
+          || (value.contract.demoSigningSession.status === 'SENT' && value.contract.demoSigningSession.expiresAt.getTime() <= Date.now()))
+        && this.getSigningReadiness(value).canStart,
+      demoSigningStatus: value.contract.demoSigningSession?.status,
+      demoSigningExpired: value.contract.demoSigningSession?.status === 'SENT'
+        && value.contract.demoSigningSession.expiresAt.getTime() <= Date.now(),
+      demoNotice: this.signingProvider.getReadiness().providerKey === 'ALSM_DEMO' ? this.demoSigningNotice() : undefined,
     };
   }
 
@@ -1050,7 +1270,7 @@ export class ContractAggregateService {
 
   private isApprovedForCustomer(contract: ContractWithCurrentVersion['contract']): boolean {
     return contract.reviewStatus === 'APPROVED'
-      && ['READY_FOR_SIGNATURE', 'SENT_TO_CUSTOMER', 'CUSTOMER_VIEWED'].includes(contract.lifecycleStatus);
+      && ['READY_FOR_SIGNATURE', 'SENT_TO_CUSTOMER', 'CUSTOMER_VIEWED', 'CUSTOMER_SIGNING_IN_PROGRESS', 'PROVIDER_COMPLETED_EVIDENCE_PENDING', 'PROVIDER_COMPLETED_EVIDENCE_FAILED', 'COMPLETED'].includes(contract.lifecycleStatus);
   }
 
   private hasVerifiedSignedPdf(value: ContractWithCurrentVersion): boolean {
@@ -1116,18 +1336,19 @@ export class ContractAggregateService {
       && provider.capabilities.queryEnvelope
       && provider.capabilities.downloadSignedArtifacts
       && provider.capabilities.cancelEnvelope;
+    const isDemoProvider = provider.providerKey === 'ALSM_DEMO' && provider.environment === 'DEMO';
     const checks = [
       { code: 'INTERNAL_APPROVAL', status: approved ? 'READY' as const : 'PENDING' as const },
       { code: 'APPROVED_TEMPLATE_VERSION', status: hasApprovedTemplateSnapshot ? 'READY' as const : 'BLOCKED' as const },
       { code: 'CANONICAL_PDF', status: hasCanonicalPdf ? 'READY' as const : 'BLOCKED' as const },
       // User accounts currently have no verified phone identity field. Email verification alone
       // is not treated as the signing provider's required signer authentication.
-      { code: 'SIGNER_IDENTITY_VERIFICATION', status: 'BLOCKED' as const },
+      { code: 'SIGNER_IDENTITY_VERIFICATION', status: isDemoProvider ? 'READY' as const : 'BLOCKED' as const },
       { code: 'SIGNING_PROVIDER', status: providerSupportsRequiredFlow ? 'READY' as const : 'BLOCKED' as const },
       // A provider port exists, but there is no envelope orchestration/webhook reconciliation yet.
-      { code: 'SIGNING_ORCHESTRATION', status: 'BLOCKED' as const },
+      { code: 'SIGNING_ORCHESTRATION', status: isDemoProvider ? 'READY' as const : 'BLOCKED' as const },
       // Provider completion evidence has no approved immutable archive pipeline yet.
-      { code: 'FINAL_EVIDENCE_ARCHIVE', status: 'BLOCKED' as const },
+      { code: 'FINAL_EVIDENCE_ARCHIVE', status: isDemoProvider ? 'READY' as const : 'BLOCKED' as const },
     ];
     const canStart = checks.every((check) => check.status === 'READY');
     return {

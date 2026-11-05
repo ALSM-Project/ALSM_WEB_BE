@@ -1,4 +1,4 @@
-export type SigningProviderEnvironment = 'SANDBOX' | 'PRODUCTION';
+export type SigningProviderEnvironment = 'DEMO' | 'SANDBOX' | 'PRODUCTION';
 export type SigningSignerParty = 'ALSM' | 'CUSTOMER';
 export type SigningProviderEnvelopeStatus = 'CREATED' | 'SENT' | 'IN_PROGRESS' | 'COMPLETED' | 'DECLINED' | 'EXPIRED' | 'CANCELLED' | 'FAILED';
 
@@ -80,6 +80,13 @@ export interface ContractSigningProviderPort {
   getEnvelopeStatus(providerEnvelopeReference: string): Promise<SigningProviderEnvelopeStatus>;
   downloadArtifacts(providerEnvelopeReference: string): Promise<SigningProviderArtifact[]>;
   cancelEnvelope(providerEnvelopeReference: string, reason: string): Promise<void>;
+  /** Available only on the explicit, non-production demo adapter. */
+  completeDemoSignature?(input: {
+    providerEnvelopeReference: string;
+    signerId: string;
+    acknowledged: true;
+    occurredAt: Date;
+  }): Promise<VerifiedSigningProviderEvent>;
 }
 
 export const CONTRACT_SIGNING_PROVIDER = Symbol('CONTRACT_SIGNING_PROVIDER');

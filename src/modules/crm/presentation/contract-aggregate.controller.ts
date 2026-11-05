@@ -8,7 +8,7 @@ import { PermissionsGuard } from '../../../shared/security/permissions.guard';
 import { RequirePermissions } from '../../../shared/security/require-permissions.decorator';
 import { ContractAggregateService } from '../application/contract-aggregate.service';
 import { CreateContractDto } from './sales.dto';
-import { CustomerContractDecisionDto, ReviewContractDto } from './contract-aggregate.dto';
+import { CustomerContractDecisionDto, DemoSigningConfirmationDto, ReviewContractDto } from './contract-aggregate.dto';
 
 @ApiTags('Online Contract Foundation')
 @ApiBearerAuth()
@@ -160,6 +160,24 @@ export class ContractAggregateController {
     @Body() body: CustomerContractDecisionDto,
   ) {
     return this.contracts.respondForCustomer(contractId, actor, body.action, body.reason);
+  }
+
+  @Post('customer/contracts/:contractId/demo-signing/start')
+  @ApiOperation({ summary: 'Start the local non-legal demo signing workflow for an approved contract' })
+  @ApiResponse({ status: 409, description: 'The contract is not ready for the demo signing flow.' })
+  async startDemoSigning(@CurrentUser() actor: AuthenticatedUser, @Param('contractId') contractId: string) {
+    return this.contracts.startDemoSigningForCustomer(contractId, actor);
+  }
+
+  @Post('customer/contracts/:contractId/demo-signing/complete')
+  @ApiOperation({ summary: 'Confirm a simulated signature in demo mode; creates explicitly watermarked demo evidence' })
+  @ApiResponse({ status: 409, description: 'The demo signing session is unavailable or expired.' })
+  async completeDemoSigning(
+    @CurrentUser() actor: AuthenticatedUser,
+    @Param('contractId') contractId: string,
+    @Body() body: DemoSigningConfirmationDto,
+  ) {
+    return this.contracts.completeDemoSigningForCustomer(contractId, actor, body.acknowledged);
   }
 
   @Get('customer/contracts/:contractId/review-pdf')

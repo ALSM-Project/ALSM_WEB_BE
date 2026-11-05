@@ -4,6 +4,26 @@
 - **Điều kiện bắt đầu:** decision package và thiết kế được owners phê duyệt; danh sách mở nằm tại [`decision-register.md`](decision-register.md). Chỉ bắt đầu lát cắt nền tảng an toàn khi account boundary, compatibility và review schema đã rõ; các quyết định provider/payment có thể còn mở nếu lát cắt không đụng tới chúng.
 - **Nguyên tắc chia PR:** một PR theo một repository và một mục tiêu; không gom BE + FE1 + FE2 thành PR lớn. Tài liệu này không thực hiện các bước triển khai.
 
+## Trạng thái thực tế theo repository — rà soát 2026-11-03
+
+Bảng này bổ sung trạng thái triển khai hiện tại; các mục bên dưới vẫn là thứ tự/gate kỹ thuật tham khảo. `IMPLEMENTED` nghĩa là đã thấy code nối trong repository, không đồng nghĩa đã qua kiểm thử end-to-end, Legal/Security approval hoặc production readiness.
+
+| Bước | Trạng thái hiện tại | Bằng chứng / phần còn lại |
+|---|---|---|
+| 0. Phê duyệt thiết kế và quyết định chính sách | `PENDING APPROVAL` | Có [phiếu quyết định dự thảo](06-policy-decision-workbook.md); P-01–P-11 chưa được owner phê duyệt. |
+| 1. Prospect account boundary | `IMPLEMENTED — FOUNDATION` | BE hỗ trợ `accountType: PROSPECT`; đăng ký mới vẫn invitation-bound. Chưa có quyền tenant/service trước activation. |
+| 2. Invitation và liên kết account–Lead | `IMPLEMENTED — PHONE GATE OPEN` | BE có tạo/resolve/register/accept/resend/revoke, email verification và audit. FE1 có trang invitation trong thay đổi chưa commit. Grant hiện vẫn `phoneVerificationStatus: UNVERIFIED`, `signingEligibility: BLOCKED_PHONE_UNVERIFIED`; chưa có phone verification. |
+| 3. Contract aggregate/version/template/review APIs | `IMPLEMENTED — PRE-SIGN FLOW` | BE có aggregate, version snapshot, template approval, submit/review/return, customer view/decision và authorization. FE2 API/UI dùng các endpoints mới; chưa có state-changing signing endpoint. |
+| 4. Legacy contract migration | `NOT IMPLEMENTED` | Không thấy migration/backfill; dữ liệu ký cũ không được coi là evidence đã xác minh. |
+| 5. Review/canonical PDF | `IMPLEMENTED — LOCAL/DEV CONFIG REQUIRED` | Có review PDF watermark, unsigned canonical PDF, hash và AES-256-GCM encryption qua storage port. Local disk hiện không phải production archive đã được Security/Legal duyệt. |
+| 6. Provider adapter/sandbox signing | `SANDBOX EVALUATION AUTHORIZED — VNPT; CREDENTIALS/METHOD/SECURITY PENDING` | Người dùng đã chọn VNPT eContract để đánh giá sandbox. Chưa có credentials, method ký được duyệt, hostname/version xác nhận hoặc orchestration/callback; ký vẫn bị khóa. Production chưa được chọn/phê duyệt. Xem [provider review](07-provider-capability-review.md), [port mapping](08-provider-port-mapping.md) và [quy trình UX mục tiêu](09-signing-journey-ux-target.md). |
+| 7. FE2 nhân viên | `IMPLEMENTED — SIGNING DISABLED` | Create/review/template/invitation/PDF metadata gọi API mới; trạng thái signing readiness vẫn blocked. |
+| 8. FE1 khách hàng | `IN PROGRESS — UNCOMMITTED` | Invitation/customer contract pages và service có trong working tree chưa commit; khách xem/tải/đề nghị sửa/từ chối, ký vẫn unavailable. Giữ nguyên các thay đổi này khi tiếp tục. |
+| 9. Final evidence, notification, UC-64 gate | `PARTIAL — PROVIDER ARCHIVE NOT IMPLEMENTED` | Có evidence schema, manifest verification, finalization method và UC-64 query yêu cầu `COMPLETED` + provider-confirmed/verified evidence. Chưa có provider event worker tải/kiểm chữ ký/lưu artifact; payment policy còn mở. |
+| 10. Sandbox QA / Security / Legal / production rollout | `NOT STARTED` | Chờ quyết định chính sách, provider sandbox, credentials, artifact mẫu và sign-off. Không được suy ra pass từ code readiness hoặc demo UI. |
+
+**Thứ tự tiếp tục:** dùng ý tưởng trình tự ảnh làm UX mục tiêu độc lập nhà cung cấp; Legal/Business chốt method, authority, consent và evidence; chọn provider sau khi đánh giá API/sandbox/data terms; sau đó triển khai adapter, UX và evidence pipeline theo các gate ở Bước 6/9. Các phần pre-sign đã hoàn thành không phải lý do để bật ký hoặc UC-64.
+
 ## Bản đồ phụ thuộc
 
 ```mermaid
@@ -84,7 +104,7 @@ flowchart TD
 ## 6. PR BE — provider adapter và sandbox signing flow
 
 - **Repository:** `ALSM_WEB_BE` chỉ.
-- **Phạm vi:** implementation adapter cụ thể theo provider đã chọn; create/cancel/status query/signing sessions/OTP capability/webhook verify/event reconciliation/artifact listing, feature/env gates. MATBAO Sign không mặc định.
+- **Phạm vi:** implementation adapter của provider được ALSM lựa chọn sau khi thẩm định; create/cancel/status query/signing sessions/OTP capability/webhook verify/event reconciliation/artifact listing, feature/env gates. Không suy ra provider từ ảnh tham khảo.
 - **Đầu vào:** PR 2–5; D-01–D-03, D-05–D-08, D-12–D-16; official API/webhook docs, sandbox account/credentials cấp an toàn, data processor/security review.
 - **Module sẽ khảo sát lại:** provider adapter ports, config/secret manager, HTTP client conventions, webhook middleware/raw-body handling, outbox/worker/scheduler, deployment callback domains, logging.
 - **Điều kiện hoàn thành:** dùng sandbox account thật của provider; signature webhook verified; idempotent submit/event; polling reconciliation; OTP tới verified phone theo capability; multiple signer flows theo quyết định; provider completion ghi `CONFIRMED`; download API xử lý pending evidence; production fail-closed; không có simulator fallback.

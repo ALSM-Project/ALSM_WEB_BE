@@ -91,3 +91,7 @@ scoped to the resolved organization.
 ## Future conversion tool integration
 
 Implement an approved adapter for [`ConversionEnginePort`](src/modules/conversions/domain/conversion-job.types.ts) and replace the deliberately failing [`UnconfiguredConversionEngineAdapter`](src/modules/conversions/infrastructure/unconfigured-conversion-engine.adapter.ts). Then set `CONVERSION_WORKER_ENABLED=true`. No conversion parser, mapping rule, generator, or fake result belongs in this bootstrap.
+
+## Online contract signing demo
+
+Set CONTRACT_SIGNING_MODE=DEMO in a non-production backend environment to enable the local signing simulation. The demo uses authenticated customer accounts, requires an explicit disclosure acknowledgment, archives encrypted demo artifacts, and watermarks the generated PDF. It is not a legal electronic signature and demo-completed contracts remain ineligible for customer activation. Production configuration accepts only CONTRACT_SIGNING_MODE=DISABLED.

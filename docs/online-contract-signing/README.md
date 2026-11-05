@@ -305,7 +305,7 @@ Lưu trong private object storage/repository đã được phê duyệt; file ke
 
 ## 9. Câu hỏi/chốt quyết định còn thiếu
 
-1. **Signing provider:** chọn nhà cung cấp nào? **MATBAO Sign chỉ là ứng viên được nhắc theo ảnh, chưa xác nhận.** Provider có ký tuần tự, ký đại diện doanh nghiệp, OTP SMS, sandbox, webhook/API truy vấn, PDF hoàn tất và chứng thư/biên nhận không?
+1. **VNPT sandbox:** người dùng đã chọn VNPT eContract để đánh giá sandbox. Cần đăng ký tài khoản test và xác nhận API/version/hostname, phương thức ký, callback/status, PDF hoàn tất và chứng thư/biên nhận. Đây chưa phải lựa chọn hoặc phê duyệt production.
 2. **Tài liệu/API/credentials:** tài liệu API chính thức, auth/OAuth/API key, webhook signing guide, sandbox account và sandbox credentials, giới hạn API, SLA, phí, data residency, production onboarding. Không đưa credentials thật vào repo/tài liệu.
 3. **SMS provider:** đơn vị gửi, sender ID/brandname, OTP template, hạn dùng, giới hạn thử, vùng gửi và chi phí; ai chịu trách nhiệm xác minh số điện thoại.
 4. **Email:** xác nhận SMTP hiện tại có thể dùng production không, domain/DKIM/SPF, template/legal copy, delivery/bounce tracking và link đăng nhập an toàn.
@@ -322,10 +322,10 @@ Lưu trong private object storage/repository đã được phê duyệt; file ke
 
 Đây là danh sách câu hỏi để bộ phận pháp chế/chuyên gia Việt Nam kiểm tra theo loại hợp đồng và mô hình provider; **không phải tư vấn hay kết luận rằng một phương thức chữ ký cụ thể có hiệu lực pháp lý**.
 
-- [ ] Rà soát Luật Giao dịch điện tử 2023 (Luật 20/2023/QH15; đã có Văn bản hợp nhất 36/VBHN-VPQH năm 2026): loại thông điệp dữ liệu, yêu cầu truy cập/tham chiếu, tính toàn vẹn, khả năng xác định người khởi tạo, lưu trữ, chứng cứ và điều kiện an toàn của chữ ký điện tử.
+- [ ] Rà soát Luật Giao dịch điện tử 2023 theo Văn bản hợp nhất 154/2026/VBHN-LQ-VPQH ngày 28-09-2026: loại thông điệp dữ liệu, yêu cầu truy cập/tham chiếu, tính toàn vẹn, khả năng xác định người khởi tạo, lưu trữ, chứng cứ và điều kiện an toàn của chữ ký điện tử. Phân biệt nội dung sửa đổi theo Luật 20/2026/QH16 có hiệu lực 01-03-2027 với quy định đang có hiệu lực tại ngày triển khai.
 - [ ] Rà soát Nghị định 23/2025/NĐ-CP về chữ ký điện tử và dịch vụ tin cậy; xác định provider/dịch vụ được sử dụng, quy trình kiểm chứng chữ ký/chứng thư, phạm vi công nhận, lưu trữ và nghĩa vụ các bên liên quan.
 - [ ] Rà soát Bộ luật Dân sự 2015 (91/2015/QH13): năng lực chủ thể, đại diện/ủy quyền, đề nghị–chấp nhận, hình thức hợp đồng, thời điểm giao kết/hiệu lực, giao dịch vô hiệu, lưu giữ và giải quyết tranh chấp.
-- [ ] Rà soát Luật Bảo vệ dữ liệu cá nhân 2025 (91/2025/QH15, hiệu lực 01-01-2026) cùng văn bản hướng dẫn/chuyển tiếp còn hiệu lực tại ngày triển khai; xác định vai trò controller/processor, căn cứ xử lý, thông báo/đồng ý khi cần, mục đích, tối thiểu hóa, quyền chủ thể, bảo vệ, sự cố, lưu giữ/xóa và chuyển dữ liệu xuyên biên giới.
+- [ ] Rà soát Luật Bảo vệ dữ liệu cá nhân 2025 (91/2025/QH15) và Nghị định 356/2025/NĐ-CP (cùng hiệu lực 01-01-2026), cùng văn bản hướng dẫn/chuyển tiếp còn hiệu lực tại ngày triển khai; xác định vai trò controller/processor, căn cứ xử lý, thông báo/đồng ý khi cần, mục đích, tối thiểu hóa, quyền chủ thể, bảo vệ, sự cố, lưu giữ/xóa và chuyển dữ liệu xuyên biên giới. Nghị định 13/2023/NĐ-CP đã hết hiệu lực từ 01-01-2026.
 - [ ] Đánh giá dữ liệu định danh, số điện thoại, OTP, chữ ký, hồ sơ doanh nghiệp và tài liệu hợp đồng có được provider xử lý ở nước ngoài; hợp đồng xử lý dữ liệu, subprocessors, nơi lưu, quyền truy cập và cơ chế chuyển dữ liệu.
 - [ ] Xác định quy định chuyên ngành/hình thức bắt buộc nếu hợp đồng thuộc ngành hàng, giao dịch hoặc loại tài liệu đặc thù; không áp dụng một kết luận chung cho mọi loại hợp đồng ALSM.
 - [ ] Rà soát cơ chế chứng minh authority người ký doanh nghiệp; phân biệt người kiểm soát số điện thoại với người có thẩm quyền đại diện.
@@ -336,11 +336,12 @@ Lưu trong private object storage/repository đã được phê duyệt; file ke
 Văn bản tham chiếu từ Cổng thông tin chính thức (cần kiểm tra bản hiện hành và hướng dẫn khi triển khai):
 
 - [Luật Giao dịch điện tử 20/2023/QH15](https://vanban.chinhphu.vn/?classid=1&docid=208421&pageid=27160&typegroupid=3)
-- [Văn bản hợp nhất 36/VBHN-VPQH năm 2026 — Luật Giao dịch điện tử](https://vanban.chinhphu.vn/?docid=217207&pageid=27160)
+- [Văn bản hợp nhất 154/2026/VBHN-LQ-VPQH — Luật Giao dịch điện tử](https://congbao.chinhphu.vn/van-ban/van-ban-hop-nhat-so-154-2026-vbhn-lq-vpqh-470651.htm)
+- [Luật 20/2026/QH16 — sửa đổi Luật Giao dịch điện tử, hiệu lực 01-03-2027](https://vanban.chinhphu.vn/?classid=1&docid=219488&pageid=27160&typegroupid=3)
 - [Nghị định 23/2025/NĐ-CP — chữ ký điện tử và dịch vụ tin cậy](https://vanban.chinhphu.vn/?classid=1&docid=212829&pageid=27160)
 - [Bộ luật Dân sự 91/2015/QH13](https://vanban.chinhphu.vn/?classid=&docid=183188&pageid=27160)
 - [Luật Bảo vệ dữ liệu cá nhân 91/2025/QH15](https://vanban.chinhphu.vn/?classid=1&docid=214590&pageid=27160&typegroup=)
-- [Nghị định 13/2023/NĐ-CP — cần chuyên gia xác định phạm vi áp dụng/chuyển tiếp sau Luật 91/2025/QH15](https://vanban.chinhphu.vn/?docid=207759&pageid=27160)
+- [Nghị định 356/2025/NĐ-CP — hướng dẫn Luật Bảo vệ dữ liệu cá nhân, hiệu lực 01-01-2026](https://vanban.chinhphu.vn/?classid=1&docid=216387&pageid=27160)
 
 ## 11. Đề xuất phạm vi Bước 2
 
@@ -353,4 +354,4 @@ Trước khi viết code, hoàn thành một **decision package** ngắn đượ
 5. Tạo thiết kế kỹ thuật có API contract, state transition guard, data model/versioning, provider adapter interface, webhook verification/idempotency, event/reconciliation, notification delivery, activation gate và migration/compatibility plan.
 6. Chốt acceptance scenarios và environment strategy phân biệt demo/sandbox/production trước khi bắt đầu Bước 3 (triển khai).
 
-**Không đưa vào Bước 2 một giả định rằng MATBAO Sign đã được chọn hoặc rằng OTP/ảnh chữ ký/hash tự tạo đủ điều kiện pháp lý.**
+**Không suy ra nhà cung cấp/phương thức ký từ ảnh tham khảo; OTP, ảnh chữ ký hoặc hash tự tạo không tự chứng minh hợp đồng đã được ký hợp lệ.**

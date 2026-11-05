@@ -2,10 +2,11 @@
 # This file is intentionally separate from the default Compose configuration
 # and does not alter the MongoDB URI in .env or any production configuration.
 services:
-  # Web 2's local .env.local targets port 3003; keep the default API port 3000 too.
+  # Keep Web 2 separate from the existing host backend on 3003; the base
+  # Compose file continues to expose the API on host port 3000 as well.
   backend:
     ports:
-      - "3003:3003"
+      - "3004:3003"
 
   mongodb-invitation-local:
     image: mongo:8.0
