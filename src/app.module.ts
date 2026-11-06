@@ -278,7 +278,17 @@ import { MongoPasswordResetRepository } from './modules/auth/infrastructure/mong
 import { EMAIL_VERIFICATION_REPOSITORY } from './modules/auth/domain/email-verification.repository';
 import { MongoEmailVerificationRepository } from './modules/auth/infrastructure/mongo-email-verification.repository';
 import { EmailVerificationService } from './modules/auth/application/email-verification.service';
+import { SMS_VERIFICATION_PORT } from './modules/auth/domain/sms-verification.port';
+import { PHONE_VERIFICATION_REPOSITORY } from './modules/auth/domain/phone-verification.repository';
+import { MongoPhoneVerificationRepository } from './modules/auth/infrastructure/mongo-phone-verification.repository';
+import { UnconfiguredSmsAdapter } from './modules/auth/infrastructure/unconfigured-sms.adapter';
+import { PhoneVerificationService } from './modules/auth/application/phone-verification.service';
+import {
+  PhoneVerification,
+  PhoneVerificationSchema,
+} from './modules/auth/infrastructure/phone-verification.schema';
 import { AuthController } from './modules/auth/presentation/auth.controller';
+import { PhoneVerificationController } from './modules/auth/presentation/phone-verification.controller';
 import { OrganizationAuthorizationService } from './modules/organizations/application/organization-authorization.service';
 import { OrganizationContextService } from './modules/organizations/application/organization-context.service';
 import { ProjectService } from './modules/projects/application/project.service';
@@ -416,6 +426,7 @@ import { NotificationsService } from './modules/notifications/notifications.serv
       { name: BankConfig.name, schema: BankConfigSchema },
       { name: PasswordReset.name, schema: PasswordResetSchema },
       { name: EmailVerification.name, schema: EmailVerificationSchema },
+      { name: PhoneVerification.name, schema: PhoneVerificationSchema },
       { name: FieldMapping.name, schema: FieldMappingSchema },
       { name: MethodMapping.name, schema: MethodMappingSchema },
       { name: Meeting.name, schema: MeetingSchema },
@@ -449,6 +460,7 @@ import { NotificationsService } from './modules/notifications/notifications.serv
     TeamReportsController,
     TeamJobAssignmentsController,
     AuthController,
+    PhoneVerificationController,
     ProjectsController,
     ResourceTransferController,
     ConversionsController,
@@ -739,6 +751,9 @@ import { NotificationsService } from './modules/notifications/notifications.serv
     { provide: PASSWORD_RESET_REPOSITORY, useClass: MongoPasswordResetRepository },
     { provide: EMAIL_VERIFICATION_REPOSITORY, useClass: MongoEmailVerificationRepository },
     { provide: EMAIL_VERIFICATION_PORT, useExisting: EmailVerificationService },
+    { provide: PHONE_VERIFICATION_REPOSITORY, useClass: MongoPhoneVerificationRepository },
+    { provide: SMS_VERIFICATION_PORT, useClass: UnconfiguredSmsAdapter },
+    PhoneVerificationService,
     MongoQuoteRequestRepository,
     { provide: QUOTE_REQUEST_REPOSITORY, useClass: MongoQuoteRequestRepository },
   ],

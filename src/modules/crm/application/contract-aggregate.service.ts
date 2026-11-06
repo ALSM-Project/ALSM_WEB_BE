@@ -1314,7 +1314,7 @@ export class ContractAggregateService {
       && Boolean(evidence!.signedPdf.storageReference);
   }
 
-  private getSigningReadiness(value: ContractWithCurrentVersion) {
+  private getSigningReadiness(value: ContractWithCurrentVersion, grant?: { phoneVerificationStatus?: string }) {
     const { contract, version } = value;
     const approved = this.isApprovedForCustomer(contract);
     const hasCanonicalPdf = Boolean(
@@ -1341,9 +1341,13 @@ export class ContractAggregateService {
       { code: 'INTERNAL_APPROVAL', status: approved ? 'READY' as const : 'PENDING' as const },
       { code: 'APPROVED_TEMPLATE_VERSION', status: hasApprovedTemplateSnapshot ? 'READY' as const : 'BLOCKED' as const },
       { code: 'CANONICAL_PDF', status: hasCanonicalPdf ? 'READY' as const : 'BLOCKED' as const },
-      // User accounts currently have no verified phone identity field. Email verification alone
-      // is not treated as the signing provider's required signer authentication.
-      { code: 'SIGNER_IDENTITY_VERIFICATION', status: isDemoProvider ? 'READY' as const : 'BLOCKED' as const },
+      // Phone verification is required for real signing.  Demo provider bypasses this gate.
+      // When a grant is provided, check the actual verification status; otherwise keep blocked.
+      { code: 'SIGNER_IDENTITY_VERIFICATION', status: isDemoProvider
+        ? 'READY' as const
+        : grant?.phoneVerificationStatus === 'VERIFIED'
+          ? 'READY' as const
+          : 'BLOCKED' as const },
       { code: 'SIGNING_PROVIDER', status: providerSupportsRequiredFlow ? 'READY' as const : 'BLOCKED' as const },
       // A provider port exists, but there is no envelope orchestration/webhook reconciliation yet.
       { code: 'SIGNING_ORCHESTRATION', status: isDemoProvider ? 'READY' as const : 'BLOCKED' as const },

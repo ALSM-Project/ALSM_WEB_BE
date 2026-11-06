@@ -25,14 +25,19 @@ export interface ContractInvitationRecord {
   lastResendRequestId?: string;
 }
 
+export type PhoneVerificationStatus = 'UNVERIFIED' | 'PENDING' | 'VERIFIED';
+export type SigningEligibility = 'BLOCKED_PHONE_UNVERIFIED' | 'ELIGIBLE';
+
 export interface ContractAccessGrantRecord {
   id: string;
   leadId: string;
   userId: string;
   invitationId: string;
   status: 'ACTIVE';
-  phoneVerificationStatus: 'UNVERIFIED';
-  signingEligibility: 'BLOCKED_PHONE_UNVERIFIED';
+  phoneVerificationStatus: PhoneVerificationStatus;
+  signingEligibility: SigningEligibility;
+  verifiedPhone?: string;
+  phoneVerifiedAt?: Date;
   createdAt: Date;
 }
 
@@ -114,6 +119,13 @@ export interface ContractInvitationRepository {
     grant: ContractAccessGrantRecord;
     replayed: boolean;
   } | null>;
+  updatePhoneVerification(input: {
+    userId: string;
+    phone: string;
+    status: PhoneVerificationStatus;
+    eligibility: SigningEligibility;
+  }): Promise<number>;
+  findGrantByUserId(userId: string): Promise<ContractAccessGrantRecord | null>;
   consumePublicRateLimit(input: {
     clientAddress: string;
     action: string;
