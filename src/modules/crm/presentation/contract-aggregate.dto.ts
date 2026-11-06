@@ -1,5 +1,5 @@
 import { ApiProperty } from '@nestjs/swagger';
-import { IsIn, IsOptional, IsString, MaxLength, MinLength } from 'class-validator';
+import { IsBoolean, IsIn, IsOptional, IsString, MaxLength, MinLength } from 'class-validator';
 
 export class ReviewContractDto {
   @ApiProperty({ enum: ['APPROVE', 'RETURN', 'REJECT'] })
@@ -23,5 +23,19 @@ export class CustomerContractDecisionDto {
   @IsString()
   @MinLength(5)
   @MaxLength(1000)
+  reason!: string;
+}
+
+export class DemoSigningConfirmationDto {
+  @ApiProperty({ description: 'Must be true to acknowledge that this is a demo simulation with no legal effect.' })
+  @IsBoolean()
+  acknowledged!: boolean;
+}
+
+export class CancelSigningDto {
+  @ApiProperty({ description: 'Reason for cancelling the online signing envelope.', minLength: 3, maxLength: 500 })
+  @IsString()
+  @MinLength(3)
+  @MaxLength(500)
   reason!: string;
 }

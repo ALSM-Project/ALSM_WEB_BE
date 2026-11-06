@@ -90,6 +90,31 @@ export interface ContractFinalEvidenceManifest {
   supportingArtifacts: ContractFinalEvidenceArtifact[];
 }
 
+export interface ContractDemoSigningSession {
+  providerEnvelopeReference: string;
+  contractVersionId: string;
+  customerUserId: string;
+  canonicalDocumentSha256: string;
+  status: 'SENT' | 'COMPLETED';
+  startedAt: Date;
+  expiresAt: Date;
+  completedAt?: Date;
+  completionEventReference?: string;
+}
+
+export interface ContractProviderSigningSession {
+  providerKey: string;
+  providerEnvelopeReference: string;
+  contractVersionId: string;
+  canonicalDocumentSha256: string;
+  status: 'SENT' | 'IN_PROGRESS' | 'COMPLETED' | 'DECLINED' | 'CANCELLED' | 'EXPIRED';
+  startedAt: Date;
+  expiresAt: Date;
+  completedAt?: Date;
+  completionEventReference?: string;
+  lastWebhookEventAt?: Date;
+}
+
 export interface ContractAggregateRecord {
   id: string;
   leadId: string;
@@ -101,6 +126,8 @@ export interface ContractAggregateRecord {
   providerCompletionStatus: 'NOT_STARTED' | 'CONFIRMED';
   archiveStatus: 'NOT_STARTED' | 'PENDING' | 'VERIFIED' | 'FAILED';
   finalEvidence?: ContractFinalEvidenceManifest;
+  demoSigningSession?: ContractDemoSigningSession;
+  providerSigningSession?: ContractProviderSigningSession;
   activationStatus: ContractActivationStatus;
   customerUserId?: string;
   createdByUserId: string;
@@ -204,6 +231,41 @@ export interface ContractAggregateRepository {
     manifest: ContractFinalEvidenceManifest;
     now: Date;
   }): Promise<{ result: ContractWithCurrentVersion; replayed: boolean } | null>;
+  startDemoSigning(input: {
+    contractId: string;
+    versionId: string;
+    customerUserId: string;
+    providerEnvelopeReference: string;
+    now: Date;
+    expiresAt: Date;
+  }): Promise<ContractWithCurrentVersion | null>;
+  completeDemoSigning(input: {
+    contractId: string;
+    versionId: string;
+    customerUserId: string;
+    providerEnvelopeReference: string;
+    completionEventReference: string;
+    now: Date;
+  }): Promise<ContractWithCurrentVersion | null>;
+  startProviderSigning(input: {
+    contractId: string;
+    versionId: string;
+    providerKey: string;
+    providerEnvelopeReference: string;
+    now: Date;
+    expiresAt: Date;
+  }): Promise<ContractWithCurrentVersion | null>;
+  updateProviderSigningStatus(input: {
+    contractId: string;
+    providerEnvelopeReference: string;
+    status: ContractLifecycleStatus;
+    providerCompletionStatus?: 'NOT_STARTED' | 'CONFIRMED';
+    eventReference?: string;
+    now: Date;
+  }): Promise<ContractWithCurrentVersion | null>;
+  findByProviderEnvelopeReference(
+    providerEnvelopeReference: string,
+  ): Promise<ContractWithCurrentVersion | null>;
   findActivationEligible(leadId: string): Promise<ContractWithCurrentVersion | null>;
   attachReviewDocument(input: {
     contractId: string;

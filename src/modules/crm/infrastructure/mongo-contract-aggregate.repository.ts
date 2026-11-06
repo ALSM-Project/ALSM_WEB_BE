@@ -13,6 +13,7 @@ import {
   ContractCanonicalDocumentArtifact,
   ContractAggregateRecord,
   ContractAggregateRepository,
+  ContractLifecycleStatus,
   ContractReviewDocumentArtifact,
   ContractFinalEvidenceManifest,
   ContractWithCurrentVersion,
@@ -386,7 +387,7 @@ export class MongoContractAggregateRepository implements ContractAggregateReposi
       _id: input.contractId,
       customerUserId: input.customerUserId,
       currentVersionId: { $exists: true },
-      lifecycleStatus: { $in: ['READY_FOR_SIGNATURE', 'SENT_TO_CUSTOMER', 'CUSTOMER_VIEWED'] },
+      lifecycleStatus: { $in: ['READY_FOR_SIGNATURE', 'SENT_TO_CUSTOMER', 'CUSTOMER_VIEWED', 'CUSTOMER_SIGNING_IN_PROGRESS'] },
       reviewStatus: 'APPROVED',
     }).session(this.scope()).exec();
     if (!existing) return null;
@@ -590,7 +591,7 @@ export class MongoContractAggregateRepository implements ContractAggregateReposi
       $set: {
         lifecycleStatus: 'COMPLETED',
         archiveStatus: 'VERIFIED',
-        activationStatus: 'ELIGIBLE',
+        activationStatus: manifest.providerKey === 'ALSM_DEMO' ? 'NOT_ELIGIBLE' : 'ELIGIBLE',
         finalEvidence: manifest,
         completedAt: input.now,
       },
@@ -598,6 +599,181 @@ export class MongoContractAggregateRepository implements ContractAggregateReposi
     }, { new: true, session: this.scope() }).exec();
     if (!updated) throw new ConflictException({ code: 'FINAL_EVIDENCE_STATE_CONFLICT', message: 'The contract changed while final evidence was being archived.' });
     return { result: this.withVersion(updated, version), replayed: false };
+  }
+
+  async startDemoSigning(input: {
+    contractId: string;
+    versionId: string;
+    customerUserId: string;
+    providerEnvelopeReference: string;
+    now: Date;
+    expiresAt: Date;
+  }): Promise<ContractWithCurrentVersion | null> {
+    this.assertTransaction();
+    const version = await this.versions.findOne({
+      _id: input.versionId,
+      contractId: input.contractId,
+      reviewStatus: 'APPROVED',
+      'canonicalDocument.kind': 'CANONICAL_UNSIGNED',
+    }).session(this.scope()).exec();
+    if (!version?.canonicalDocument) return null;
+    const updated = await this.contracts.findOneAndUpdate({
+      _id: input.contractId,
+      currentVersionId: input.versionId,
+      customerUserId: input.customerUserId,
+      reviewStatus: 'APPROVED',
+      providerCompletionStatus: 'NOT_STARTED',
+      archiveStatus: 'NOT_STARTED',
+      lifecycleStatus: { $in: ['READY_FOR_SIGNATURE', 'SENT_TO_CUSTOMER', 'CUSTOMER_VIEWED'] },
+      $or: [
+        { demoSigningSession: { $exists: false } },
+        { 'demoSigningSession.status': 'SENT', 'demoSigningSession.expiresAt': { $lte: input.now } },
+      ],
+    }, {
+      $set: {
+        lifecycleStatus: 'CUSTOMER_SIGNING_IN_PROGRESS',
+        demoSigningSession: {
+          providerEnvelopeReference: input.providerEnvelopeReference,
+          contractVersionId: new Types.ObjectId(input.versionId),
+          customerUserId: new Types.ObjectId(input.customerUserId),
+          canonicalDocumentSha256: version.canonicalDocument.sha256,
+          status: 'SENT',
+          startedAt: input.now,
+          expiresAt: input.expiresAt,
+        },
+      },
+      $inc: { revision: 1 },
+    }, { new: true, session: this.scope() }).exec();
+    if (!updated) return null;
+    return this.withVersion(updated, version);
+  }
+
+  async completeDemoSigning(input: {
+    contractId: string;
+    versionId: string;
+    customerUserId: string;
+    providerEnvelopeReference: string;
+    completionEventReference: string;
+    now: Date;
+  }): Promise<ContractWithCurrentVersion | null> {
+    this.assertTransaction();
+    const updated = await this.contracts.findOneAndUpdate({
+      _id: input.contractId,
+      currentVersionId: input.versionId,
+      customerUserId: input.customerUserId,
+      reviewStatus: 'APPROVED',
+      providerCompletionStatus: 'NOT_STARTED',
+      archiveStatus: 'NOT_STARTED',
+      lifecycleStatus: 'CUSTOMER_SIGNING_IN_PROGRESS',
+      'demoSigningSession.providerEnvelopeReference': input.providerEnvelopeReference,
+      'demoSigningSession.contractVersionId': new Types.ObjectId(input.versionId),
+      'demoSigningSession.customerUserId': new Types.ObjectId(input.customerUserId),
+      'demoSigningSession.status': 'SENT',
+      'demoSigningSession.expiresAt': { $gt: input.now },
+    }, {
+      $set: {
+        lifecycleStatus: 'PROVIDER_COMPLETED_EVIDENCE_PENDING',
+        providerCompletionStatus: 'CONFIRMED',
+        archiveStatus: 'PENDING',
+        'demoSigningSession.status': 'COMPLETED',
+        'demoSigningSession.completedAt': input.now,
+        'demoSigningSession.completionEventReference': input.completionEventReference,
+      },
+      $inc: { revision: 1 },
+    }, { new: true, session: this.scope() }).exec();
+    if (!updated) return null;
+    const version = await this.versions.findOne({ _id: input.versionId, contractId: input.contractId }).session(this.scope()).exec();
+    return version ? this.withVersion(updated, version) : null;
+  }
+
+  async startProviderSigning(input: {
+    contractId: string;
+    versionId: string;
+    providerKey: string;
+    providerEnvelopeReference: string;
+    now: Date;
+    expiresAt: Date;
+  }): Promise<ContractWithCurrentVersion | null> {
+    this.assertTransaction();
+    const version = await this.versions.findOne({
+      _id: input.versionId,
+      contractId: input.contractId,
+      reviewStatus: 'APPROVED',
+      'canonicalDocument.kind': 'CANONICAL_UNSIGNED',
+    }).session(this.scope()).exec();
+    if (!version?.canonicalDocument) return null;
+
+    const updated = await this.contracts.findOneAndUpdate({
+      _id: input.contractId,
+      currentVersionId: input.versionId,
+      reviewStatus: 'APPROVED',
+      lifecycleStatus: { $in: ['READY_FOR_SIGNATURE', 'SENT_TO_CUSTOMER', 'CUSTOMER_VIEWED'] },
+    }, {
+      $set: {
+        lifecycleStatus: 'CUSTOMER_SIGNING_IN_PROGRESS',
+        providerSigningSession: {
+          providerKey: input.providerKey,
+          providerEnvelopeReference: input.providerEnvelopeReference,
+          contractVersionId: new Types.ObjectId(input.versionId),
+          canonicalDocumentSha256: version.canonicalDocument.sha256,
+          status: 'SENT',
+          startedAt: input.now,
+          expiresAt: input.expiresAt,
+        },
+      },
+      $inc: { revision: 1 },
+    }, { new: true, session: this.scope() }).exec();
+    if (!updated) return null;
+    return this.withVersion(updated, version);
+  }
+
+  async updateProviderSigningStatus(input: {
+    contractId: string;
+    providerEnvelopeReference: string;
+    status: ContractLifecycleStatus;
+    providerCompletionStatus?: 'NOT_STARTED' | 'CONFIRMED';
+    eventReference?: string;
+    now: Date;
+  }): Promise<ContractWithCurrentVersion | null> {
+    this.assertTransaction();
+    const setFields: Record<string, unknown> = {
+      lifecycleStatus: input.status,
+      'providerSigningSession.lastEventAt': input.now,
+    };
+    if (input.providerCompletionStatus) {
+      setFields.providerCompletionStatus = input.providerCompletionStatus;
+      if (input.providerCompletionStatus === 'CONFIRMED') {
+        setFields.archiveStatus = 'PENDING';
+        setFields['providerSigningSession.status'] = 'COMPLETED';
+        setFields['providerSigningSession.completedAt'] = input.now;
+      }
+    }
+    if (input.eventReference) {
+      setFields['providerSigningSession.completionEventReference'] = input.eventReference;
+    }
+
+    const updated = await this.contracts.findOneAndUpdate({
+      _id: input.contractId,
+      'providerSigningSession.providerEnvelopeReference': input.providerEnvelopeReference,
+    }, {
+      $set: setFields,
+      $inc: { revision: 1 },
+    }, { new: true, session: this.scope() }).exec();
+    if (!updated) return null;
+    return this.loadCurrent(updated);
+  }
+
+  async findByProviderEnvelopeReference(
+    providerEnvelopeReference: string,
+  ): Promise<ContractWithCurrentVersion | null> {
+    const row = await this.contracts.findOne({
+      $or: [
+        { 'providerSigningSession.providerEnvelopeReference': providerEnvelopeReference },
+        { 'demoSigningSession.providerEnvelopeReference': providerEnvelopeReference },
+      ],
+    }).exec();
+    if (!row) return null;
+    return this.loadCurrent(row);
   }
 
   async findActivationEligible(leadId: string) {
@@ -614,6 +790,7 @@ export class MongoContractAggregateRepository implements ContractAggregateReposi
       'finalEvidence.signedPdf.mimeType': 'application/pdf',
       'finalEvidence.signedPdf.sha256': { $type: 'string' },
       'finalEvidence.signedPdf.storageReference': { $type: 'string' },
+      'finalEvidence.providerKey': { $ne: 'ALSM_DEMO' },
     }).sort({ completedAt: -1 }).exec();
     if (!row) return null;
     const current = await this.loadCurrent(row);
@@ -760,6 +937,29 @@ export class MongoContractAggregateRepository implements ContractAggregateReposi
         manifestSha256: doc.finalEvidence.manifestSha256,
         signedPdf: this.mapFinalEvidenceArtifact(doc.finalEvidence.signedPdf),
         supportingArtifacts: (doc.finalEvidence.supportingArtifacts ?? []).map((artifact) => this.mapFinalEvidenceArtifact(artifact)),
+      } : undefined,
+      demoSigningSession: doc.demoSigningSession ? {
+        providerEnvelopeReference: doc.demoSigningSession.providerEnvelopeReference,
+        contractVersionId: String(doc.demoSigningSession.contractVersionId),
+        customerUserId: String(doc.demoSigningSession.customerUserId),
+        canonicalDocumentSha256: doc.demoSigningSession.canonicalDocumentSha256,
+        status: doc.demoSigningSession.status,
+        startedAt: doc.demoSigningSession.startedAt,
+        expiresAt: doc.demoSigningSession.expiresAt,
+        completedAt: doc.demoSigningSession.completedAt,
+        completionEventReference: doc.demoSigningSession.completionEventReference,
+      } : undefined,
+      providerSigningSession: doc.providerSigningSession ? {
+        providerKey: doc.providerSigningSession.providerKey,
+        providerEnvelopeReference: doc.providerSigningSession.providerEnvelopeReference,
+        contractVersionId: String(doc.providerSigningSession.contractVersionId),
+        canonicalDocumentSha256: doc.providerSigningSession.canonicalDocumentSha256,
+        status: doc.providerSigningSession.status,
+        startedAt: doc.providerSigningSession.startedAt,
+        expiresAt: doc.providerSigningSession.expiresAt,
+        completedAt: doc.providerSigningSession.completedAt,
+        completionEventReference: doc.providerSigningSession.completionEventReference,
+        lastWebhookEventAt: doc.providerSigningSession.lastEventAt,
       } : undefined,
       activationStatus: doc.activationStatus,
       customerUserId: doc.customerUserId ? String(doc.customerUserId) : undefined,

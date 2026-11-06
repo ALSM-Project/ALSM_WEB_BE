@@ -29,6 +29,11 @@ import { CONTRACT_AGGREGATE_UNIT_OF_WORK } from './modules/crm/application/contr
 import { MongoContractAggregateUnitOfWork } from './modules/crm/infrastructure/mongo-contract-aggregate.unit-of-work';
 import { ContractAggregateService } from './modules/crm/application/contract-aggregate.service';
 import { ContractAggregateController } from './modules/crm/presentation/contract-aggregate.controller';
+import { ContractSigningOrchestrationService } from './modules/crm/application/contract-signing-orchestration.service';
+import { ContractSigningWebhookService } from './modules/crm/application/contract-signing-webhook.service';
+import { ContractEvidencePipelineService } from './modules/crm/infrastructure/contract-evidence-pipeline.service';
+import { ContractSigningReconciliationJob } from './modules/crm/infrastructure/contract-signing-reconciliation.job';
+import { ContractSigningWebhookController } from './modules/crm/presentation/contract-signing-webhook.controller';
 import { ContractNotificationEmailOutbox, ContractNotificationEmailOutboxSchema } from './modules/crm/infrastructure/contract-notification-email-outbox.schema';
 import { CONTRACT_NOTIFICATION_EMAIL_OUTBOX_REPOSITORY } from './modules/crm/domain/contract-notification-email-outbox.types';
 import { MongoContractNotificationEmailOutboxRepository } from './modules/crm/infrastructure/mongo-contract-notification-email-outbox.repository';
@@ -44,6 +49,9 @@ import { ContractReviewDocumentService } from './modules/crm/application/contrac
 import { CONTRACT_SIGNING_PROVIDER } from './modules/crm/domain/contract-signing-provider.port';
 import { UnconfiguredContractSigningProviderAdapter } from './modules/crm/infrastructure/unconfigured-contract-signing-provider.adapter';
 import { VnptEContractClient } from './modules/crm/infrastructure/vnpt-econtract.client';
+import { DemoContractSigningProviderAdapter } from './modules/crm/infrastructure/demo-contract-signing-provider.adapter';
+import { VnptContractSigningProviderAdapter } from './modules/crm/infrastructure/vnpt-contract-signing-provider.adapter';
+import { ConfigService } from '@nestjs/config';
 import { CONTRACT_INVITATION_UNIT_OF_WORK } from './modules/crm/application/contract-invitation-unit-of-work.port';
 import { MongoContractInvitationUnitOfWork } from './modules/crm/infrastructure/mongo-contract-invitation.unit-of-work';
 import { SALES_PERFORMANCE_SOURCE } from './modules/crm/domain/sales-performance-source.port';
@@ -80,6 +88,9 @@ import { SaveTeamService } from './modules/teams/application/save-team.service';
 import { ListManagedTeamsService } from './modules/teams/application/list-managed-teams.service';
 import { TeamsController } from './modules/teams/presentation/teams.controller';
 import { GetTeamAdministrationService } from './modules/teams/application/get-team-administration.service';
+import { ListOrganizationTeamMembersService } from './modules/teams/application/list-organization-team-members.service';
+import { SearchSalesTeamMemberCandidatesService } from './modules/teams/application/search-sales-team-member-candidates.service';
+import { AddExistingSalesTeamMembersService } from './modules/teams/application/add-existing-sales-team-members.service';
 import { GetSalesTeamPerformanceService } from './modules/teams/application/get-sales-team-performance.service';
 import { TeamReportsController } from './modules/teams/presentation/team-reports.controller';
 import { TeamJobAssignment, TeamJobAssignmentSchema } from './modules/teams/infrastructure/team-job-assignment.schema';
@@ -273,7 +284,17 @@ import { MongoPasswordResetRepository } from './modules/auth/infrastructure/mong
 import { EMAIL_VERIFICATION_REPOSITORY } from './modules/auth/domain/email-verification.repository';
 import { MongoEmailVerificationRepository } from './modules/auth/infrastructure/mongo-email-verification.repository';
 import { EmailVerificationService } from './modules/auth/application/email-verification.service';
+import { SMS_VERIFICATION_PORT } from './modules/auth/domain/sms-verification.port';
+import { PHONE_VERIFICATION_REPOSITORY } from './modules/auth/domain/phone-verification.repository';
+import { MongoPhoneVerificationRepository } from './modules/auth/infrastructure/mongo-phone-verification.repository';
+import { UnconfiguredSmsAdapter } from './modules/auth/infrastructure/unconfigured-sms.adapter';
+import { PhoneVerificationService } from './modules/auth/application/phone-verification.service';
+import {
+  PhoneVerification,
+  PhoneVerificationSchema,
+} from './modules/auth/infrastructure/phone-verification.schema';
 import { AuthController } from './modules/auth/presentation/auth.controller';
+import { PhoneVerificationController } from './modules/auth/presentation/phone-verification.controller';
 import { OrganizationAuthorizationService } from './modules/organizations/application/organization-authorization.service';
 import { OrganizationContextService } from './modules/organizations/application/organization-context.service';
 import { ProjectService } from './modules/projects/application/project.service';
@@ -411,6 +432,7 @@ import { NotificationsService } from './modules/notifications/notifications.serv
       { name: BankConfig.name, schema: BankConfigSchema },
       { name: PasswordReset.name, schema: PasswordResetSchema },
       { name: EmailVerification.name, schema: EmailVerificationSchema },
+      { name: PhoneVerification.name, schema: PhoneVerificationSchema },
       { name: FieldMapping.name, schema: FieldMappingSchema },
       { name: MethodMapping.name, schema: MethodMappingSchema },
       { name: Meeting.name, schema: MeetingSchema },
@@ -439,11 +461,13 @@ import { NotificationsService } from './modules/notifications/notifications.serv
     ContractInvitationsController,
     ProspectInvitationsController,
     ContractAggregateController,
+    ContractSigningWebhookController,
     ContractTemplateController,
     TeamsController,
     TeamReportsController,
     TeamJobAssignmentsController,
     AuthController,
+    PhoneVerificationController,
     ProjectsController,
     ResourceTransferController,
     ConversionsController,
@@ -487,8 +511,25 @@ import { NotificationsService } from './modules/notifications/notifications.serv
     ContractNotificationEmailOutboxWorker,
     { provide: CONTRACT_AGGREGATE_UNIT_OF_WORK, useClass: MongoContractAggregateUnitOfWork },
     ContractAggregateService,
+    ContractSigningOrchestrationService,
+    ContractSigningWebhookService,
+    ContractEvidencePipelineService,
+    ContractSigningReconciliationJob,
     VnptEContractClient,
-    { provide: CONTRACT_SIGNING_PROVIDER, useClass: UnconfiguredContractSigningProviderAdapter },
+    {
+      provide: CONTRACT_SIGNING_PROVIDER,
+      useFactory: (config: ConfigService, vnptClient: VnptEContractClient) => {
+        const mode = config.get<string>('CONTRACT_SIGNING_MODE');
+        if (mode === 'DEMO') {
+          return new DemoContractSigningProviderAdapter();
+        }
+        if (mode === 'VNPT') {
+          return new VnptContractSigningProviderAdapter(vnptClient, config);
+        }
+        return new UnconfiguredContractSigningProviderAdapter();
+      },
+      inject: [ConfigService, VnptEContractClient],
+    },
     ContractReviewDocumentService,
     { provide: CONTRACT_TEMPLATE_REPOSITORY, useClass: MongoContractTemplateRepository },
     { provide: CONTRACT_TEMPLATE_UNIT_OF_WORK, useClass: MongoContractTemplateUnitOfWork },
@@ -553,6 +594,9 @@ import { NotificationsService } from './modules/notifications/notifications.serv
     },
     TeamAccessService,
     GetTeamAdministrationService,
+    ListOrganizationTeamMembersService,
+    SearchSalesTeamMemberCandidatesService,
+    AddExistingSalesTeamMembersService,
     GetSalesTeamPerformanceService,
     AssignTeamJobService,
     RevokeTeamJobService,
@@ -725,6 +769,9 @@ import { NotificationsService } from './modules/notifications/notifications.serv
     { provide: PASSWORD_RESET_REPOSITORY, useClass: MongoPasswordResetRepository },
     { provide: EMAIL_VERIFICATION_REPOSITORY, useClass: MongoEmailVerificationRepository },
     { provide: EMAIL_VERIFICATION_PORT, useExisting: EmailVerificationService },
+    { provide: PHONE_VERIFICATION_REPOSITORY, useClass: MongoPhoneVerificationRepository },
+    { provide: SMS_VERIFICATION_PORT, useClass: UnconfiguredSmsAdapter },
+    PhoneVerificationService,
     MongoQuoteRequestRepository,
     { provide: QUOTE_REQUEST_REPOSITORY, useClass: MongoQuoteRequestRepository },
   ],

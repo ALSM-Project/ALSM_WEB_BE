@@ -55,10 +55,12 @@ export class ContractAccessGrant {
   @Prop({ type: MongoSchema.Types.ObjectId, required: true, index: true }) userId!: Types.ObjectId;
   @Prop({ type: MongoSchema.Types.ObjectId, required: true }) invitationId!: Types.ObjectId;
   @Prop({ required: true, enum: ['ACTIVE'], default: 'ACTIVE' }) status!: 'ACTIVE';
-  @Prop({ required: true, enum: ['UNVERIFIED'], default: 'UNVERIFIED' })
-  phoneVerificationStatus!: 'UNVERIFIED';
-  @Prop({ required: true, enum: ['BLOCKED_PHONE_UNVERIFIED'], default: 'BLOCKED_PHONE_UNVERIFIED' })
-  signingEligibility!: 'BLOCKED_PHONE_UNVERIFIED';
+  @Prop({ required: true, enum: ['UNVERIFIED', 'PENDING', 'VERIFIED'], default: 'UNVERIFIED' })
+  phoneVerificationStatus!: 'UNVERIFIED' | 'PENDING' | 'VERIFIED';
+  @Prop({ required: true, enum: ['BLOCKED_PHONE_UNVERIFIED', 'ELIGIBLE'], default: 'BLOCKED_PHONE_UNVERIFIED' })
+  signingEligibility!: 'BLOCKED_PHONE_UNVERIFIED' | 'ELIGIBLE';
+  @Prop() verifiedPhone?: string;
+  @Prop() phoneVerifiedAt?: Date;
   createdAt!: Date;
   updatedAt!: Date;
 }

@@ -13,7 +13,7 @@ Các phần dưới đây gắn nhãn rõ ràng:
 - **[Đề xuất kỹ thuật]**: giải pháp đề xuất để đạt yêu cầu Bước 1.
 - **[Cần quyết định]**: lựa chọn của Business/Legal/Security/Engineering hoặc phụ thuộc nhà cung cấp chưa được chốt.
 
-**Yêu cầu sản phẩm đã xác nhận:** khách phải có account ALSM và đăng nhập trước khi xem/ký; prospect chỉ được tạo từ invitation hợp lệ và không có Organization/tenant/service access trước khi activation; sau khi hoàn tất phải tải được PDF và evidence; MATBAO Sign chưa được chọn; OTP/ảnh chữ ký/hash tự tạo/FE status không phải bằng chứng ký thật.
+**Yêu cầu sản phẩm đã xác nhận:** khách phải có account ALSM và đăng nhập trước khi xem/ký; prospect chỉ được tạo từ invitation hợp lệ và không có Organization/tenant/service access trước khi activation; sau khi hoàn tất phải tải được PDF và evidence; MATBAO Sign chưa được chọn; VNPT eContract được chọn riêng cho đánh giá sandbox, chưa phải production; OTP/ảnh chữ ký/hash tự tạo/FE status không phải bằng chứng ký thật.
 
 Mọi mô hình dữ liệu, collection, API path, permission key, status, adapter interface và quy tắc vận hành trong tài liệu này là **đề xuất kỹ thuật để review**, không phải quyết định đã được duyệt. Chúng không xác nhận hiệu lực pháp lý của OTP/chữ ký/provider cụ thể.
 
@@ -208,7 +208,7 @@ SigningProviderAdapter
 
 Types không generic với API cụ thể: `SigningTransactionInput` chứa version, file stream/reference, content digest, signer manifest/order, callback reference, expiration; `SigningSessionResult` trả opaque provider IDs, redirect/widget data an toàn và expiry; `VerifiedEvent` có provider/account/environment/event ID/transaction/version/signer/status/provider timestamp. Secret config inject từ secret manager/config; không nằm trong FE/DB/log.
 
-**Capability gate:** adapter khai báo `supportsOtpToVerifiedPhone`, `supportsMultipleSigners`, `supportsSequentialSigning`, `supportsSignedPdf`, `supportsCompletionEvidence`, `supportsCancel`, `supportsWebhookVerification`, `supportsStatusPolling`, `supportsIdempotency`. Không bật flow yêu cầu capability thiếu; không fallback mô phỏng trong production. MATBAO Sign chưa được chọn; interface phải chờ API documentation và sandbox verification.
+**Capability gate:** adapter khai báo `supportsOtpToVerifiedPhone`, `supportsMultipleSigners`, `supportsSequentialSigning`, `supportsSignedPdf`, `supportsCompletionEvidence`, `supportsCancel`, `supportsWebhookVerification`, `supportsStatusPolling`, `supportsIdempotency`. Không bật flow yêu cầu capability thiếu; không fallback mô phỏng trong production. MATBAO Sign chưa được chọn; VNPT eContract chỉ được chọn cho sandbox evaluation, nên interface phải chờ credentials, API/version/hostname confirmation và sandbox verification trước khi bật capability.
 
 ### 7.2 Gửi, ký, webhook, retry và đối soát
 

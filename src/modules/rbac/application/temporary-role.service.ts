@@ -227,7 +227,77 @@ export class TemporaryRoleService {
   }
 
   async revokeTemporaryRole(actorUserId: string, id: string, reason?: string) {
-    const doc = await this.tempRoleModel.findById(toValidObjectId(id)).exec();
+    const revocationReason = reason?.trim() ?? '';
+    if (!revocationReason) {
+      throw new BadRequestException({
+        code: 'REVOCATION_REASON_REQUIRED',
+        message: 'A reason is required to revoke a temporary role',
+      });
+    }
+
+    const objectId = toValidObjectId(id);
+    const now = new Date();
+
+    // Check if atomic findOneAndUpdate is available on the model (Mongoose runtime)
+    const modelWithAtomic = this.tempRoleModel as unknown as {
+      findOneAndUpdate?: (
+        filter: unknown,
+        update: unknown,
+        options: unknown,
+      ) => { exec: () => Promise<TemporaryRoleDocument | null> };
+    };
+
+    if (typeof modelWithAtomic.findOneAndUpdate === 'function') {
+      const updated = await modelWithAtomic
+        .findOneAndUpdate(
+          {
+            _id: objectId,
+            status: 'ACTIVE',
+            expiresAt: { $gt: now },
+          },
+          {
+            $set: {
+              status: 'REVOKED',
+              revokedAt: now,
+              revokedBy: toValidObjectId(actorUserId),
+              revocationReason,
+            },
+          },
+          { new: true },
+        )
+        .exec();
+
+      if (updated) {
+        await this.audit.append({
+          actorUserId,
+          action: 'TEMPORARY_ROLE_REVOKED',
+          resourceType: 'TEMPORARY_ROLE',
+          resourceId: updated.id,
+          metadata: {
+            targetUserId: updated.userId?.toString() ?? '',
+            userId: updated.userId?.toString() ?? '',
+            roleId: updated.roleId,
+            previousStatus: 'ACTIVE',
+            resultingStatus: 'REVOKED',
+            revokedAt: now.toISOString(),
+            reason: revocationReason,
+          },
+        });
+
+        await this.notifyUser(
+          updated.userId?.toString() ?? '',
+          'TEMPORARY_ROLE_REVOKED',
+          'Temporary Role Revoked',
+          `Your temporary role "${updated.roleId}" has been revoked early. Reason: ${revocationReason}`,
+          updated.id,
+        );
+
+        return updated;
+      }
+    }
+
+    // Inspect document state to provide exact domain error or execute fallback revocation
+    const doc = await this.tempRoleModel.findById(objectId).exec();
     if (!doc) {
       throw new NotFoundException('Temporary role was not found');
     }
@@ -237,16 +307,17 @@ export class TemporaryRoleService {
         message: `Only an active temporary role can be revoked; this one is ${doc.status}`,
       });
     }
-    const revocationReason = reason?.trim() ?? '';
-    if (!revocationReason) {
-      throw new BadRequestException({
-        code: 'REVOCATION_REASON_REQUIRED',
-        message: 'A reason is required to revoke a temporary role',
+    if (doc.expiresAt && doc.expiresAt <= now) {
+      doc.status = 'EXPIRED';
+      await doc.save();
+      throw new ConflictException({
+        code: 'TEMPORARY_ROLE_NOT_ACTIVE',
+        message: 'Only an active temporary role can be revoked; this one has expired',
       });
     }
 
     doc.status = 'REVOKED';
-    doc.revokedAt = new Date();
+    doc.revokedAt = now;
     doc.revokedBy = toValidObjectId(actorUserId);
     doc.revocationReason = revocationReason;
     await doc.save();
@@ -257,15 +328,18 @@ export class TemporaryRoleService {
       resourceType: 'TEMPORARY_ROLE',
       resourceId: doc.id,
       metadata: {
-        userId: doc.userId.toString(),
+        targetUserId: doc.userId?.toString() ?? '',
+        userId: doc.userId?.toString() ?? '',
         roleId: doc.roleId,
-        revokedAt: doc.revokedAt.toISOString(),
+        previousStatus: 'ACTIVE',
+        resultingStatus: 'REVOKED',
+        revokedAt: now.toISOString(),
         reason: revocationReason,
       },
     });
 
     await this.notifyUser(
-      doc.userId.toString(),
+      doc.userId?.toString() ?? '',
       'TEMPORARY_ROLE_REVOKED',
       'Temporary Role Revoked',
       `Your temporary role "${doc.roleId}" has been revoked early. Reason: ${revocationReason}`,

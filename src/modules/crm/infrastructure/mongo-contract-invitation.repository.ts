@@ -491,6 +491,38 @@ export class MongoContractInvitationRepository implements ContractInvitationRepo
     }
   }
 
+  async updatePhoneVerification(input: {
+    userId: string;
+    phone: string;
+    status: import('../domain/contract-invitation.types').PhoneVerificationStatus;
+    eligibility: import('../domain/contract-invitation.types').SigningEligibility;
+  }): Promise<number> {
+    const result = await this.grants.updateMany(
+      {
+        userId: new Types.ObjectId(input.userId),
+        status: 'ACTIVE',
+      },
+      {
+        $set: {
+          phoneVerificationStatus: input.status,
+          signingEligibility: input.eligibility,
+          ...(input.status === 'VERIFIED'
+            ? { verifiedPhone: input.phone, phoneVerifiedAt: new Date() }
+            : {}),
+        },
+      },
+    );
+    return result.modifiedCount;
+  }
+
+  async findGrantByUserId(userId: string): Promise<ContractAccessGrantRecord | null> {
+    const doc = await this.grants.findOne({
+      userId: new Types.ObjectId(userId),
+      status: 'ACTIVE',
+    }).exec();
+    return doc ? this.mapGrant(doc) : null;
+  }
+
   private mapInvitation(doc: ContractInvitationDocument): ContractInvitationRecord {
     const status = doc.status === 'ACTIVE' && doc.expiresAt.getTime() <= Date.now()
       ? 'EXPIRED'
@@ -522,8 +554,10 @@ export class MongoContractInvitationRepository implements ContractInvitationRepo
       userId: String(doc.userId),
       invitationId: String(doc.invitationId),
       status: 'ACTIVE',
-      phoneVerificationStatus: 'UNVERIFIED',
-      signingEligibility: 'BLOCKED_PHONE_UNVERIFIED',
+      phoneVerificationStatus: doc.phoneVerificationStatus ?? 'UNVERIFIED',
+      signingEligibility: doc.signingEligibility ?? 'BLOCKED_PHONE_UNVERIFIED',
+      ...(doc.verifiedPhone ? { verifiedPhone: doc.verifiedPhone } : {}),
+      ...(doc.phoneVerifiedAt ? { phoneVerifiedAt: doc.phoneVerifiedAt } : {}),
       createdAt: doc.createdAt,
     };
   }
