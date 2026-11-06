@@ -59,47 +59,78 @@ describe('CobolJavaConversionAdapter', () => {
     );
   }
 
-  it('translates COBOL and stores the generated .java files even though exit code is always 0', async () => {
+  function argAfter(args: string[], flag: string): string {
+    return args[args.indexOf(flag) + 1];
+  }
+
+  /** What the tool writes for one converted program in project mode. */
+  async function writeJob(args: string[], program: string, className: string): Promise<void> {
+    const dir = path.join(argAfter(args, '-odir'), 'src', 'main', 'java', 'jp', 'co', 'alsm', 'batch', 'jobs', program);
+    await fs.promises.mkdir(dir, { recursive: true });
+    await fs.promises.writeFile(
+      path.join(dir, `${className}.java`),
+      `package jp.co.alsm.batch.jobs.${program};\n\npublic class ${className} {}\n`,
+    );
+  }
+
+  async function writeReport(args: string[], report: Record<string, unknown>): Promise<void> {
+    await fs.promises.writeFile(
+      path.join(argAfter(args, '-odir'), 'conversion_report.json'),
+      JSON.stringify(report),
+    );
+  }
+
+  it('converts the bundle in project mode and stores the converted jobs with the report', async () => {
     await fs.promises.writeFile(path.join(sourceDir, 'BUBBLESORT.cob'), 'COBOL SOURCE');
+    let seenArgs: string[] = [];
     (toolRunner.runConversionTool as jest.Mock).mockImplementation(
       async (_exe: string, args: string[], options: { cwd: string }) => {
-        expect(args.slice(args.indexOf('-pp'), args.indexOf('-pp') + 2)).toEqual([
-          '-pp',
-          'cobolprogramclasses',
-        ]);
-        expect(args.slice(args.indexOf('-dp'), args.indexOf('-dp') + 2)).toEqual([
-          '-dp',
-          'cobolprogramclasses',
-        ]);
-        // tool2java only reliably honors -odir for the first file it writes; real runs show
-        // subsequent programs land under "<cwd>/cobolprogramclasses/<program>/..." instead —
-        // reproduce that here rather than writing into the (unused, from the tool's own
-        // perspective) -odir value.
-        const generatedDir = path.join(options.cwd, 'cobolprogramclasses');
-        await fs.promises.mkdir(generatedDir, { recursive: true });
-        await fs.promises.writeFile(
-          path.join(generatedDir, 'Bubblesort.java'),
-          'public class Bubblesort {}',
-        );
-        return {
-          code: 0,
-          stdout: 'Parsing Cobol started for: BUBBLESORT.cob\nDone in 0s.',
-          stderr: '',
-          timedOut: false,
-        };
+        seenArgs = args;
+        await writeJob(args, 'bubblesort', 'BubblesortTasklet');
+        // The runtime and launcher the tool writes next to the jobs are not stored: the export
+        // adds its own.
+        const runtimeDir = path.join(argAfter(args, '-odir'), 'src', 'main', 'java', 'jp', 'co', 'alsm', 'common');
+        await fs.promises.mkdir(runtimeDir, { recursive: true });
+        await fs.promises.writeFile(path.join(runtimeDir, 'Record.java'), 'public class Record {}');
+        await writeReport(args, { converted: 1, failed: 0, failures: [] });
+        expect(options.cwd).not.toBe(sourceDir);
+        return { code: 0, stdout: 'Converted 1 of 1 program(s).', stderr: '', timedOut: false };
       },
     );
 
     const output = await buildAdapter().execute(baseInput);
 
     expect(output).toEqual({ resultReference: 'results/p1/job-2/uuid', toolVersion: 'tool2java' });
-    expect(storage.writeFiles).toHaveBeenCalledWith(
-      'results/p1/job-2',
-      expect.arrayContaining([
-        expect.objectContaining({ relativePath: 'cobolprogramclasses/Bubblesort.java' }),
-      ]),
-    );
+    expect(seenArgs.slice(0, 2)).toEqual(['-jar', '/tools/akaBatch-1.0.jar']);
+    expect(argAfter(seenArgs, '-project')).toBeTruthy();
+    expect(argAfter(seenArgs, '-basePackage')).toBe('jp.co.alsm.batch');
+    expect(seenArgs).toEqual(expect.arrayContaining(['-odir', '-scaffold', '-noverify']));
+    expect(seenArgs).not.toContain('-dld');
+    const stored = (storage.writeFiles as jest.Mock).mock.calls[0][1] as { relativePath: string }[];
+    expect(stored.map((f) => f.relativePath).sort()).toEqual([
+      'conversion_report.json',
+      'jp/co/alsm/batch/jobs/bubblesort/BubblesortTasklet.java',
+    ]);
     expect(errorLogs.create).not.toHaveBeenCalled();
+  });
+
+  it('passes -encoding when configured and runs the build check when it is switched on', async () => {
+    configValues.CONVERSION_SOURCE_ENCODING = 'MS932';
+    configValues.CONVERSION_VERIFY_BUILD = 'true';
+    let seenArgs: string[] = [];
+    (toolRunner.runConversionTool as jest.Mock).mockImplementation(async (_exe: string, args: string[]) => {
+      seenArgs = args;
+      await writeJob(args, 'ok', 'OkTasklet');
+      return { code: 0, stdout: '', stderr: '', timedOut: false };
+    });
+    try {
+      await buildAdapter().execute(baseInput);
+    } finally {
+      delete configValues.CONVERSION_SOURCE_ENCODING;
+      delete configValues.CONVERSION_VERIFY_BUILD;
+    }
+    expect(argAfter(seenArgs, '-encoding')).toBe('MS932');
+    expect(seenArgs).not.toContain('-noverify');
   });
 
   it("copies the tool's Config.properties into the job working directory before running it", async () => {
@@ -110,9 +141,9 @@ describe('CobolJavaConversionAdapter', () => {
     configValues.TOOL2JAVA_JAR_PATH = path.join(toolDir, 'target', 'akaBatch-1.0.jar');
     let seenConfig: string | undefined;
     (toolRunner.runConversionTool as jest.Mock).mockImplementation(
-      async (_exe: string, _args: string[], options: { cwd: string }) => {
+      async (_exe: string, args: string[], options: { cwd: string }) => {
         seenConfig = await fs.promises.readFile(path.join(options.cwd, 'Config.properties'), 'utf8');
-        await fs.promises.writeFile(path.join(options.cwd, 'Result.java'), 'class Result {}');
+        await writeJob(args, 'result', 'ResultTasklet');
         return { code: 0, stdout: '', stderr: '', timedOut: false };
       },
     );
@@ -133,9 +164,9 @@ describe('CobolJavaConversionAdapter', () => {
   it('isolates overlapping attempts of the same job in distinct working directories', async () => {
     const workingDirectories: string[] = [];
     (toolRunner.runConversionTool as jest.Mock).mockImplementation(
-      async (_exe: string, _args: string[], options: { cwd: string }) => {
+      async (_exe: string, args: string[], options: { cwd: string }) => {
         workingDirectories.push(options.cwd);
-        await fs.promises.writeFile(path.join(options.cwd, 'Result.java'), 'class Result {}');
+        await writeJob(args, 'result', 'ResultTasklet');
         await new Promise((resolve) => setTimeout(resolve, 20));
         return { code: 0, stdout: '', stderr: '', timedOut: false };
       },
@@ -145,23 +176,26 @@ describe('CobolJavaConversionAdapter', () => {
     expect(storage.writeFiles).toHaveBeenCalledTimes(2);
   });
 
-  it('records an ErrorLogRecord parsed from a ParseException block', async () => {
+  it('records an ErrorLogRecord for each program the report lists as failed', async () => {
     await fs.promises.writeFile(path.join(sourceDir, 'OK.cob'), 'COBOL');
     await fs.promises.writeFile(path.join(sourceDir, 'BROKEN.cob'), 'COBOL');
     (toolRunner.runConversionTool as jest.Mock).mockImplementation(
       async (_exe: string, args: string[]) => {
-        const outDir = args[4];
-        await fs.promises.writeFile(path.join(outDir, 'Ok.java'), 'public class Ok {}');
-        return {
-          code: 0,
-          stdout: [
-            'Parsing Cobol started for: BROKEN.cob',
-            'com.res.cobol.parser.ParseException: Encountered "x" at line 4, column 8.',
-            'Errors encountered. Processing terminated.',
-          ].join('\n'),
-          stderr: '',
-          timedOut: false,
-        };
+        await writeJob(args, 'ok', 'OkTasklet');
+        await writeJob(args, 'broken', 'BrokenTasklet');
+        await writeReport(args, {
+          converted: 1,
+          failed: 1,
+          failures: [
+            {
+              programId: 'BROKEN',
+              file: 'cbl/BROKEN.cob',
+              line: 4,
+              reason: 'com.res.cobol.parser.ParseException: Encountered "x" at line 4, column 8.',
+            },
+          ],
+        });
+        return { code: 0, stdout: 'Converted 1 of 2 program(s).', stderr: '', timedOut: false };
       },
     );
 
@@ -177,12 +211,56 @@ describe('CobolJavaConversionAdapter', () => {
     );
   });
 
-  it('does not fail the job when recording a parse error fails (e.g. a DB validation error for an unrelated program in the same -dld batch)', async () => {
+  it('falls back to the console log for parse errors when the tool writes no report', async () => {
     await fs.promises.writeFile(path.join(sourceDir, 'OK.cob'), 'COBOL');
     (toolRunner.runConversionTool as jest.Mock).mockImplementation(
       async (_exe: string, args: string[]) => {
-        const outDir = args[4];
-        await fs.promises.writeFile(path.join(outDir, 'Ok.java'), 'public class Ok {}');
+        await writeJob(args, 'ok', 'OkTasklet');
+        return {
+          code: 0,
+          stdout: [
+            'Parsing Cobol started for: BROKEN.cob',
+            'com.res.cobol.parser.ParseException: Encountered "x" at line 4, column 8.',
+          ].join('\n'),
+          stderr: '',
+          timedOut: false,
+        };
+      },
+    );
+
+    await buildAdapter().execute(baseInput);
+
+    expect(errorLogs.create).toHaveBeenCalledWith(
+      expect.objectContaining({ offendingCode: 'BROKEN.cob', lineNumber: 4 }),
+    );
+  });
+
+  it('fails the job with the reasons when the report says no program was converted', async () => {
+    await fs.promises.writeFile(path.join(sourceDir, 'BROKEN.cob'), 'COBOL');
+    (toolRunner.runConversionTool as jest.Mock).mockImplementation(
+      async (_exe: string, args: string[]) => {
+        await writeJob(args, 'broken', 'BrokenTasklet');
+        await writeReport(args, {
+          converted: 0,
+          failed: 1,
+          failures: [{ programId: 'BROKEN', file: 'BROKEN.cob', line: 7, reason: 'Unknown Symbol : X' }],
+        });
+        return { code: 0, stdout: '', stderr: '', timedOut: false };
+      },
+    );
+
+    await expect(buildAdapter().execute(baseInput)).rejects.toThrow(
+      /No program could be converted: BROKEN: Unknown Symbol : X/,
+    );
+    expect(storage.writeFiles).not.toHaveBeenCalled();
+    expect(errorLogs.create).toHaveBeenCalledWith(expect.objectContaining({ lineNumber: 7 }));
+  });
+
+  it('does not fail the job when recording a parse error fails (e.g. a DB validation error for an unrelated program in the same bundle)', async () => {
+    await fs.promises.writeFile(path.join(sourceDir, 'OK.cob'), 'COBOL');
+    (toolRunner.runConversionTool as jest.Mock).mockImplementation(
+      async (_exe: string, args: string[]) => {
+        await writeJob(args, 'ok', 'OkTasklet');
         return {
           code: 0,
           stdout: [
@@ -247,8 +325,7 @@ describe('CobolJavaConversionAdapter', () => {
     await fs.promises.writeFile(path.join(sourceDir, 'OK.cob'), 'COBOL SOURCE');
     (toolRunner.runConversionTool as jest.Mock).mockImplementation(
       async (_exe: string, args: string[]) => {
-        const outDir = args[4];
-        await fs.promises.writeFile(path.join(outDir, 'Ok.java'), 'public class Ok {}');
+        await writeJob(args, 'ok', 'OkTasklet');
         return { code: 0, stdout: 'Done in 0s.', stderr: '', timedOut: false };
       },
     );
@@ -266,8 +343,7 @@ describe('CobolJavaConversionAdapter', () => {
     await fs.promises.writeFile(path.join(sourceDir, 'OK.cob'), 'COBOL SOURCE');
     (toolRunner.runConversionTool as jest.Mock).mockImplementation(
       async (_exe: string, args: string[]) => {
-        const outDir = args[4];
-        await fs.promises.writeFile(path.join(outDir, 'Ok.java'), 'public class Ok {}');
+        await writeJob(args, 'ok', 'OkTasklet');
         return { code: 0, stdout: 'Done in 0s.', stderr: '', timedOut: false };
       },
     );
@@ -286,14 +362,14 @@ describe('CobolJavaConversionAdapter', () => {
     await fs.promises.writeFile(path.join(sourceDir, 'app', 'PGM.cbl'), original);
     let seen: { dir: string; program: string; stubs: string[] } | undefined;
     (toolRunner.runConversionTool as jest.Mock).mockImplementation(
-      async (_exe: string, args: string[], options: { cwd: string }) => {
-        const dir = args[args.length - 1];
+      async (_exe: string, args: string[]) => {
+        const dir = argAfter(args, '-project');
         seen = {
           dir,
           program: await fs.promises.readFile(path.join(dir, 'app', 'PGM.cbl'), 'latin1'),
           stubs: (await fs.promises.readdir(path.join(dir, 'app'))).filter((f) => f !== 'PGM.cbl'),
         };
-        await fs.promises.writeFile(path.join(options.cwd, 'Pgm.java'), 'public class Pgm {}');
+        await writeJob(args, 'pgm', 'PgmTasklet');
         return { code: 0, stdout: 'Done in 0s.', stderr: '', timedOut: false };
       },
     );

@@ -773,9 +773,18 @@ export function normalizeCicsSource(source: string): NormalizationResult {
   const eol = source.includes('\r\n') ? '\r\n' : '\n';
   const original = source.split(/\r?\n/);
   const changes: NormalizationChange[] = [];
-  const working = original.map((line, idx) =>
-    removeSeparatorCommas(inlineDfhresp(line, idx + 1, changes), idx + 1, changes),
-  );
+  // Inside EXEC SQL ... END-EXEC a comma separates columns and host variables: it is SQL, and
+  // dropping it turned INTO :A, :B into a host variable with an indicator.
+  let inSql = false;
+  const working = original.map((line, idx) => {
+    const area = codeArea(line).toUpperCase();
+    const startsSql = /\bEXEC\s+SQL\b/.test(area);
+    const sqlLine = inSql || startsSql;
+    const dfh = inlineDfhresp(line, idx + 1, changes);
+    if (startsSql) inSql = true;
+    if (inSql && /\bEND-EXEC\b/.test(area)) inSql = false;
+    return sqlLine ? dfh : removeSeparatorCommas(dfh, idx + 1, changes);
+  });
   removeEmptyInputOutputSection(working, changes);
 
   // Code areas joined with '\n' so an EXEC CICS block spanning lines is one match, and a

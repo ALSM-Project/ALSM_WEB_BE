@@ -23,10 +23,21 @@ interface ParsedToolError {
   lineNumber: number;
 }
 
+/** Package of the converted jobs: <base>.jobs.<program>, the one the export scans. */
+const BATCH_BASE_PACKAGE = 'jp.co.alsm.batch';
+
+/** The parts of the tool's conversion_report.json read here. */
+interface ConversionReport {
+  converted?: number;
+  failed?: number;
+  failures?: { programId: string; file?: string; line?: number; reason?: string }[];
+}
+
 /**
- * Shells out to tool2java's built jar (com.res.cobol.Main). No COBOL parser logic is reimplemented here.
- * The tool always exits 0 (confirmed by manual smoke test) — success/failure is determined by parsing
- * stdout and checking whether any .java files were actually produced.
+ * Shells out to tool2java's built jar (com.res.cobol.Main) in project mode. No COBOL parser logic is
+ * reimplemented here. The tool exits 0 when it ran, even if some programs failed: success and
+ * failure per program come from its conversion_report.json, and the job fails only when nothing
+ * was converted.
  */
 @Injectable()
 export class CobolJavaConversionAdapter {
@@ -93,69 +104,73 @@ export class CobolJavaConversionAdapter {
     try {
       const toolSourceDir = await this.prepareSources(sourceDir, path.join(jobWorkDir, 'src'));
       await this.copyToolConfig(jarPath, jobWorkDir);
-      const result = await runConversionTool(
-        javaExecutable,
-        [
-          '-jar',
-          jarPath,
-          '-dld',
-          '-odir',
-          // tool2java concatenates outputDir + fileName with no separator of its own
-          // (Files.java openClassFile(outputDir, filePath)) — without a trailing separator
-          // here it writes garbled paths like "outClassName.java" and can throw.
-          outDir + path.sep,
-          // Without -pp, RESConfig.getProgramPackage() is null and every file write throws
-          // a NullPointerException inside tool2java (silently caught, logged, and skipped —
-          // "No Java files were generated" with no other indication why).
-          '-pp',
-          'cobolprogramclasses',
-          // -dp <name> sets the DATA package (RESConfig.dataPackage) - distinct from -dp0,
-          // which is actually an unrelated boolean flag (setLongDataPackageName(false)).
-          // Without a real -dp value, RESConfig.getDataPackage() stays null and every DATA
-          // division class (Cbact01cModel, etc.) crashes with a NullPointerException in
-          // NameUtil.getPackageName the moment translation reaches it - the whole program's
-          // translation then aborts, and the ONLY output ever written is the COBOL header
-          // comment copied before that point, with the job still marked COMPLETED (the CLI
-          // exits 0). Reproduced directly against real CardDemo COBOL source: every prior
-          // "successful" conversion in this platform's history was silently just a header
-          // stub with zero translated Java logic, until -dp was added here.
-          '-dp',
-          'cobolprogramclasses',
-          '-dp0',
-          '-fixed',
-          '-c2',
-          '-overwrite',
-          toolSourceDir,
-        ],
-        { cwd: jobWorkDir, timeoutMs },
-      );
+      // Project mode: the whole bundle is indexed first (every copybook found wherever it sits),
+      // then each program is converted into <outDir>/src/main/java/jp/co/alsm/batch/jobs/<program>/;
+      // a program that cannot be converted gets a stub, and conversion_report.json says why.
+      const args = [
+        '-jar',
+        jarPath,
+        '-project',
+        toolSourceDir,
+        '-odir',
+        outDir,
+        '-basePackage',
+        BATCH_BASE_PACKAGE,
+        '-scaffold',
+      ];
+      const encoding = this.config.get<string>('CONVERSION_SOURCE_ENCODING');
+      if (encoding) args.push('-encoding', encoding);
+      // The build check (mvn compile of the result, stubbing what does not compile) needs Maven
+      // on this machine and takes minutes on a large bundle, so it is opt-in.
+      if (String(this.config.get('CONVERSION_VERIFY_BUILD') ?? '').toLowerCase() !== 'true') {
+        args.push('-noverify');
+      }
+      const result = await runConversionTool(javaExecutable, args, { cwd: jobWorkDir, timeoutMs });
       if (result.timedOut) {
         throw new Error(`tool2java timed out after ${timeoutMs}ms`);
       }
 
-      // tool2java only reliably honors -odir for the very first class file it writes; after
-      // that its own internal RESConfig output-dir state resets per program and it falls back
-      // to writing "<package>/<program>/<Class>.java" relative to the process CWD instead
-      // (confirmed by direct reproduction — real files land as siblings of -odir, not inside
-      // it). Search the whole job working directory rather than trusting -odir alone.
-      const generatedFiles = await this.listJavaFiles(jobWorkDir);
-      if (generatedFiles.length === 0) {
-        const toolOutput = [result.stdout.trim(), result.stderr.trim()]
-          .filter(Boolean)
-          .join('\n');
+      const toolOutput = () =>
+        [result.stdout.trim(), result.stderr.trim()].filter(Boolean).join('\n').slice(0, 2000);
+      const report = await this.readReport(outDir);
+      if (report && report.converted === 0 && (report.failures?.length ?? 0) > 0) {
+        await this.recordFailures(input, report.failures ?? []);
         throw new Error(
-          `No Java files were generated. Tool output: ${toolOutput.slice(0, 2000)}`,
+          `No program could be converted: ${(report.failures ?? [])
+            .map((f) => `${f.programId}: ${f.reason}`)
+            .join('; ')
+            .slice(0, 2000)}`,
         );
       }
 
-      await this.recordParseErrors(input, result.stdout);
+      // Only the converted programs are kept: the export adds the runtime, the launcher and the
+      // Maven files itself, so the copies the tool writes next to them are left out.
+      const javaRoot = path.join(outDir, 'src', 'main', 'java');
+      const jobsDir = path.join(javaRoot, ...BATCH_BASE_PACKAGE.split('.'), 'jobs');
+      const generatedFiles = await this.listJavaFiles(jobsDir);
+      if (generatedFiles.length === 0) {
+        throw new Error(`No Java files were generated. Tool output: ${toolOutput()}`);
+      }
+
+      if (report) await this.recordFailures(input, report.failures ?? []);
+      else await this.recordParseErrors(input, result.stdout);
 
       const files = await Promise.all(
         generatedFiles.map(async (absolutePath) => ({
-          relativePath: path.relative(jobWorkDir, absolutePath).split(path.sep).join('/'),
+          relativePath: path.relative(javaRoot, absolutePath).split(path.sep).join('/'),
           content: await fs.promises.readFile(absolutePath),
         })),
       );
+      for (const reportFile of ['conversion_report.json', 'conversion_report.md']) {
+        try {
+          files.push({
+            relativePath: reportFile,
+            content: await fs.promises.readFile(path.join(outDir, reportFile)),
+          });
+        } catch {
+          // an older tool writes no report
+        }
+      }
       const resultReference = await this.storage.writeFiles(
         `results/${input.projectId}/${input.conversionJobId}`,
         files,
@@ -271,13 +286,42 @@ export class CobolJavaConversionAdapter {
     return files;
   }
 
-  /** Best-effort: -dld compiles every program in the shared bundle in one run, so a single
+  private async readReport(outDir: string): Promise<ConversionReport | undefined> {
+    try {
+      return JSON.parse(
+        await fs.promises.readFile(path.join(outDir, 'conversion_report.json'), 'utf8'),
+      ) as ConversionReport;
+    } catch {
+      return undefined;
+    }
+  }
+
+  /** One ErrorLogRecord per program the tool could not convert (it wrote a stub for it). */
+  private async recordFailures(
+    input: ConversionEngineInput,
+    failures: NonNullable<ConversionReport['failures']>,
+  ): Promise<void> {
+    await this.recordErrors(
+      input,
+      failures.map((failure) => ({
+        fileName: path.basename(failure.file ?? failure.programId),
+        message: `${failure.programId}: ${failure.reason ?? 'not converted'}`,
+        lineNumber: failure.line && failure.line > 0 ? failure.line : 0,
+      })),
+    );
+  }
+
+  /** Best-effort: the bundle is converted as a whole in one run, so a single
    * job's stdout can contain parse errors for programs that have nothing to do with the
    * screen actually being converted. Logging one of those must never fail the whole job —
    * a schema/DB issue while writing one ErrorLogRecord previously crashed conversions for
    * completely unrelated, otherwise-successful screens. */
   private async recordParseErrors(input: ConversionEngineInput, stdout: string): Promise<void> {
-    for (const error of this.parseToolErrors(stdout)) {
+    await this.recordErrors(input, this.parseToolErrors(stdout));
+  }
+
+  private async recordErrors(input: ConversionEngineInput, errors: ParsedToolError[]): Promise<void> {
+    for (const error of errors) {
       try {
         await this.errorLogs.create({
           projectId: input.projectId,

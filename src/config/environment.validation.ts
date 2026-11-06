@@ -54,6 +54,8 @@ export const environmentValidationSchema = Joi.object({
   CONVERSION_TOOL_TIMEOUT_MS: Joi.number().integer().positive().default(120000),
   JAVA_EXECUTABLE: Joi.string().default('java'),
   TOOL2JAVA_JAR_PATH: Joi.string().allow('').default(''),
+  CONVERSION_SOURCE_ENCODING: Joi.string().allow('').default(''),
+  CONVERSION_VERIFY_BUILD: Joi.boolean().default(false),
   MAX_UPLOAD_FILE_SIZE_MB: Joi.number().integer().positive().default(50),
   MAX_UPLOAD_FILES_PER_REQUEST: Joi.number().integer().positive().default(300),
   CASSO_API_KEY: Joi.string().allow('').default(''),
