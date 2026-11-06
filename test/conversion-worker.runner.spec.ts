@@ -174,6 +174,50 @@ describe('ConversionWorkerRunner', () => {
     await worker.onModuleDestroy();
   });
 
+  describe('concurrency', () => {
+    const concurrencyOf = async (value: unknown): Promise<number | undefined> => {
+      const previous = enabledValues.CONVERSION_WORKER_CONCURRENCY;
+      if (value === undefined) delete enabledValues.CONVERSION_WORKER_CONCURRENCY;
+      else enabledValues.CONVERSION_WORKER_CONCURRENCY = value;
+      const worker = runner();
+      worker.start();
+      const options = (Worker as unknown as jest.Mock).mock.calls[0][2] as { concurrency?: number };
+      await worker.onModuleDestroy();
+      enabledValues.CONVERSION_WORKER_CONCURRENCY = previous;
+      return options.concurrency;
+    };
+
+    it('runs four conversions at once by default', async () => {
+      expect(await concurrencyOf(undefined)).toBe(4);
+    });
+
+    it('takes CONVERSION_WORKER_CONCURRENCY from the configuration', async () => {
+      expect(await concurrencyOf(2)).toBe(2);
+    });
+
+    it.each([
+      [0, 1],
+      [50, 8],
+      [Number.NaN, 4],
+    ])('keeps %s inside the supported range (%s)', async (value, expected) => {
+      expect(await concurrencyOf(value)).toBe(expected);
+    });
+
+    it('is validated at startup', () => {
+      const { error } = environmentValidationSchema.validate(
+        { CONVERSION_WORKER_CONCURRENCY: '3' },
+        { allowUnknown: true, abortEarly: false },
+      );
+      expect(error?.details.some((d) => d.path[0] === 'CONVERSION_WORKER_CONCURRENCY')).toBeFalsy();
+      expect(
+        environmentValidationSchema.validate(
+          { CONVERSION_WORKER_CONCURRENCY: '0' },
+          { allowUnknown: true, abortEarly: false },
+        ).error?.details.some((d) => d.path[0] === 'CONVERSION_WORKER_CONCURRENCY'),
+      ).toBe(true);
+    });
+  });
+
   it.each(['BMS_DSPF_TO_FRONTEND', 'COBOL_TO_JAVA'])(
     'releases its fenced lease for retry after a transient renewal error for %s',
     async (conversionType) => {

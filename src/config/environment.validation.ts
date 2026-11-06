@@ -45,6 +45,7 @@ export const environmentValidationSchema = Joi.object({
     }, 'Explicit CORS origins'),
   GOOGLE_CLIENT_ID: Joi.string().allow('').default(''),
   CONVERSION_WORKER_ENABLED: Joi.boolean().default(false),
+  CONVERSION_WORKER_CONCURRENCY: Joi.number().integer().min(1).max(8).default(4),
   STORAGE_ROOT: Joi.string().default('./storage'),
   CONTRACT_EVIDENCE_ENCRYPTION_KEY: Joi.string().allow('').default(''),
   CONTRACT_PDF_FONT_PATH: Joi.string().allow('').default(''),
