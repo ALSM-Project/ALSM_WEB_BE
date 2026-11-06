@@ -5,8 +5,8 @@ export const environmentValidationSchema = Joi.object({
   NODE_ENV: Joi.string().valid('development', 'test', 'production').default('development'),
   CONTRACT_SIGNING_MODE: Joi.when('NODE_ENV', {
     is: 'production',
-    then: Joi.string().valid('DISABLED').default('DISABLED'),
-    otherwise: Joi.string().valid('DISABLED', 'DEMO').default('DISABLED'),
+    then: Joi.string().valid('DISABLED', 'VNPT').default('DISABLED'),
+    otherwise: Joi.string().valid('DISABLED', 'DEMO', 'VNPT').default('DISABLED'),
   }),
   // SMS provider for phone verification OTP delivery.
   SMS_PROVIDER: Joi.string().valid('DISABLED', 'ESMS', 'TWILIO', 'VNPT_SMS').default('DISABLED'),

@@ -29,6 +29,11 @@ import { CONTRACT_AGGREGATE_UNIT_OF_WORK } from './modules/crm/application/contr
 import { MongoContractAggregateUnitOfWork } from './modules/crm/infrastructure/mongo-contract-aggregate.unit-of-work';
 import { ContractAggregateService } from './modules/crm/application/contract-aggregate.service';
 import { ContractAggregateController } from './modules/crm/presentation/contract-aggregate.controller';
+import { ContractSigningOrchestrationService } from './modules/crm/application/contract-signing-orchestration.service';
+import { ContractSigningWebhookService } from './modules/crm/application/contract-signing-webhook.service';
+import { ContractEvidencePipelineService } from './modules/crm/infrastructure/contract-evidence-pipeline.service';
+import { ContractSigningReconciliationJob } from './modules/crm/infrastructure/contract-signing-reconciliation.job';
+import { ContractSigningWebhookController } from './modules/crm/presentation/contract-signing-webhook.controller';
 import { ContractNotificationEmailOutbox, ContractNotificationEmailOutboxSchema } from './modules/crm/infrastructure/contract-notification-email-outbox.schema';
 import { CONTRACT_NOTIFICATION_EMAIL_OUTBOX_REPOSITORY } from './modules/crm/domain/contract-notification-email-outbox.types';
 import { MongoContractNotificationEmailOutboxRepository } from './modules/crm/infrastructure/mongo-contract-notification-email-outbox.repository';
@@ -45,6 +50,7 @@ import { CONTRACT_SIGNING_PROVIDER } from './modules/crm/domain/contract-signing
 import { UnconfiguredContractSigningProviderAdapter } from './modules/crm/infrastructure/unconfigured-contract-signing-provider.adapter';
 import { VnptEContractClient } from './modules/crm/infrastructure/vnpt-econtract.client';
 import { DemoContractSigningProviderAdapter } from './modules/crm/infrastructure/demo-contract-signing-provider.adapter';
+import { VnptContractSigningProviderAdapter } from './modules/crm/infrastructure/vnpt-contract-signing-provider.adapter';
 import { ConfigService } from '@nestjs/config';
 import { CONTRACT_INVITATION_UNIT_OF_WORK } from './modules/crm/application/contract-invitation-unit-of-work.port';
 import { MongoContractInvitationUnitOfWork } from './modules/crm/infrastructure/mongo-contract-invitation.unit-of-work';
@@ -455,6 +461,7 @@ import { NotificationsService } from './modules/notifications/notifications.serv
     ContractInvitationsController,
     ProspectInvitationsController,
     ContractAggregateController,
+    ContractSigningWebhookController,
     ContractTemplateController,
     TeamsController,
     TeamReportsController,
@@ -504,13 +511,24 @@ import { NotificationsService } from './modules/notifications/notifications.serv
     ContractNotificationEmailOutboxWorker,
     { provide: CONTRACT_AGGREGATE_UNIT_OF_WORK, useClass: MongoContractAggregateUnitOfWork },
     ContractAggregateService,
+    ContractSigningOrchestrationService,
+    ContractSigningWebhookService,
+    ContractEvidencePipelineService,
+    ContractSigningReconciliationJob,
     VnptEContractClient,
     {
       provide: CONTRACT_SIGNING_PROVIDER,
-      useFactory: (config: ConfigService) => config.get<string>('CONTRACT_SIGNING_MODE') === 'DEMO'
-        ? new DemoContractSigningProviderAdapter()
-        : new UnconfiguredContractSigningProviderAdapter(),
-      inject: [ConfigService],
+      useFactory: (config: ConfigService, vnptClient: VnptEContractClient) => {
+        const mode = config.get<string>('CONTRACT_SIGNING_MODE');
+        if (mode === 'DEMO') {
+          return new DemoContractSigningProviderAdapter();
+        }
+        if (mode === 'VNPT') {
+          return new VnptContractSigningProviderAdapter(vnptClient, config);
+        }
+        return new UnconfiguredContractSigningProviderAdapter();
+      },
+      inject: [ConfigService, VnptEContractClient],
     },
     ContractReviewDocumentService,
     { provide: CONTRACT_TEMPLATE_REPOSITORY, useClass: MongoContractTemplateRepository },

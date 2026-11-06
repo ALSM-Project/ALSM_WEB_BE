@@ -247,4 +247,65 @@ describe('ActivateCrmLeadService (UC-64)', () => {
     await expect(service.execute(ACTOR_ID, LEAD_ID)).rejects.toBeInstanceOf(ConflictException);
     expect(organizations.create).not.toHaveBeenCalled();
   });
+
+  it('rejects demo evidence when contract signing mode is not DEMO', async () => {
+    users.findOne.mockReturnValue(query({ _id: new Types.ObjectId('6b8d90b0569ea93e27ad862c') }));
+    const mockConfig = {
+      get: jest.fn().mockReturnValue('VNPT'),
+    };
+    const prodService = new ActivateCrmLeadService(
+      connection as unknown as Connection,
+      leads as unknown as Model<Lead>,
+      organizations as unknown as Model<Organization>,
+      users as unknown as Model<User>,
+      audits as unknown as Model<AuditLog>,
+      contracts as unknown as Model<ContractAggregate>,
+      contractVersions as unknown as Model<ContractVersion>,
+      crm as unknown as ActivateCrmLeadService['crm'],
+      mockConfig as unknown as ActivateCrmLeadService['config'],
+    );
+
+    const versionId = new Types.ObjectId('6bc2c79ce8463e1ffc7e29db');
+    const demoEvidence = {
+      contractVersionId: versionId.toString(),
+      canonicalDocumentSha256: 'a'.repeat(64),
+      providerKey: 'ALSM_DEMO',
+      providerEnvelopeReference: 'envelope-demo',
+      providerCompletionEventReference: 'completion-demo',
+      providerCompletedAt: new Date('2026-10-01T10:00:00.000Z'),
+      archivedAt: new Date('2026-10-01T10:01:00.000Z'),
+      manifestSha256: '',
+      signedPdf: {
+        kind: 'SIGNED_PDF' as const,
+        storageReference: 'contracts/signed/demo.pdf',
+        fileName: 'demo.pdf',
+        mimeType: 'application/pdf' as const,
+        sha256: 'b'.repeat(64),
+        byteLength: 1024,
+        encryption: 'AES-256-GCM' as const,
+        encryptionKeyVersion: 'v1',
+        archivedAt: new Date('2026-10-01T10:01:00.000Z'),
+      },
+      supportingArtifacts: [],
+    };
+    demoEvidence.manifestSha256 = calculateFinalEvidenceManifestSha256(demoEvidence);
+
+    contracts.findOne.mockReturnValue(query({
+      _id: new Types.ObjectId('6bc2c79ce8463e1ffc7e29da'),
+      currentVersionId: versionId,
+      lifecycleStatus: 'COMPLETED',
+      providerCompletionStatus: 'CONFIRMED',
+      archiveStatus: 'VERIFIED',
+      activationStatus: 'ELIGIBLE',
+      customerUserId: new Types.ObjectId('6b8d90b0569ea93e27ad862c'),
+      finalEvidence: demoEvidence,
+    }));
+
+    await expect(prodService.execute(ACTOR_ID, LEAD_ID)).rejects.toThrow(
+      new BadRequestException({
+        code: 'DEMO_EVIDENCE_NOT_ACTIVATABLE',
+        message: 'Contracts signed in demo mode cannot be used to activate an enterprise organization in non-demo mode.',
+      }),
+    );
+  });
 });

@@ -1,5 +1,13 @@
 import { Injectable, ServiceUnavailableException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
+import type {
+  VnptCancelContractRequest,
+  VnptContractDetailResponse,
+  VnptCreateContractRequest,
+  VnptCreateContractResponse,
+  VnptGeneralResponse,
+  VnptSignerConfigRequest,
+} from './vnpt-econtract.types';
 
 interface VnptLoginResponse {
   message?: string;
@@ -46,6 +54,54 @@ export class VnptEContractClient {
       method: 'POST',
       body: form,
     });
+  }
+
+  async createContract(input: VnptCreateContractRequest): Promise<VnptCreateContractResponse> {
+    return this.postJson<VnptCreateContractResponse>(
+      '/econtract-saas-service/api/hopdong',
+      input as unknown as Record<string, unknown>,
+    );
+  }
+
+  async configureSigners(input: VnptSignerConfigRequest): Promise<VnptGeneralResponse> {
+    return this.postJson<VnptGeneralResponse>(
+      '/econtract-saas-service/api/hopdong/them-sua-nguoi-ky',
+      input as unknown as Record<string, unknown>,
+    );
+  }
+
+  async sendForSigning(hopDongId: number): Promise<VnptGeneralResponse> {
+    if (!Number.isSafeInteger(hopDongId) || hopDongId < 1) {
+      throw new ServiceUnavailableException({ code: 'VNPT_ECONTRACT_INVALID_REFERENCE', message: 'Invalid contract reference.' });
+    }
+    return this.postJson<VnptGeneralResponse>(
+      '/econtract-saas-service/api/hopdong/gui-hop-dong',
+      { hopDongId },
+    );
+  }
+
+  async getContractDetail(hopDongId: number): Promise<VnptContractDetailResponse> {
+    if (!Number.isSafeInteger(hopDongId) || hopDongId < 1) {
+      throw new ServiceUnavailableException({ code: 'VNPT_ECONTRACT_INVALID_REFERENCE', message: 'Invalid contract reference.' });
+    }
+    return this.request<VnptContractDetailResponse>(
+      `/econtract-saas-service/api/hopdong/chitiet/${hopDongId}`,
+      { method: 'GET' },
+    );
+  }
+
+  async cancelContract(input: VnptCancelContractRequest): Promise<VnptGeneralResponse> {
+    if (!Number.isSafeInteger(input.hopDongId) || input.hopDongId < 1) {
+      throw new ServiceUnavailableException({ code: 'VNPT_ECONTRACT_INVALID_REFERENCE', message: 'Invalid contract reference.' });
+    }
+    return this.request<VnptGeneralResponse>(
+      '/econtract-saas-service/api/hopdong/huy-hop-dong',
+      {
+        method: 'PUT',
+        body: JSON.stringify(input),
+        headers: { 'content-type': 'application/json' },
+      },
+    );
   }
 
   async downloadContractFile(hopDongId: number, hopDongChiTietId: number): Promise<Buffer> {
