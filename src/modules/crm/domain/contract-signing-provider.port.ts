@@ -18,6 +18,8 @@ export interface SigningProviderReadiness {
   capabilities: SigningProviderCapabilities;
 }
 
+export type SigningMethod = 'SMS_OTP' | 'EMAIL_OTP' | 'SMART_CA' | 'USB_TOKEN';
+
 export interface StartSigningEnvelopeInput {
   idempotencyKey: string;
   contractId: string;
@@ -25,6 +27,7 @@ export interface StartSigningEnvelopeInput {
   contractNumber: string;
   canonicalPdf: Buffer;
   canonicalPdfSha256: string;
+  signatureMethod?: SigningMethod;
   signers: Array<{
     signerId: string;
     party: SigningSignerParty;
@@ -32,12 +35,14 @@ export interface StartSigningEnvelopeInput {
     email: string;
     phone?: string;
     sequence: number;
+    signatureMethod?: SigningMethod;
   }>;
   expiresAt: Date;
 }
 
 export interface SigningProviderEnvelopeResult {
   providerEnvelopeReference: string;
+  providerContractId?: string;
   status: Extract<SigningProviderEnvelopeStatus, 'CREATED' | 'SENT' | 'IN_PROGRESS'>;
   signerSessions?: Array<{
     signerId: string;
@@ -54,6 +59,11 @@ export interface VerifiedSigningProviderEvent {
   payloadSha256: string;
   signerReference?: string;
   signerId?: string;
+  signerDetails?: Array<{
+    signerId: string;
+    status: string;
+    signedAt?: Date;
+  }>;
 }
 
 export interface SigningProviderWebhookInput {

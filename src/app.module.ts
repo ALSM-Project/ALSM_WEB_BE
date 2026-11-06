@@ -45,6 +45,7 @@ import { CONTRACT_SIGNING_PROVIDER } from './modules/crm/domain/contract-signing
 import { UnconfiguredContractSigningProviderAdapter } from './modules/crm/infrastructure/unconfigured-contract-signing-provider.adapter';
 import { VnptEContractClient } from './modules/crm/infrastructure/vnpt-econtract.client';
 import { DemoContractSigningProviderAdapter } from './modules/crm/infrastructure/demo-contract-signing-provider.adapter';
+import { VnptContractSigningProviderAdapter } from './modules/crm/infrastructure/vnpt-contract-signing-provider.adapter';
 import { ConfigService } from '@nestjs/config';
 import { CONTRACT_INVITATION_UNIT_OF_WORK } from './modules/crm/application/contract-invitation-unit-of-work.port';
 import { MongoContractInvitationUnitOfWork } from './modules/crm/infrastructure/mongo-contract-invitation.unit-of-work';
@@ -507,10 +508,17 @@ import { NotificationsService } from './modules/notifications/notifications.serv
     VnptEContractClient,
     {
       provide: CONTRACT_SIGNING_PROVIDER,
-      useFactory: (config: ConfigService) => config.get<string>('CONTRACT_SIGNING_MODE') === 'DEMO'
-        ? new DemoContractSigningProviderAdapter()
-        : new UnconfiguredContractSigningProviderAdapter(),
-      inject: [ConfigService],
+      useFactory: (config: ConfigService, vnptClient: VnptEContractClient) => {
+        const mode = config.get<string>('CONTRACT_SIGNING_MODE');
+        if (mode === 'DEMO') {
+          return new DemoContractSigningProviderAdapter();
+        }
+        if (mode === 'VNPT') {
+          return new VnptContractSigningProviderAdapter(vnptClient, config);
+        }
+        return new UnconfiguredContractSigningProviderAdapter();
+      },
+      inject: [ConfigService, VnptEContractClient],
     },
     ContractReviewDocumentService,
     { provide: CONTRACT_TEMPLATE_REPOSITORY, useClass: MongoContractTemplateRepository },
