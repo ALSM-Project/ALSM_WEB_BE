@@ -31,3 +31,11 @@ export class DemoSigningConfirmationDto {
   @IsBoolean()
   acknowledged!: boolean;
 }
+
+export class CancelSigningDto {
+  @ApiProperty({ description: 'Reason for cancelling the online signing envelope.', minLength: 3, maxLength: 500 })
+  @IsString()
+  @MinLength(3)
+  @MaxLength(500)
+  reason!: string;
+}

@@ -29,6 +29,10 @@ import { CONTRACT_AGGREGATE_UNIT_OF_WORK } from './modules/crm/application/contr
 import { MongoContractAggregateUnitOfWork } from './modules/crm/infrastructure/mongo-contract-aggregate.unit-of-work';
 import { ContractAggregateService } from './modules/crm/application/contract-aggregate.service';
 import { ContractAggregateController } from './modules/crm/presentation/contract-aggregate.controller';
+import { ContractSigningOrchestrationService } from './modules/crm/application/contract-signing-orchestration.service';
+import { ContractSigningWebhookService } from './modules/crm/application/contract-signing-webhook.service';
+import { ContractSigningReconciliationJob } from './modules/crm/infrastructure/contract-signing-reconciliation.job';
+import { ContractSigningWebhookController } from './modules/crm/presentation/contract-signing-webhook.controller';
 import { ContractNotificationEmailOutbox, ContractNotificationEmailOutboxSchema } from './modules/crm/infrastructure/contract-notification-email-outbox.schema';
 import { CONTRACT_NOTIFICATION_EMAIL_OUTBOX_REPOSITORY } from './modules/crm/domain/contract-notification-email-outbox.types';
 import { MongoContractNotificationEmailOutboxRepository } from './modules/crm/infrastructure/mongo-contract-notification-email-outbox.repository';
@@ -456,6 +460,7 @@ import { NotificationsService } from './modules/notifications/notifications.serv
     ContractInvitationsController,
     ProspectInvitationsController,
     ContractAggregateController,
+    ContractSigningWebhookController,
     ContractTemplateController,
     TeamsController,
     TeamReportsController,
@@ -505,6 +510,9 @@ import { NotificationsService } from './modules/notifications/notifications.serv
     ContractNotificationEmailOutboxWorker,
     { provide: CONTRACT_AGGREGATE_UNIT_OF_WORK, useClass: MongoContractAggregateUnitOfWork },
     ContractAggregateService,
+    ContractSigningOrchestrationService,
+    ContractSigningWebhookService,
+    ContractSigningReconciliationJob,
     VnptEContractClient,
     {
       provide: CONTRACT_SIGNING_PROVIDER,
