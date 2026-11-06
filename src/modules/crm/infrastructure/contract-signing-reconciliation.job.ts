@@ -1,4 +1,4 @@
-import { Inject, Injectable, Logger } from '@nestjs/common';
+import { Inject, Injectable, Logger, Optional } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model } from 'mongoose';
 import {
@@ -15,6 +15,7 @@ import {
   type ContractAggregateUnitOfWork,
 } from '../application/contract-aggregate-unit-of-work.port';
 import { ContractAggregate, type ContractAggregateDocument } from './contract-aggregate.schema';
+import { ContractEvidencePipelineService } from './contract-evidence-pipeline.service';
 
 @Injectable()
 export class ContractSigningReconciliationJob {
@@ -29,6 +30,8 @@ export class ContractSigningReconciliationJob {
     private readonly contractsRead: ContractAggregateRepository,
     @Inject(CONTRACT_AGGREGATE_UNIT_OF_WORK)
     private readonly unitOfWork: ContractAggregateUnitOfWork,
+    @Optional()
+    private readonly evidencePipeline?: ContractEvidencePipelineService,
   ) {}
 
   /**
@@ -110,6 +113,18 @@ export class ContractSigningReconciliationJob {
               });
             }
           }, `reconcile:${doc._id}`);
+
+          if (isConfirmed && this.evidencePipeline) {
+            void this.evidencePipeline
+              .processEvidenceDownload({
+                contractId: String(doc._id),
+                providerEnvelopeReference: ref,
+                occurredAt: new Date(),
+              })
+              .catch((err) => {
+                this.logger.error(`Reconciliation evidence download failed: ${String(err)}`);
+              });
+          }
 
           reconciled++;
         }

@@ -1,4 +1,4 @@
-import { Inject, Injectable, Logger } from '@nestjs/common';
+import { Inject, Injectable, Logger, Optional } from '@nestjs/common';
 import {
   CONTRACT_AGGREGATE_REPOSITORY,
   type ContractAggregateRepository,
@@ -13,6 +13,7 @@ import {
   CONTRACT_AGGREGATE_UNIT_OF_WORK,
   type ContractAggregateUnitOfWork,
 } from './contract-aggregate-unit-of-work.port';
+import { ContractEvidencePipelineService } from '../infrastructure/contract-evidence-pipeline.service';
 
 @Injectable()
 export class ContractSigningWebhookService {
@@ -25,6 +26,8 @@ export class ContractSigningWebhookService {
     private readonly contractsRead: ContractAggregateRepository,
     @Inject(CONTRACT_AGGREGATE_UNIT_OF_WORK)
     private readonly unitOfWork: ContractAggregateUnitOfWork,
+    @Optional()
+    private readonly evidencePipeline?: ContractEvidencePipelineService,
   ) {}
 
   /**
@@ -98,6 +101,19 @@ export class ContractSigningWebhookService {
         });
       }
     }, `signing-webhook:${providerEnvelopeReference}`);
+
+    if (eventType === 'ENVELOPE_COMPLETED' && this.evidencePipeline) {
+      void this.evidencePipeline
+        .processEvidenceDownload({
+          contractId: contract.contract.id,
+          providerEnvelopeReference,
+          occurredAt,
+          eventReference: verifiedEvent.providerEventReference,
+        })
+        .catch((err) => {
+          this.logger.error(`Evidence pipeline background execution failed: ${String(err)}`);
+        });
+    }
 
     this.logger.log(
       `Successfully processed ${eventType} for envelope ${providerEnvelopeReference} -> ${newLifecycleStatus}`,

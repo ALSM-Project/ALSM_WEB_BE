@@ -31,6 +31,7 @@ import { ContractAggregateService } from './modules/crm/application/contract-agg
 import { ContractAggregateController } from './modules/crm/presentation/contract-aggregate.controller';
 import { ContractSigningOrchestrationService } from './modules/crm/application/contract-signing-orchestration.service';
 import { ContractSigningWebhookService } from './modules/crm/application/contract-signing-webhook.service';
+import { ContractEvidencePipelineService } from './modules/crm/infrastructure/contract-evidence-pipeline.service';
 import { ContractSigningReconciliationJob } from './modules/crm/infrastructure/contract-signing-reconciliation.job';
 import { ContractSigningWebhookController } from './modules/crm/presentation/contract-signing-webhook.controller';
 import { ContractNotificationEmailOutbox, ContractNotificationEmailOutboxSchema } from './modules/crm/infrastructure/contract-notification-email-outbox.schema';
@@ -512,6 +513,7 @@ import { NotificationsService } from './modules/notifications/notifications.serv
     ContractAggregateService,
     ContractSigningOrchestrationService,
     ContractSigningWebhookService,
+    ContractEvidencePipelineService,
     ContractSigningReconciliationJob,
     VnptEContractClient,
     {
