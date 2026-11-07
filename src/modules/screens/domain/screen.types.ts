@@ -45,6 +45,8 @@ export interface ScreenRepository {
   findById(id: string, organizationId: string): Promise<ScreenRecord | null>;
   listByProject(projectId: string, organizationId: string): Promise<ScreenRecord[]>;
   updateStatus(id: string, organizationId: string, status: ScreenStatus): Promise<void>;
+  /** Screens left in PROCESSING since before `updatedBefore`, oldest id first, paged by id. */
+  listStuckProcessing(updatedBefore: Date, afterId?: string, limit?: number): Promise<ScreenRecord[]>;
   updateDependencyDiagnostics(
     id: string,
     organizationId: string,
