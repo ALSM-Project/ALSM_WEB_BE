@@ -595,7 +595,7 @@ export class MongoContractAggregateRepository implements ContractAggregateReposi
       $set: {
         lifecycleStatus: 'COMPLETED',
         archiveStatus: 'VERIFIED',
-        activationStatus: manifest.providerKey === 'ALSM_DEMO' ? 'NOT_ELIGIBLE' : 'ELIGIBLE',
+        activationStatus: 'ELIGIBLE',
         finalEvidence: manifest,
         completedAt: input.now,
       },
