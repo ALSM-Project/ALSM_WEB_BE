@@ -328,7 +328,8 @@ export class MongoContractAggregateRepository implements ContractAggregateReposi
       lifecycleStatus: 'INTERNAL_REVIEW',
       reviewStatus: 'PENDING',
     }).session(this.scope()).exec();
-    if (!existing || String(existing.createdByUserId) === input.actorUserId) return null;
+    const allowSelfReview = process.env.ALLOW_SELF_CONTRACT_REVIEW === 'true';
+    if (!existing || (!allowSelfReview && String(existing.createdByUserId) === input.actorUserId)) return null;
     const version = await this.versions.findOne({ _id: existing.currentVersionId, contractId: existing._id }).session(this.scope()).exec();
     if (!version) return null;
     if (input.action === 'APPROVE' && !version.approvedTemplateVersionId) {
