@@ -19,7 +19,8 @@ describe('ProjectStaffAllocationService (UC-86)', () => {
   const audit = { append: jest.fn() };
   const rbac = { getAllUsers: jest.fn() };
   const mail = { sendProjectOwnershipTransferNotification: jest.fn().mockResolvedValue(true) };
-  const service = new ProjectStaffAllocationService(projects as never, audit as never, rbac as never, mail as never);
+  const workforce = { checkStaffAvailability: jest.fn().mockResolvedValue({ available: true }) };
+  const service = new ProjectStaffAllocationService(projects as never, audit as never, rbac as never, mail as never, workforce as never);
 
   beforeEach(() => {
     jest.resetAllMocks();
