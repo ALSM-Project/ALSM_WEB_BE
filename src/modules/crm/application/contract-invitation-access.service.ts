@@ -48,7 +48,7 @@ export class ContractInvitationAccessService {
     }
 
     // Platform administrators or sales managers with full manage permission have access across sales leads
-    const isManager = userPerms.includes('sales.leads.manage') || Boolean((user as any).isPlatformAdmin);
+    const isManager = userPerms.includes('sales.leads.manage') || Boolean(user.isPlatformAdmin);
     if (isManager) {
       return { lead, organizationId };
     }
