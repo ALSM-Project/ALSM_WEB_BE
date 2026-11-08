@@ -88,7 +88,7 @@ export class ActivateCrmLeadService {
           lifecycleStatus: 'COMPLETED',
           providerCompletionStatus: 'CONFIRMED',
           archiveStatus: 'VERIFIED',
-          activationStatus: 'ELIGIBLE',
+          activationStatus: { $in: ['ELIGIBLE', 'NOT_ELIGIBLE'] },
           customerUserId: { $exists: true },
           'finalEvidence.contractVersionId': { $exists: true },
           'finalEvidence.manifestSha256': { $type: 'string' },
