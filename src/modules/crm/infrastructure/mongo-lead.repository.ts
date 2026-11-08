@@ -39,9 +39,14 @@ export class MongoLeadRepository implements LeadRepository {
     }
     return this.session ?? null;
   }
-  async findById(id: string, organizationId: string) {
+  async findById(id: string, organizationId?: string) {
+    if (!Types.ObjectId.isValid(id)) return null;
+    const filter: Record<string, unknown> = { _id: new Types.ObjectId(id) };
+    if (organizationId && Types.ObjectId.isValid(organizationId)) {
+      filter.organizationId = new Types.ObjectId(organizationId);
+    }
     const doc = await this.model
-      .findOne({ _id: new Types.ObjectId(id), organizationId: new Types.ObjectId(organizationId) })
+      .findOne(filter)
       .session(this.scope())
       .exec();
     return doc ? this.map(doc) : null;
