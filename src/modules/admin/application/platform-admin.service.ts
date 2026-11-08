@@ -109,7 +109,7 @@ export class PlatformAdminService {
         name: org.name,
         type: org.type,
         status: org.status || (org.engagementType === 'Trial' || org.type === OrganizationType.SELF_SERVICE ? 'TRIAL' : 'ACTIVE'),
-        domain: org.domain,
+        domain: org.domain || '',
         contactEmail: org.contactEmail,
         engagementType: org.engagementType || 'Trial',
         serviceMode: org.serviceMode || (org as any).serviceMode,
@@ -192,7 +192,7 @@ export class PlatformAdminService {
       name: org.name,
       type: org.type,
       status: org.status || 'ACTIVE',
-      domain: org.domain,
+      domain: org.domain || '',
       contactEmail: org.contactEmail,
       engagementType: org.engagementType || 'Trial',
       trialExpiresAt: org.trialExpiresAt,
@@ -1199,6 +1199,54 @@ export class PlatformAdminService {
 
   // ─── 3.13.10 View Audit Logs ─────────────────────────────────────
   // Moved to AuditLogService (dedicated read/export of the immutable trail).
+
+  // ─── 3.13.6 Delete Organisation ──────────────────────────────────
+  async deleteOrganization(adminUserId: string, id: string) {
+    if (!id || !id.trim()) {
+      throw new BadRequestException('Organization ID cannot be empty');
+    }
+    const org = await this.findOrgById(id.trim());
+
+    // Safety check: Cannot delete internal platform operations organisation
+    if (
+      org.domain === 'alsm.internal' ||
+      org.name?.toLowerCase().includes('internal operations') ||
+      (org.type as any) === 'INTERNAL'
+    ) {
+      throw new BadRequestException('Cannot delete the internal ALSM platform operations organisation.');
+    }
+
+    const orgObjId = toValidObjectId(id);
+
+    // Delete the organisation
+    await this.orgModel.findByIdAndDelete(org._id).exec();
+
+    // Mark or soft delete any projects belonging to this organisation
+    await this.projectModel
+      .updateMany(
+        { organizationId: { $in: [orgObjId, id] }, deletedAt: { $exists: false } },
+        { $set: { deletedAt: new Date(), status: 'ARCHIVED' } },
+      );
+
+    // Audit log
+    await this.audit.append({
+      actorUserId: adminUserId,
+      organizationId: org._id.toString(),
+      action: 'ORGANIZATION_DELETED',
+      resourceType: 'ORGANIZATION',
+      resourceId: org._id.toString(),
+      metadata: {
+        organizationName: org.name,
+        domain: org.domain || '',
+        type: org.type,
+      },
+    });
+
+    return {
+      success: true,
+      message: `Organisation "${org.name}" has been deleted successfully.`,
+    };
+  }
 
   private async findOrgById(id: string) {
     let doc: OrganizationDocument | null = null;

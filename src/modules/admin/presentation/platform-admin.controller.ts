@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Param, Patch, Post, Query, Res, UseGuards } from '@nestjs/common';
+import { Body, Controller, Delete, Get, Param, Patch, Post, Query, Res, UseGuards } from '@nestjs/common';
 import { ApiBearerAuth, ApiForbiddenResponse, ApiOperation, ApiServiceUnavailableResponse, ApiTags } from '@nestjs/swagger';
 import { Response } from 'express';
 import { CurrentUser } from '../../../shared/security/current-user.decorator';
@@ -61,6 +61,16 @@ export class PlatformAdminController {
     @Body() body: UpdateOrganizationEngagementDto,
   ) {
     return this.adminService.updateOrganizationEngagement(user.userId, id, body);
+  }
+
+  @Delete('organizations/:id')
+  @RequirePermissions('organizations.manage')
+  @ApiOperation({ summary: 'Delete organisation (3.13.6)' })
+  async deleteOrganization(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('id') id: string,
+  ) {
+    return this.adminService.deleteOrganization(user.userId, id);
   }
 
   @Post('organizations/:id/impersonate')
