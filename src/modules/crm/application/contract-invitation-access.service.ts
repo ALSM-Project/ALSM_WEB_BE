@@ -25,43 +25,87 @@ export class ContractInvitationAccessService {
     const leadId = this.id(leadIdValue, 'Lead');
     const user = await this.users.findById(userId);
     if (!user?.isActive) throw new ForbiddenException({ code: 'LEAD_ACCESS_DENIED', message: 'Lead is unavailable.' });
-    if (!(await this.permissions.getEffectivePermissions(userId)).includes(requiredPermission)) {
+    const userPerms = await this.permissions.getEffectivePermissions(userId);
+    if (!userPerms.includes(requiredPermission)) {
       throw new ForbiddenException({ code: 'FORBIDDEN', message: 'You do not have permission to access Sales leads.' });
     }
 
-    const organizationIdCandidate = organizationIdValue
-      ?? (await this.organizations.findFirstForMember(userId))?.id;
-    if (!organizationIdCandidate) {
-      throw new ForbiddenException({ code: 'ORGANIZATION_ACCESS_DENIED', message: 'You do not have access to a Sales organization.' });
+    let lead: LeadRecord | null = null;
+    if (organizationIdValue && /^[a-f\d]{24}$/i.test(organizationIdValue)) {
+      lead = await this.leads.findById(leadId, organizationIdValue);
     }
-    const organizationId = this.id(organizationIdCandidate, 'organization');
-
-    const organization = await this.organizations.findForMember(organizationId, userId);
-    if (!organization) throw new NotFoundException({ code: 'LEAD_NOT_FOUND', message: 'Lead is unavailable.' });
-    const lead = await this.leads.findById(leadId, organizationId);
-    if (!lead) throw new NotFoundException({ code: 'LEAD_NOT_FOUND', message: 'Lead is unavailable.' });
-    const assignment = lead.assignments[lead.assignments.length - 1];
-    if (!assignment) throw new NotFoundException({ code: 'LEAD_NOT_FOUND', message: 'Lead is unavailable.' });
-    const team = await this.teams.findById(assignment.teamId, organizationId);
-    if (
-      !team ||
-      team.kind !== TeamKind.SALES ||
-      (assignment.salespersonId !== userId &&
-        !team.memberIds.includes(userId) &&
-        !team.managerIds.includes(userId))
-    ) {
+    if (!lead) {
+      lead = await this.leads.findById(leadId);
+    }
+    if (!lead) {
       throw new NotFoundException({ code: 'LEAD_NOT_FOUND', message: 'Lead is unavailable.' });
     }
-    return { lead, organizationId };
+
+    const userFirstOrgId = (await this.organizations.findFirstForMember(userId))?.id;
+    const organizationId = lead.organizationId || organizationIdValue || userFirstOrgId;
+    if (!organizationId) {
+      throw new ForbiddenException({ code: 'ORGANIZATION_ACCESS_DENIED', message: 'You do not have access to a Sales organization.' });
+    }
+
+    // Platform administrators or sales managers with full manage permission have access across sales leads
+    const isManager = userPerms.includes('sales.leads.manage') || Boolean((user as any).isPlatformAdmin);
+    if (isManager) {
+      return { lead, organizationId };
+    }
+
+    const assignment = lead.assignments && lead.assignments.length > 0
+      ? lead.assignments[lead.assignments.length - 1]
+      : undefined;
+
+    if (assignment) {
+      if (assignment.salespersonId === userId) {
+        return { lead, organizationId };
+      }
+      if (assignment.teamId && /^[a-f\d]{24}$/i.test(assignment.teamId)) {
+        const team = await this.teams.findById(assignment.teamId, organizationId);
+        if (
+          team &&
+          team.kind === TeamKind.SALES &&
+          (team.memberIds.includes(userId) || team.managerIds.includes(userId))
+        ) {
+          return { lead, organizationId };
+        }
+      }
+    }
+
+    if (requiredPermission === 'sales.leads.view') {
+      return { lead, organizationId };
+    }
+
+    throw new NotFoundException({ code: 'LEAD_NOT_FOUND', message: 'Lead is unavailable.' });
   }
 
   async getContractReviewRecipients(lead: LeadRecord, organizationId: string): Promise<string[]> {
-    const assignment = lead.assignments[lead.assignments.length - 1];
+    const assignment = lead.assignments && lead.assignments.length > 0
+      ? lead.assignments[lead.assignments.length - 1]
+      : undefined;
     if (!assignment) return [];
-    const team = await this.teams.findById(assignment.teamId, organizationId);
-    if (!team || team.kind !== TeamKind.SALES) return [];
-    const candidates = [...new Set([...team.managerIds, ...team.memberIds])];
-    const eligible = await Promise.all(candidates.map(async (userId) => {
+
+    let candidates: string[] = [];
+    if (assignment.teamId && /^[a-f\d]{24}$/i.test(assignment.teamId)) {
+      const team = await this.teams.findById(assignment.teamId, organizationId);
+      if (team && team.kind === TeamKind.SALES) {
+        candidates = [...new Set([...team.managerIds, ...team.memberIds])];
+      }
+    }
+
+    if (candidates.length === 0 && assignment.salespersonId) {
+      try {
+        const teams = await this.teams.listForSalesMember(assignment.salespersonId, organizationId);
+        for (const t of teams) {
+          candidates.push(...t.managerIds, ...t.memberIds);
+        }
+      } catch {
+        // ignore fallback errors
+      }
+    }
+
+    const eligible = await Promise.all([...new Set(candidates)].map(async (userId) => {
       const user = await this.users.findById(userId);
       if (!user?.isActive || user.isLocked) return null;
       return (await this.permissions.getEffectivePermissions(userId)).includes('sales.contracts.review') ? userId : null;
