@@ -1353,7 +1353,7 @@ export class EnterpriseContractService {
     const customerEmail = contract.customer?.contactEmail || contract.signingProcess?.customerSigner?.email;
 
     // Find customer user to assign ORGANIZATION_OWNER
-    let customerUser = customerEmail
+    const customerUser = customerEmail
       ? await this.usersCol.findOne({ email: customerEmail.toLowerCase().trim() })
       : null;
 
@@ -2147,7 +2147,7 @@ export class EnterpriseContractService {
   }
 
   async getOrCreateContractInvoice(contract: any) {
-    let invoice = await this.invoicesCol.findOne({
+    const invoice = await this.invoicesCol.findOne({
       $or: [
         { contractId: contract._id.toString() },
         { contractNumber: contract.contractNumber },

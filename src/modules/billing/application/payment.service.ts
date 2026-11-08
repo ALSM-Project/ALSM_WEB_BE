@@ -1,4 +1,6 @@
 import { Inject, Injectable, Logger, NotFoundException, OnModuleInit } from '@nestjs/common';
+import * as fs from 'fs';
+import * as path from 'path';
 import { ModuleRef } from '@nestjs/core';
 import { generateCleanBankQrDataUrl } from '../../../shared/utils/bank-qr.helper';
 import { EnterpriseContractService } from '../../crm/application/enterprise-contract.service';
@@ -56,15 +58,13 @@ export class PaymentService implements OnModuleInit {
     }
 
     try {
-      const fsModule = require('fs');
-      const pathModule = require('path');
-      const logDir = pathModule.resolve(process.cwd(), 'logs');
-      if (!fsModule.existsSync(logDir)) {
-        fsModule.mkdirSync(logDir, { recursive: true });
+                  const logDir = path.resolve(process.cwd(), 'logs');
+      if (!fs.existsSync(logDir)) {
+        fs.mkdirSync(logDir, { recursive: true });
       }
-      const logFile = pathModule.join(logDir, 'casso-webhook.log');
+      const logFile = path.join(logDir, 'casso-webhook.log');
       const line = `[${logEntry.timestamp}] [IP: ${logEntry.clientIp || 'unknown'}] TX: ${logEntry.transactionsCount}, Matched: ${logEntry.matchedCount} | Details: ${JSON.stringify(logEntry.matchedDetails)} | Error: ${logEntry.error || 'none'}\n`;
-      fsModule.appendFileSync(logFile, line, 'utf8');
+      fs.appendFileSync(logFile, line, 'utf8');
     } catch (e: any) {
       this.logger.warn(`Failed to write to casso-webhook.log: ${e.message}`);
     }

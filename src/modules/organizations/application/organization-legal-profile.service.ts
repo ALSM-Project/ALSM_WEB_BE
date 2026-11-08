@@ -46,7 +46,7 @@ export class OrganizationLegalProfileService {
 
     if (userId) {
       const userObjId = Types.ObjectId.isValid(userId) ? new Types.ObjectId(userId) : null;
-      let org = await this.orgModel.findOne({
+      const org = await this.orgModel.findOne({
         $or: [
           ...(userObjId ? [{ 'members.userId': userObjId }] : []),
           { 'members.userId': userId },

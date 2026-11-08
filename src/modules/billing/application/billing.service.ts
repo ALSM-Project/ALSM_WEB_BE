@@ -61,7 +61,8 @@ export class BillingService implements OnModuleInit {
     private readonly planRepo: IPlanRepository,
     @Inject(QUOTE_REQUEST_REPOSITORY)
     private readonly quoteRequestRepo: IQuoteRequestRepository,
-    private readonly effectivePermissions: EffectivePermissionsService,
+    @Optional()
+    private readonly effectivePermissions?: EffectivePermissionsService,
     @Optional()
     @Inject(AUDIT_REPOSITORY)
     private readonly audit?: AuditRepository,
@@ -929,7 +930,7 @@ export class BillingService implements OnModuleInit {
   }
 
   private async assertQuoteManager(user: AuthenticatedUser): Promise<void> {
-    const permissions = await this.effectivePermissions.getEffectivePermissions(user.userId);
+    const permissions = this.effectivePermissions ? await this.effectivePermissions.getEffectivePermissions(user.userId) : [];
     if (!permissions.includes('billing.quotes.manage')) {
       throw new ForbiddenException({
         code: 'FORBIDDEN',

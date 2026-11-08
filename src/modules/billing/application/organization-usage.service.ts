@@ -131,7 +131,7 @@ export class OrganizationUsageService {
     let totalAllocatedScreenCapacity = 0;
     let totalConsumedScreenCapacity = 0;
     let totalAllocatedStorageGb = 0;
-    let totalConsumedStorageGb = 0;
+    const totalConsumedStorageGb = 0;
 
     const now = new Date();
 

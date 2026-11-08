@@ -129,8 +129,7 @@ export class ConversionJobService {
       organizationHeader,
       projectId,
     );
-    let screen = await this.screens.findById(input.screenId, organization.id);
-    if (!screen) screen = await this.screens.findById(input.screenId);
+    const screen = await this.screens.findById(input.screenId, organization.id);
     const problem = await this.findStartProblem(organization.id, project, input.screenId, screen);
     if (problem) throw this.toException(problem);
     return this.createJobRecord(organization, project, userId, {
@@ -159,8 +158,7 @@ export class ConversionJobService {
     const skipped: SkippedConversion[] = [];
     const eligible: string[] = [];
     for (const screenId of Array.from(new Set(input.screenIds))) {
-      let screen = await this.screens.findById(screenId, organization.id);
-      if (!screen) screen = await this.screens.findById(screenId);
+      const screen = await this.screens.findById(screenId, organization.id);
       const problem = await this.findStartProblem(organization.id, project, screenId, screen);
       if (problem) skipped.push(problem);
       else eligible.push(screenId);

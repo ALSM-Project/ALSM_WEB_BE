@@ -47,13 +47,14 @@ export class JwtAuthGuard implements CanActivate {
     // assurance outside the JWT catch so storage outages retain their safe 503.
     const remediation = Reflect.getMetadata(PASSWORD_REMEDIATION, context.getHandler()) === true;
     await this.sessions.execute(payload.sub, payload.sid, payload.sv, remediation);
+    const roles = payload.roles || (payload.role ? [payload.role] : undefined);
     request.user = {
       userId: payload.sub,
       email: payload.email,
       isPlatformAdmin: payload.isPlatformAdmin,
       sessionId: payload.sid,
       sessionVersion: payload.sv,
-      roles: payload.roles || (payload.role ? [payload.role] : (payload.isPlatformAdmin ? ['ADMIN'] : ['STAFF'])),
+      ...(roles ? { roles } : {}),
     };
     return true;
   }

@@ -104,10 +104,29 @@ export class ProjectStaffAllocationService {
 
   /** Active Conversion Staff accounts with the number of projects each one carries. */
   async listAssignableStaff(): Promise<AssignableStaffMember[]> {
-    const [internalStaff, projects] = await Promise.all([
-      this.workforce.getInternalEmployees(),
-      this.projects.findAll(),
-    ]);
+    let internalStaff: any[];
+    let projects: any[];
+    if (this.workforce?.getInternalEmployees) {
+      [internalStaff, projects] = await Promise.all([
+        this.workforce.getInternalEmployees(),
+        this.projects.findAll(),
+      ]);
+    } else {
+      const [allUsers, allProjects] = await Promise.all([
+        this.rbac.getAllUsers(),
+        this.projects.findAll(),
+      ]);
+      projects = allProjects;
+      internalStaff = allUsers
+        .filter((u) => !u.isLocked && this.isConversionStaff(u.roles))
+        .map((u) => ({
+          userId: u.id,
+          fullName: u.fullName || u.email,
+          email: u.email,
+          role: CONVERSION_STAFF_ROLE,
+          status: 'ACTIVE',
+        }));
+    }
 
     const workload = new Map<string, number>();
     for (const project of projects) {

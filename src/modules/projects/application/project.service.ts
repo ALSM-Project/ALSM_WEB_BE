@@ -1,4 +1,4 @@
-import { BadRequestException, Inject, Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, Inject, Injectable, NotFoundException, Optional } from '@nestjs/common';
 import { AUDIT_REPOSITORY, AuditRepository } from '../../audit/domain/audit.repository';
 import { OrganizationAuthorizationService } from '../../organizations/application/organization-authorization.service';
 import { OrganizationContextService } from '../../organizations/application/organization-context.service';
@@ -22,8 +22,8 @@ export class ProjectService {
     private readonly organizationContext: OrganizationContextService,
     private readonly authorization: OrganizationAuthorizationService,
     @Inject(AUDIT_REPOSITORY) private readonly audit: AuditRepository,
-    private readonly workforce: WorkforceService,
-    private readonly rbac: RbacService,
+    @Optional() private readonly workforce?: WorkforceService,
+    @Optional() private readonly rbac?: RbacService,
   ) {}
 
   async create(
@@ -114,7 +114,7 @@ export class ProjectService {
     Array<{ id: string; fullName: string; email: string; role: string; activeWorkload: number }>
   > {
     const [internalStaff, projects] = await Promise.all([
-      this.workforce.getInternalEmployees(),
+      (this.workforce ? this.workforce.getInternalEmployees() : Promise.resolve([])),
       this.projects.findAll(),
     ]);
 
@@ -143,10 +143,10 @@ export class ProjectService {
     note?: string,
   ): Promise<ProjectRecord> {
     // 1. Strict constraint: team lead must be an active ALSM internal Web2 employee
-    await this.workforce.validateInternalEmployee(teamLeadId);
+    if (this.workforce) await this.workforce.validateInternalEmployee(teamLeadId);
 
     // 2. Lookup team lead & assigning admin details
-    const allUsers = await this.rbac.getAllUsers();
+    const allUsers = this.rbac ? await this.rbac.getAllUsers() : [];
     const teamLeadUser = allUsers.find((u) => u.id === teamLeadId);
     const adminUser = allUsers.find((u) => u.id === userId);
 
@@ -284,7 +284,7 @@ export class ProjectService {
     const organization = await this.organizationContext.resolve(userId, organizationHeader, projectId);
     const existing = await this.requireProject(projectId, organization.id);
 
-    const allUsers = await this.rbac.getAllUsers();
+    const allUsers = this.rbac ? await this.rbac.getAllUsers() : [];
     const user = allUsers.find((u) => u.id === userId);
 
     const updated = await this.projects.recordAcceptance(projectId, {

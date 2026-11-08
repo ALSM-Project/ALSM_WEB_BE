@@ -31,7 +31,7 @@ export class GetConversionResultService {
     organizationHeader: string | undefined,
     id: string,
   ): Promise<ConversionResultBundle> {
-    let job = await this.jobs.findByIdAnyOrganization(id);
+    let job = this.jobs.findByIdAnyOrganization ? await this.jobs.findByIdAnyOrganization(id) : null;
     if (!job) {
       const organization = await this.organizationContext.resolve(userId, organizationHeader);
       job = await this.jobs.findById(id, organization.id);

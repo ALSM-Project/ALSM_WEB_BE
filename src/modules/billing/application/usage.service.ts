@@ -30,6 +30,7 @@ export class UsageService {
     let maxStorageGb: number = 5;
     let contractNumber: string | undefined = undefined;
     let isContractPlan: boolean = false;
+    let subscription: any = null;
 
     if (orgQuota && !orgQuota.isTrial) {
       if (orgQuota.organizationId) {
@@ -44,7 +45,7 @@ export class UsageService {
       contractNumber = orgQuota.contractNumber;
       isContractPlan = true;
     } else {
-      const subscription = await this.usageRepo.findActiveSubscription(userId);
+      subscription = await this.usageRepo.findActiveSubscription(userId);
 
       const isPaidSub =
         subscription &&
@@ -90,7 +91,7 @@ export class UsageService {
       ? await this.usageRepo.countProgramsByOrganization(targetOrgId)
       : 0;
 
-    const periodStart = new Date(new Date().getFullYear(), new Date().getMonth(), 1);
+    const periodStart = subscription?.currentPeriodStart || new Date(new Date().getFullYear(), new Date().getMonth(), 1);
     const conversionCount = await this.usageRepo.countConversionsByOrganizationSince(
       targetOrgId,
       periodStart,

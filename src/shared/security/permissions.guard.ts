@@ -3,6 +3,7 @@ import {
   ExecutionContext,
   ForbiddenException,
   Injectable,
+  Optional,
   UnauthorizedException,
 } from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
@@ -14,7 +15,8 @@ import { RequestWithContext } from '../logging/request-id.middleware';
 export class PermissionsGuard implements CanActivate {
   constructor(
     private readonly reflector: Reflector,
-    private readonly effectivePermissionsService: EffectivePermissionsService,
+    @Optional()
+    private readonly effectivePermissionsService?: EffectivePermissionsService,
   ) {}
 
   async canActivate(context: ExecutionContext): Promise<boolean> {
@@ -45,7 +47,7 @@ export class PermissionsGuard implements CanActivate {
       });
     }
 
-    const userPermissions = await this.effectivePermissionsService.getEffectivePermissions(userId);
+    const userPermissions = this.effectivePermissionsService ? await this.effectivePermissionsService.getEffectivePermissions(userId) : [];
 
     // Rule: User must possess AT LEAST ONE of anyPermissions if specified
     if (anyPermissions && anyPermissions.length > 0) {

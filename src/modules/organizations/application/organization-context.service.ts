@@ -53,18 +53,21 @@ export class OrganizationContextService {
     if (allocated) return allocated;
 
     if (requestedOrganizationId) {
-      const org = await this.organizations.findById(requestedOrganizationId);
-      if (org) {
-        if (org.members.some((m) => m.userId === userId)) return org;
-        if (await this.isInternalOrAdmin(userId)) {
+      const memberOrg = await this.organizations.findForMember(requestedOrganizationId, userId);
+      if (memberOrg) return memberOrg;
+      if (await this.isInternalOrAdmin(userId)) {
+        const org = await this.organizations.findById(requestedOrganizationId);
+        if (org) {
           return { ...org, members: [...org.members, { userId, role: OrganizationRole.MEMBER }] };
         }
       }
+      throw new ForbiddenException({
+        code: 'ORGANIZATION_ACCESS_DENIED',
+        message: 'You do not have access to this organization',
+      });
     }
 
-    const organization = requestedOrganizationId
-      ? await this.organizations.findForMember(requestedOrganizationId, userId)
-      : await this.organizations.findFirstForMember(userId);
+    const organization = await this.organizations.findFirstForMember(userId);
     if (!organization)
       throw new ForbiddenException({
         code: 'ORGANIZATION_ACCESS_DENIED',
