@@ -3,6 +3,7 @@ import { PrepareAiValidationContextService } from '../src/modules/validation/app
 import { ValidationSecretRedactorService } from '../src/modules/validation/application/validation-secret-redactor.service';
 import { ValidationContext } from '../src/modules/validation/domain/validation-context.types';
 import { ConversionType } from '../src/modules/projects/domain/project.types';
+import { BmsSanitizerService } from '../src/modules/validation/application/bms-sanitizer.service';
 
 describe('PrepareAiValidationContextService', () => {
   const values: Record<string, number> = {
@@ -16,6 +17,7 @@ describe('PrepareAiValidationContextService', () => {
   const service = new PrepareAiValidationContextService(
     new ValidationSecretRedactorService(),
     config as unknown as ConfigService,
+    new BmsSanitizerService(),
   );
   const context: ValidationContext = {
     conversionJobId: 'job-1',
@@ -78,6 +80,82 @@ describe('PrepareAiValidationContextService', () => {
       }),
     );
   });
+
+  it('prepares BMS/DSPF with PII masking and one prefix while preserving original lines', () => {
+    const prepared = service.execute({
+      ...context,
+      conversionType: ConversionType.BMS_DSPF_TO_FRONTEND,
+      sourceFiles: [
+        {
+          path: 'SCREEN.dspf',
+          content:
+            '* comment\rPASSWORD="synthetic"\rINITIAL=\'person@example.test\'\r123\r456\r7890',
+        },
+      ],
+      targetFiles: [
+        { path: 'Screen.tsx', content: '<input />' },
+        { path: 'metadata.json', content: 'excluded' },
+        { path: 'notes.md', content: 'excluded' },
+      ],
+    });
+    expect(prepared.input.sourceFiles[0]).toEqual({
+      path: 'SCREEN.dspf',
+      lineCount: 6,
+      content:
+        '1 | \n2 | PASSWORD="[REDACTED:SECRET]"\n3 | INITIAL=\'***EMAIL_MASKED***\'\n4 | 123\n5 | 456\n6 | 7890',
+    });
+    expect(prepared.input.targetFiles).toHaveLength(1);
+    expect(prepared.selectedFileCount).toBe(2);
+    expect(prepared.redactionCount).toBe(1);
+    expect(prepared.inputCharacterCount).toBe(
+      [...prepared.input.sourceFiles, ...prepared.input.targetFiles].reduce(
+        (count, file) => count + file.content.length,
+        0,
+      ),
+    );
+  });
+
+  it.each([
+    '../Screen.tsx',
+    'C:/Screen.tsx',
+    'C:Screen.tsx',
+    '//server/Screen.tsx',
+    './Screen.tsx',
+    'a//Screen.tsx',
+    'bad\nScreen.tsx',
+  ])('rejects unsafe selected path %s', (unsafePath) => {
+    expect(() =>
+      service.execute({
+        ...context,
+        conversionType: ConversionType.BMS_DSPF_TO_FRONTEND,
+        sourceFiles: [{ path: 'SCREEN.bms', content: 'DFHMSD' }],
+        targetFiles: [{ path: unsafePath, content: '<input />' }],
+      }),
+    ).toThrow(
+      expect.objectContaining({
+        response: expect.objectContaining({ code: 'VALIDATION_UNSAFE_FILE_PATH' }),
+      }),
+    );
+  });
+
+  it.each(['AI_MAX_FILES', 'AI_MAX_FILE_CHARS', 'AI_MAX_TOTAL_CHARS'])(
+    'enforces %s on BMS provider context',
+    (limit) => {
+      values[limit] = 1;
+      expect(() =>
+        service.execute({
+          ...context,
+          conversionType: ConversionType.BMS_DSPF_TO_FRONTEND,
+          sourceFiles: [{ path: 'SCREEN.bms', content: 'DFHMSD' }],
+          targetFiles: [{ path: 'Screen.tsx', content: '<input />' }],
+        }),
+      ).toThrow(
+        expect.objectContaining({
+          response: expect.objectContaining({ code: 'VALIDATION_CONTEXT_TOO_LARGE' }),
+        }),
+      );
+    },
+  );
 
   it('enforces the maximum size of each selected file', () => {
     values.AI_MAX_FILE_CHARS = 10;

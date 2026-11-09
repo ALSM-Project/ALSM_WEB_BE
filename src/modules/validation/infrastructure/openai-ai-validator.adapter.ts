@@ -11,7 +11,7 @@ import {
   buildAiValidationJsonSchema,
   validateAiValidationOutput,
 } from './ai-validation-output.validator';
-import { buildAiValidationPrompt } from './ai-validation.prompt';
+import { buildAiValidationPrompt, SEMANTIC_COBOL_JAVA_PROMPT_VERSION } from './ai-validation.prompt';
 
 const OPENAI_RESPONSES_ENDPOINT = 'https://api.openai.com/v1/responses';
 const MAX_CONFIGURED_RETRIES = 5;
@@ -45,7 +45,7 @@ export class OpenAiValidatorAdapter implements AiValidatorPort {
     return {
       provider: 'openai',
       model: this.config.getOrThrow<string>('OPENAI_MODEL'),
-      promptVersion: this.config.getOrThrow<string>('AI_PROMPT_VERSION'),
+      promptVersion: SEMANTIC_COBOL_JAVA_PROMPT_VERSION,
     };
   }
 

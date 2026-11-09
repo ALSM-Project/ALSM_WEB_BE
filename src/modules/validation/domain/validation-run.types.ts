@@ -1,3 +1,5 @@
+import { ValidationExecutionMetadata } from './validation-execution-metadata';
+
 export enum ValidationRunStatus {
   QUEUED = 'QUEUED',
   PROCESSING = 'PROCESSING',
@@ -5,7 +7,7 @@ export enum ValidationRunStatus {
   FAILED = 'FAILED',
 }
 
-export interface ValidationRunRecord {
+export interface ValidationRunRecord extends ValidationExecutionMetadata {
   id: string;
   organizationId: string;
   projectId: string;

@@ -184,8 +184,11 @@ describe('Gemini quota-aware transport', () => {
       .spyOn(globalThis, 'fetch')
       .mockResolvedValue(response(429, sensitive, quota(...(ids as string[]))));
     const error = await fail();
-    expect(error.code).toBe('AI_PROVIDER_UNAVAILABLE');
-    expect(error.message).toBe('AI provider is unavailable');
+    expect(error.code).toBe(scope === 'DAILY_QUOTA'
+      ? 'AI_PROVIDER_DAILY_QUOTA_EXCEEDED' : 'AI_PROVIDER_UNAVAILABLE');
+    expect(error.message).toBe(scope === 'DAILY_QUOTA'
+      ? 'Gemini daily quota is exhausted; wait for the quota reset before requesting validation'
+      : 'AI provider is unavailable');
     expect(error.diagnostics).toMatchObject({
       rateLimitScope: scope,
       attempts,

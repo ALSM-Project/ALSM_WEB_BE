@@ -1,6 +1,7 @@
 import { Provider } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { AI_VALIDATOR, AiValidatorPort } from '../domain/ai-validator.port';
+import { AI_VALIDATOR, BMS_AI_VALIDATOR, AiValidatorPort } from '../domain/ai-validator.port';
+import { BmsAiValidatorAdapter } from './bms-ai-validator.adapter';
 import { FakeAiValidatorAdapter } from './fake-ai-validator.adapter';
 import { OpenAiValidatorAdapter } from './openai-ai-validator.adapter';
 import { GeminiAiValidatorAdapter } from './gemini-ai-validator.adapter';
@@ -23,4 +24,9 @@ export const aiValidatorProvider: Provider = {
   provide: AI_VALIDATOR,
   inject: [ConfigService, FakeAiValidatorAdapter, OpenAiValidatorAdapter, GeminiAiValidatorAdapter],
   useFactory: selectAiValidator,
+};
+
+export const bmsAiValidatorProvider: Provider = {
+  provide: BMS_AI_VALIDATOR,
+  useExisting: BmsAiValidatorAdapter,
 };

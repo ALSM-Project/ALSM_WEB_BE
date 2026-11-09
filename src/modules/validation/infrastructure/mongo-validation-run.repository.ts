@@ -111,6 +111,28 @@ export class MongoValidationRunRepository implements ValidationRunRepository {
     return document ? this.map(document) : null;
   }
 
+  async claimProviderExecution(
+    id: string,
+    projectId: string,
+    organizationId: string,
+  ): Promise<boolean> {
+    const result = await this.model
+      .updateOne(
+        {
+          _id: id,
+          projectId,
+          organizationId,
+          status: ValidationRunStatus.PROCESSING,
+          providerExecutionStartedAt: { $exists: false },
+          resultsPersistedAt: { $exists: false },
+        },
+        { $set: { providerExecutionStartedAt: new Date() } },
+        { writeConcern: { w: 'majority', j: true } },
+      )
+      .exec();
+    return result.modifiedCount === 1;
+  }
+
   async markResultsPersisted(
     id: string,
     projectId: string,
@@ -133,6 +155,11 @@ export class MongoValidationRunRepository implements ValidationRunRepository {
             selectedFileCount: input.selectedFileCount,
             inputCharacterCount: input.inputCharacterCount,
             resultsPersistedAt: input.resultsPersistedAt,
+            executionOutcome: input.executionOutcome,
+            resultProvider: input.resultProvider,
+            resultModel: input.resultModel,
+            modelVersion: input.modelVersion,
+            providerFailureCode: input.providerFailureCode,
           },
         },
       )
@@ -227,6 +254,11 @@ export class MongoValidationRunRepository implements ValidationRunRepository {
       provider: document.provider,
       model: document.model,
       promptVersion: document.promptVersion,
+      executionOutcome: document.executionOutcome,
+      resultProvider: document.resultProvider,
+      resultModel: document.resultModel,
+      modelVersion: document.modelVersion,
+      providerFailureCode: document.providerFailureCode,
       redactionCount: document.redactionCount,
       selectedFileCount: document.selectedFileCount,
       inputCharacterCount: document.inputCharacterCount,

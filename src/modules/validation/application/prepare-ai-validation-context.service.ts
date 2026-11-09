@@ -1,9 +1,10 @@
-import { BadRequestException, Injectable } from '@nestjs/common';
+import { BadRequestException, Injectable, Optional } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import * as path from 'path';
 import { AiValidationCodeFile, AiValidationInput } from '../domain/ai-validator.port';
 import { ValidationCodeFile, ValidationContext } from '../domain/validation-context.types';
 import { ValidationSecretRedactorService } from './validation-secret-redactor.service';
+import { BmsSanitizerService } from './bms-sanitizer.service';
 
 import { ConversionType } from '../../projects/domain/project.types';
 
@@ -11,7 +12,7 @@ const COBOL_SOURCE_EXTENSIONS = new Set(['.cob', '.cbl', '.cpy']);
 const JAVA_TARGET_EXTENSIONS = new Set(['.java']);
 
 const BMS_SOURCE_EXTENSIONS = new Set(['.bms', '.mac', '.txt', '.dspf', '.dds']);
-const REACT_TARGET_EXTENSIONS = new Set(['.tsx', '.jsx', '.ts', '.js', '.json']);
+const REACT_TARGET_EXTENSIONS = new Set(['.tsx', '.jsx', '.ts', '.js']);
 
 export interface PreparedAiValidationContext {
   input: AiValidationInput;
@@ -31,6 +32,7 @@ export class PrepareAiValidationContextService {
   constructor(
     private readonly redactor: ValidationSecretRedactorService,
     private readonly config: ConfigService,
+    @Optional() private readonly bmsSanitizer: BmsSanitizerService = new BmsSanitizerService(),
   ) {}
 
   execute(context: ValidationContext): PreparedAiValidationContext {
@@ -60,7 +62,10 @@ export class PrepareAiValidationContextService {
 
       const redacted = this.redactor.redact(file.content);
       redactionCount += redacted.redactionCount;
-      const lines = redacted.content.split(/\r\n|\n|\r/);
+      const content = isBms
+        ? this.bmsSanitizer.sanitize(file.path, redacted.content)
+        : redacted.content;
+      const lines = content.split(/\r\n|\n|\r/);
       return {
         path: file.path,
         content: lines.map((line, index) => `${index + 1} | ${line}`).join('\n'),
@@ -110,7 +115,15 @@ export class PrepareAiValidationContextService {
 
     for (let index = 0; index < selected.length; index += 1) {
       const file = selected[index];
-      if (path.posix.isAbsolute(file.path) || file.path.split('/').includes('..')) {
+      if (
+        path.posix.isAbsolute(file.path) ||
+        path.win32.isAbsolute(file.path) ||
+        file.path.includes(':') ||
+        [...file.path].some(
+          (character) => character.charCodeAt(0) < 32 || character.charCodeAt(0) === 127,
+        ) ||
+        file.path.split('/').some((segment) => segment === '..' || segment === '.' || !segment)
+      ) {
         throw new BadRequestException({
           code: 'VALIDATION_UNSAFE_FILE_PATH',
           message: 'A selected validation file has an unsafe path',

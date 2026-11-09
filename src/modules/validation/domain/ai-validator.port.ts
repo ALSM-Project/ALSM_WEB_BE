@@ -1,4 +1,5 @@
 import { WithAiResponseMetadata } from './ai-response-metadata';
+import { AiValidationExecution } from './validation-execution-metadata';
 import {
   CodeLocation,
   ValidationFindingCategory,
@@ -27,6 +28,7 @@ export interface AiValidationFindingDraft {
   category: ValidationFindingCategory;
   severity: ValidationFindingSeverity;
   title: string;
+  fieldName?: string;
   explanation: string;
   expectedBehavior?: string;
   actualBehavior?: string;
@@ -39,6 +41,8 @@ export interface AiValidationFindingDraft {
 
 export interface AiValidationResult extends WithAiResponseMetadata {
   findings: AiValidationFindingDraft[];
+  /** Absent for legacy adapters, whose successful output is AI_COMPLETED. */
+  execution?: AiValidationExecution;
 }
 
 export interface AiValidatorMetadata {
@@ -53,3 +57,4 @@ export interface AiValidatorPort {
 }
 
 export const AI_VALIDATOR = Symbol('AI_VALIDATOR');
+export const BMS_AI_VALIDATOR = Symbol('BMS_AI_VALIDATOR');
