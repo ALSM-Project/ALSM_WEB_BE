@@ -29,6 +29,7 @@ describe('ExecuteAiValidationService', () => {
   const validationRuns = {
     findById: jest.fn(),
     markResultsPersisted: jest.fn(),
+    claimProviderExecution: jest.fn(),
   };
   const validationFindings = {
     countByRun: jest.fn(),
@@ -100,6 +101,7 @@ describe('ExecuteAiValidationService', () => {
   beforeEach(() => {
     jest.clearAllMocks();
     validationRuns.findById.mockResolvedValue(run);
+    validationRuns.claimProviderExecution.mockResolvedValue(true);
     validationFindings.countByRun.mockResolvedValue(0);
     buildContext.execute.mockResolvedValue(context);
     prepareContext.execute.mockReturnValue(prepared);
@@ -138,6 +140,16 @@ describe('ExecuteAiValidationService', () => {
     expect(reconcileRun.execute).toHaveBeenCalledWith(
       expect.objectContaining({ expectedFindingCount: 1, resultsPersistedAt: expect.any(Date) }),
     );
+  });
+
+  it('prevents provider replay when a previous execution was already claimed', async () => {
+    validationRuns.claimProviderExecution.mockResolvedValue(false);
+    await expect(service.execute(input)).rejects.toMatchObject({
+      code: 'VALIDATION_PROVIDER_EXECUTION_UNCONFIRMED',
+      retryable: false,
+    });
+    expect(validator.validate).not.toHaveBeenCalled();
+    expect(bmsAiValidator.validate).not.toHaveBeenCalled();
   });
 
   it('deduplicates normalized findings before idempotent persistence', async () => {
@@ -360,7 +372,7 @@ describe('ExecuteAiValidationService', () => {
   });
 
   it.each([
-    ['AI_PROVIDER_TIMEOUT', true],
+    ['AI_PROVIDER_TIMEOUT', false],
     ['AI_PROVIDER_RESPONSE_INVALID', false],
     ['AI_PROVIDER_AUTHENTICATION_FAILED', false],
   ])('classifies provider error %s with retryable=%s', async (code, retryable) => {

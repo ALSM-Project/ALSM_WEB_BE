@@ -3,6 +3,26 @@ import { ValidationRunSchema } from '../src/modules/validation/infrastructure/va
 import { ValidationExecutionOutcome } from '../src/modules/validation/domain/validation-execution-metadata';
 
 describe('MongoValidationRunRepository query isolation', () => {
+  it('claims provider execution atomically with tenant isolation and durable acknowledgment', async () => {
+    const exec = jest.fn().mockResolvedValue({ modifiedCount: 1 });
+    const updateOne = jest.fn().mockReturnValue({ exec });
+    const repository = new MongoValidationRunRepository({ updateOne } as never);
+    expect(await repository.claimProviderExecution('run', 'project', 'org')).toBe(true);
+    expect(updateOne).toHaveBeenCalledWith(
+      {
+        _id: 'run',
+        projectId: 'project',
+        organizationId: 'org',
+        status: 'PROCESSING',
+        providerExecutionStartedAt: { $exists: false },
+        resultsPersistedAt: { $exists: false },
+      },
+      { $set: { providerExecutionStartedAt: expect.any(Date) } },
+      { writeConcern: { w: 'majority', j: true } },
+    );
+    exec.mockResolvedValue({ modifiedCount: 0 });
+    expect(await repository.claimProviderExecution('run', 'project', 'org')).toBe(false);
+  });
   it('defines a unique sparse index for the internal active execution key', () => {
     expect(ValidationRunSchema.indexes()).toContainEqual([
       { activeExecutionKey: 1 },

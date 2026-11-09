@@ -1,6 +1,17 @@
 import { environmentValidationSchema } from '../src/config/environment.validation';
 
 describe('AI environment validation', () => {
+  it.each(['', 'model?key=synthetic', '../model', 'model,,other'])(
+    'rejects malformed Gemini allowlist %s',
+    (value) => {
+      expect(
+        environmentValidationSchema.validate({
+          ...requiredEnvironment,
+          GEMINI_ALLOWED_MODELS: value,
+        }).error,
+      ).toBeDefined();
+    },
+  );
   const requiredEnvironment = {
     MONGODB_URI: 'mongodb://localhost/alsm',
     REDIS_HOST: 'localhost',

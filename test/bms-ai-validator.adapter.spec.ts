@@ -38,6 +38,8 @@ describe('BmsAiValidatorAdapter (mock HTTP only)', () => {
       GEMINI_API_KEY: 'synthetic-key',
       AI_TIMEOUT_MS: 1_000,
       AI_MAX_FINDINGS: 5,
+      AI_MAX_RETRIES: 2,
+      GEMINI_MIN_REQUEST_INTERVAL_MS: 0,
       AI_MAX_FILES: 5,
       AI_MAX_FILE_CHARS: 5_000,
       AI_MAX_TOTAL_CHARS: 10_000,
@@ -119,7 +121,7 @@ describe('BmsAiValidatorAdapter (mock HTTP only)', () => {
     );
   });
 
-  it.each([500, 503])('records the successful Gemini candidate request after HTTP %s', async (status) => {
+  it.each([500, 503])('retries the configured Gemini model after HTTP %s', async (status) => {
     jest.useFakeTimers();
     config.set('AI_TIMEOUT_MS', 10_000);
     config.set('AI_PROVIDER', 'gemini');
@@ -134,18 +136,18 @@ describe('BmsAiValidatorAdapter (mock HTTP only)', () => {
         }),
       });
     const pending = new BmsAiValidatorAdapter(config).validate(input);
-    await jest.advanceTimersByTimeAsync(1_500);
+    await jest.runAllTimersAsync();
     const result = await pending;
     expect(result).toMatchObject({
-      model: 'gemini-3.7-flash',
-      execution: { outcome: 'AI_COMPLETED', model: 'gemini-3.7-flash' },
+      model: 'gemini-test',
+      execution: { outcome: 'AI_COMPLETED', model: 'gemini-test' },
     });
     expect(result[AI_RESPONSE_METADATA]).toEqual({
-      requestedModel: 'gemini-3.7-flash',
+      requestedModel: 'gemini-test',
       modelVersion: 'gemini-observed-v1',
     });
     expect(fetchMock).toHaveBeenCalledTimes(3);
-    expect(fetchMock.mock.calls[2][0]).toContain('gemini-3.7-flash');
+    expect(fetchMock.mock.calls[2][0]).toContain('gemini-test');
   });
 
   it.each([undefined, 'secret response payload', 'gemini-bad\nvalue'])(
@@ -244,7 +246,7 @@ describe('BmsAiValidatorAdapter (mock HTTP only)', () => {
     expect(fetchMock.mock.calls[0][0]).not.toContain('synthetic-key');
     expect(fetchMock.mock.calls[0][1].headers['x-goog-api-key']).toBe('synthetic-key');
     expect(
-      JSON.parse(fetchMock.mock.calls[0][1].body).generationConfig.responseSchema,
+      JSON.parse(fetchMock.mock.calls[0][1].body).generationConfig.responseFormat.text.schema,
     ).toBeDefined();
   });
 });

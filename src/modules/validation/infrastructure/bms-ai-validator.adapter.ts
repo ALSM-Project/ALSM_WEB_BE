@@ -1,4 +1,4 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, Optional } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import {
   BMS_VALIDATION_JSON_SCHEMA,
@@ -24,6 +24,8 @@ import { AiValidatorError } from '../domain/ai-validator.error';
 import { validateBmsAiValidationOutput } from './bms-ai-validation-output.validator';
 import { ValidationExecutionOutcome } from '../domain/validation-execution-metadata';
 import { withAiResponseMetadata } from '../domain/ai-response-metadata';
+import { GeminiJsonClient } from './gemini-json.client';
+import { createGeminiValidationSchema } from './gemini-validation-schema';
 
 export type BmsAiValidationInput = AiValidationInput;
 
@@ -52,7 +54,10 @@ interface BmsProviderResponse {
 export class BmsAiValidatorAdapter implements AiValidatorPort {
   private readonly logger = new Logger(BmsAiValidatorAdapter.name);
 
-  constructor(private readonly config: ConfigService) {}
+  constructor(
+    private readonly config: ConfigService,
+    @Optional() private readonly geminiClient: GeminiJsonClient = new GeminiJsonClient(config),
+  ) {}
 
   getMetadata(): AiValidatorMetadata {
     const provider = this.config.get<string>('AI_PROVIDER') || 'fake';
@@ -113,7 +118,8 @@ export class BmsAiValidatorAdapter implements AiValidatorPort {
 
     // 3. Cơ chế phòng thủ: Timeout với AbortController
     const controller = new AbortController();
-    const timeoutHandle = setTimeout(() => controller.abort(), timeoutMs);
+    const timeoutHandle =
+      provider === 'gemini' ? undefined : setTimeout(() => controller.abort(), timeoutMs);
 
     try {
       let response: BmsProviderResponse;
@@ -122,7 +128,7 @@ export class BmsAiValidatorAdapter implements AiValidatorPort {
         this.logger.log(
           `Calling Gemini API (${model})... SystemPrompt: ${systemPrompt.length} chars, UserPrompt: ${userPrompt.length} chars.`,
         );
-        response = await this.callGemini(systemPrompt, userPrompt, controller.signal, model);
+        response = await this.callGemini(systemPrompt, userPrompt, model);
       } else if (provider === 'openai') {
         response = await this.callOpenAi(systemPrompt, userPrompt, controller.signal, model);
       } else {
@@ -175,7 +181,7 @@ export class BmsAiValidatorAdapter implements AiValidatorPort {
         durationMs: Date.now() - startTime,
       };
     } finally {
-      clearTimeout(timeoutHandle);
+      if (timeoutHandle !== undefined) clearTimeout(timeoutHandle);
     }
   }
 
@@ -185,106 +191,25 @@ export class BmsAiValidatorAdapter implements AiValidatorPort {
   private async callGemini(
     systemPrompt: string,
     userPrompt: string,
-    signal: AbortSignal,
-    configuredModel: string,
+    model: string,
   ): Promise<BmsProviderResponse> {
-    const apiKey = this.config.get<string>('GEMINI_API_KEY');
-    if (!apiKey)
-      throw new AiValidatorError(
-        'AI_PROVIDER_AUTHENTICATION_FAILED',
-        'AI provider authentication failed',
-      );
-
-    const candidateModels = [
-      ...new Set([configuredModel, 'gemini-3.7-flash', 'gemini-flash-latest']),
-    ];
-    let lastError: Error | null = null;
-
-    for (const model of candidateModels) {
-      if (signal.aborted) throw new Error('Gemini API call timed out');
-      const url = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent`;
-
-      for (let attempt = 1; attempt <= 2; attempt++) {
-        if (signal.aborted) throw new Error('Gemini API call timed out');
-
-        try {
-          const response = await fetch(url, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json', 'x-goog-api-key': apiKey },
-            signal,
-            body: JSON.stringify({
-              systemInstruction: { parts: [{ text: systemPrompt }] },
-              contents: [{ role: 'user', parts: [{ text: userPrompt }] }],
-              generationConfig: {
-                responseMimeType: 'application/json',
-                responseSchema: BMS_VALIDATION_JSON_SCHEMA,
-                temperature: 0.0,
-              },
-            }),
-          });
-
-          if (!response.ok) {
-            const isRateOrDemand = response.status >= 500 || response.status === 429;
-            if (isRateOrDemand) {
-              this.logger.warn(
-                `Gemini model ${model} returned ${response.status} (High demand/quota spike, attempt ${attempt}/2).`,
-              );
-              if (attempt < 2) {
-                await new Promise((resolve) => setTimeout(resolve, 1500));
-                continue;
-              }
-              lastError = new AiValidatorError(
-                'AI_PROVIDER_UNAVAILABLE',
-                'AI provider is unavailable',
-              );
-              break;
-            }
-            throw new AiValidatorError(
-              response.status === 401 || response.status === 403
-                ? 'AI_PROVIDER_AUTHENTICATION_FAILED'
-                : 'AI_PROVIDER_REQUEST_REJECTED',
-              'AI provider rejected the request',
-            );
-          }
-
-          const data = await this.readResponse(response);
-          if (
-            (data?.promptFeedback?.blockReason &&
-              !['NONE', 'BLOCK_REASON_UNSPECIFIED'].includes(data.promptFeedback.blockReason)) ||
-            ['SAFETY', 'BLOCKLIST', 'PROHIBITED_CONTENT'].includes(
-              data?.candidates?.[0]?.finishReason,
-            )
-          ) {
-            throw new AiValidatorError(
-              'AI_PROVIDER_REFUSED',
-              'AI provider refused the validation request',
-            );
-          }
-          const candidateText = data?.candidates?.[0]?.content?.parts?.[0]?.text;
-          if (typeof candidateText !== 'string') throw this.invalidResponse();
-          if (data?.candidates?.[0]?.finishReason && data.candidates[0].finishReason !== 'STOP')
-            throw this.invalidResponse();
-
-          return {
-            output: this.parseOutput(candidateText),
-            model,
-            modelVersion: data?.modelVersion,
-          };
-        } catch (err: unknown) {
-          if (err instanceof AiValidatorError && err.code !== 'AI_PROVIDER_UNAVAILABLE') throw err;
-          lastError = err instanceof Error ? err : new Error(String(err));
-          if (signal.aborted) throw err;
-          if (attempt >= 2) break;
-        }
-      }
-    }
-
-    throw lastError || new Error('All Gemini candidate models failed due to high demand');
+    const response = await this.geminiClient.generateJson(model, {
+      systemInstruction: { parts: [{ text: systemPrompt }] },
+      contents: [{ role: 'user', parts: [{ text: userPrompt }] }],
+      generationConfig: {
+        candidateCount: 1,
+        responseFormat: {
+          text: {
+            mimeType: 'APPLICATION_JSON',
+            schema: createGeminiValidationSchema(BMS_VALIDATION_JSON_SCHEMA),
+          },
+        },
+        temperature: 0.0,
+      },
+    });
+    return { output: response.output, model, modelVersion: response.modelVersion };
   }
 
-  /**
-   * Gọi OpenAI API với JSON mode
-   */
   private async callOpenAi(
     systemPrompt: string,
     userPrompt: string,

@@ -48,6 +48,8 @@ export interface ValidationRunRepository {
     projectId: string,
     organizationId: string,
   ): Promise<ValidationRunRecord | null>;
+  /** Claim the entire adapter execution once; never replay an uncertain provider outcome. */
+  claimProviderExecution(id: string, projectId: string, organizationId: string): Promise<boolean>;
   markResultsPersisted(
     id: string,
     projectId: string,

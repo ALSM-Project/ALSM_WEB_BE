@@ -7,6 +7,9 @@ export type ValidationRunDocument = HydratedDocument<ValidationRun>;
 
 @Schema({ collection: 'validation_runs', timestamps: true })
 export class ValidationRun {
+  @Prop({ type: Date })
+  providerExecutionStartedAt?: Date;
+
   @Prop({ type: MongooseSchema.Types.ObjectId, required: true })
   organizationId!: Types.ObjectId;
 

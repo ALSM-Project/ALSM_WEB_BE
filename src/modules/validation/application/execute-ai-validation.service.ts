@@ -102,6 +102,18 @@ export class ExecuteAiValidationService {
         context.conversionType === ConversionType.BMS_DSPF_TO_FRONTEND
           ? this.bmsAiValidator
           : this.aiValidator;
+      const claimed = await this.validationRuns.claimProviderExecution(
+        run.id,
+        run.projectId,
+        run.organizationId,
+      );
+      if (!claimed) {
+        throw new ValidationExecutionError(
+          'VALIDATION_PROVIDER_EXECUTION_UNCONFIRMED',
+          'A previous provider execution may have started; automatic replay was prevented. Review this run before requesting another validation.',
+          false,
+        );
+      }
       const result = await validator.validate(prepared.input);
       const execution = result.execution ?? {
         outcome: ValidationExecutionOutcome.AI_COMPLETED,
@@ -273,7 +285,8 @@ export class ExecuteAiValidationService {
       return new ValidationExecutionError(
         error.code,
         error.message,
-        error.code === 'AI_PROVIDER_TIMEOUT' || error.code === 'AI_PROVIDER_UNAVAILABLE',
+        // Adapters own retries; BullMQ must not replay exhausted provider failures.
+        false,
       );
     }
     if (error instanceof HttpException) {

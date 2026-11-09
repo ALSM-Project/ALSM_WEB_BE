@@ -111,6 +111,28 @@ export class MongoValidationRunRepository implements ValidationRunRepository {
     return document ? this.map(document) : null;
   }
 
+  async claimProviderExecution(
+    id: string,
+    projectId: string,
+    organizationId: string,
+  ): Promise<boolean> {
+    const result = await this.model
+      .updateOne(
+        {
+          _id: id,
+          projectId,
+          organizationId,
+          status: ValidationRunStatus.PROCESSING,
+          providerExecutionStartedAt: { $exists: false },
+          resultsPersistedAt: { $exists: false },
+        },
+        { $set: { providerExecutionStartedAt: new Date() } },
+        { writeConcern: { w: 'majority', j: true } },
+      )
+      .exec();
+    return result.modifiedCount === 1;
+  }
+
   async markResultsPersisted(
     id: string,
     projectId: string,
