@@ -1,3 +1,5 @@
+For normal application Gemini development, follow [Local application AI development](docs/local-ai-development.md). It covers the complete local stack and supersedes older bootstrap-only setup instructions below.
+
 # ALSM Backend
 
 ALSM (Automating Legacy System Modernization) is the shared NestJS backend for the Self-Service, Internal, and Enterprise React portals. It manages platform workflow around legacy conversion jobs; it does **not** implement BMS/DSPF-to-Frontend or COBOL-to-Java conversion tools.
