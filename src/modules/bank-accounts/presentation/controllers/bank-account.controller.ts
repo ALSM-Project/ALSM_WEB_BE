@@ -1,6 +1,7 @@
 import {
   Body,
   Controller,
+  Delete,
   Get,
   Param,
   Patch,
@@ -116,5 +117,16 @@ export class BankAccountController {
     @CurrentUser() user: AuthenticatedUser,
   ) {
     return this.bankAccountService.revealAccountNumber(id, user.userId);
+  }
+
+  @Delete(':id')
+  @RequirePermissions('bank_accounts.delete')
+  @ApiOperation({ summary: 'Permanently delete a company receiving bank account' })
+  @ApiResponse({ status: 200, description: 'Bank account deleted successfully' })
+  async delete(
+    @Param('id') id: string,
+    @CurrentUser() user: AuthenticatedUser,
+  ) {
+    return this.bankAccountService.delete(id, user.userId);
   }
 }

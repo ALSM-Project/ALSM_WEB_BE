@@ -565,6 +565,49 @@ export class BankAccountService {
     };
   }
 
+  /**
+   * Permanently deletes a receiving bank account from the system with security auditing.
+   * Business rule: A default receiving account cannot be deleted while active; it must either be replaced as default or deactivated first.
+   */
+  async delete(id: string, actorUserId?: string): Promise<{ success: boolean; message: string }> {
+    const doc = await this.bankAccountModel.findById(toValidObjectId(id)).exec();
+    if (!doc) {
+      throw new NotFoundException({
+        code: 'BANK_ACCOUNT_NOT_FOUND',
+        message: 'Bank account not found',
+      });
+    }
+
+    if (doc.isDefault && doc.status === 'active') {
+      throw new BadRequestException({
+        code: 'CANNOT_DELETE_ACTIVE_DEFAULT_ACCOUNT',
+        message: 'Cannot delete the active default receiving account. Please designate another default account or deactivate this account first.',
+      });
+    }
+
+    const accountInfo = {
+      bankName: doc.bankName,
+      currency: doc.currency,
+      accountNumberLast4: doc.accountNumberLast4,
+      accountHolderName: doc.accountHolderName,
+    };
+
+    await this.bankAccountModel.findByIdAndDelete(toValidObjectId(id)).exec();
+
+    await this.audit.append({
+      actorUserId,
+      action: 'BANK_ACCOUNT_DELETED',
+      resourceType: 'BANK_ACCOUNT',
+      resourceId: id,
+      metadata: accountInfo,
+    });
+
+    return {
+      success: true,
+      message: `Bank account ${accountInfo.bankName} (${accountInfo.accountNumberLast4}) deleted successfully.`,
+    };
+  }
+
   private sanitize(doc: BankAccountDocument): BankAccountSanitized {
     return {
       id: doc._id.toString(),
