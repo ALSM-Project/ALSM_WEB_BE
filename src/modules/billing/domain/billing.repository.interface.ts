@@ -184,7 +184,9 @@ export interface IBillingUsageRepository {
   findActiveSubscription(userId: string): Promise<SubscriptionProps | null>;
   countProjectsByOrganization(organizationId: string): Promise<number>;
   countProgramsByOrganization?(organizationId: string): Promise<number>;
+  /** Counts jobs completed successfully in the organization's billing period. */
   countConversionsByOrganizationSince(organizationId: string, sinceDate: Date): Promise<number>;
+  /** Reports successful conversion jobs grouped by completion month. */
   getMonthlyConversions(
     organizationId: string,
     sinceDate: Date,

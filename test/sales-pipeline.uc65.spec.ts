@@ -47,6 +47,7 @@ describe('UC-65 View Sales Pipeline', () => {
       leadModel,
       userModel,
       audit,
+      { listForSalesMember: jest.fn().mockResolvedValue([]) } as never,
     );
   });
 

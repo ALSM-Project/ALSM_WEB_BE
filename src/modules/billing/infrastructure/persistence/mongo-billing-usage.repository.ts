@@ -7,6 +7,7 @@ import {
   ConversionJob,
   ConversionJobDocument,
 } from '../../../conversions/infrastructure/conversion-job.schema';
+import { ConversionJobStatus } from '../../../conversions/domain/conversion-job.types';
 import {
   Organization,
   OrganizationDocument,
@@ -94,7 +95,8 @@ export class MongoBillingUsageRepository implements IBillingUsageRepository {
   ): Promise<number> {
     return this.conversionModel.countDocuments({
       organizationId: new Types.ObjectId(organizationId),
-      createdAt: { $gte: sinceDate },
+      status: ConversionJobStatus.COMPLETED,
+      completedAt: { $gte: sinceDate },
     });
   }
 
@@ -106,14 +108,15 @@ export class MongoBillingUsageRepository implements IBillingUsageRepository {
       {
         $match: {
           organizationId: new Types.ObjectId(organizationId),
-          createdAt: { $gte: sinceDate },
+          status: ConversionJobStatus.COMPLETED,
+          completedAt: { $gte: sinceDate },
         },
       },
       {
         $group: {
           _id: {
-            year: { $year: '$createdAt' },
-            month: { $month: '$createdAt' },
+            year: { $year: '$completedAt' },
+            month: { $month: '$completedAt' },
           },
           count: { $sum: 1 },
         },

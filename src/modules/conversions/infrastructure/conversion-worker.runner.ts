@@ -50,6 +50,13 @@ export class ConversionWorkerRunner implements OnModuleDestroy {
     }
   }
 
+  /** CONVERSION_WORKER_CONCURRENCY, default 4, kept between 1 and 8 (each job spawns a JVM). */
+  private workerConcurrency(): number {
+    const configured = Number(this.config.get<number>('CONVERSION_WORKER_CONCURRENCY') ?? 4);
+    if (!Number.isFinite(configured)) return 4;
+    return Math.min(8, Math.max(1, Math.trunc(configured)));
+  }
+
   start(): void {
     if (this.worker) return;
     if (!this.config.get<boolean>('CONVERSION_WORKER_ENABLED')) {
@@ -151,6 +158,10 @@ export class ConversionWorkerRunner implements OnModuleDestroy {
       {
         // Mongo leases expire before BullMQ recovers an abandoned lock.
         lockDuration: 60000,
+        // Several conversions at once: a bulk of 40+ programs used to wait for each other one by
+        // one. Every job claims its own Mongo lease and runs the tool in its own temp folder, so
+        // they do not share state.
+        concurrency: this.workerConcurrency(),
         connection: {
           host: this.config.getOrThrow('REDIS_HOST'),
           port: this.config.getOrThrow<number>('REDIS_PORT'),

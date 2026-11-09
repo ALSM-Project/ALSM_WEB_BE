@@ -129,6 +129,21 @@ describe('normalizeCicsSource', () => {
     expect(code(source)).toBe("STRING 'A, B'  WS-X   WS-Y DELIMITED BY SIZE INTO WS-Z");
   });
 
+  it('keeps the commas of EXEC SQL, also on its continuation lines', () => {
+    const { source } = normalizeCicsSource(
+      cob(
+        '    EXEC SQL SELECT ID, NAME',
+        '         INTO :WS-ID, :WS-NAME',
+        '         FROM CUSTOMER',
+        '    END-EXEC.',
+        '    MOVE WS-A, WS-B TO WS-C.',
+      ),
+    );
+    expect(code(source)).toBe(
+      'EXEC SQL SELECT ID, NAME INTO :WS-ID, :WS-NAME FROM CUSTOMER END-EXEC. MOVE WS-A  WS-B TO WS-C.',
+    );
+  });
+
   it('removes the empty sentence after END-EXEC. and an empty INPUT-OUTPUT SECTION', () => {
     const { source } = normalizeCicsSource(
       cob(

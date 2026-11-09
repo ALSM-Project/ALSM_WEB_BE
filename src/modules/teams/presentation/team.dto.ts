@@ -20,6 +20,21 @@ import { TeamKind } from '../domain/team.types';
 export class TeamKindQuery {
   @ApiProperty({ enum: TeamKind }) @IsEnum(TeamKind) kind!: TeamKind;
 }
+export class SalesTeamMemberSearchQuery {
+  @ApiProperty({ minLength: 2, maxLength: 120 })
+  @IsString()
+  @MinLength(2)
+  @MaxLength(120)
+  q!: string;
+}
+export class AddExistingSalesTeamMembersDto {
+  @ApiProperty({ type: [String], description: 'Existing internal Sales account IDs to add to the organization as members' })
+  @IsArray()
+  @ArrayMaxSize(100)
+  @ArrayUnique()
+  @IsMongoId({ each: true })
+  userIds!: string[];
+}
 export class TeamProjectDto {
   @ApiProperty() @IsMongoId() projectId!: string;
   @ApiProperty({ type: [String] })

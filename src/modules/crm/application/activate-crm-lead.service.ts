@@ -9,6 +9,7 @@ import {
   ServiceUnavailableException,
   UnauthorizedException,
 } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import { InjectConnection, InjectModel } from '@nestjs/mongoose';
 import { ClientSession, Connection, Model, Types } from 'mongoose';
 import { AuditLog } from '../../audit/infrastructure/audit-log.schema';
@@ -42,6 +43,7 @@ export class ActivateCrmLeadService {
     @InjectModel(ContractAggregate.name) private readonly contracts: Model<ContractAggregate>,
     @InjectModel(ContractVersion.name) private readonly contractVersions: Model<ContractVersion>,
     private readonly crm: SalesCrmService,
+    @Optional() private readonly config?: ConfigService,
     @Optional() @InjectModel(Partner.name) private readonly partners?: Model<PartnerDocument>,
   ) {}
 
@@ -88,7 +90,7 @@ export class ActivateCrmLeadService {
           lifecycleStatus: 'COMPLETED',
           providerCompletionStatus: 'CONFIRMED',
           archiveStatus: 'VERIFIED',
-          activationStatus: 'ELIGIBLE',
+          activationStatus: { $in: ['ELIGIBLE', 'NOT_ELIGIBLE'] },
           customerUserId: { $exists: true },
           'finalEvidence.contractVersionId': { $exists: true },
           'finalEvidence.manifestSha256': { $type: 'string' },
@@ -160,6 +162,14 @@ export class ActivateCrmLeadService {
           throw new BadRequestException({
             code: 'VERIFIED_CONTRACT_EVIDENCE_MANIFEST_REQUIRED',
             message: 'The signed PDF evidence must be archived and bound to the current approved contract version before customer activation.',
+          });
+        }
+
+        const signingMode = this.config?.get<string>('CONTRACT_SIGNING_MODE') ?? 'DISABLED';
+        if (signingMode !== 'DEMO' && evidence.providerKey === 'ALSM_DEMO') {
+          throw new BadRequestException({
+            code: 'DEMO_EVIDENCE_NOT_ACTIVATABLE',
+            message: 'Contracts signed in demo mode cannot be used to activate an enterprise organization in non-demo mode.',
           });
         }
 

@@ -3,6 +3,16 @@ import { parseCorsOrigins } from './cors-policy';
 
 export const environmentValidationSchema = Joi.object({
   NODE_ENV: Joi.string().valid('development', 'test', 'production').default('development'),
+  CONTRACT_SIGNING_MODE: Joi.when('NODE_ENV', {
+    is: 'production',
+    then: Joi.string().valid('DISABLED', 'VNPT').default('DISABLED'),
+    otherwise: Joi.string().valid('DISABLED', 'DEMO', 'VNPT').default('DISABLED'),
+  }),
+  // SMS provider for phone verification OTP delivery.
+  SMS_PROVIDER: Joi.string().valid('DISABLED', 'ESMS', 'TWILIO', 'VNPT_SMS').default('DISABLED'),
+  SMS_API_KEY: Joi.when('SMS_PROVIDER', { is: Joi.valid('ESMS', 'TWILIO', 'VNPT_SMS'), then: Joi.string().trim().min(1).required(), otherwise: Joi.string().allow('').default('') }),
+  SMS_API_SECRET: Joi.when('SMS_PROVIDER', { is: Joi.valid('ESMS', 'TWILIO', 'VNPT_SMS'), then: Joi.string().min(1).required(), otherwise: Joi.string().allow('').default('') }),
+  SMS_SENDER_ID: Joi.when('SMS_PROVIDER', { is: Joi.valid('ESMS', 'TWILIO', 'VNPT_SMS'), then: Joi.string().trim().min(1).required(), otherwise: Joi.string().allow('').default('') }),
   PORT: Joi.number().port().default(3000),
   MONGODB_URI: Joi.string()
     .uri({ scheme: ['mongodb', 'mongodb+srv'] })
@@ -35,6 +45,7 @@ export const environmentValidationSchema = Joi.object({
     }, 'Explicit CORS origins'),
   GOOGLE_CLIENT_ID: Joi.string().allow('').default(''),
   CONVERSION_WORKER_ENABLED: Joi.boolean().default(false),
+  CONVERSION_WORKER_CONCURRENCY: Joi.number().integer().min(1).max(8).default(4),
   STORAGE_ROOT: Joi.string().default('./storage'),
   CONTRACT_EVIDENCE_ENCRYPTION_KEY: Joi.string().allow('').default(''),
   CONTRACT_PDF_FONT_PATH: Joi.string().allow('').default(''),
@@ -44,6 +55,8 @@ export const environmentValidationSchema = Joi.object({
   CONVERSION_TOOL_TIMEOUT_MS: Joi.number().integer().positive().default(120000),
   JAVA_EXECUTABLE: Joi.string().default('java'),
   TOOL2JAVA_JAR_PATH: Joi.string().allow('').default(''),
+  CONVERSION_SOURCE_ENCODING: Joi.string().allow('').default(''),
+  CONVERSION_VERIFY_BUILD: Joi.boolean().default(false),
   MAX_UPLOAD_FILE_SIZE_MB: Joi.number().integer().positive().default(50),
   MAX_UPLOAD_FILES_PER_REQUEST: Joi.number().integer().positive().default(300),
   CASSO_API_KEY: Joi.string().allow('').default(''),

@@ -60,6 +60,36 @@ class ContractFinalEvidenceManifestRecord {
 const ContractFinalEvidenceManifestSchema = SchemaFactory.createForClass(ContractFinalEvidenceManifestRecord);
 
 @Schema({ _id: false })
+class ContractDemoSigningSessionRecord {
+  @Prop({ required: true, maxlength: 240 }) providerEnvelopeReference!: string;
+  @Prop({ type: MongoSchema.Types.ObjectId, required: true }) contractVersionId!: Types.ObjectId;
+  @Prop({ type: MongoSchema.Types.ObjectId, required: true }) customerUserId!: Types.ObjectId;
+  @Prop({ required: true, match: /^[a-f\d]{64}$/ }) canonicalDocumentSha256!: string;
+  @Prop({ required: true, enum: ['SENT', 'COMPLETED'] }) status!: 'SENT' | 'COMPLETED';
+  @Prop({ required: true }) startedAt!: Date;
+  @Prop({ required: true }) expiresAt!: Date;
+  @Prop() completedAt?: Date;
+  @Prop({ maxlength: 240 }) completionEventReference?: string;
+}
+const ContractDemoSigningSessionSchema = SchemaFactory.createForClass(ContractDemoSigningSessionRecord);
+
+@Schema({ _id: false })
+class ContractProviderSigningSessionRecord {
+  @Prop({ required: true, maxlength: 80 }) providerKey!: string;
+  @Prop({ required: true, maxlength: 240, index: true }) providerEnvelopeReference!: string;
+  @Prop({ type: MongoSchema.Types.ObjectId, required: true }) contractVersionId!: Types.ObjectId;
+  @Prop({ required: true, match: /^[a-f\d]{64}$/ }) canonicalDocumentSha256!: string;
+  @Prop({ required: true, enum: ['SENT', 'IN_PROGRESS', 'COMPLETED', 'DECLINED', 'CANCELLED', 'EXPIRED'] })
+  status!: 'SENT' | 'IN_PROGRESS' | 'COMPLETED' | 'DECLINED' | 'CANCELLED' | 'EXPIRED';
+  @Prop({ required: true }) startedAt!: Date;
+  @Prop({ required: true }) expiresAt!: Date;
+  @Prop() completedAt?: Date;
+  @Prop({ maxlength: 240 }) completionEventReference?: string;
+  @Prop() lastEventAt?: Date;
+}
+const ContractProviderSigningSessionSchema = SchemaFactory.createForClass(ContractProviderSigningSessionRecord);
+
+@Schema({ _id: false })
 class ContractTemplateSectionSnapshot {
   @Prop({ required: true, maxlength: 120 }) heading!: string;
   @Prop({ required: true, maxlength: 20000 }) body!: string;
@@ -98,6 +128,8 @@ export class ContractAggregate {
   @Prop({ required: true, enum: ['NOT_STARTED', 'PENDING', 'VERIFIED', 'FAILED'], default: 'NOT_STARTED' })
   archiveStatus!: 'NOT_STARTED' | 'PENDING' | 'VERIFIED' | 'FAILED';
   @Prop({ type: ContractFinalEvidenceManifestSchema }) finalEvidence?: ContractFinalEvidenceManifestRecord;
+  @Prop({ type: ContractDemoSigningSessionSchema }) demoSigningSession?: ContractDemoSigningSessionRecord;
+  @Prop({ type: ContractProviderSigningSessionSchema }) providerSigningSession?: ContractProviderSigningSessionRecord;
   @Prop({ required: true, enum: ['NOT_ELIGIBLE', 'ELIGIBLE', 'REQUESTED', 'COMPLETED', 'FAILED_RETRYABLE', 'RECONCILIATION_REQUIRED'], default: 'NOT_ELIGIBLE' })
   activationStatus!: ContractActivationStatus;
   @Prop({ type: MongoSchema.Types.ObjectId }) customerUserId?: Types.ObjectId;

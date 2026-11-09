@@ -1,4 +1,4 @@
-export type SigningProviderEnvironment = 'SANDBOX' | 'PRODUCTION';
+export type SigningProviderEnvironment = 'DEMO' | 'SANDBOX' | 'PRODUCTION';
 export type SigningSignerParty = 'ALSM' | 'CUSTOMER';
 export type SigningProviderEnvelopeStatus = 'CREATED' | 'SENT' | 'IN_PROGRESS' | 'COMPLETED' | 'DECLINED' | 'EXPIRED' | 'CANCELLED' | 'FAILED';
 
@@ -18,6 +18,8 @@ export interface SigningProviderReadiness {
   capabilities: SigningProviderCapabilities;
 }
 
+export type SigningMethod = 'SMS_OTP' | 'EMAIL_OTP' | 'SMART_CA' | 'USB_TOKEN';
+
 export interface StartSigningEnvelopeInput {
   idempotencyKey: string;
   contractId: string;
@@ -25,6 +27,7 @@ export interface StartSigningEnvelopeInput {
   contractNumber: string;
   canonicalPdf: Buffer;
   canonicalPdfSha256: string;
+  signatureMethod?: SigningMethod;
   signers: Array<{
     signerId: string;
     party: SigningSignerParty;
@@ -32,12 +35,14 @@ export interface StartSigningEnvelopeInput {
     email: string;
     phone?: string;
     sequence: number;
+    signatureMethod?: SigningMethod;
   }>;
   expiresAt: Date;
 }
 
 export interface SigningProviderEnvelopeResult {
   providerEnvelopeReference: string;
+  providerContractId?: string;
   status: Extract<SigningProviderEnvelopeStatus, 'CREATED' | 'SENT' | 'IN_PROGRESS'>;
   signerSessions?: Array<{
     signerId: string;
@@ -54,6 +59,11 @@ export interface VerifiedSigningProviderEvent {
   payloadSha256: string;
   signerReference?: string;
   signerId?: string;
+  signerDetails?: Array<{
+    signerId: string;
+    status: string;
+    signedAt?: Date;
+  }>;
 }
 
 export interface SigningProviderWebhookInput {
@@ -80,6 +90,13 @@ export interface ContractSigningProviderPort {
   getEnvelopeStatus(providerEnvelopeReference: string): Promise<SigningProviderEnvelopeStatus>;
   downloadArtifacts(providerEnvelopeReference: string): Promise<SigningProviderArtifact[]>;
   cancelEnvelope(providerEnvelopeReference: string, reason: string): Promise<void>;
+  /** Available only on the explicit, non-production demo adapter. */
+  completeDemoSignature?(input: {
+    providerEnvelopeReference: string;
+    signerId: string;
+    acknowledged: true;
+    occurredAt: Date;
+  }): Promise<VerifiedSigningProviderEvent>;
 }
 
 export const CONTRACT_SIGNING_PROVIDER = Symbol('CONTRACT_SIGNING_PROVIDER');
