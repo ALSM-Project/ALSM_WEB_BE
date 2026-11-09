@@ -5,6 +5,7 @@ import {
   Injectable,
   Logger,
   NotFoundException,
+  Optional,
 } from '@nestjs/common';
 import { AUDIT_REPOSITORY, AuditRepository } from '../../audit/domain/audit.repository';
 import { MEETING_REPOSITORY, MeetingRecord, MeetingRepository } from '../domain/meeting.types';
@@ -12,6 +13,7 @@ import { PROJECT_REPOSITORY, ProjectRepository } from '../../projects/domain/pro
 import { MailService } from '../../../shared/mail/mail.service';
 import { GoogleCalendarService } from '../../../shared/google/google-calendar.service';
 import { OrganizationContextService } from '../../organizations/application/organization-context.service';
+import { RbacService } from '../../rbac/application/rbac.service';
 
 // Google Meet code format: 3-4-3 lowercase letters (e.g. abc-defg-hij)
 const MEET_CODE_PART_CHARS = 'abcdefghijklmnopqrstuvwxyz';
@@ -38,6 +40,7 @@ export class CreateMeetingService {
     private readonly mail: MailService,
     private readonly googleCalendar: GoogleCalendarService,
     private readonly organizationContext: OrganizationContextService,
+    @Optional() private readonly rbac?: RbacService,
   ) {}
 
   async execute(
@@ -119,6 +122,23 @@ export class CreateMeetingService {
     }
 
     const attendeeEmails = (input.attendeeEmails ?? []).map((e) => e.trim().toLowerCase());
+
+    // Auto-include project-assigned staff / members so they receive email invitations
+    if (project?.assignedStaffId && this.rbac) {
+      try {
+        const allUsers = await this.rbac.getAllUsers();
+        const staff = allUsers.find((u) => u.id === project.assignedStaffId);
+        if (staff?.email && !attendeeEmails.includes(staff.email.toLowerCase())) {
+          attendeeEmails.push(staff.email.toLowerCase());
+          this.logger.log(
+            `Automatically added project-assigned staff '${staff.email}' to meeting '${title}'`,
+          );
+        }
+      } catch (err) {
+        this.logger.warn(`Failed to resolve assigned staff for project ${projectId}: ${(err as Error).message}`);
+      }
+    }
+
     if (attendeeEmails.length === 0) {
       throw new BadRequestException({
         code: 'ATTENDEES_REQUIRED',

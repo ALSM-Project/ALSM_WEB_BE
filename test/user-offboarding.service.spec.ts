@@ -94,6 +94,10 @@ describe('UserOffboardingService (UC-83)', () => {
     updateUserRoles: jest.fn(),
   };
 
+  const mockWorkforceService = {
+    offboardInternalEmployee: jest.fn().mockResolvedValue({ internalMembershipOffboarded: true, globalUserDeactivated: true }),
+  };
+
   const mockAudit = {
     append: jest.fn(),
   };
@@ -107,6 +111,7 @@ describe('UserOffboardingService (UC-83)', () => {
       mockJobModel as never,
       mockSessionModel as never,
       mockRbacService as never,
+      mockWorkforceService as never,
       mockAudit as never,
     );
 

@@ -16,6 +16,11 @@ import { UserRole, UserRoleDocument } from '../infrastructure/schemas/user-role.
 import { AUDIT_REPOSITORY, AuditRepository } from '../../audit/domain/audit.repository';
 import { NotificationsService } from '../../notifications/notifications.service';
 import { toValidObjectId } from '../../../shared/utils/object-id.util';
+import { EligibleStaffQueryDto } from '../presentation/dtos/temporary-role.dto';
+import { EffectivePermissionsService } from './effective-permissions.service';
+import { IRbacRepository, RBAC_REPOSITORY } from '../domain/rbac.repository.interface';
+import { Team } from '../../teams/infrastructure/team.schema';
+import { Project } from '../../projects/infrastructure/project.schema';
 
 export const MIN_TEMPORARY_ROLE_HOURS = 1;
 export const MAX_TEMPORARY_ROLE_HOURS = 24;
@@ -57,6 +62,17 @@ export class TemporaryRoleService {
     private readonly userRoleModel?: Model<UserRoleDocument>,
     @Optional()
     private readonly notifications?: NotificationsService,
+    @Optional()
+    private readonly effectivePermissionsService?: EffectivePermissionsService,
+    @Optional()
+    @Inject(RBAC_REPOSITORY)
+    private readonly rbacRepo?: IRbacRepository,
+    @Optional()
+    @InjectModel(Team.name)
+    private readonly teamModel?: Model<any>,
+    @Optional()
+    @InjectModel(Project.name)
+    private readonly projectModel?: Model<any>,
   ) {}
 
   async grantTemporaryRole(
@@ -612,4 +628,383 @@ export class TemporaryRoleService {
       // Non-blocking notification delivery
     }
   }
+
+  async getEligibleStaff(actorUserId: string, query: EligibleStaffQueryDto) {
+    const now = new Date();
+    const userDocs = await this.userModel.find().exec();
+
+    const userRoleDocs = this.userRoleModel
+      ? await this.userRoleModel.find().exec()
+      : [];
+    const rolesByUser = new Map<string, string[]>();
+    for (const ur of userRoleDocs) {
+      const uId = String(ur.userId);
+      const existing = rolesByUser.get(uId) || [];
+      existing.push(ur.roleId);
+      rolesByUser.set(uId, existing);
+    }
+
+    const activeTempRoles = await this.tempRoleModel
+      .find({ status: 'ACTIVE', expiresAt: { $gt: now } })
+      .exec();
+    const activeByUserId = new Map<string, TemporaryRoleDocument>();
+    for (const tr of activeTempRoles) {
+      activeByUserId.set(String(tr.userId), tr);
+    }
+
+    const pendingRequests = await this.tempRoleModel
+      .find({ requestStatus: 'PENDING' })
+      .exec();
+    const pendingByUserId = new Map<string, TemporaryRoleDocument>();
+    for (const pr of pendingRequests) {
+      pendingByUserId.set(String(pr.userId), pr);
+    }
+
+    const teams = this.teamModel ? await this.teamModel.find().exec() : [];
+    const teamByUser = new Map<string, { teamName: string; department: string }>();
+    for (const t of teams) {
+      const members = [...(t.memberIds || []), ...(t.managerIds || [])];
+      let dept = 'Modernization Operations';
+      if (t.kind === 'CONVERSION' || /conversion/i.test(t.name)) dept = 'Modernization Engineering';
+      else if (t.kind === 'SALES' || /sales/i.test(t.name)) dept = 'Sales & Commercial';
+      else if (/qa|test|quality/i.test(t.name)) dept = 'Quality Assurance';
+      else if (/support/i.test(t.name)) dept = 'Customer Support';
+      else if (/platform|infra/i.test(t.name)) dept = 'Platform Architecture';
+
+      for (const m of members) {
+        if (!teamByUser.has(String(m))) {
+          teamByUser.set(String(m), { teamName: t.name, department: dept });
+        }
+      }
+    }
+
+    const allItems: any[] = [];
+    const allDepartments = new Set<string>();
+    const allRoleNames = new Set<string>();
+
+    for (const u of userDocs) {
+      if ((u as any).accountType === 'PROSPECT') continue;
+
+      const uid = u._id.toString();
+      const currentRoles = rolesByUser.get(uid) || [];
+      if (u.isPlatformAdmin && !currentRoles.includes('ADMIN')) {
+        currentRoles.push('ADMIN');
+      }
+
+      let department = teamByUser.get(uid)?.department;
+      const assignedTeam = teamByUser.get(uid)?.teamName || 'Modernization Operations Team';
+      if (!department) {
+        if (currentRoles.some((r) => /conversion/i.test(r))) {
+          department = 'Modernization Engineering';
+        } else if (currentRoles.some((r) => /lead/i.test(r))) {
+          department = 'Operations Management';
+        } else if (currentRoles.some((r) => /support/i.test(r))) {
+          department = 'Customer Support';
+        } else if (currentRoles.some((r) => /sales/i.test(r))) {
+          department = 'Commercial Sales';
+        } else if (u.isPlatformAdmin) {
+          department = 'Executive Administration';
+        } else {
+          department = 'Platform Operations';
+        }
+      }
+      allDepartments.add(department);
+      currentRoles.forEach((r) => allRoleNames.add(r));
+
+      let accountStatus: 'ACTIVE' | 'LOCKED' | 'DEACTIVATED' = 'ACTIVE';
+      if (u.isLocked) {
+        accountStatus = 'LOCKED';
+      } else if (!u.isActive) {
+        accountStatus = 'DEACTIVATED';
+      }
+
+      const activeTr = activeByUserId.get(uid);
+      const pendingPr = pendingByUserId.get(uid);
+
+      let isEligible = true;
+      let ineligibilityReason: string | null = null;
+
+      if (uid === actorUserId) {
+        isEligible = false;
+        ineligibilityReason = 'Cannot grant temporary role to yourself (Separation of Duties)';
+      } else if (u.isPlatformAdmin) {
+        isEligible = false;
+        ineligibilityReason = 'Platform Admin already possesses full platform privileges';
+      } else if (accountStatus === 'LOCKED') {
+        isEligible = false;
+        ineligibilityReason = `Account is locked: ${(u as any).lockReason || 'Security Hold'}`;
+      } else if (accountStatus === 'DEACTIVATED') {
+        isEligible = false;
+        ineligibilityReason = 'Account is currently deactivated';
+      } else if (activeTr) {
+        isEligible = false;
+        ineligibilityReason = `User holds active temporary elevation: ${activeTr.roleId}`;
+      } else if (pendingPr) {
+        isEligible = false;
+        ineligibilityReason = `User has pending elevation request for ${pendingPr.roleId} awaiting review`;
+      }
+
+      allItems.push({
+        id: uid,
+        fullName: u.fullName || 'Internal Staff',
+        email: u.email,
+        employeeId: `EMP-${uid.slice(-6).toUpperCase()}`,
+        department,
+        assignedTeam,
+        currentRoles,
+        accountStatus,
+        isEligible,
+        ineligibilityReason,
+        hasActiveTemporaryRole: Boolean(activeTr),
+        activeTemporaryRole: activeTr
+          ? {
+              roleId: activeTr.roleId,
+              expiresAt: activeTr.expiresAt.toISOString(),
+              durationHours: activeTr.durationHours,
+            }
+          : undefined,
+        hasPendingRequest: Boolean(pendingPr),
+        pendingRequest: pendingPr
+          ? {
+              roleId: pendingPr.roleId,
+              requestedAt: (pendingPr as any).createdAt?.toISOString() || now.toISOString(),
+              durationHours: pendingPr.durationHours,
+            }
+          : undefined,
+      });
+    }
+
+    let filtered = allItems;
+    if (query.search && query.search.trim()) {
+      const q = query.search.trim().toLowerCase();
+      filtered = filtered.filter(
+        (i) =>
+          i.fullName.toLowerCase().includes(q) ||
+          i.email.toLowerCase().includes(q) ||
+          i.employeeId.toLowerCase().includes(q) ||
+          i.id.toLowerCase().includes(q),
+      );
+    }
+    if (query.department && query.department !== 'ALL') {
+      filtered = filtered.filter((i) => i.department.toLowerCase() === query.department?.toLowerCase());
+    }
+    if (query.currentRole && query.currentRole !== 'ALL') {
+      filtered = filtered.filter((i) =>
+        i.currentRoles.some((r: string) => r.toLowerCase() === query.currentRole?.toLowerCase()),
+      );
+    }
+    if (query.accountStatus && query.accountStatus !== 'ALL') {
+      filtered = filtered.filter((i) => i.accountStatus === query.accountStatus);
+    }
+    if (query.eligibility && query.eligibility !== 'ALL') {
+      const wantEligible = query.eligibility === 'ELIGIBLE';
+      filtered = filtered.filter((i) => i.isEligible === wantEligible);
+    }
+
+    filtered.sort((a, b) => {
+      if (a.isEligible !== b.isEligible) {
+        return a.isEligible ? -1 : 1;
+      }
+      return a.fullName.localeCompare(b.fullName);
+    });
+
+    const page = Math.max(1, Number(query.page) || 1);
+    const limit = Math.max(1, Math.min(100, Number(query.limit) || 10));
+    const total = filtered.length;
+    const totalPages = Math.ceil(total / limit) || 1;
+    const paginatedItems = filtered.slice((page - 1) * limit, page * limit);
+
+    return {
+      items: paginatedItems,
+      total,
+      page,
+      limit,
+      totalPages,
+      departmentOptions: Array.from(allDepartments).sort(),
+      roleOptions: Array.from(allRoleNames).sort(),
+    };
+  }
+
+  async getStaffElevationProfile(staffId: string) {
+    const user = await this.userModel.findById(toValidObjectId(staffId)).exec();
+    if (!user) {
+      throw new NotFoundException(`Staff user '${staffId}' was not found`);
+    }
+
+    const now = new Date();
+    const userObjId = toValidObjectId(staffId);
+
+    const userRoles = this.userRoleModel
+      ? await this.userRoleModel.find({ userId: staffId }).exec()
+      : [];
+    const roles = userRoles.map((ur) => ur.roleId);
+    if (user.isPlatformAdmin && !roles.includes('ADMIN')) {
+      roles.push('ADMIN');
+    }
+
+    let permissionsSummary: string[] = [];
+    if (this.effectivePermissionsService) {
+      permissionsSummary = await this.effectivePermissionsService.getEffectivePermissions(staffId);
+    } else if (this.rbacRepo) {
+      permissionsSummary = await this.rbacRepo.findRolePermissionsByRoleIds(roles);
+    }
+
+    const activeTempRoles = await this.tempRoleModel
+      .find({ userId: userObjId, status: 'ACTIVE', expiresAt: { $gt: now } })
+      .exec();
+
+    const pendingRequests = await this.tempRoleModel
+      .find({ userId: userObjId, requestStatus: 'PENDING' })
+      .exec();
+
+    const recentHistory = await this.tempRoleModel
+      .find({ userId: userObjId })
+      .sort({ createdAt: -1 })
+      .limit(5)
+      .exec();
+
+    const ineligibilityReasons: string[] = [];
+    if (user.isPlatformAdmin) ineligibilityReasons.push('Platform Admin already holds all permissions');
+    if (user.isLocked) ineligibilityReasons.push(`Account locked: ${user.lockReason || 'Security Hold'}`);
+    if (!user.isActive) ineligibilityReasons.push('Account deactivated');
+    if (activeTempRoles.length > 0) ineligibilityReasons.push(`Holds active temporary role: ${activeTempRoles[0].roleId}`);
+    if (pendingRequests.length > 0) ineligibilityReasons.push(`Has pending elevation request for ${pendingRequests[0].roleId}`);
+
+    return {
+      staff: {
+        id: user.id,
+        fullName: user.fullName,
+        email: user.email,
+        employeeId: `EMP-${user.id.slice(-6).toUpperCase()}`,
+        isPlatformAdmin: user.isPlatformAdmin,
+        isActive: user.isActive,
+        isLocked: user.isLocked,
+        accountStatus: user.isLocked ? 'LOCKED' : (!user.isActive ? 'DEACTIVATED' : 'ACTIVE'),
+        currentRoles: roles,
+      },
+      permissionsSummary,
+      activeTemporaryRoles: activeTempRoles.map((tr) => ({
+        id: tr.id,
+        roleId: tr.roleId,
+        durationHours: tr.durationHours,
+        grantedAt: tr.grantedAt?.toISOString(),
+        expiresAt: tr.expiresAt?.toISOString(),
+        remainingMinutes: Math.max(0, Math.round((tr.expiresAt.getTime() - now.getTime()) / 60000)),
+        reason: tr.reason,
+      })),
+      pendingRequests: pendingRequests.map((pr) => ({
+        id: pr.id,
+        roleId: pr.roleId,
+        durationHours: pr.durationHours,
+        requestedAt: (pr as any).createdAt?.toISOString(),
+        reason: pr.reason,
+      })),
+      recentHistory: recentHistory.map((h) => ({
+        id: h.id,
+        roleId: h.roleId,
+        status: h.status,
+        durationHours: h.durationHours,
+        createdAt: (h as any).createdAt?.toISOString(),
+      })),
+      isEligible: ineligibilityReasons.length === 0,
+      ineligibilityReasons,
+    };
+  }
+
+  async getElevationCatalog() {
+    const roles = await this.roleModel.find().exec();
+    const catalog: any[] = [];
+
+    const roleMetadata: Record<string, { label: string; desc: string; modules: string[] }> = {
+      TEAM_LEAD: {
+        label: 'Team Lead',
+        desc: 'Supervisory role with assignment authority, transfer sign-offs, and quality approvals.',
+        modules: ['Operations', 'Team Lead Projects', 'Resource Transfers', 'Quality Review', 'Performance Monitoring'],
+      },
+      CONVERSION_STAFF: {
+        label: 'Conversion Staff',
+        desc: 'Core modernization engineer role with AST inspection, method mapping, and batch conversion queue processing.',
+        modules: ['Operations', 'Conversion Queue', 'Rule & AI Validation', 'Quality Review'],
+      },
+      INTERNAL_SUPPORT: {
+        label: 'Internal Support',
+        desc: 'Support diagnostics role with partner session replay and read-only diagnostics.',
+        modules: ['Support Portal', 'Diagnostics', 'Organisations Support View'],
+      },
+      SALES_MANAGER: {
+        label: 'Sales Manager',
+        desc: 'Commercial sales elevation for quote authoring and client proposal management.',
+        modules: ['CRM & Sales', 'Leads', 'Pipeline', 'Enterprise Quotes'],
+      },
+    };
+
+    for (const r of roles) {
+      const normalized = (r.id || '').toUpperCase();
+      if (PLATFORM_ADMIN_ROLES.has(normalized)) continue;
+
+      let permissions: string[] = [];
+      if (this.rbacRepo) {
+        permissions = await this.rbacRepo.findRolePermissions(r.id);
+      }
+
+      const meta = roleMetadata[normalized] || {
+        label: r.name || r.id,
+        desc: r.description || 'Specialized role for temporary privilege elevation.',
+        modules: ['Operations', 'Modernization'],
+      };
+
+      const sensitivePermissions = permissions.filter((p) =>
+        /revoke|delete|manage|grant|impersonate|override|admin/i.test(p),
+      );
+
+      catalog.push({
+        id: r.id,
+        code: r.id,
+        name: meta.label,
+        description: meta.desc,
+        permissionCount: permissions.length,
+        permissions,
+        modules: meta.modules,
+        sensitivePermissions,
+      });
+    }
+
+    if (catalog.length === 0) {
+      catalog.push(
+        {
+          id: 'team_lead',
+          code: 'TEAM_LEAD',
+          name: 'Team Lead',
+          description: 'Supervisory role with assignment authority, transfer sign-offs, and quality approvals.',
+          permissionCount: 8,
+          permissions: ['team-lead.projects.manage', 'projects.allocate', 'quality.review'],
+          modules: ['Operations', 'Team Lead Projects', 'Resource Transfers', 'Quality Review'],
+          sensitivePermissions: ['projects.allocate', 'quality.review'],
+        },
+        {
+          id: 'conversion_staff',
+          code: 'CONVERSION_STAFF',
+          name: 'Conversion Staff',
+          description: 'Core modernization engineer role with AST inspection, method mapping, and batch conversion queue processing.',
+          permissionCount: 6,
+          permissions: ['conversions.queue.view', 'conversions.execute', 'validation.rules.view'],
+          modules: ['Operations', 'Conversion Queue', 'Rule & AI Validation'],
+          sensitivePermissions: ['conversions.execute'],
+        },
+        {
+          id: 'internal_support',
+          code: 'INTERNAL_SUPPORT',
+          name: 'Internal Support',
+          description: 'Support diagnostics role with customer diagnostics and session investigation access.',
+          permissionCount: 4,
+          permissions: ['support.view', 'support.diagnostics.view'],
+          modules: ['Support Portal', 'Diagnostics'],
+          sensitivePermissions: ['support.diagnostics.view'],
+        },
+      );
+    }
+
+    return catalog;
+  }
+
 }

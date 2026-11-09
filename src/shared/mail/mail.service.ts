@@ -537,4 +537,169 @@ export class MailService {
     this.logger.log(`Export notification sent to ${to} for ${packageName}`);
     return true;
   }
+
+  /** Notify customer when an electronic contract has been signed and invoice is issued */
+  async sendContractSignedNotification(params: {
+    to: string;
+    customerName: string;
+    contractNumber: string;
+    totalValueVnd: number;
+    invoiceNumber: string;
+    paymentUrl: string;
+  }): Promise<boolean> {
+    const esc = (value?: string) =>
+      (value || '')
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
+
+    const subject = `[ALSM Enterprise] Hợp đồng điện tử ${params.contractNumber} đã được ký thành công`;
+    const formattedAmount = (params.totalValueVnd || 0).toLocaleString('vi-VN');
+
+    const html = `<!DOCTYPE html>
+<html>
+<body style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;margin:0;padding:24px;background:#F0F4F8;color:#091E42;">
+  <div style="max-width:600px;margin:0 auto;background:#fff;border-radius:12px;border:1px solid #D9E2EC;overflow:hidden;box-shadow:0 4px 12px rgba(9,30,66,0.06);">
+    <div style="background:#0652CC;padding:28px 32px;color:#fff;">
+      <h2 style="margin:0;font-size:20px;font-weight:700;">Hợp Đồng Điện Tử Đã Ký Thành Công</h2>
+      <p style="margin:6px 0 0;font-size:13px;opacity:0.9;">Mã hợp đồng: ${esc(params.contractNumber)}</p>
+    </div>
+    <div style="padding:32px;">
+      <p style="margin:0 0 16px;font-size:14px;line-height:1.6;">Kính gửi <strong>${esc(params.customerName)}</strong>,</p>
+      <p style="margin:0 0 20px;font-size:14px;line-height:1.6;">
+        Hợp đồng điện tử hiện đại hóa hệ thống của Quý khách đã được xác thực ký điện tử thành công theo đúng quy định pháp luật và tiêu chuẩn mật mã an toàn.
+      </p>
+      <div style="background:#F7F9FC;border:1px solid #E2E8F0;border-radius:8px;padding:20px;margin-bottom:24px;">
+        <table width="100%" style="font-size:13px;line-height:1.8;">
+          <tr>
+            <td style="color:#6B778C;width:40%;">Mã hợp đồng:</td>
+            <td style="font-weight:700;color:#091E42;">${esc(params.contractNumber)}</td>
+          </tr>
+          <tr>
+            <td style="color:#6B778C;">Mã hóa đơn phát hành:</td>
+            <td style="font-weight:700;color:#0652CC;">${esc(params.invoiceNumber)}</td>
+          </tr>
+          <tr>
+            <td style="color:#6B778C;">Tổng giá trị thanh toán:</td>
+            <td style="font-weight:700;color:#00875A;font-size:15px;">${formattedAmount} VND</td>
+          </tr>
+          <tr>
+            <td style="color:#6B778C;">Phương thức xác thực:</td>
+            <td style="color:#091E42;">Chữ ký số điện tử &amp; Chứng chỉ mật mã SHA-256</td>
+          </tr>
+        </table>
+      </div>
+      <div style="text-align:center;margin:32px 0;">
+        <a href="${esc(params.paymentUrl)}" style="display:inline-block;background:#00875A;color:#fff;font-size:15px;font-weight:700;text-decoration:none;padding:12px 32px;border-radius:8px;box-shadow:0 2px 4px rgba(0,135,90,0.2);">
+          Xem Hóa Đơn &amp; Thanh Toán Chuyển Khoản
+        </a>
+      </div>
+      <p style="margin:0;font-size:12px;color:#6B778C;line-height:1.5;">
+        * Ngay khi hệ thống ghi nhận thanh toán hóa đơn thành công, tài khoản tổ chức của Quý khách trên <strong>ALSM Partner Portal (Web 3)</strong> sẽ được tự động kích hoạt kèm hạn ngạch hợp đồng.
+      </p>
+    </div>
+    <div style="background:#F7F9FC;border-top:1px solid #D9E2EC;padding:16px;text-align:center;font-size:11px;color:#6B778C;">
+      ALSM Enterprise Platform — Nền tảng Hiện đại hóa Phần mềm Kế thừa Toàn diện.
+    </div>
+  </div>
+</body>
+</html>`;
+
+    if (!this.transporter) {
+      this.logger.warn(`[EMAIL SKIPPED - No SMTP] To: ${params.to} | Subject: ${subject}`);
+      return false;
+    }
+    await this.transporter.sendMail({ from: this.fromAddress, to: params.to, subject, html });
+    this.logger.log(`Contract signed notification email sent to ${params.to}`);
+    return true;
+  }
+
+  /** Notify customer when their Web 3 Partner Portal workspace and contract quotas are activated */
+  async sendWeb3ActivationNotification(params: {
+    to: string;
+    companyName: string;
+    contractNumber: string;
+    serviceMode: string;
+    screensQuota: number;
+    portalUrl: string;
+  }): Promise<boolean> {
+    const esc = (value?: string) =>
+      (value || '')
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
+
+    const subject = `[ALSM Partner Portal] Chúc mừng! Tài khoản ${params.companyName} đã được kích hoạt thành công`;
+    const modeLabel =
+      params.serviceMode === 'ALSM_MANAGED' || params.serviceMode === 'WE_CONVERT_FOR_YOU'
+        ? 'Managed Modernization Services'
+        : params.serviceMode === 'HYBRID'
+        ? 'Enterprise Hybrid Modernization Model'
+        : 'Platform-Based Modernization Workspace';
+
+    const html = `<!DOCTYPE html>
+<html>
+<body style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;margin:0;padding:24px;background:#F0F4F8;color:#091E42;">
+  <div style="max-width:600px;margin:0 auto;background:#fff;border-radius:12px;border:1px solid #D9E2EC;overflow:hidden;box-shadow:0 4px 12px rgba(9,30,66,0.06);">
+    <div style="background:#00875A;padding:28px 32px;color:#fff;">
+      <h2 style="margin:0;font-size:20px;font-weight:700;">Tài Khoản Web 3 Partner Portal Đã Kích Hoạt</h2>
+      <p style="margin:6px 0 0;font-size:13px;opacity:0.9;">Tổ chức: ${esc(params.companyName)}</p>
+    </div>
+    <div style="padding:32px;">
+      <p style="margin:0 0 16px;font-size:14px;line-height:1.6;">Kính gửi Quý đối tác <strong>${esc(params.companyName)}</strong>,</p>
+      <p style="margin:0 0 20px;font-size:14px;line-height:1.6;">
+        Hệ thống ALSM xác nhận hợp đồng và thanh toán của Quý khách đã hoàn tất. Không gian làm việc trên <strong>ALSM Web 3 Partner Portal</strong> đã được tự động cấp phát và kích hoạt đầy đủ quyền hạn.
+      </p>
+      <div style="background:#F7F9FC;border:1px solid #E2E8F0;border-radius:8px;padding:20px;margin-bottom:24px;">
+        <table width="100%" style="font-size:13px;line-height:1.8;">
+          <tr>
+            <td style="color:#6B778C;width:40%;">Mã hợp đồng:</td>
+            <td style="font-weight:700;color:#091E42;">${esc(params.contractNumber)}</td>
+          </tr>
+          <tr>
+            <td style="color:#6B778C;">Chế độ dịch vụ (Service Mode):</td>
+            <td style="font-weight:700;color:#0652CC;">${modeLabel}</td>
+          </tr>
+          <tr>
+            <td style="color:#6B778C;">Hạn ngạch màn hình (Quota):</td>
+            <td style="font-weight:700;color:#00875A;font-size:14px;">${params.screensQuota} màn hình hiện đại hóa</td>
+          </tr>
+          <tr>
+            <td style="color:#6B778C;">Vai trò quản trị viên:</td>
+            <td style="font-weight:700;color:#091E42;">ORGANIZATION_OWNER</td>
+          </tr>
+          <tr>
+            <td style="color:#6B778C;">Trạng thái hệ thống:</td>
+            <td style="font-weight:700;color:#00875A;">ACTIVE • Sẵn sàng chuyển đổi</td>
+          </tr>
+        </table>
+      </div>
+      <div style="text-align:center;margin:32px 0;">
+        <a href="${esc(params.portalUrl)}" style="display:inline-block;background:#0652CC;color:#fff;font-size:15px;font-weight:700;text-decoration:none;padding:12px 32px;border-radius:8px;box-shadow:0 2px 4px rgba(6,82,204,0.2);">
+          Đăng Nhập ALSM Partner Portal (Web 3)
+        </a>
+      </div>
+      <p style="margin:0;font-size:12px;color:#6B778C;line-height:1.5;">
+        * Quý khách không cần phải ký lại hợp đồng trên Web 3. Toàn bộ thông tin hợp đồng và quota đã được đồng bộ tự động.
+      </p>
+    </div>
+    <div style="background:#F7F9FC;border-top:1px solid #D9E2EC;padding:16px;text-align:center;font-size:11px;color:#6B778C;">
+      ALSM Enterprise Platform — Nền tảng Hiện đại hóa Phần mềm Kế thừa Toàn diện.
+    </div>
+  </div>
+</body>
+</html>`;
+
+    if (!this.transporter) {
+      this.logger.warn(`[EMAIL SKIPPED - No SMTP] To: ${params.to} | Subject: ${subject}`);
+      return false;
+    }
+    await this.transporter.sendMail({ from: this.fromAddress, to: params.to, subject, html });
+    this.logger.log(`Web 3 Activation notification email sent to ${params.to}`);
+    return true;
+  }
 }

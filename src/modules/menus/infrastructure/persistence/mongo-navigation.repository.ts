@@ -40,6 +40,12 @@ export class MongoNavigationRepository implements INavigationRepository {
       status: doc.status,
       openInNewTab: doc.openInNewTab ?? false,
       hideParentLabel: doc.hideParentLabel ?? false,
+      contractTypeVisibility: doc.contractTypeVisibility || 'ALL',
+      featureKey: doc.featureKey || null,
+      description: doc.description || null,
+      requiredRoles: doc.requiredRoles || [],
+      createdAt: doc.createdAt,
+      updatedAt: doc.updatedAt,
     }));
   }
 

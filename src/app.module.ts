@@ -1,3 +1,12 @@
+import { MeetingRequest, MeetingRequestSchema } from './modules/meetings/infrastructure/meeting-request.schema';
+import { MeetingRequestService } from './modules/meetings/application/meeting-request.service';
+import { MeetingRequestController } from './modules/meetings/presentation/meeting-request.controller';
+import { TaxLookupController } from './modules/organizations/presentation/tax-lookup.controller';
+import { OrganizationLegalProfileService } from './modules/organizations/application/organization-legal-profile.service';
+import { TaxIdLookupAdapter } from './modules/organizations/infrastructure/tax-id-lookup.adapter';
+import { TAX_LOOKUP_PROVIDER } from './modules/organizations/domain/tax-lookup-provider.port';
+import { OrganizationUsageService } from './modules/billing/application/organization-usage.service';
+import { OrganizationUsageController } from './modules/billing/presentation/organization-usage.controller';
 import { Lead, LeadSchema } from './modules/crm/infrastructure/lead.schema';
 import { LEAD_REPOSITORY } from './modules/crm/domain/lead.types';
 import { MongoLeadRepository } from './modules/crm/infrastructure/mongo-lead.repository';
@@ -29,6 +38,9 @@ import { CONTRACT_AGGREGATE_UNIT_OF_WORK } from './modules/crm/application/contr
 import { MongoContractAggregateUnitOfWork } from './modules/crm/infrastructure/mongo-contract-aggregate.unit-of-work';
 import { ContractAggregateService } from './modules/crm/application/contract-aggregate.service';
 import { ContractAggregateController } from './modules/crm/presentation/contract-aggregate.controller';
+import { EnterpriseContractService } from './modules/crm/application/enterprise-contract.service';
+import { EnterpriseContractPdfService } from './modules/crm/application/enterprise-contract-pdf.service';
+import { EnterpriseContractController } from './modules/crm/presentation/enterprise-contract.controller';
 import { ContractSigningOrchestrationService } from './modules/crm/application/contract-signing-orchestration.service';
 import { ContractSigningWebhookService } from './modules/crm/application/contract-signing-webhook.service';
 import { ContractEvidencePipelineService } from './modules/crm/infrastructure/contract-evidence-pipeline.service';
@@ -70,10 +82,18 @@ import { GetSalesLeadService } from './modules/crm/application/get-sales-lead.se
 import { SalesController } from './modules/crm/presentation/sales.controller';
 import { SalesCrmController } from './modules/crm/presentation/sales-crm.controller';
 import { SalesCrmService } from './modules/crm/application/sales-crm.service';
+import { CrmConversationController } from './modules/crm/presentation/crm-conversation.controller';
+import { CrmConversationService } from './modules/crm/application/crm-conversation.service';
+import { CrmChatWebSocketService } from './modules/crm/infrastructure/crm-chat.websocket';
+import { CrmConversation, CrmConversationSchema } from './modules/crm/infrastructure/crm-conversation.schema';
+import { CrmConversationMessage, CrmConversationMessageSchema } from './modules/crm/infrastructure/crm-conversation-message.schema';
 import { CreateContractService } from './modules/crm/application/create-contract.service';
 import { ActivateCrmLeadService } from './modules/crm/application/activate-crm-lead.service';
 import { ReviewDiscountService } from './modules/crm/application/review-discount.service';
 import { AdminModule } from './modules/admin/admin.module';
+import { BankAccountModule } from './modules/bank-accounts/bank-account.module';
+import { WorkforceModule } from './modules/workforce/workforce.module';
+
 import { CurrentSessionGuard } from './shared/security/current-session.guard';
 import { SessionAssuranceModule } from './modules/auth/session-assurance.module';
 import { Connection, Model } from 'mongoose';
@@ -116,6 +136,10 @@ import {
   Organization,
   OrganizationSchema,
 } from './modules/organizations/infrastructure/organization.schema';
+import {
+  EngagementType,
+  EngagementTypeSchema,
+} from './modules/organizations/infrastructure/engagement-type.schema';
 import { UserSession, UserSessionSchema } from './modules/auth/infrastructure/user-session.schema';
 import {
   PasswordReset,
@@ -127,6 +151,24 @@ import {
 } from './modules/auth/infrastructure/email-verification.schema';
 import { AuditLog, AuditLogSchema } from './modules/audit/infrastructure/audit-log.schema';
 import { Project, ProjectSchema } from './modules/projects/infrastructure/project.schema';
+import {
+  ConversionRequest,
+  ConversionRequestSchema,
+} from './modules/conversions/infrastructure/conversion-request.schema';
+import { ConversionRequestService } from './modules/conversions/application/conversion-request.service';
+import { ConversionRequestController } from './modules/conversions/presentation/conversion-request.controller';
+import {
+  DeliverableDocument,
+  DeliverableSchema,
+} from './modules/conversions/infrastructure/deliverable.schema';
+import { DeliverableService } from './modules/conversions/application/deliverable.service';
+import { DeliverablesController } from './modules/conversions/presentation/deliverable.controller';
+import {
+  InternalWorkingFileDocument,
+  InternalWorkingFileSchema,
+} from './modules/conversions/infrastructure/internal-working-file.schema';
+import { InternalWorkingFileService } from './modules/conversions/application/internal-working-file.service';
+import { InternalWorkingFilesController } from './modules/conversions/presentation/internal-working-file.controller';
 import {
   ConversionJob,
   ConversionJobSchema,
@@ -144,6 +186,7 @@ import { MEETING_REPOSITORY } from './modules/meetings/domain/meeting.types';
 import { MongoMeetingRepository } from './modules/meetings/infrastructure/mongo-meeting.repository';
 import { CreateMeetingService } from './modules/meetings/application/create-meeting.service';
 import { ListMeetingsService } from './modules/meetings/application/list-meetings.service';
+import { ManageMeetingService } from './modules/meetings/application/manage-meeting.service';
 import { MeetingController } from './modules/meetings/presentation/meeting.controller';
 import { LEAD_REPOSITORY as UC58_LEAD_REPOSITORY } from './modules/leads/domain/lead.types';
 import { MongoLeadRepository as MongoUc58LeadRepository } from './modules/leads/infrastructure/mongo-lead.repository';
@@ -199,6 +242,7 @@ import { VALIDATION_FINDING_REPOSITORY } from './modules/validation/domain/valid
 import { MongoValidationRunRepository } from './modules/validation/infrastructure/mongo-validation-run.repository';
 import { MongoValidationFindingRepository } from './modules/validation/infrastructure/mongo-validation-finding.repository';
 import { BmsSanitizerService } from './modules/validation/application/bms-sanitizer.service';
+import { BmsRuleValidationService } from './modules/validation/application/bms-rule-validation.service';
 import { BmsAiValidatorAdapter } from './modules/validation/infrastructure/bms-ai-validator.adapter';
 import { BuildValidationContextService } from './modules/validation/application/build-validation-context.service';
 import { ValidationReadService } from './modules/validation/application/validation-read.service';
@@ -409,6 +453,8 @@ import { NotificationsService } from './modules/notifications/notifications.serv
     AuditModule,
     MongooseModule.forFeature([
       { name: Lead.name, schema: LeadSchema },
+      { name: CrmConversation.name, schema: CrmConversationSchema },
+      { name: CrmConversationMessage.name, schema: CrmConversationMessageSchema },
       { name: ContractInvitation.name, schema: ContractInvitationSchema },
       { name: ContractAccessGrant.name, schema: ContractAccessGrantSchema },
       { name: PublicInvitationRateLimit.name, schema: PublicInvitationRateLimitSchema },
@@ -419,9 +465,13 @@ import { NotificationsService } from './modules/notifications/notifications.serv
       { name: UC58_LEAD_MODEL, schema: Uc58LeadSchema },
       { name: User.name, schema: UserSchema },
       { name: Organization.name, schema: OrganizationSchema },
+      { name: EngagementType.name, schema: EngagementTypeSchema },
       { name: UserSession.name, schema: UserSessionSchema },
       { name: AuditLog.name, schema: AuditLogSchema },
       { name: Project.name, schema: ProjectSchema },
+      { name: ConversionRequest.name, schema: ConversionRequestSchema },
+      { name: DeliverableDocument.name, schema: DeliverableSchema },
+      { name: InternalWorkingFileDocument.name, schema: InternalWorkingFileSchema },
       { name: ResourceTransferRequest.name, schema: ResourceTransferRequestSchema },
       { name: Team.name, schema: TeamSchema },
       { name: TeamJobAssignment.name, schema: TeamJobAssignmentSchema },
@@ -437,6 +487,7 @@ import { NotificationsService } from './modules/notifications/notifications.serv
       { name: FieldMapping.name, schema: FieldMappingSchema },
       { name: MethodMapping.name, schema: MethodMappingSchema },
       { name: Meeting.name, schema: MeetingSchema },
+      { name: MeetingRequest.name, schema: MeetingRequestSchema },
       { name: Partner.name, schema: PartnerSchema },
       { name: ErrorLog.name, schema: ErrorLogSchema },
       { name: ScreenDocument.name, schema: ConversionScreenSchema },
@@ -455,13 +506,17 @@ import { NotificationsService } from './modules/notifications/notifications.serv
     RbacModule,
     MenuModule,
     AdminModule,
+    BankAccountModule,
+    WorkforceModule,
   ],
   controllers: [
     SalesController,
     SalesCrmController,
+    CrmConversationController,
     ContractInvitationsController,
     ProspectInvitationsController,
     ContractAggregateController,
+    EnterpriseContractController,
     ContractSigningWebhookController,
     ContractTemplateController,
     TeamsController,
@@ -470,6 +525,9 @@ import { NotificationsService } from './modules/notifications/notifications.serv
     AuthController,
     PhoneVerificationController,
     ProjectsController,
+    ConversionRequestController,
+    DeliverablesController,
+    InternalWorkingFilesController,
     ResourceTransferController,
     ConversionsController,
     QualityReviewController,
@@ -479,6 +537,9 @@ import { NotificationsService } from './modules/notifications/notifications.serv
     FieldMappingController,
     MethodMappingController,
     MeetingController,
+    MeetingRequestController,
+    TaxLookupController,
+    OrganizationUsageController,
     LeadController,
     PartnerController,
     UsersController,
@@ -512,6 +573,8 @@ import { NotificationsService } from './modules/notifications/notifications.serv
     ContractNotificationEmailOutboxWorker,
     { provide: CONTRACT_AGGREGATE_UNIT_OF_WORK, useClass: MongoContractAggregateUnitOfWork },
     ContractAggregateService,
+    EnterpriseContractPdfService,
+    EnterpriseContractService,
     ContractSigningOrchestrationService,
     ContractSigningWebhookService,
     ContractEvidencePipelineService,
@@ -544,6 +607,8 @@ import { NotificationsService } from './modules/notifications/notifications.serv
     RecordSalesRevenueService,
     GetSalesLeadService,
     SalesCrmService,
+    CrmConversationService,
+    CrmChatWebSocketService,
     CreateContractService,
     ActivateCrmLeadService,
     ReviewDiscountService,
@@ -628,6 +693,9 @@ import { NotificationsService } from './modules/notifications/notifications.serv
     OrganizationContextService,
     OrganizationAuthorizationService,
     ProjectService,
+    ConversionRequestService,
+    DeliverableService,
+    InternalWorkingFileService,
     ProjectStaffAllocationService,
     ConversionJobService,
     ConversionProjectAccessService,
@@ -696,6 +764,7 @@ import { NotificationsService } from './modules/notifications/notifications.serv
     GeminiJsonClient,
     GeminiAiValidatorAdapter,
     BmsSanitizerService,
+    BmsRuleValidationService,
     BmsAiValidatorAdapter,
     aiValidatorProvider,
     bmsAiValidatorProvider,
@@ -739,6 +808,12 @@ import { NotificationsService } from './modules/notifications/notifications.serv
     ListPartnersService,
     CreateMeetingService,
     ListMeetingsService,
+    ManageMeetingService,
+    MeetingRequestService,
+    OrganizationUsageService,
+    TaxIdLookupAdapter,
+    { provide: TAX_LOOKUP_PROVIDER, useClass: TaxIdLookupAdapter },
+    OrganizationLegalProfileService,
     { provide: UC58_LEAD_REPOSITORY, useClass: MongoUc58LeadRepository },
     {
       provide: SEND_QUOTE_UNIT_OF_WORK,

@@ -59,6 +59,23 @@ export class CreateMenuItemDto {
   hideParentLabel?: boolean;
 
   @IsOptional()
+  @IsString()
+  contractTypeVisibility?: string;
+
+  @IsOptional()
+  @IsString()
+  featureKey?: string | null;
+
+  @IsOptional()
+  @IsString()
+  description?: string | null;
+
+  @IsOptional()
+  @IsArray()
+  @IsString({ each: true })
+  requiredRoles?: string[];
+
+  @IsOptional()
   @IsArray()
   @IsString({ each: true })
   permissions?: string[];
@@ -108,6 +125,23 @@ export class UpdateMenuItemDto {
   @IsOptional()
   @IsBoolean()
   hideParentLabel?: boolean;
+
+  @IsOptional()
+  @IsString()
+  contractTypeVisibility?: string;
+
+  @IsOptional()
+  @IsString()
+  featureKey?: string | null;
+
+  @IsOptional()
+  @IsString()
+  description?: string | null;
+
+  @IsOptional()
+  @IsArray()
+  @IsString({ each: true })
+  requiredRoles?: string[];
 
   @IsOptional()
   @IsArray()

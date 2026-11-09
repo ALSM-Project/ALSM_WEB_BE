@@ -98,6 +98,7 @@ describe('UserOffboardingApprovalService (UC-89)', () => {
   let mockTeamModel: unknown;
   let mockAudit: jest.Mocked<AuditRepository>;
   let mockNotifications: jest.Mocked<Partial<NotificationsService>>;
+  let mockWorkforceService: any;
 
   beforeEach(() => {
     mockRequestRepo = {
@@ -191,6 +192,12 @@ describe('UserOffboardingApprovalService (UC-89)', () => {
       append: jest.fn().mockResolvedValue(undefined),
     };
 
+    mockWorkforceService = {
+      validateInternalEmployee: jest.fn().mockResolvedValue({ id: 'mem-1' }),
+      searchEmployees: jest.fn().mockResolvedValue({ items: [], total: 0, page: 1, limit: 10, totalPages: 1 }),
+      getInternalOrganization: jest.fn().mockResolvedValue({ id: 'org-1' }),
+    };
+
     mockNotifications = {
       createForUsers: jest.fn().mockResolvedValue(1),
     };
@@ -203,6 +210,7 @@ describe('UserOffboardingApprovalService (UC-89)', () => {
       mockTeamModel as unknown as Model<Team>,
       mockAudit,
       mockNotifications as unknown as NotificationsService,
+      mockWorkforceService as never,
     );
   });
 

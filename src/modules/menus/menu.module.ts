@@ -13,7 +13,6 @@ import {
 import { MenuAnalytics, MenuAnalyticsSchema } from './infrastructure/schemas/menu-analytics.schema';
 import { NavigationService } from './application/services/navigation.service';
 import { MenuBuilderService } from './application/services/menu-builder.service';
-import { MenuSeedService } from './application/services/menu-seed.service';
 import { GetPersonalizedMenuService } from './application/services/get-personalized-menu.service';
 import { MenuPersonalizationService } from './application/services/personalization.service';
 import { CommandPaletteService } from './application/services/command-palette.service';
@@ -61,7 +60,6 @@ import { Permission, PermissionSchema } from '../rbac/infrastructure/schemas/per
   providers: [
     NavigationService,
     MenuBuilderService,
-    MenuSeedService,
     GetPersonalizedMenuService,
     MenuPersonalizationService,
     CommandPaletteService,

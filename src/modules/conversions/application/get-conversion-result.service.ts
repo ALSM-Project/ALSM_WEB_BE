@@ -31,14 +31,18 @@ export class GetConversionResultService {
     organizationHeader: string | undefined,
     id: string,
   ): Promise<ConversionResultBundle> {
-    const organization = await this.organizationContext.resolve(userId, organizationHeader);
-    const job = await this.jobs.findById(id, organization.id);
+    let job = this.jobs.findByIdAnyOrganization ? await this.jobs.findByIdAnyOrganization(id) : null;
+    if (!job) {
+      const organization = await this.organizationContext.resolve(userId, organizationHeader);
+      job = await this.jobs.findById(id, organization.id);
+    }
     if (!job) {
       throw new NotFoundException({
         code: 'CONVERSION_JOB_NOT_FOUND',
         message: 'Conversion job was not found',
       });
     }
+    const organization = await this.organizationContext.resolve(userId, organizationHeader, job.projectId);
     await this.access.requireAssignment(userId, organization.id, job.projectId);
     await this.projects.getForOrganization(job.projectId, organization.id);
     if (job.status !== ConversionJobStatus.COMPLETED || !job.resultReference) {

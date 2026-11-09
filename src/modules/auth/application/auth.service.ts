@@ -5,6 +5,9 @@ import {
   ServiceUnavailableException,
   UnauthorizedException,
 } from '@nestjs/common';
+import { Optional } from '@nestjs/common';
+import { InjectConnection } from '@nestjs/mongoose';
+import { Connection, Types } from 'mongoose';
 import { randomUUID } from 'crypto';
 import { ConfigService } from '@nestjs/config';
 import { JwtService } from '@nestjs/jwt';
@@ -29,6 +32,7 @@ export interface AuthTokens {
   refreshToken: string;
   mustChangePassword?: boolean;
   hasPassword?: boolean;
+  user?: any;
 }
 
 export interface RegisterResult {
@@ -48,6 +52,7 @@ export class AuthService {
     @Inject(AUDIT_REPOSITORY) private readonly audit: AuditRepository,
     private readonly effectivePermissionsService: EffectivePermissionsService,
     private readonly emailVerificationService: EmailVerificationService,
+    @Optional() @InjectConnection() private readonly connection?: Connection,
   ) {}
 
   async register(email: string, password: string, fullName: string): Promise<RegisterResult> {
@@ -114,6 +119,7 @@ export class AuthService {
       });
     }
     const tokens = await this.createSessionTokens(user, userAgent);
+    try { tokens.user = await this.me(user.id); } catch {}
     await this.audit.append({
       actorUserId: user.id,
       action: 'USER_LOGIN',
@@ -131,6 +137,7 @@ export class AuthService {
   async verifyEmail(email: string, codeOrToken: string, userAgent?: string): Promise<AuthTokens> {
     const user = await this.emailVerificationService.verify(email, codeOrToken);
     const tokens = await this.createSessionTokens(user, userAgent, true);
+    try { tokens.user = await this.me(user.id); } catch {}
     await this.audit.append({
       actorUserId: user.id,
       action: 'USER_EMAIL_VERIFIED',
@@ -195,6 +202,7 @@ export class AuthService {
     }
 
     const tokens = await this.createSessionTokens(user, userAgent);
+    try { tokens.user = await this.me(user.id); } catch {}
     if (existingUser) {
       await this.audit.append({
         actorUserId: user.id,
@@ -336,11 +344,105 @@ export class AuthService {
     if (hasPassword) providers.push('PASSWORD');
     providers.push('GOOGLE');
 
+    let org = this.organizations?.findFirstForMember
+      ? await this.organizations.findFirstForMember(userId)
+      : null;
+    if (!org && this.organizations?.create) {
+      org = await this.organizations.create({
+        name: `${user.fullName}'s Organization`,
+        type: OrganizationType.SELF_SERVICE,
+        members: [{ userId: user.id, role: OrganizationRole.OWNER }],
+      });
+    }
+
+    let hasWeb3Access = false;
+    if (this.connection?.db) {
+      try {
+        const contractsCol = this.connection.db.collection('contracts');
+        const userEmail = (user.email || '').toLowerCase().trim();
+        const userObjId = Types.ObjectId.isValid(userId) ? new Types.ObjectId(userId) : null;
+        const orgId = org ? org.id : null;
+        const orgObjId = orgId && Types.ObjectId.isValid(orgId) ? new Types.ObjectId(orgId) : null;
+
+        const orFilters: any[] = [];
+        if (orgId) orFilters.push({ organizationId: orgId });
+        if (orgObjId) orFilters.push({ organizationId: orgObjId });
+        if (org?.name) orFilters.push({ 'customer.companyName': org.name });
+        orFilters.push({ customerUserId: userId });
+        orFilters.push({ createdByUserId: userId });
+        if (userObjId) {
+          orFilters.push({ customerUserId: userObjId });
+          orFilters.push({ createdByUserId: userObjId });
+        }
+        if (userEmail) {
+          orFilters.push({ 'customer.contactEmail': userEmail });
+          orFilters.push({ 'signingProcess.customerSigner.email': userEmail });
+        }
+
+        const contracts = await contractsCol
+          .find(
+            { $or: orFilters },
+            {
+              projection: {
+                _id: 1,
+                status: 1,
+                serviceMode: 1,
+                contractType: 1,
+                serviceType: 1,
+                plan: 1,
+                lifecycleStatus: 1,
+                activationStatus: 1,
+                paymentStatus: 1,
+              },
+            },
+          )
+          .toArray();
+        const activeManagedContracts = contracts.filter((c) => {
+          const statusOk =
+            c.status === 'ACTIVE' ||
+            c.status === 'Active' ||
+            c.lifecycleStatus === 'COMPLETED' ||
+            c.activationStatus === 'COMPLETED' ||
+            c.paymentStatus === 'PAID' ||
+            c.paymentStatus === 'Payment Verified';
+
+          if (!statusOk) return false;
+
+          const mode = (c.serviceMode || '').toUpperCase();
+          const contractType = (c.contractType || '').toUpperCase();
+          const serviceType = (c.serviceType || '').toUpperCase();
+          const plan = (c.plan || '').toUpperCase();
+
+          return (
+            mode === 'WE_CONVERT_FOR_YOU' ||
+            mode === 'MANAGED' ||
+            mode === 'HYBRID' ||
+            contractType === 'MANAGED_CONVERSION_SOW' ||
+            contractType === 'ENTERPRISE_HYBRID_MSA' ||
+            serviceType.includes('MANAGED') ||
+            plan.includes('MANAGED')
+          );
+        });
+
+        if (activeManagedContracts.length > 0) {
+          hasWeb3Access = true;
+          if (!roles.includes('PARTNER')) {
+            roles.push('PARTNER');
+          }
+        }
+      } catch {
+        // Fallback silently if query fails
+      }
+    }
+
     return {
       id: user.id,
       email: user.email,
       fullName: user.fullName,
       isPlatformAdmin: user.isPlatformAdmin,
+      organizationId: org?.id,
+      organizationName: org?.name,
+      hasWeb3Access,
       roles,
       effectivePermissions,
       isActive: user.isActive,

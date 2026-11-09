@@ -3,7 +3,7 @@ import { Injectable, OnApplicationBootstrap, ServiceUnavailableException } from 
 import { InjectModel } from '@nestjs/mongoose';
 import { ClientSession, Connection, Model, Types } from 'mongoose';
 import { AuditLog } from './audit-log.schema';
-import { AuditRepository, IdempotentAuditRepository } from '../domain/audit.repository';
+import { AuditRepository, IdempotentAuditRepository, AuditRecord } from '../domain/audit.repository';
 import { requestIpStorage } from '../../../shared/logging/request-ip.storage';
 @Injectable()
 export class MongoAuditRepository implements IdempotentAuditRepository, OnApplicationBootstrap {
@@ -51,7 +51,7 @@ export class MongoAuditRepository implements IdempotentAuditRepository, OnApplic
           organizationId: input.organizationId
             ? new Types.ObjectId(input.organizationId)
             : undefined,
-          ipAddress: requestIpStorage.getStore() || undefined,
+          ipAddress: requestIpStorage.getStore() || '127.0.0.1',
         },
       ],
       { session: this.session },
@@ -109,10 +109,29 @@ export class MongoAuditRepository implements IdempotentAuditRepository, OnApplic
           organizationId: input.organizationId
             ? new Types.ObjectId(input.organizationId)
             : undefined,
-          ipAddress: requestIpStorage.getStore() || undefined,
+          ipAddress: requestIpStorage.getStore() || '127.0.0.1',
         },
       ],
       { session: this.session },
     );
+  }
+
+  async findByResource(resourceType: string, resourceId: string): Promise<AuditRecord[]> {
+    const docs = await this.model
+      .find({ resourceType, resourceId })
+      .sort({ createdAt: -1 })
+      .limit(50)
+      .lean()
+      .exec();
+    return docs.map((doc: any) => ({
+      id: doc._id?.toString() || '',
+      actorUserId: doc.actorUserId ? doc.actorUserId.toString() : undefined,
+      organizationId: doc.organizationId ? doc.organizationId.toString() : undefined,
+      action: doc.action,
+      resourceType: doc.resourceType,
+      resourceId: doc.resourceId,
+      metadata: doc.metadata,
+      createdAt: doc.createdAt,
+    }));
   }
 }

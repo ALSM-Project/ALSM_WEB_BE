@@ -37,23 +37,32 @@ export class SubscriptionMapper {
 }
 
 export class InvoiceMapper {
-  static toDomain(doc: InvoiceDocument): InvoiceProps {
-    const raw = doc as unknown as { createdAt?: Date };
+  static toDomain(doc: any): InvoiceProps {
+    const raw = doc as any;
     return {
-      id: doc._id.toString(),
-      userId: doc.userId.toString(),
-      organizationId: doc.organizationId.toString(),
-      subscriptionId: doc.subscriptionId?.toString(),
-      invoiceNumber: doc.invoiceNumber,
-      planTier: doc.planTier,
-      planName: doc.planName,
-      amountVnd: doc.amountVnd,
-      status: doc.status,
-      billingPeriodStart: doc.billingPeriodStart,
-      billingPeriodEnd: doc.billingPeriodEnd,
-      paidAt: doc.paidAt,
-      paymentMethod: doc.paymentMethod,
-      createdAt: raw.createdAt,
+      id: raw._id?.toString() || raw.id || '',
+      userId: raw.userId?.toString() || '',
+      organizationId: raw.organizationId?.toString() || '',
+      subscriptionId: raw.subscriptionId?.toString(),
+      contractId: raw.contractId?.toString(),
+      contractNumber: raw.contractNumber,
+      invoiceNumber: raw.invoiceNumber || raw.invoice_number || '',
+      planTier: raw.planTier || ('ENTERPRISE' as any),
+      planName: raw.planName || (raw.contractNumber ? `Hợp đồng ${raw.contractNumber}` : 'Enterprise Modernization Plan'),
+      subtotalVnd: raw.subtotalVnd ?? raw.subtotal ?? (raw.amount ? Math.round(raw.amount / 1.1) : 0),
+      vatRate: raw.vatRate ?? 10,
+      taxAmountVnd: raw.taxAmountVnd ?? raw.taxAmount ?? (raw.amount ? Math.round(raw.amount - raw.amount / 1.1) : 0),
+      amountVnd: raw.amountVnd ?? raw.amount ?? 0,
+      currency: raw.currency || 'VND',
+      status: raw.status || ('ISSUED' as any),
+      billingPeriodStart: raw.billingPeriodStart || raw.createdAt || new Date(),
+      billingPeriodEnd: raw.billingPeriodEnd || raw.dueDate || new Date(),
+      dueDate: raw.dueDate || raw.dueAt,
+      paidAt: raw.paidAt,
+      paymentMethod: raw.paymentMethod || 'VIETQR_BANK_TRANSFER',
+      cassoTransactionId: raw.cassoTransactionId || raw.transactionRef,
+      items: raw.items || [],
+      createdAt: raw.createdAt || new Date(),
     };
   }
 }

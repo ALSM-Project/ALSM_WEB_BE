@@ -27,7 +27,7 @@ export class MongoMenuBuilderRepository implements IMenuBuilderRepository {
 
   async findMenuItemsByApp(app: ApplicationContext): Promise<IMenuItemData[]> {
     const docs = await this.menuItemModel.find({ application: app }).sort({ order: 1 }).exec();
-    return docs.map(this.toData);
+    return docs.map((d) => this.toData(d));
   }
 
   async findMenuItemById(id: string): Promise<IMenuItemData | null> {
@@ -94,6 +94,10 @@ export class MongoMenuBuilderRepository implements IMenuBuilderRepository {
     if (data.status !== undefined) item.status = data.status;
     if (data.openInNewTab !== undefined) item.openInNewTab = data.openInNewTab;
     if (data.hideParentLabel !== undefined) item.hideParentLabel = data.hideParentLabel;
+    if (data.contractTypeVisibility !== undefined) item.contractTypeVisibility = data.contractTypeVisibility;
+    if (data.featureKey !== undefined) item.featureKey = data.featureKey;
+    if (data.description !== undefined) item.description = data.description;
+    if (data.requiredRoles !== undefined) item.requiredRoles = data.requiredRoles;
 
     await item.save();
 
@@ -110,20 +114,20 @@ export class MongoMenuBuilderRepository implements IMenuBuilderRepository {
    * (menuItemId, permissionKey) index and crash the startup.
    */
   private async setMenuItemPermissions(menuItemId: string, permissions: string[]): Promise<void> {
-    const keys = [...new Set(permissions)];
-    await this.menuItemPermissionModel
-      .deleteMany({ menuItemId, permissionKey: { $nin: keys } })
-      .exec();
-    if (keys.length === 0) return;
-    await this.menuItemPermissionModel.bulkWrite(
-      keys.map((permissionKey) => ({
-        updateOne: {
-          filter: { menuItemId, permissionKey },
-          update: { $setOnInsert: { menuItemId, permissionKey } },
-          upsert: true,
-        },
-      })),
+    const desired = Array.from(new Set(permissions));
+    await Promise.all(
+      desired.map((permissionKey) =>
+        this.menuItemPermissionModel.updateOne(
+          { menuItemId, permissionKey },
+          { $setOnInsert: { menuItemId, permissionKey } },
+          { upsert: true },
+        ),
+      ),
     );
+    await this.menuItemPermissionModel.deleteMany({
+      menuItemId,
+      permissionKey: { $nin: desired },
+    });
   }
 
   async deleteMenuItem(id: string): Promise<void> {
@@ -141,7 +145,7 @@ export class MongoMenuBuilderRepository implements IMenuBuilderRepository {
 
     while (queue.length > 0) {
       const current = queue.shift()!;
-      const children = await this.menuItemModel.find({ parentId: current }).exec();
+      const children = await this.menuItemModel.find({ parentId: current }).select('id').exec();
       for (const child of children) {
         descendants.push(child.id);
         queue.push(child.id);
@@ -162,7 +166,7 @@ export class MongoMenuBuilderRepository implements IMenuBuilderRepository {
       .find({ application: app, parentId })
       .sort({ order: 1 })
       .exec();
-    return docs.map(this.toData);
+    return docs.map((d) => this.toData(d));
   }
 
   async updateOrders(orders: Array<{ id: string; order: number }>): Promise<void> {
@@ -201,6 +205,10 @@ export class MongoMenuBuilderRepository implements IMenuBuilderRepository {
       status: doc.status,
       openInNewTab: doc.openInNewTab ?? false,
       hideParentLabel: doc.hideParentLabel ?? false,
+      contractTypeVisibility: doc.contractTypeVisibility || 'ALL',
+      featureKey: doc.featureKey || null,
+      description: doc.description || null,
+      requiredRoles: doc.requiredRoles || [],
       createdAt: doc.createdAt,
       updatedAt: doc.updatedAt,
     };

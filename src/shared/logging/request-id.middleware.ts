@@ -9,6 +9,7 @@ export interface AuthenticatedUser {
   isPlatformAdmin: boolean;
   sessionId?: string;
   sessionVersion?: string;
+  roles?: string[];
 }
 
 @Injectable()

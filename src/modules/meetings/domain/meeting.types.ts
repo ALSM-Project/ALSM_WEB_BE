@@ -38,12 +38,27 @@ export interface CreateMeetingInput {
   hostEmail: string;
 }
 
+export interface UpdateMeetingInput {
+  title?: string;
+  description?: string;
+  meetingUrl?: string;
+  meetingCode?: string;
+  calendarEventId?: string;
+  projectId?: string;
+  attendeeEmails?: string[];
+  scheduledStartTime?: Date;
+  scheduledEndTime?: Date;
+  status?: MeetingStatus;
+}
+
 export interface MeetingRepository {
   create(input: CreateMeetingInput): Promise<MeetingRecord>;
   findById(id: string): Promise<MeetingRecord | null>;
   findDuplicate(hostUserId: string, title: string, scheduledStartTime: Date): Promise<MeetingRecord | null>;
   listByHost(hostUserId: string): Promise<MeetingRecord[]>;
   list(params?: { status?: MeetingStatus; page?: number; limit?: number }): Promise<{ items: MeetingRecord[]; total: number }>;
+  update(id: string, input: UpdateMeetingInput): Promise<MeetingRecord | null>;
+  delete(id: string): Promise<boolean>;
 }
 
 export const MEETING_REPOSITORY = Symbol('MEETING_REPOSITORY');

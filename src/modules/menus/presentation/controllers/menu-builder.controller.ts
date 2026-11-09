@@ -31,6 +31,18 @@ import { ApplicationContext } from '../../domain/enums/menu.enums';
 export class MenuBuilderController {
   constructor(private readonly menuBuilderService: MenuBuilderService) {}
 
+  @Post('save')
+  @RequirePermissions('menu.manage')
+  async saveMenuTree(
+    @CurrentUser() user: AuthenticatedUser,
+    @Body() body: { sidebarNav?: any[]; menuTree?: any[]; application?: ApplicationContext },
+  ) {
+    const app = body.application || ApplicationContext.WEB_2;
+    const items = body.sidebarNav || body.menuTree || [];
+    await this.menuBuilderService.saveMenuTree(app, items, user?.userId);
+    return { success: true };
+  }
+
   @Get()
   @RequirePermissions('menu.view')
   @ApiQuery({ name: 'application', enum: ApplicationContext, required: false })

@@ -25,10 +25,14 @@ export enum SubscriptionStatus {
 
 // ─── Invoice Status ─────────────────────────────────────────
 export enum InvoiceStatus {
+  DRAFT = 'DRAFT',
+  ISSUED = 'ISSUED',
   PENDING = 'PENDING',
   PAID = 'PAID',
   FAILED = 'FAILED',
   CANCELLED = 'CANCELLED',
+  REFUNDED = 'REFUNDED',
+  OVERDUE = 'OVERDUE',
 }
 
 // ─── Payment Status ─────────────────────────────────────────
@@ -116,12 +120,26 @@ export const PLAN_CATALOGUE: SubscriptionPlanDefinition[] = [
 // ─── Casso Transaction & VietQR Config ─────────────────────
 export interface CassoTransaction {
   id: number;
-  tid: string;
+  tid?: string;
+  reference?: string;
   description: string;
   amount: number;
-  cusum_balance: number;
-  when: string;
-  bank_sub_acc_id: string;
+  cusum_balance?: number;
+  runningBalance?: number;
+  when?: string;
+  transactionDateTime?: string;
+  booking_date?: string;
+  bank_sub_acc_id?: string;
+  accountNumber?: string;
+  bankName?: string;
+  bankAbbreviation?: string;
+  virtualAccountNumber?: string;
+  virtualAccountName?: string;
+  counterAccountName?: string;
+  counterAccountNumber?: string;
+  counterAccountBankId?: string;
+  counterAccountBankName?: string;
+  currency?: string;
 }
 
 export const DEFAULT_BANK_CONFIG = {

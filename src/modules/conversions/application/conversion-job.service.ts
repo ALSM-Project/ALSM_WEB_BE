@@ -194,7 +194,7 @@ export class ConversionJobService {
     organizationHeader: string | undefined,
     projectId: string,
   ): Promise<{ organization: OrganizationRecord; project: ProjectRecord }> {
-    const organization = await this.organizationContext.resolve(userId, organizationHeader);
+    const organization = await this.organizationContext.resolve(userId, organizationHeader, projectId);
     this.authorization.require(organization, userId, [
       OrganizationRole.OWNER,
       OrganizationRole.ADMIN,
@@ -364,8 +364,13 @@ export class ConversionJobService {
     organizationHeader: string | undefined,
     id: string,
   ): Promise<ConversionJobRecord> {
-    const organization = await this.organizationContext.resolve(userId, organizationHeader);
-    const job = await this.jobs.findById(id, organization.id);
+    let job = await this.jobs.findByIdAnyOrganization(id);
+    if (!job) {
+      const organization = await this.organizationContext.resolve(userId, organizationHeader);
+      job = await this.jobs.findById(id, organization.id);
+    }
+    if (!job) throw this.notFound();
+    const organization = await this.organizationContext.resolve(userId, organizationHeader, job.projectId);
     if (!job) throw this.notFound();
     await this.access.requireAssignment(userId, organization.id, job.projectId);
     await this.projects.getForOrganization(job.projectId, organization.id);

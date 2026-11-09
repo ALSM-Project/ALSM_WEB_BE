@@ -7,9 +7,13 @@ import {
   HttpStatus,
   Logger,
   Param,
+  Req,
   Post,
+  Put,
   UnauthorizedException,
   UseGuards,
+  UsePipes,
+  ValidationPipe,
 } from '@nestjs/common';
 import {
   ApiBearerAuth,
@@ -24,6 +28,7 @@ import { CurrentUser } from '../../../shared/security/current-user.decorator';
 import { AuthenticatedUser } from '../../../shared/logging/request-id.middleware';
 import { PaymentService } from '../application/payment.service';
 import {
+  CassoTransaction,
   CassoWebhookPayload,
   CassoWebhookResponseDto,
   CreatePaymentDto,
@@ -32,7 +37,7 @@ import {
 } from './billing.dto';
 
 @ApiTags('Billing - Payments')
-@Controller('billing/payment')
+@Controller(['billing/payment', ''])
 export class PaymentController {
   private readonly logger = new Logger(PaymentController.name);
 
@@ -42,10 +47,21 @@ export class PaymentController {
   @ApiOperation({
     summary: 'Get active payment bank configuration',
     description:
-      'Retrieves the active bank account details used for VietQR code generation from MongoDB.',
+      'Retrieves the active bank account details used for QR code generation from MongoDB.',
   })
   async getBankConfig() {
     return this.paymentService.getBankConfig();
+  }
+
+  @ApiBearerAuth()
+  @UseGuards(JwtAuthGuard)
+  @Put('bank-config')
+  @ApiOperation({
+    summary: 'Update active payment bank configuration',
+    description: 'Updates active company receiving bank account and QR details in MongoDB.',
+  })
+  async updateBankConfig(@Body() body: any) {
+    return this.paymentService.updateBankConfig(body);
   }
 
   // ─── Create Payment Order + QR ───────────────────────────
@@ -54,13 +70,13 @@ export class PaymentController {
   @UseGuards(JwtAuthGuard)
   @Post('create')
   @ApiOperation({
-    summary: 'Create payment order with VietQR code',
+    summary: 'Create payment order with bank transfer QR code',
     description:
-      'Generates a payment order and a VietQR transfer QR code image URL for bank scanning.',
+      'Generates a payment order and a bank transfer QR code image URL for scanning.',
   })
   @ApiResponse({
     status: HttpStatus.CREATED,
-    description: 'Payment order created with VietQR metadata',
+    description: 'Payment order created with QR metadata',
     type: PaymentOrderResponseDto,
   })
   @ApiResponse({
@@ -114,10 +130,16 @@ export class PaymentController {
 
   @Post('/webhook/casso')
   @HttpCode(HttpStatus.OK)
+  @UsePipes(new ValidationPipe({ whitelist: false, forbidNonWhitelisted: false, transform: true }))
   @ApiOperation({
     summary: 'Casso bank webhook receiver',
     description:
       'Webhook endpoint triggered by Casso.vn on incoming bank transfers to match reference codes and activate subscriptions.',
+  })
+  @ApiHeader({
+    name: 'secure-token',
+    description: 'Casso Webhook V2 Secure Token',
+    required: false,
   })
   @ApiHeader({
     name: 'authorization',
@@ -134,15 +156,34 @@ export class PaymentController {
     description: 'Invalid Casso webhook authorization header',
   })
   async handleCassoWebhook(
-    @Headers('authorization') authHeader: string,
+    @Headers() headers: Record<string, string>,
+    @Req() req: any,
     @Body() payload: CassoWebhookPayload,
   ) {
     this.logger.log('Received Casso webhook');
 
-    // Validate the webhook auth
-    const isValid = this.paymentService.validateCassoWebhook(authHeader);
+    const authHeader = headers['authorization'];
+    const secureToken =
+      headers['secure-token'] || headers['secure_token'] || headers['x-casso-signature'];
+
+    const rawData = payload.data;
+    let transactions: CassoTransaction[] = [];
+    if (Array.isArray(rawData)) {
+      transactions = rawData;
+    } else if (rawData && typeof rawData === 'object') {
+      transactions = [rawData as CassoTransaction];
+    }
+
+    const isTestCall = transactions.some(
+      (tx) => tx.id === 0 || (tx.description && tx.description.toLowerCase().includes('thu nghiem')),
+    );
+
+    // Validate the webhook auth (supports secure-token header, authorization header, and test call passthrough)
+    const isValid = this.paymentService.validateCassoWebhook(authHeader, secureToken, isTestCall);
     if (!isValid) {
-      this.logger.warn('Invalid Casso webhook authorization');
+      this.logger.warn(
+        `Invalid Casso webhook authorization. Received secure-token: ${secureToken ? secureToken.substring(0, 10) + '...' : 'none'}, authorization: ${authHeader ? authHeader.substring(0, 10) + '...' : 'none'}`,
+      );
       throw new UnauthorizedException('Invalid webhook authorization');
     }
 
@@ -151,12 +192,33 @@ export class PaymentController {
       return { success: false, error: 'Casso reported an error' };
     }
 
-    const transactions = payload.data || [];
     if (transactions.length === 0) {
       return { success: true, message: 'No transactions to process' };
     }
 
-    const result = await this.paymentService.handleCassoWebhook(transactions);
+    const clientIp = (req?.headers['x-forwarded-for'] || req?.socket?.remoteAddress || '127.0.0.1') as string;
+    const result = await this.paymentService.handleCassoWebhook(transactions, clientIp, headers);
     return { success: true, ...result };
+  }
+
+  @Get('/webhook/casso/logs')
+  @ApiOperation({ summary: 'Get recent Casso webhook audit logs' })
+  async getCassoWebhookLogs() {
+    return this.paymentService.getWebhookLogs();
+  }
+
+  @Post('/webhook/casso/test-simulate')
+  @ApiOperation({ summary: 'Manually simulate an incoming Casso webhook transaction for testing' })
+  async simulateCassoWebhook(
+    @Body() body: { referenceCode: string; amount?: number; description?: string },
+  ) {
+    const amount = body.amount || 12100;
+    const desc = body.description || `ALSM ${body.referenceCode}`;
+    const tx = {
+      id: Math.floor(100000 + Math.random() * 900000),
+      amount,
+      description: desc,
+    } as any;
+    return this.paymentService.handleCassoWebhook([tx], 'MANUAL_SIMULATION');
   }
 }
