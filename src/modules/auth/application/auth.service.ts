@@ -365,15 +365,15 @@ export class AuthService {
         const orgObjId = orgId && Types.ObjectId.isValid(orgId) ? new Types.ObjectId(orgId) : null;
 
         const orFilters: any[] = [];
+        // Match by organizationId (string and ObjectId forms)
         if (orgId) orFilters.push({ organizationId: orgId });
         if (orgObjId) orFilters.push({ organizationId: orgObjId });
-        if (org?.name) orFilters.push({ 'customer.companyName': org.name });
+        // Match by customerUserId (the user explicitly linked to the contract)
         orFilters.push({ customerUserId: userId });
-        orFilters.push({ createdByUserId: userId });
         if (userObjId) {
           orFilters.push({ customerUserId: userObjId });
-          orFilters.push({ createdByUserId: userObjId });
         }
+        // Match by customer contact email or signer email
         if (userEmail) {
           orFilters.push({ 'customer.contactEmail': userEmail });
           orFilters.push({ 'signingProcess.customerSigner.email': userEmail });
@@ -397,34 +397,21 @@ export class AuthService {
             },
           )
           .toArray();
-        const activeManagedContracts = contracts.filter((c) => {
+        const activeContracts = contracts.filter((c) => {
           const statusOk =
             c.status === 'ACTIVE' ||
             c.status === 'Active' ||
+            c.status === 'SIGNED' ||
             c.lifecycleStatus === 'COMPLETED' ||
             c.activationStatus === 'COMPLETED' ||
             c.paymentStatus === 'PAID' ||
             c.paymentStatus === 'Payment Verified';
 
-          if (!statusOk) return false;
-
-          const mode = (c.serviceMode || '').toUpperCase();
-          const contractType = (c.contractType || '').toUpperCase();
-          const serviceType = (c.serviceType || '').toUpperCase();
-          const plan = (c.plan || '').toUpperCase();
-
-          return (
-            mode === 'WE_CONVERT_FOR_YOU' ||
-            mode === 'MANAGED' ||
-            mode === 'HYBRID' ||
-            contractType === 'MANAGED_CONVERSION_SOW' ||
-            contractType === 'ENTERPRISE_HYBRID_MSA' ||
-            serviceType.includes('MANAGED') ||
-            plan.includes('MANAGED')
-          );
+          return Boolean(statusOk);
         });
 
-        if (activeManagedContracts.length > 0) {
+        // Do NOT grant PARTNER role or hasWeb3Access to platform admins
+        if (activeContracts.length > 0 && !user.isPlatformAdmin) {
           hasWeb3Access = true;
           if (!roles.includes('PARTNER')) {
             roles.push('PARTNER');
