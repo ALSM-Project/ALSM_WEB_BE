@@ -176,6 +176,58 @@ describe('CobolJavaConversionAdapter', () => {
     expect(storage.writeFiles).toHaveBeenCalledTimes(2);
   });
 
+  it("translates only the screen's own program, but still indexes the whole bundle", async () => {
+    (screens.findById as jest.Mock).mockResolvedValue({ id: 'scr-1', name: 'CBTRN02C.cbl' });
+    await fs.promises.writeFile(path.join(sourceDir, 'CBTRN02C.cbl'), 'COBOL');
+    let seenArgs: string[] = [];
+    (toolRunner.runConversionTool as jest.Mock).mockImplementation(
+      async (_exe: string, args: string[]) => {
+        seenArgs = args;
+        await writeJob(args, 'cbtrn02c', 'Cbtrn02cTasklet');
+        await writeReport(args, { converted: 1, failed: 0, failures: [] });
+        return { code: 0, stdout: 'Converted 1 of 1 program(s).', stderr: '', timedOut: false };
+      },
+    );
+
+    await buildAdapter().execute({ ...baseInput, screenId: 'scr-1' });
+
+    expect(argAfter(seenArgs, '-only')).toBe('CBTRN02C.cbl');
+    expect(argAfter(seenArgs, '-project')).toBeTruthy();
+  });
+
+  it('fails the job with the reason when its own program cannot be converted', async () => {
+    (screens.findById as jest.Mock).mockResolvedValue({ id: 'scr-1', name: 'COACTVWC.cbl' });
+    await fs.promises.writeFile(path.join(sourceDir, 'COACTVWC.cbl'), 'COBOL');
+    (toolRunner.runConversionTool as jest.Mock).mockImplementation(
+      async (_exe: string, args: string[]) => {
+        await writeReport(args, {
+          converted: 0,
+          failed: 1,
+          failures: [{ programId: 'COACTVWC', file: 'COACTVWC.cbl', line: 425, reason: 'Duplcate Paragraph: 0000-MAIN-EXIT' }],
+        });
+        return { code: 0, stdout: 'Converted 0 of 1 program(s).', stderr: '', timedOut: false };
+      },
+    );
+
+    await expect(buildAdapter().execute({ ...baseInput, screenId: 'scr-1' })).rejects.toThrow(
+      /COACTVWC: Duplcate Paragraph: 0000-MAIN-EXIT/,
+    );
+  });
+
+  it('converts the whole bundle when the job is not tied to a screen', async () => {
+    await fs.promises.writeFile(path.join(sourceDir, 'OK.cob'), 'COBOL');
+    let seenArgs: string[] = [];
+    (toolRunner.runConversionTool as jest.Mock).mockImplementation(
+      async (_exe: string, args: string[]) => {
+        seenArgs = args;
+        await writeJob(args, 'ok', 'OkTasklet');
+        return { code: 0, stdout: 'Done in 0s.', stderr: '', timedOut: false };
+      },
+    );
+    await buildAdapter().execute(baseInput);
+    expect(seenArgs).not.toContain('-only');
+  });
+
   it('records an ErrorLogRecord for each program the report lists as failed', async () => {
     await fs.promises.writeFile(path.join(sourceDir, 'OK.cob'), 'COBOL');
     await fs.promises.writeFile(path.join(sourceDir, 'BROKEN.cob'), 'COBOL');

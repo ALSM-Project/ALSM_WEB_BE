@@ -26,6 +26,7 @@ export class ConversionWorkerRunner implements OnModuleDestroy {
   private recoveryTimer?: NodeJS.Timeout;
   private recovery?: Promise<void>;
   private recoveryCursor?: string;
+  private screenCursor?: string;
 
   constructor(
     private readonly config: ConfigService,
@@ -47,6 +48,36 @@ export class ConversionWorkerRunner implements OnModuleDestroy {
       this.logger.warn(
         `Failed to sync screen ${job.screenId} status to ${status}: ${String(error)}`,
       );
+    }
+  }
+
+  /**
+   * A screen reads PROCESSING while one of its jobs is queued or running, and nothing else
+   * moves it out of there. When a job ends without the worker getting to report it (lost
+   * delivery, stalled worker, crash), put the screen back to what its newest job says —
+   * unless a newer job for it is still on its way.
+   */
+  private async settleScreen(job: {
+    projectId: string;
+    screenId?: string;
+    organizationId: string;
+  }): Promise<void> {
+    if (!job.screenId) return;
+    const history = await this.jobs.listByScreen(job.projectId, job.screenId, job.organizationId);
+    if (
+      history.some(
+        (item) =>
+          item.status === ConversionJobStatus.QUEUED ||
+          item.status === ConversionJobStatus.PROCESSING,
+      )
+    ) {
+      return;
+    }
+    const latest = history[0]?.status;
+    if (latest === ConversionJobStatus.COMPLETED) {
+      await this.syncScreenStatus(job, ScreenStatus.COMPLETED);
+    } else if (latest === ConversionJobStatus.FAILED || latest === ConversionJobStatus.DEAD) {
+      await this.syncScreenStatus(job, ScreenStatus.FAILED);
     }
   }
 
@@ -180,11 +211,14 @@ export class ConversionWorkerRunner implements OnModuleDestroy {
       void queueJob
         .isFailed()
         .then(async (terminal) => {
-          if (terminal)
-            await this.jobs.markAbandonedFailed(
-              queueJob.data.conversionJobId,
-              queueJob.data.executionGeneration ?? 0,
-            );
+          if (!terminal) return;
+          const abandoned = await this.jobs.markAbandonedFailed(
+            queueJob.data.conversionJobId,
+            queueJob.data.executionGeneration ?? 0,
+          );
+          if (!abandoned) return;
+          const record = await this.jobs.findByIdAnyOrganization(queueJob.data.conversionJobId);
+          if (record) await this.settleScreen(record);
         })
         .catch((error: unknown) =>
           this.logger.error(`Failed to reconcile abandoned conversion: ${String(error)}`),
@@ -219,11 +253,26 @@ export class ConversionWorkerRunner implements OnModuleDestroy {
       const state = await this.queue.deliveryState(job.id, generation);
       this.recoveryCursor = job.id;
       if (state === 'pending') continue;
-      if (job.status === ConversionJobStatus.QUEUED) {
-        await this.jobs.markUndeliveredFailed(job.id, generation, queuedBefore);
-      } else {
-        await this.jobs.markAbandonedFailed(job.id, generation);
-      }
+      const failed =
+        job.status === ConversionJobStatus.QUEUED
+          ? await this.jobs.markUndeliveredFailed(job.id, generation, queuedBefore)
+          : await this.jobs.markAbandonedFailed(job.id, generation);
+      if (failed) await this.settleScreen(job);
+    }
+    await this.reconcileScreens(queuedBefore);
+  }
+
+  /** Screens already stuck in PROCESSING whose jobs ended earlier (before this fix, or while the worker was down). */
+  private async reconcileScreens(staleBefore: Date): Promise<void> {
+    const stuck = await this.screens.listStuckProcessing(staleBefore, this.screenCursor);
+    if (!stuck.length) this.screenCursor = undefined;
+    for (const screen of stuck) {
+      this.screenCursor = screen.id;
+      await this.settleScreen({
+        projectId: screen.projectId,
+        screenId: screen.id,
+        organizationId: screen.organizationId,
+      });
     }
   }
 

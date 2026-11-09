@@ -55,8 +55,10 @@ export class CobolJavaConversionAdapter {
       throw new Error('COBOL conversion requires an uploaded source (inputReference is missing)');
     }
 
+    let ownProgram: string | undefined;
     if (input.screenId) {
       const screen = await this.screens.findById(input.screenId, input.organizationId);
+      ownProgram = screen?.name;
       // Re-derive blockers from the stored tree rather than trusting the stored flag alone:
       // screens analyzed before system copybooks (DFH*/CMQ*) were recognized still carry
       // BLOCKED purely because of those, and should convert without a re-upload.
@@ -118,6 +120,10 @@ export class CobolJavaConversionAdapter {
         BATCH_BASE_PACKAGE,
         '-scaffold',
       ];
+      // The whole bundle is still indexed (copybooks, called programs), but only this screen's
+      // program is translated: converting all of them in every job took over a minute each and
+      // ran past the tool timeout once several jobs ran side by side.
+      if (ownProgram) args.push('-only', ownProgram);
       const encoding = this.config.get<string>('CONVERSION_SOURCE_ENCODING');
       if (encoding) args.push('-encoding', encoding);
       // The build check (mvn compile of the result, stubbing what does not compile) needs Maven
