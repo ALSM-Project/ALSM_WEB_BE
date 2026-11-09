@@ -431,7 +431,7 @@ export class ContractAggregateService {
       throw new ForbiddenException({ code: 'VERIFIED_ACCOUNT_REQUIRED', message: 'Verify your email before responding to an invited contract.' });
     }
     const current = await this.readRepository().findForGrantedCustomer(contractId, actor.userId, user.email);
-    if (!current || current.contract.customerUserId !== actor.userId) {
+    if (!current || (current.contract.customerUserId && current.contract.customerUserId !== actor.userId)) {
       throw new NotFoundException({ code: 'CONTRACT_NOT_FOUND', message: 'Contract is unavailable to this account.' });
     }
 
@@ -570,7 +570,7 @@ export class ContractAggregateService {
     }
     const user = await this.getVerifiedContractCustomer(contractId, actor);
     const current = await this.readRepository().findForGrantedCustomer(contractId, actor.userId, user.email);
-    if (!current || current.contract.customerUserId !== actor.userId) {
+    if (!current || (current.contract.customerUserId && current.contract.customerUserId !== actor.userId)) {
       throw new NotFoundException({ code: 'CONTRACT_NOT_FOUND', message: 'Contract is unavailable to this account.' });
     }
     if (current.contract.demoSigningSession?.status === 'SENT'
@@ -640,7 +640,7 @@ export class ContractAggregateService {
     const user = await this.getVerifiedContractCustomer(contractId, actor);
     const current = await this.readRepository().findForGrantedCustomer(contractId, actor.userId, user.email);
     const session = current?.contract.demoSigningSession;
-    if (!current || current.contract.customerUserId !== actor.userId || !session
+    if (!current || (current.contract.customerUserId && current.contract.customerUserId !== actor.userId) || !session
       || session.status !== 'SENT' || session.expiresAt.getTime() <= Date.now()
       || session.contractVersionId !== current.version.id
       || session.canonicalDocumentSha256 !== current.version.canonicalDocument?.sha256) {
@@ -1087,7 +1087,7 @@ export class ContractAggregateService {
       throw new ForbiddenException({ code: 'VERIFIED_ACCOUNT_REQUIRED', message: 'Verify the invited ALSM account before continuing.' });
     }
     const current = await this.readRepository().findForGrantedCustomer(contractId, actor.userId, user.email);
-    if (!current || current.contract.customerUserId !== actor.userId) {
+    if (!current || (current.contract.customerUserId && current.contract.customerUserId !== actor.userId)) {
       throw new NotFoundException({ code: 'CONTRACT_NOT_FOUND', message: 'Contract is unavailable to this account.' });
     }
     return user;

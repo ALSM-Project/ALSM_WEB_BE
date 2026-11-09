@@ -108,6 +108,7 @@ export class MongoContractAggregateRepository implements ContractAggregateReposi
       organizationId: new Types.ObjectId(input.organizationId),
       contractNumber: input.contractNumber,
       currentVersionId: versionId,
+      customerUserId: input.customerUserId ? new Types.ObjectId(input.customerUserId) : undefined,
       lifecycleStatus: 'DRAFT',
       reviewStatus: 'NOT_SUBMITTED',
       providerCompletionStatus: 'NOT_STARTED',
@@ -327,7 +328,8 @@ export class MongoContractAggregateRepository implements ContractAggregateReposi
       lifecycleStatus: 'INTERNAL_REVIEW',
       reviewStatus: 'PENDING',
     }).session(this.scope()).exec();
-    if (!existing || String(existing.createdByUserId) === input.actorUserId) return null;
+    const allowSelfReview = process.env.ALLOW_SELF_CONTRACT_REVIEW === 'true';
+    if (!existing || (!allowSelfReview && String(existing.createdByUserId) === input.actorUserId)) return null;
     const version = await this.versions.findOne({ _id: existing.currentVersionId, contractId: existing._id }).session(this.scope()).exec();
     if (!version) return null;
     if (input.action === 'APPROVE' && !version.approvedTemplateVersionId) {
@@ -385,7 +387,7 @@ export class MongoContractAggregateRepository implements ContractAggregateReposi
     this.assertTransaction();
     const existing = await this.contracts.findOne({
       _id: input.contractId,
-      customerUserId: input.customerUserId,
+      customerUserId: { $in: [input.customerUserId, new Types.ObjectId(input.customerUserId)] },
       currentVersionId: { $exists: true },
       lifecycleStatus: { $in: ['READY_FOR_SIGNATURE', 'SENT_TO_CUSTOMER', 'CUSTOMER_VIEWED', 'CUSTOMER_SIGNING_IN_PROGRESS'] },
       reviewStatus: 'APPROVED',
@@ -411,7 +413,7 @@ export class MongoContractAggregateRepository implements ContractAggregateReposi
     const updated = await this.contracts.findOneAndUpdate(
       {
         _id: existing._id,
-        customerUserId: input.customerUserId,
+        customerUserId: { $in: [input.customerUserId, new Types.ObjectId(input.customerUserId)] },
         currentVersionId: version._id,
         lifecycleStatus: existing.lifecycleStatus,
         reviewStatus: 'APPROVED',
@@ -453,7 +455,7 @@ export class MongoContractAggregateRepository implements ContractAggregateReposi
     this.assertTransaction();
     const existing = await this.contracts.findOne({
       _id: input.contractId,
-      customerUserId: input.customerUserId,
+      customerUserId: { $in: [input.customerUserId, new Types.ObjectId(input.customerUserId)] },
       lifecycleStatus: {
         $in: [
           'READY_FOR_SIGNATURE', 'CHANGES_REQUESTED', 'REJECTED', 'SENT_TO_CUSTOMER', 'CUSTOMER_VIEWED',
@@ -484,13 +486,16 @@ export class MongoContractAggregateRepository implements ContractAggregateReposi
     const updated = await this.contracts.findOneAndUpdate(
       {
         _id: existing._id,
-        customerUserId: input.customerUserId,
+        customerUserId: { $in: [input.customerUserId, new Types.ObjectId(input.customerUserId)] },
         lifecycleStatus: { $in: ['READY_FOR_SIGNATURE', 'SENT_TO_CUSTOMER'] },
         reviewStatus: 'APPROVED',
         revision: existing.revision,
       },
       {
-        $set: { lifecycleStatus: 'CUSTOMER_VIEWED' },
+        $set: {
+          lifecycleStatus: 'CUSTOMER_VIEWED',
+          customerUserId: new Types.ObjectId(input.customerUserId),
+        },
         $inc: { revision: 1 },
       },
       { new: true, session: this.scope() },
@@ -591,7 +596,7 @@ export class MongoContractAggregateRepository implements ContractAggregateReposi
       $set: {
         lifecycleStatus: 'COMPLETED',
         archiveStatus: 'VERIFIED',
-        activationStatus: manifest.providerKey === 'ALSM_DEMO' ? 'NOT_ELIGIBLE' : 'ELIGIBLE',
+        activationStatus: 'ELIGIBLE',
         finalEvidence: manifest,
         completedAt: input.now,
       },
@@ -620,7 +625,7 @@ export class MongoContractAggregateRepository implements ContractAggregateReposi
     const updated = await this.contracts.findOneAndUpdate({
       _id: input.contractId,
       currentVersionId: input.versionId,
-      customerUserId: input.customerUserId,
+      customerUserId: { $in: [input.customerUserId, new Types.ObjectId(input.customerUserId)] },
       reviewStatus: 'APPROVED',
       providerCompletionStatus: 'NOT_STARTED',
       archiveStatus: 'NOT_STARTED',
@@ -660,7 +665,7 @@ export class MongoContractAggregateRepository implements ContractAggregateReposi
     const updated = await this.contracts.findOneAndUpdate({
       _id: input.contractId,
       currentVersionId: input.versionId,
-      customerUserId: input.customerUserId,
+      customerUserId: { $in: [input.customerUserId, new Types.ObjectId(input.customerUserId)] },
       reviewStatus: 'APPROVED',
       providerCompletionStatus: 'NOT_STARTED',
       archiveStatus: 'NOT_STARTED',

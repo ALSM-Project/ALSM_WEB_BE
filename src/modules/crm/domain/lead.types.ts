@@ -108,7 +108,7 @@ export interface CreateLead {
 }
 export interface LeadRepository {
   create(input: CreateLead): Promise<LeadRecord>;
-  findById(id: string, organizationId: string): Promise<LeadRecord | null>;
+  findById(id: string, organizationId?: string): Promise<LeadRecord | null>;
   assign(
     id: string,
     organizationId: string,
