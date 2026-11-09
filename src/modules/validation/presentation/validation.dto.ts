@@ -12,6 +12,7 @@ import {
   ValidationFindingStatus,
 } from '../domain/validation-finding.types';
 import { ValidationRunStatus } from '../domain/validation-run.types';
+import { ValidationExecutionOutcome } from '../domain/validation-execution-metadata';
 
 export class ReviewValidationFindingRequestDto {
   @ApiProperty({ enum: HUMAN_REVIEW_TARGET_STATUSES })
@@ -38,6 +39,12 @@ export class ValidationRunResponseDto {
   @ApiPropertyOptional() provider?: string;
   @ApiPropertyOptional() model?: string;
   @ApiPropertyOptional() promptVersion?: string;
+  @ApiPropertyOptional({ enum: ValidationExecutionOutcome })
+  executionOutcome?: ValidationExecutionOutcome;
+  @ApiPropertyOptional() resultProvider?: string;
+  @ApiPropertyOptional() resultModel?: string;
+  @ApiPropertyOptional() modelVersion?: string;
+  @ApiPropertyOptional() providerFailureCode?: string;
   @ApiPropertyOptional() redactionCount?: number;
   @ApiPropertyOptional() selectedFileCount?: number;
   @ApiPropertyOptional() inputCharacterCount?: number;
@@ -70,6 +77,7 @@ export class ValidationFindingResponseDto {
   @ApiProperty({ enum: ValidationFindingSeverity }) severity!: ValidationFindingSeverity;
   @ApiProperty({ enum: ValidationFindingStatus }) status!: ValidationFindingStatus;
   @ApiProperty() title!: string;
+  @ApiPropertyOptional() fieldName?: string;
   @ApiProperty() explanation!: string;
   @ApiPropertyOptional() expectedBehavior?: string;
   @ApiPropertyOptional() actualBehavior?: string;
@@ -81,6 +89,7 @@ export class ValidationFindingResponseDto {
   @ApiPropertyOptional({ minimum: 0, maximum: 1 }) confidence?: number;
   @ApiPropertyOptional() modelProvider?: string;
   @ApiPropertyOptional() modelName?: string;
+  @ApiPropertyOptional() modelVersion?: string;
   @ApiPropertyOptional() reviewedBy?: string;
   @ApiPropertyOptional() reviewedAt?: Date;
   @ApiPropertyOptional({ maxLength: MAX_REVIEW_NOTE_LENGTH }) reviewNote?: string;

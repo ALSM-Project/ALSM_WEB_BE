@@ -34,10 +34,12 @@ describe('ConversionWorkerRunner', () => {
     renewProcessingLease: jest.fn(),
     releaseProcessingForRetry: jest.fn(),
     findByIdAnyOrganization: jest.fn(),
+    markAbandonedFailed: jest.fn(),
+    listByScreen: jest.fn(),
   };
   const queue = { deliveryState: jest.fn() };
   const engine = { execute: jest.fn() };
-  const screens = { updateStatus: jest.fn() };
+  const screens = { updateStatus: jest.fn(), listStuckProcessing: jest.fn().mockResolvedValue([]) };
   const enabledValues: Record<string, unknown> = {
     CONVERSION_WORKER_ENABLED: true,
     REDIS_HOST: 'localhost',
@@ -55,6 +57,8 @@ describe('ConversionWorkerRunner', () => {
     jobs.markCompleted.mockResolvedValue({ id: '0123456789abcdef01234567' });
     jobs.releaseProcessingForRetry.mockResolvedValue(true);
     jobs.findByIdAnyOrganization.mockResolvedValue({ status: 'CANCELLED' });
+    jobs.listByScreen.mockResolvedValue([]);
+    screens.listStuckProcessing.mockResolvedValue([]);
   });
 
   function runner() {
@@ -312,6 +316,80 @@ describe('ConversionWorkerRunner', () => {
     expect(jobs.markUndeliveredFailed).toHaveBeenCalledTimes(1);
     expect(jobs.markUndeliveredFailed).toHaveBeenCalledWith('orphan', 2, expect.any(Date));
     expect(abandoned).toHaveBeenCalledWith('expired', 1);
+  });
+
+  describe('screen status after a job ends without the worker reporting it', () => {
+    const owner = { projectId: 'proj', screenId: 'scr', organizationId: 'org' };
+    const oneRecovery = async () => {
+      const worker = runner();
+      worker.start();
+      await worker.onModuleDestroy();
+    };
+
+    it('puts the screen back to Failed when its queue delivery was lost', async () => {
+      jobs.listDeliveryRecoveryCandidates.mockResolvedValueOnce([
+        { id: 'j1', status: 'QUEUED', executionGeneration: 0, ...owner },
+      ]);
+      queue.deliveryState.mockResolvedValueOnce('missing');
+      jobs.markUndeliveredFailed.mockResolvedValueOnce(true);
+      jobs.listByScreen.mockResolvedValueOnce([{ id: 'j1', status: 'FAILED' }]);
+      await oneRecovery();
+      expect(screens.updateStatus).toHaveBeenCalledWith('scr', 'org', ScreenStatus.FAILED);
+    });
+
+    it('does the same for a worker that stalled mid-job', async () => {
+      jobs.listDeliveryRecoveryCandidates.mockResolvedValueOnce([
+        { id: 'j2', status: 'PROCESSING', executionGeneration: 0, ...owner },
+      ]);
+      queue.deliveryState.mockResolvedValueOnce('terminal');
+      jobs.markAbandonedFailed.mockResolvedValueOnce(true);
+      jobs.listByScreen.mockResolvedValueOnce([{ id: 'j2', status: 'FAILED' }]);
+      await oneRecovery();
+      expect(screens.updateStatus).toHaveBeenCalledWith('scr', 'org', ScreenStatus.FAILED);
+    });
+
+    it('leaves the screen alone when a newer job for it is still queued', async () => {
+      jobs.listDeliveryRecoveryCandidates.mockResolvedValueOnce([
+        { id: 'old', status: 'QUEUED', executionGeneration: 0, ...owner },
+      ]);
+      queue.deliveryState.mockResolvedValueOnce('missing');
+      jobs.markUndeliveredFailed.mockResolvedValueOnce(true);
+      jobs.listByScreen.mockResolvedValueOnce([
+        { id: 'new', status: 'QUEUED' },
+        { id: 'old', status: 'FAILED' },
+      ]);
+      await oneRecovery();
+      expect(screens.updateStatus).not.toHaveBeenCalled();
+    });
+
+    it('does not touch the screen when the job was not the one failed here', async () => {
+      jobs.listDeliveryRecoveryCandidates.mockResolvedValueOnce([
+        { id: 'j3', status: 'QUEUED', executionGeneration: 0, ...owner },
+      ]);
+      queue.deliveryState.mockResolvedValueOnce('missing');
+      jobs.markUndeliveredFailed.mockResolvedValueOnce(false);
+      await oneRecovery();
+      expect(jobs.listByScreen).not.toHaveBeenCalled();
+      expect(screens.updateStatus).not.toHaveBeenCalled();
+    });
+
+    it('heals screens already stuck in Processing from the state of their newest job', async () => {
+      screens.listStuckProcessing.mockResolvedValueOnce([
+        { id: 's-failed', projectId: 'proj', organizationId: 'org' },
+        { id: 's-done', projectId: 'proj', organizationId: 'org' },
+        { id: 's-running', projectId: 'proj', organizationId: 'org' },
+        { id: 's-never', projectId: 'proj', organizationId: 'org' },
+      ]);
+      jobs.listByScreen
+        .mockResolvedValueOnce([{ status: 'FAILED' }])
+        .mockResolvedValueOnce([{ status: 'COMPLETED' }])
+        .mockResolvedValueOnce([{ status: 'PROCESSING' }])
+        .mockResolvedValueOnce([]);
+      await oneRecovery();
+      expect(screens.updateStatus).toHaveBeenCalledTimes(2);
+      expect(screens.updateStatus).toHaveBeenCalledWith('s-failed', 'org', ScreenStatus.FAILED);
+      expect(screens.updateStatus).toHaveBeenCalledWith('s-done', 'org', ScreenStatus.COMPLETED);
+    });
   });
 
   it('does not create a worker when CONVERSION_WORKER_ENABLED is false', () => {

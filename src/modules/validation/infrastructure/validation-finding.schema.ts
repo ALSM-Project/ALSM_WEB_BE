@@ -46,6 +46,7 @@ export class ValidationFinding {
   status!: ValidationFindingStatus;
 
   @Prop({ required: true }) title!: string;
+  @Prop({ maxlength: 250 }) fieldName?: string;
   @Prop({ required: true }) explanation!: string;
   @Prop() expectedBehavior?: string;
   @Prop() actualBehavior?: string;
@@ -55,6 +56,7 @@ export class ValidationFinding {
   @Prop({ min: 0, max: 1 }) confidence?: number;
   @Prop() modelProvider?: string;
   @Prop() modelName?: string;
+  @Prop() modelVersion?: string;
   /** Internal retry identity; never mapped to the application/API record. */
   @Prop() fingerprint?: string;
   @Prop({ type: MongooseSchema.Types.ObjectId }) reviewedBy?: Types.ObjectId;

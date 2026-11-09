@@ -79,11 +79,7 @@ export class TriggerAiValidationService {
       });
     }
 
-    const metadata = this.runtimeGuard.assertAvailable();
-    const promptVersion =
-      conversion.conversionType === ConversionType.BMS_DSPF_TO_FRONTEND
-        ? 'semantic-bms-react-v1'
-        : metadata.promptVersion;
+    const metadata = this.runtimeGuard.assertAvailable(conversion.conversionType);
 
     const claim = await this.validationRuns.createOrGetActiveAiRun({
       organizationId: organization.id,
@@ -96,7 +92,7 @@ export class TriggerAiValidationService {
       findingCount: 0,
       provider: metadata.provider,
       model: metadata.model,
-      promptVersion,
+      promptVersion: metadata.promptVersion,
     });
 
     if (!claim.created) return claim;

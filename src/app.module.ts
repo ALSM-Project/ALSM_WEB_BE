@@ -251,8 +251,9 @@ import { PrepareAiValidationContextService } from './modules/validation/applicat
 import { ValidationSecretRedactorService } from './modules/validation/application/validation-secret-redactor.service';
 import { FakeAiValidatorAdapter } from './modules/validation/infrastructure/fake-ai-validator.adapter';
 import { OpenAiValidatorAdapter } from './modules/validation/infrastructure/openai-ai-validator.adapter';
+import { GeminiJsonClient } from './modules/validation/infrastructure/gemini-json.client';
 import { GeminiAiValidatorAdapter } from './modules/validation/infrastructure/gemini-ai-validator.adapter';
-import { aiValidatorProvider } from './modules/validation/infrastructure/ai-validator.provider';
+import { aiValidatorProvider, bmsAiValidatorProvider } from './modules/validation/infrastructure/ai-validator.provider';
 import { AiValidationRuntimeGuard } from './modules/validation/application/ai-validation-runtime.guard';
 import { TriggerAiValidationService } from './modules/validation/application/trigger-ai-validation.service';
 import { ReconcileValidationRunService } from './modules/validation/application/reconcile-validation-run.service';
@@ -760,11 +761,13 @@ import { NotificationsService } from './modules/notifications/notifications.serv
     ValidationWorkerRunner,
     FakeAiValidatorAdapter,
     OpenAiValidatorAdapter,
+    GeminiJsonClient,
     GeminiAiValidatorAdapter,
     BmsSanitizerService,
     BmsRuleValidationService,
     BmsAiValidatorAdapter,
     aiValidatorProvider,
+    bmsAiValidatorProvider,
     MongoErrorLogRepository,
     ConversionWorkerRunner,
     BillingService,

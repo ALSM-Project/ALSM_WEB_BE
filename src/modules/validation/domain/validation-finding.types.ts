@@ -59,6 +59,7 @@ export interface ValidationFindingRecord {
   severity: ValidationFindingSeverity;
   status: ValidationFindingStatus;
   title: string;
+  fieldName?: string;
   explanation: string;
   expectedBehavior?: string;
   actualBehavior?: string;
@@ -69,6 +70,7 @@ export interface ValidationFindingRecord {
   confidence?: number;
   modelProvider?: string;
   modelName?: string;
+  modelVersion?: string;
   createdAt: Date;
   updatedAt: Date;
   reviewedBy?: string;

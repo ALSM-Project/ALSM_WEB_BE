@@ -39,6 +39,19 @@ export class MongoScreenRepository implements ScreenRepository {
     await this.model.updateOne({ _id: id, organizationId }, { $set: { status } }).exec();
   }
 
+  async listStuckProcessing(updatedBefore: Date, afterId?: string, limit = 100): Promise<ScreenRecord[]> {
+    const docs = await this.model
+      .find({
+        status: ScreenStatus.PROCESSING,
+        updatedAt: { $lte: updatedBefore },
+        ...(afterId && Types.ObjectId.isValid(afterId) ? { _id: { $gt: afterId } } : {}),
+      })
+      .sort({ _id: 1 })
+      .limit(limit)
+      .exec();
+    return docs.map((doc) => this.map(doc));
+  }
+
   async updateDependencyDiagnostics(
     id: string,
     organizationId: string,

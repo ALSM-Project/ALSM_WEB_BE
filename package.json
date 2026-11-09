@@ -38,6 +38,7 @@
     "lint": "eslint \"{src,test,evaluation}/**/*.ts\" --max-warnings=0",
     "format": "prettier --write \"{src,test,evaluation}/**/*.ts\"",
     "test": "node --max-old-space-size=4096 node_modules/jest/bin/jest.js --runInBand",
+    "test:offline": "node scripts/test-offline.cjs",
     "test:watch": "jest --watch",
     "test:e2e": "jest --config ./test/jest-e2e.json --passWithNoTests",
     "eval:ai:validate": "ts-node evaluation/ai-validation/src/validate-dataset.cli.ts",

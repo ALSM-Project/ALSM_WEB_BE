@@ -129,6 +129,9 @@ export const environmentValidationSchema = Joi.object({
     }),
     otherwise: Joi.string().allow('').default(''),
   }),
+  GEMINI_ALLOWED_MODELS: Joi.string()
+    .pattern(/^[a-zA-Z0-9][a-zA-Z0-9._-]*(?:\s*,\s*[a-zA-Z0-9][a-zA-Z0-9._-]*)*$/)
+    .default('gemini-3.5-flash'),
   AI_TIMEOUT_MS: Joi.number().integer().min(1_000).max(300_000).default(60_000),
   AI_MAX_RETRIES: Joi.number().integer().min(0).max(5).default(2),
   GEMINI_MIN_REQUEST_INTERVAL_MS: Joi.number().integer().min(0).max(60_000).default(0),
@@ -138,7 +141,7 @@ export const environmentValidationSchema = Joi.object({
   AI_MAX_FINDINGS: Joi.number().integer().min(1).max(200).default(50),
   AI_PROMPT_VERSION: Joi.string()
     .valid('semantic-cobol-java-v1', 'semantic-bms-react-v1')
-    .default('semantic-bms-react-v1'),
+    .default('semantic-cobol-java-v1'),
   VALIDATION_WORKER_ENABLED: Joi.boolean().default(false),
   VALIDATION_WORKER_CONCURRENCY: Joi.number().integer().min(1).max(10).default(1),
   VALIDATION_JOB_ATTEMPTS: Joi.number().integer().min(1).max(5).default(2),

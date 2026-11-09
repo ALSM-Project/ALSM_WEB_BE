@@ -1,11 +1,15 @@
 import { Prop, Schema, SchemaFactory } from '@nestjs/mongoose';
 import { HydratedDocument, Schema as MongooseSchema, Types } from 'mongoose';
 import { ValidationRunStatus } from '../domain/validation-run.types';
+import { ValidationExecutionOutcome } from '../domain/validation-execution-metadata';
 
 export type ValidationRunDocument = HydratedDocument<ValidationRun>;
 
 @Schema({ collection: 'validation_runs', timestamps: true })
 export class ValidationRun {
+  @Prop({ type: Date })
+  providerExecutionStartedAt?: Date;
+
   @Prop({ type: MongooseSchema.Types.ObjectId, required: true })
   organizationId!: Types.ObjectId;
 
@@ -26,6 +30,11 @@ export class ValidationRun {
   @Prop() provider?: string;
   @Prop() model?: string;
   @Prop() promptVersion?: string;
+  @Prop({ enum: ValidationExecutionOutcome }) executionOutcome?: ValidationExecutionOutcome;
+  @Prop() resultProvider?: string;
+  @Prop() resultModel?: string;
+  @Prop() modelVersion?: string;
+  @Prop() providerFailureCode?: string;
   @Prop({ min: 0 }) redactionCount?: number;
   @Prop({ min: 0 }) selectedFileCount?: number;
   @Prop({ min: 0 }) inputCharacterCount?: number;

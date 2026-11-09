@@ -115,6 +115,30 @@ describe('TriggerAiValidationService', () => {
     expect(queue.enqueue).not.toHaveBeenCalled();
   });
 
+  it('claims BMS runs using the selected BMS provider contract and prompt', async () => {
+    conversionJobs.findById.mockResolvedValue({
+      id: 'conversion-1',
+      organizationId: 'org-1',
+      projectId: 'project-1',
+      conversionType: ConversionType.BMS_DSPF_TO_FRONTEND,
+      status: ConversionJobStatus.COMPLETED,
+    });
+    runtimeGuard.assertAvailable.mockReturnValue({
+      provider: 'openai',
+      model: 'bms-openai',
+      promptVersion: 'semantic-bms-react-v1',
+    });
+    await service.execute('user-1', 'org-1', 'project-1', 'conversion-1');
+    expect(runtimeGuard.assertAvailable).toHaveBeenCalledWith(ConversionType.BMS_DSPF_TO_FRONTEND);
+    expect(validationRuns.createOrGetActiveAiRun).toHaveBeenCalledWith(
+      expect.objectContaining({
+        provider: 'openai',
+        model: 'bms-openai',
+        promptVersion: 'semantic-bms-react-v1',
+      }),
+    );
+  });
+
   it('rejects when AI is disabled or the selected adapter is not real', async () => {
     runtimeGuard.assertAvailable.mockImplementation(() => {
       throw new ServiceUnavailableException({ code: 'VALIDATION_AI_DISABLED' });

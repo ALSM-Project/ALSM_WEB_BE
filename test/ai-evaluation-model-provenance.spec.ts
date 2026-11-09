@@ -124,6 +124,8 @@ describe('Phase 6.3E provenance (offline HTTP mocks; temporary stores only)', ()
       ...PHASE6_3E.settings,
       GEMINI_MIN_REQUEST_INTERVAL_MS: 0,
       GEMINI_MODEL: model,
+      // Both synthetic selections must reach fake HTTP for the drift assertion.
+      GEMINI_ALLOWED_MODELS: `${model},gemini-other`,
       GEMINI_API_KEY: 'synthetic-test-key',
       AI_PROMPT_VERSION: PHASE6_3E.promptVersion,
     });
