@@ -14,9 +14,8 @@ import {
   MenuItemPermissionSchema,
 } from '../menus/infrastructure/schemas/menu-item-permission.schema';
 import { RbacService } from './application/rbac.service';
-import { EffectivePermissionsService } from './application/effective-permissions.service';
 import { RbacSeedService } from './application/rbac-seed.service';
-import { TemporaryRoleService } from './application/temporary-role.service';
+import { EffectivePermissionsService } from './application/effective-permissions.service';
 import { RbacController } from './presentation/rbac.controller';
 import { TemporaryRoleController } from './presentation/temporary-role.controller';
 import { RBAC_REPOSITORY } from './domain/rbac.repository.interface';
@@ -48,10 +47,9 @@ import { Project, ProjectSchema } from '../projects/infrastructure/project.schem
       useExisting: MongoRbacRepository,
     },
     RbacService,
-    EffectivePermissionsService,
     RbacSeedService,
-    TemporaryRoleService,
+    EffectivePermissionsService,
   ],
-  exports: [RBAC_REPOSITORY, RbacService, EffectivePermissionsService, TemporaryRoleService],
+  exports: [RbacService, EffectivePermissionsService, RBAC_REPOSITORY, MongooseModule],
 })
 export class RbacModule {}
