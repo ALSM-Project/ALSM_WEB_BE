@@ -436,11 +436,20 @@ ${dto.content.replace(/</g, '&lt;').replace(/>/g, '&gt;')}
     const doc = await this.leadModel.findById(leadId).exec();
     if (!doc) throw new NotFoundException({ code: 'LEAD_NOT_FOUND', message: 'The selected Lead was not found.' });
 
+    const user = await this.userModel.findById(userId).exec();
+    const isInternal = Boolean(
+      user?.isPlatformAdmin ||
+      user?.role === 'ADMIN' ||
+      user?.role === 'PLATFORM_ADMIN' ||
+      (user as any)?.roles?.includes('ADMIN') ||
+      (user as any)?.roles?.includes('PLATFORM_ADMIN'),
+    );
+
     if (doc.organizationId) {
-      if (String(doc.organizationId) !== organizationId) {
-        throw new NotFoundException({ code: 'LEAD_NOT_FOUND', message: 'The selected Lead is unavailable in this organization.' });
+      if (String(doc.organizationId) === organizationId || isInternal) {
+        return this.mapLead(doc);
       }
-      return this.mapLead(doc);
+      throw new NotFoundException({ code: 'LEAD_NOT_FOUND', message: 'The selected Lead is unavailable in this organization.' });
     }
 
     const rawAssignedUserId = doc.assignedToUserId?.toString()
@@ -449,9 +458,12 @@ ${dto.content.replace(/</g, '&lt;').replace(/>/g, '&gt;')}
       ? rawAssignedUserId
       : userId;
     const salesTeams = this.teams ? await this.teams.listForSalesMember(userId, organizationId) : [];
-    const salesTeam = salesTeams.find((team) =>
+    let salesTeam = salesTeams.find((team) =>
       team.memberIds.includes(assignedUserId) || team.managerIds.includes(assignedUserId),
     );
+    if (!salesTeam && isInternal) {
+      salesTeam = salesTeams[0] || ({ id: 'internal_sales_team', name: 'Internal Sales Team', memberIds: [userId], managerIds: [userId] } as any);
+    }
     if (!salesTeam) {
       throw new BadRequestException({
         code: 'SALES_TEAM_REQUIRED',
@@ -492,7 +504,7 @@ ${dto.content.replace(/</g, '&lt;').replace(/>/g, '&gt;')}
     ).exec();
     if (!adopted) {
       const current = await this.leadModel.findById(leadId).exec();
-      if (current?.organizationId && String(current.organizationId) === organizationId) return this.mapLead(current);
+      if (current?.organizationId && (String(current.organizationId) === organizationId || isInternal)) return this.mapLead(current);
       throw new ConflictException({ code: 'LEAD_ADOPTION_CONFLICT', message: 'This Lead changed while it was being linked to the CRM.' });
     }
 
