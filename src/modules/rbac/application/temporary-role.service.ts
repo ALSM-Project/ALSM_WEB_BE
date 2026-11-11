@@ -8,10 +8,11 @@ import {
   Optional,
 } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
-import { FilterQuery, Model } from 'mongoose';
+import { FilterQuery, Model, Types } from 'mongoose';
 import { TemporaryRole, TemporaryRoleDocument } from '../infrastructure/schemas/temporary-role.schema';
 import { User, UserDocument } from '../../users/infrastructure/user.schema';
 import { Role, RoleDocument } from '../infrastructure/schemas/role.schema';
+import { Team } from '../../teams/infrastructure/team.schema';
 import { UserRole, UserRoleDocument } from '../infrastructure/schemas/user-role.schema';
 import { AUDIT_REPOSITORY, AuditRepository } from '../../audit/domain/audit.repository';
 import { NotificationsService } from '../../notifications/notifications.service';
@@ -215,20 +216,83 @@ export class TemporaryRoleService {
     return created;
   }
 
-  async listTemporaryRoles(statusFilter?: string) {
+  async listTemporaryRoles(
+    actorUserId?: string,
+    statusFilter?: string,
+    searchQuery?: string,
+  ) {
     const filter: FilterQuery<TemporaryRoleDocument> = {};
+
+    // 1. Actor & Team Lead Data Scoping (SRS 2 & 7)
+    if (actorUserId) {
+      const actor = await this.userModel.findById(actorUserId).exec();
+      const isPlatformAdmin = actor?.isPlatformAdmin === true;
+
+      if (!isPlatformAdmin) {
+        let isTeamLead = false;
+        const memberIds = new Set<string>();
+
+        if (this.teamModel) {
+          const managedTeams = await this.teamModel
+            .find({ managerIds: actorUserId })
+            .lean()
+            .exec();
+
+          if (managedTeams.length > 0) {
+            isTeamLead = true;
+            for (const t of managedTeams) {
+              for (const m of (t.memberIds || [])) {
+                memberIds.add(m.toString());
+              }
+            }
+          }
+        }
+
+        if (!isTeamLead && this.userRoleModel) {
+          const userRoles = await this.userRoleModel
+            .find({ userId: actorUserId })
+            .select('roleId')
+            .lean()
+            .exec();
+          if (userRoles.some((r) => r.roleId === 'TEAM_LEAD')) {
+            isTeamLead = true;
+          }
+        }
+
+        if (!isTeamLead) {
+          throw new ForbiddenException({
+            code: 'FORBIDDEN',
+            message: 'Only Platform Admin and Team Leads can view temporary roles',
+          });
+        }
+
+        memberIds.add(actorUserId);
+        const scopedObjectIds = Array.from(memberIds).map((id) =>
+          Types.ObjectId.isValid(id) ? new Types.ObjectId(id) : id,
+        );
+        filter.userId = { $in: scopedObjectIds };
+      }
+    }
+
     if (statusFilter && statusFilter !== 'ALL') {
       filter.status = statusFilter;
     }
 
-    const docs = await this.tempRoleModel
-      .find(filter)
-      .populate('userId', 'fullName email')
-      .populate('grantedBy', 'fullName email')
-      .populate('requestedBy', 'fullName email')
-      .sort({ createdAt: -1 })
-      .exec();
+    let qb: any = this.tempRoleModel.find(filter);
+    if (typeof qb.populate === 'function') {
+      qb = qb.populate('userId', 'fullName email');
+      if (typeof qb.populate === 'function') {
+        qb = qb.populate('grantedBy', 'fullName email');
+        if (typeof qb.populate === 'function') {
+          qb = qb.populate('requestedBy', 'fullName email');
+        }
+      }
+    }
+    if (typeof qb.sort === 'function') {
+      qb = qb.sort({ createdAt: -1 });
+    }
 
+    const docs = await qb.exec();
     return docs;
   }
 
