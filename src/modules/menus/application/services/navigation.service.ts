@@ -39,6 +39,7 @@ export interface AuthoritativeContractContext {
   organizationId: string | null;
   organizationName: string;
   serviceMode: 'SELF_SERVICE' | 'WE_CONVERT_FOR_YOU' | 'HYBRID';
+  contractType?: 'SELF_SERVICE' | 'WE_CONVERT_FOR_YOU';
   contractStatus: 'ACTIVE' | 'SUSPENDED' | 'EXPIRED' | 'TRIAL' | 'NONE';
   contractNumber: string | null;
   role: string;
@@ -60,6 +61,7 @@ export class NavigationService {
     userId: string,
     cachedPermissions?: string[],
     cachedRoles?: string[],
+    cachedEmail?: string,
   ): Promise<AuthoritativeContractContext> {
     const userPermissions =
       cachedPermissions || (await this.effectivePermissionsService.getEffectivePermissions(userId));
@@ -71,7 +73,7 @@ export class NavigationService {
 
     let orgId: string | null = null;
     let orgName = 'Enterprise Organization';
-    let serviceMode: 'SELF_SERVICE' | 'WE_CONVERT_FOR_YOU' | 'HYBRID' = 'SELF_SERVICE';
+    let serviceMode: 'SELF_SERVICE' | 'WE_CONVERT_FOR_YOU' = 'SELF_SERVICE';
     let contractStatus: 'ACTIVE' | 'SUSPENDED' | 'EXPIRED' | 'TRIAL' | 'NONE' = 'ACTIVE';
     let contractNumber: string | null = null;
     let detectedRole = userRoles[0] || 'MEMBER';
@@ -79,108 +81,177 @@ export class NavigationService {
     if (this.connection?.db) {
       try {
         const userObjId = Types.ObjectId.isValid(userId) ? new Types.ObjectId(userId) : null;
-        const orgsCol = this.connection.db.collection('organizations');
-        const org = await orgsCol.findOne({
+        let email = (cachedEmail || '').toLowerCase().trim();
+        let userOrgId: any = null;
+
+        const usersCol = this.connection.db.collection('users');
+        const userDoc = await usersCol.findOne({
           $or: [
-            ...(userObjId ? [{ 'members.userId': userObjId }] : []),
-            { 'members.userId': userId },
+            ...(userObjId ? [{ _id: userObjId }] : []),
+            { _id: userId as any },
           ],
         });
+        if (userDoc) {
+          if (!email && userDoc.email) email = userDoc.email.toLowerCase().trim();
+          if (userDoc.organizationId) userOrgId = userDoc.organizationId;
+        }
+
+        const orgsCol = this.connection.db.collection('organizations');
+        let org: any = null;
+        if (userOrgId) {
+          org = await orgsCol.findOne({
+            $or: [
+              ...(Types.ObjectId.isValid(userOrgId) ? [{ _id: new Types.ObjectId(userOrgId) }] : []),
+              { _id: userOrgId },
+              { _id: userOrgId.toString() },
+            ],
+          });
+        }
+        if (!org) {
+          org = await orgsCol.findOne({
+            $or: [
+              ...(userObjId ? [{ 'members.userId': userObjId }] : []),
+              { 'members.userId': userId },
+              ...(email ? [{ 'members.email': email }] : []),
+            ],
+          });
+        }
 
         if (org) {
           orgId = org._id ? org._id.toString() : null;
           orgName = org.name || orgName;
 
           const member = (org.members || []).find(
-            (m: any) => String(m.userId) === String(userId),
+            (m: any) => String(m.userId) === String(userId) || (email && m.email === email),
           );
           if (member?.role) {
             detectedRole = String(member.role).toUpperCase();
           }
+        }
 
-          const contractsCol = this.connection.db.collection('contracts');
-          const contracts = await contractsCol
-            .find(
-              {
-                $or: [
-                  { organizationId: org._id },
-                  { organizationId: org._id.toString() },
-                  { 'customer.companyName': org.name },
-                ],
-              },
-              {
-                projection: {
-                  status: 1,
-                  lifecycleStatus: 1,
-                  activationStatus: 1,
-                  serviceMode: 1,
-                  contractType: 1,
-                  contractNumber: 1,
-                  endDate: 1,
-                },
-              },
-            )
-            .toArray();
-
-          const activeContracts = contracts.filter(
-            (c) =>
-              c.status === 'ACTIVE' ||
-              c.lifecycleStatus === 'COMPLETED' ||
-              c.activationStatus === 'COMPLETED',
-          );
-
-          if (activeContracts.length > 0) {
-            const hasSelfService = activeContracts.some(
-              (c) =>
-                c.serviceMode === 'SELF_SERVICE' ||
-                c.serviceMode === 'SELF_SERVICE_CONVERSION' ||
-                c.contractType === 'SELF_SERVICE_SUBSCRIPTION',
-            );
-            const hasManaged = activeContracts.some(
-              (c) =>
-                c.serviceMode === 'WE_CONVERT_FOR_YOU' ||
-                c.serviceMode === 'MANAGED' ||
-                c.contractType === 'MANAGED_CONVERSION_SOW',
-            );
-            const hasHybrid = activeContracts.some(
-              (c) =>
-                c.serviceMode === 'HYBRID' ||
-                c.contractType === 'ENTERPRISE_HYBRID_MSA',
-            );
-
-            if (hasHybrid || (hasSelfService && hasManaged)) {
-              serviceMode = 'HYBRID';
-            } else if (hasManaged) {
-              serviceMode = 'WE_CONVERT_FOR_YOU';
-            } else {
-              serviceMode = 'SELF_SERVICE';
-            }
-            contractStatus = 'ACTIVE';
-            contractNumber = activeContracts[0].contractNumber || null;
-          } else if (contracts.length > 0) {
-            const suspended = contracts.find(
-              (c) => c.status === 'SUSPENDED' || c.lifecycleStatus === 'SUSPENDED',
-            );
-            const expired = contracts.find(
-              (c) =>
-                c.status === 'EXPIRED' ||
-                (c.endDate && new Date(c.endDate) < new Date()),
-            );
-            if (suspended) {
-              contractStatus = 'SUSPENDED';
-              contractNumber = suspended.contractNumber || null;
-            } else if (expired) {
-              contractStatus = 'EXPIRED';
-              contractNumber = expired.contractNumber || null;
-            }
-          } else {
-            if (org.serviceMode === 'ALSM_MANAGED') {
-              serviceMode = 'WE_CONVERT_FOR_YOU';
-            } else {
-              serviceMode = 'SELF_SERVICE';
-            }
-            contractStatus = org.status === 'ACTIVE' ? 'ACTIVE' : 'TRIAL';
+        const contractsCol = this.connection.db.collection('contracts');
+        const contractOrConditions: any[] = [];
+        if (email) {
+          contractOrConditions.push({ 'customer.contactEmail': email });
+          contractOrConditions.push({ 'signingProcess.customerSigner.email': email });
+        }
+        if (userObjId) {
+          contractOrConditions.push({ customerUserId: userObjId });
+          contractOrConditions.push({ createdByUserId: userObjId });
+          contractOrConditions.push({ customerUserId: userId });
+          contractOrConditions.push({ createdByUserId: userId });
+        }
+        if (userOrgId) {
+          if (Types.ObjectId.isValid(userOrgId)) {
+            contractOrConditions.push({ organizationId: new Types.ObjectId(userOrgId) });
           }
+          contractOrConditions.push({ organizationId: userOrgId.toString() });
+        }
+        if (org) {
+          if (org._id) {
+            contractOrConditions.push({ organizationId: org._id });
+            contractOrConditions.push({ organizationId: org._id.toString() });
+          }
+          if (org.name) {
+            contractOrConditions.push({ 'customer.companyName': org.name });
+          }
+        }
+
+        const contracts = contractOrConditions.length > 0
+          ? await contractsCol
+              .find(
+                { $or: contractOrConditions },
+                {
+                  projection: {
+                    status: 1,
+                    lifecycleStatus: 1,
+                    activationStatus: 1,
+                    serviceMode: 1,
+                    contractType: 1,
+                    contractNumber: 1,
+                    endDate: 1,
+                    customer: 1,
+                    signingProcess: 1,
+                    customerUserId: 1,
+                    createdByUserId: 1,
+                    organizationId: 1,
+                    organizationName: 1,
+                    createdAt: 1,
+                  },
+                },
+              )
+              .sort({ createdAt: -1 })
+              .toArray()
+          : [];
+
+        const activeContracts = contracts.filter(
+          (c) =>
+            c.status === 'ACTIVE' ||
+            c.status === 'SIGNED' ||
+            c.lifecycleStatus === 'COMPLETED' ||
+            c.activationStatus === 'COMPLETED',
+        );
+
+        // Prioritize contract specifically assigned to or signed by this user
+        const userSpecificActive = activeContracts.find(
+          (c) =>
+            (email && (
+              c.customer?.contactEmail?.toLowerCase() === email ||
+              c.signingProcess?.customerSigner?.email?.toLowerCase() === email
+            )) ||
+            (userObjId && (
+              String(c.customerUserId) === String(userObjId) ||
+              String(c.createdByUserId) === String(userObjId)
+            ))
+        );
+
+        const primaryContract = userSpecificActive || activeContracts[0];
+
+        if (primaryContract) {
+          const rawMode = (primaryContract.serviceMode || primaryContract.contractType || '').toUpperCase();
+          if (rawMode.includes('CONVERT') || rawMode.includes('MANAGED')) {
+            serviceMode = 'WE_CONVERT_FOR_YOU';
+          } else {
+            serviceMode = 'SELF_SERVICE';
+          }
+          contractStatus = (primaryContract.status as any) || 'ACTIVE';
+          contractNumber = primaryContract.contractNumber || null;
+          if (primaryContract.organizationId && !orgId) {
+            orgId = primaryContract.organizationId.toString();
+          }
+          if (primaryContract.customer?.companyName && orgName === 'Enterprise Organization') {
+            orgName = primaryContract.customer.companyName;
+          }
+        } else if (contracts.length > 0) {
+          const suspended = contracts.find(
+            (c) => c.status === 'SUSPENDED' || c.lifecycleStatus === 'SUSPENDED',
+          );
+          const expired = contracts.find(
+            (c) =>
+              c.status === 'EXPIRED' ||
+              (c.endDate && new Date(c.endDate) < new Date()),
+          );
+          const candidate = suspended || expired || contracts[0];
+          const rawMode = (candidate.serviceMode || candidate.contractType || '').toUpperCase();
+          if (rawMode.includes('CONVERT') || rawMode.includes('MANAGED')) {
+            serviceMode = 'WE_CONVERT_FOR_YOU';
+          } else {
+            serviceMode = 'SELF_SERVICE';
+          }
+          if (suspended) {
+            contractStatus = 'SUSPENDED';
+            contractNumber = suspended.contractNumber || null;
+          } else if (expired) {
+            contractStatus = 'EXPIRED';
+            contractNumber = expired.contractNumber || null;
+          }
+        } else if (org) {
+          if (org.serviceMode === 'ALSM_MANAGED' || org.serviceMode === 'WE_CONVERT_FOR_YOU') {
+            serviceMode = 'WE_CONVERT_FOR_YOU';
+          } else {
+            serviceMode = 'SELF_SERVICE';
+          }
+          contractStatus = org.status === 'ACTIVE' ? 'ACTIVE' : 'TRIAL';
         }
       } catch {
         // Fallback gracefully on query error
@@ -191,6 +262,7 @@ export class NavigationService {
       organizationId: orgId,
       organizationName: orgName,
       serviceMode,
+      contractType: serviceMode,
       contractStatus,
       contractNumber,
       role: detectedRole,
@@ -202,6 +274,7 @@ export class NavigationService {
     userId: string,
     app: ApplicationContext,
     options?: NavigationQueryOptions,
+    userEmail?: string,
   ): Promise<NavNode[]> {
     const [userPermissions, userRoles] = await Promise.all([
       this.effectivePermissionsService.getEffectivePermissions(userId),
@@ -215,14 +288,15 @@ export class NavigationService {
       userId,
       userPermissions,
       userRoles,
+      userEmail,
     );
 
     // Apply simulation options only for preview/admin simulation
-    let effectiveServiceMode = contractContext.serviceMode;
+    let effectiveServiceMode: string = contractContext.serviceMode;
     if (options?.contractType) {
       const ct = options.contractType.toUpperCase();
       if (ct === 'SELF_SERVICE' || ct === 'WE_CONVERT_FOR_YOU' || ct === 'HYBRID') {
-        effectiveServiceMode = ct as any;
+        effectiveServiceMode = ct;
       }
     }
 
@@ -296,19 +370,17 @@ export class NavigationService {
     const permittedItems: NavNode[] = [];
 
     for (const item of menuItems) {
-      // 1. Contract Type Filtering
+      // 1. Contract Type Filtering (Strict 2 Types: Platform-Based vs Managed Modernization)
       const vis = (item.contractTypeVisibility || 'ALL').toUpperCase();
       let contractMatches = true;
       if (vis === 'ALL') {
         contractMatches = true;
       } else if (vis === 'SELF_SERVICE') {
-        contractMatches =
-          effectiveServiceMode === 'SELF_SERVICE' || effectiveServiceMode === 'HYBRID';
-      } else if (vis === 'WE_CONVERT_FOR_YOU') {
-        contractMatches =
-          effectiveServiceMode === 'WE_CONVERT_FOR_YOU' || effectiveServiceMode === 'HYBRID';
+        contractMatches = effectiveServiceMode === 'SELF_SERVICE';
+      } else if (vis === 'WE_CONVERT_FOR_YOU' || vis === 'MANAGED') {
+        contractMatches = effectiveServiceMode === 'WE_CONVERT_FOR_YOU';
       } else if (vis === 'HYBRID') {
-        contractMatches = effectiveServiceMode === 'HYBRID';
+        contractMatches = false;
       }
 
       if (!contractMatches) continue;

@@ -94,6 +94,7 @@ export class RbacSeedService implements OnApplicationBootstrap {
     // Platform Administration (Section 3.13)
     await this.ensurePermission('organizations.view', 'View Organisations', 'admin', 'View customer and enterprise organisations');
     await this.ensurePermission('organizations.manage', 'Manage Organisations', 'admin', 'Create enterprise organisations and manage engagements');
+    await this.ensurePermission('organizations.delete', 'Delete Organisations', 'admin', 'Delete customer and enterprise organisations with audit trail');
     await this.ensurePermission('company_profile.view', 'View Company Legal Profile', 'admin', 'View ALSM provider legal profile and version history');
     await this.ensurePermission('company_profile.manage', 'Manage Company Legal Profile', 'admin', 'Manage ALSM provider legal profile, tax ID, and signatory configuration');
     await this.ensurePermission('revenue.view', 'View Total Revenue', 'finance', 'View platform-wide revenue and contract metrics');
@@ -156,6 +157,7 @@ export class RbacSeedService implements OnApplicationBootstrap {
     await this.ensurePermission('bank_accounts.update', 'Update Bank Account', 'finance', 'Edit company receiving bank account details');
     await this.ensurePermission('bank_accounts.set_default', 'Set Default Bank Account', 'finance', 'Set receiving bank account as currency default');
     await this.ensurePermission('bank_accounts.deactivate', 'Deactivate Bank Account', 'finance', 'Deactivate company receiving bank account');
+    await this.ensurePermission('bank_accounts.delete', 'Delete Bank Account', 'finance', 'Permanently delete company receiving bank account');
     await this.ensurePermission('bank_accounts.reveal_sensitive_data', 'Reveal Full Bank Account Number', 'finance', 'Reveal unmasked company bank account number with audit logging');
 
     // Section 3.F: Web 3 Partner Portal & Enterprise Roles Governance
@@ -213,6 +215,7 @@ export class RbacSeedService implements OnApplicationBootstrap {
       'bank_accounts.update',
       'bank_accounts.set_default',
       'bank_accounts.deactivate',
+      'bank_accounts.delete',
       'bank_accounts.reveal_sensitive_data',
       'users.onboard',
       'users.manage',
@@ -262,6 +265,7 @@ export class RbacSeedService implements OnApplicationBootstrap {
       'organizations.impersonate',
       'organizations.view',
       'organizations.manage',
+      'organizations.delete',
       'company_profile.view',
       'company_profile.manage',
       'conversions.troubleshoot.view',
