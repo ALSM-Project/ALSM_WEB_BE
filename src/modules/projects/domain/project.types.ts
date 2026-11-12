@@ -1,4 +1,5 @@
 export enum ConversionType {
+  BMS_DSPF_TO_REACT = 'BMS_DSPF_TO_REACT',
   BMS_DSPF_TO_FRONTEND = 'BMS_DSPF_TO_FRONTEND',
   COBOL_TO_JAVA = 'COBOL_TO_JAVA',
 }
@@ -193,6 +194,8 @@ export interface ProjectRepository {
   ): Promise<ProjectRecord | null>;
   /** Projects a Team Lead allocated to this staff member (UC-86), optionally within one organization. */
   findByAssignedStaff(staffId: string, organizationId?: string): Promise<ProjectRecord[]>;
+  /** Projects assigned to this Team Lead by Platform Admin. */
+  findByAssignedTeamLead?(teamLeadId: string, organizationId?: string): Promise<ProjectRecord[]>;
   assignStaff(
     id: string,
     staff: { staffId: string; staffName: string; note?: string; assignedBy: string },
