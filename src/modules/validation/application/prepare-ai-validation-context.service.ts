@@ -40,8 +40,25 @@ export class PrepareAiValidationContextService {
     const isBms = context.conversionType === ConversionType.BMS_DSPF_TO_FRONTEND;
     const sourceExts = isBms ? BMS_SOURCE_EXTENSIONS : COBOL_SOURCE_EXTENSIONS;
     const targetExts = isBms ? REACT_TARGET_EXTENSIONS : JAVA_TARGET_EXTENSIONS;
-    const sourceFiles = this.select(context.sourceFiles, sourceExts, 'source');
+    let sourceFiles = this.select(context.sourceFiles, sourceExts, 'source');
     const targetFiles = this.select(context.targetFiles, targetExts, 'target');
+
+    // If total files exceed limits.maxFiles, prioritize the primary source file, target files,
+    // and referenced copybooks up to limits.maxFiles instead of failing the validation.
+    if (sourceFiles.length + targetFiles.length > limits.maxFiles) {
+      const allowedSources = Math.max(1, limits.maxFiles - targetFiles.length);
+      if (context.screenName) {
+        const cleanName = path.basename(context.screenName).toLowerCase();
+        const primary = sourceFiles.find((f) => path.basename(f.path).toLowerCase() === cleanName);
+        const others = sourceFiles.filter((f) => path.basename(f.path).toLowerCase() !== cleanName);
+        sourceFiles = primary
+          ? [primary, ...others.slice(0, allowedSources - 1)]
+          : sourceFiles.slice(0, allowedSources);
+      } else {
+        sourceFiles = sourceFiles.slice(0, allowedSources);
+      }
+    }
+
     const selectedFileCount = sourceFiles.length + targetFiles.length;
 
     if (selectedFileCount > limits.maxFiles) {

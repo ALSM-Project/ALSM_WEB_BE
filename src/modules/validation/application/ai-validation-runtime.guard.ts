@@ -32,7 +32,10 @@ export class AiValidationRuntimeGuard {
     }
 
     const metadata = (
-      conversionType === ConversionType.BMS_DSPF_TO_FRONTEND ? this.bmsValidator : this.validator
+      conversionType === ConversionType.BMS_DSPF_TO_FRONTEND ||
+      conversionType === ConversionType.BMS_DSPF_TO_REACT
+        ? this.bmsValidator
+        : this.validator
     ).getMetadata();
     if (metadata.provider !== provider) {
       throw new ServiceUnavailableException({
