@@ -12,7 +12,7 @@ import {
   ErrorLogStatus,
 } from '../domain/error-log.types';
 import { CopybookDependencyBlockedError } from '../domain/copybook-dependency-blocked.error';
-import { findCopybookBlockers } from '../domain/copybook-dependency-resolver';
+import { findCopybookBlockers, normalizeCopyName } from '../domain/copybook-dependency-resolver';
 import { SCREEN_REPOSITORY, ScreenRepository } from '../../screens/domain/screen.types';
 import { runConversionTool } from './conversion-tool-runner.util';
 import { normalizeBundle } from './cics-source-normalizer';
@@ -62,10 +62,33 @@ export class CobolJavaConversionAdapter {
       // Re-derive blockers from the stored tree rather than trusting the stored flag alone:
       // screens analyzed before system copybooks (DFH*/CMQ*) were recognized still carry
       // BLOCKED purely because of those, and should convert without a re-upload.
-      const blockers =
+      let blockers =
         screen?.dependencyStatus === 'BLOCKED'
           ? findCopybookBlockers(screen.dependencies ?? [])
           : [];
+      if (blockers.length > 0) {
+        const projectSourcesDir = this.storage.resolvePath(`sources/${input.projectId}`);
+        if (fs.existsSync(projectSourcesDir)) {
+          const allNames = new Set<string>();
+          const scanNames = (dir: string) => {
+            for (const ent of fs.readdirSync(dir, { withFileTypes: true })) {
+              if (ent.isDirectory()) scanNames(path.join(dir, ent.name));
+              else if (ent.isFile()) allNames.add(normalizeCopyName(ent.name));
+            }
+          };
+          scanNames(projectSourcesDir);
+          const remaining = blockers.filter((b) => {
+            const match = b.match(/'([^']+)'/);
+            const name = match ? normalizeCopyName(match[1]) : '';
+            return !allNames.has(name);
+          });
+          if (remaining.length === 0) {
+            blockers = [];
+          } else {
+            blockers = remaining;
+          }
+        }
+      }
       if (blockers.length > 0) {
         throw new CopybookDependencyBlockedError(
           `Blocked by unresolved copybook dependencies: ${blockers.join(' | ')}`,
@@ -94,7 +117,10 @@ export class CobolJavaConversionAdapter {
       }
     }
 
-    const sourceDir = this.storage.resolvePath(input.inputReference);
+    const projectSourcesDir = this.storage.resolvePath(`sources/${input.projectId}`);
+    const sourceDir = fs.existsSync(projectSourcesDir)
+      ? projectSourcesDir
+      : this.storage.resolvePath(input.inputReference);
     // Each job gets its own working directory: the tool writes a hard-coded temp file
     // ($temporary.file) into its CWD, so concurrent jobs must never share one.
     const jobWorkDir = await fs.promises.mkdtemp(path.join(os.tmpdir(), 'alsm-conversion-'));
@@ -216,7 +242,7 @@ export class CobolJavaConversionAdapter {
 
       const programDirs = new Set<string>();
       for (const file of files) {
-        const target = path.join(targetDir, file.name);
+        const target = path.join(targetDir, path.basename(file.name));
         await fs.promises.mkdir(path.dirname(target), { recursive: true });
         await fs.promises.writeFile(
           target,

@@ -18,6 +18,7 @@ export class ConversionEngineRouter implements ConversionEnginePort {
 
   async execute(input: ConversionEngineInput): Promise<ConversionEngineOutput> {
     switch (input.conversionType) {
+      case ConversionType.BMS_DSPF_TO_REACT:
       case ConversionType.BMS_DSPF_TO_FRONTEND:
         return this.bmsDspfAdapter.execute(input);
       case ConversionType.COBOL_TO_JAVA:
