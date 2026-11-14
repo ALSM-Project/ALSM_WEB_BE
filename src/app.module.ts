@@ -243,6 +243,8 @@ import { MongoValidationRunRepository } from './modules/validation/infrastructur
 import { MongoValidationFindingRepository } from './modules/validation/infrastructure/mongo-validation-finding.repository';
 import { BmsSanitizerService } from './modules/validation/application/bms-sanitizer.service';
 import { BmsRuleValidationService } from './modules/validation/application/bms-rule-validation.service';
+import { CobolRuleValidationService } from './modules/validation/application/cobol-rule-validation.service';
+import { CobolAiValidatorAdapter } from './modules/validation/infrastructure/cobol-ai-validator.adapter';
 import { BmsAiValidatorAdapter } from './modules/validation/infrastructure/bms-ai-validator.adapter';
 import { BuildValidationContextService } from './modules/validation/application/build-validation-context.service';
 import { ValidationReadService } from './modules/validation/application/validation-read.service';
@@ -258,6 +260,7 @@ import { AiValidationRuntimeGuard } from './modules/validation/application/ai-va
 import { TriggerAiValidationService } from './modules/validation/application/trigger-ai-validation.service';
 import { ReconcileValidationRunService } from './modules/validation/application/reconcile-validation-run.service';
 import { ReviewValidationFindingService } from './modules/validation/application/review-validation-finding.service';
+import { ApplyAiFixService } from './modules/validation/application/apply-ai-fix.service';
 import { VALIDATION_QUEUE } from './modules/validation/domain/validation-queue.port';
 import { BullMqValidationQueue } from './modules/validation/infrastructure/bullmq-validation.queue';
 import { ValidationWorkerRunner } from './modules/validation/infrastructure/validation-worker.runner';
@@ -440,12 +443,15 @@ import { SubmitConversionQualityReviewService } from './modules/conversions/appl
 import { QualityReviewController } from './modules/conversions/presentation/quality-review.controller';
 
 import { AuditModule } from './modules/audit/audit.module';
+import { ScheduleModule } from '@nestjs/schedule';
+import { PendingPaymentCheckJob } from './modules/billing/application/pending-payment-check.job';
 import { SystemNotification, SystemNotificationSchema } from './modules/notifications/notification.schema';
 import { NotificationsController } from './modules/notifications/notifications.controller';
 import { NotificationsService } from './modules/notifications/notifications.service';
 
 @Module({
   imports: [
+    ScheduleModule.forRoot(),
     ConfigModule.forRoot({ isGlobal: true, validationSchema: environmentValidationSchema }),
     JwtModule.register({ global: true }),
     MongooseModule.forRootAsync({ useFactory: () => ({ uri: process.env.MONGODB_URI }) }),
@@ -758,6 +764,7 @@ import { NotificationsService } from './modules/notifications/notifications.serv
     TriggerAiValidationService,
     ReconcileValidationRunService,
     ReviewValidationFindingService,
+    ApplyAiFixService,
     ValidationWorkerRunner,
     FakeAiValidatorAdapter,
     OpenAiValidatorAdapter,
@@ -766,6 +773,8 @@ import { NotificationsService } from './modules/notifications/notifications.serv
     BmsSanitizerService,
     BmsRuleValidationService,
     BmsAiValidatorAdapter,
+    CobolRuleValidationService,
+    CobolAiValidatorAdapter,
     aiValidatorProvider,
     bmsAiValidatorProvider,
     MongoErrorLogRepository,
@@ -773,6 +782,7 @@ import { NotificationsService } from './modules/notifications/notifications.serv
     BillingService,
     PaymentService,
     UsageService,
+    PendingPaymentCheckJob,
     MongoSubscriptionRepository,
     MongoInvoiceRepository,
     MongoPaymentRepository,
