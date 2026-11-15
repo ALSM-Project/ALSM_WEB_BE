@@ -15,6 +15,7 @@ import {
   MENU_BUILDER_REPOSITORY,
 } from '../../domain/interfaces/menu-builder.repository.interface';
 import { AUDIT_REPOSITORY, AuditRepository } from '../../../audit/domain/audit.repository';
+import { BootstrapCacheService } from './bootstrap-cache.service';
 
 @Injectable()
 export class MenuBuilderService {
@@ -24,6 +25,8 @@ export class MenuBuilderService {
     @Optional()
     @Inject(AUDIT_REPOSITORY)
     private readonly audit?: AuditRepository,
+    @Optional()
+    private readonly bootstrapCache?: BootstrapCacheService,
   ) {}
 
   async getAdminMenuTree(app: ApplicationContext): Promise<NavNode[]> {
@@ -50,6 +53,7 @@ export class MenuBuilderService {
       featureKey: item.featureKey || null,
       description: item.description || null,
       requiredRoles: item.requiredRoles || [],
+      capability: item.capability || undefined,
       requiredPermissions: itemPermsMap.get(item.id) || [],
     }));
 
@@ -159,9 +163,12 @@ export class MenuBuilderService {
         featureKey: dto.featureKey || null,
         description: dto.description || null,
         requiredRoles: dto.requiredRoles || [],
+        capability: dto.capability || null,
       },
       dto.permissions,
     );
+
+    this.bootstrapCache?.invalidate();
 
     if (this.audit) {
       await this.audit.append({
@@ -299,9 +306,12 @@ export class MenuBuilderService {
         featureKey: dto.featureKey,
         description: dto.description,
         requiredRoles: dto.requiredRoles,
+        capability: dto.capability,
       },
       dto.permissions,
     );
+
+    this.bootstrapCache?.invalidate();
 
     const currentPerms = await this.menuBuilderRepo.findMenuItemPermissions(id);
 
@@ -631,5 +641,7 @@ export class MenuBuilderService {
         });
       }
     }
+
+    this.bootstrapCache?.invalidate();
   }
 }

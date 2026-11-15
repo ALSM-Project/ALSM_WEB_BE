@@ -76,6 +76,10 @@ export class CreateMenuItemDto {
   requiredRoles?: string[];
 
   @IsOptional()
+  @IsString()
+  capability?: string | null;
+
+  @IsOptional()
   @IsArray()
   @IsString({ each: true })
   permissions?: string[];
@@ -142,6 +146,10 @@ export class UpdateMenuItemDto {
   @IsArray()
   @IsString({ each: true })
   requiredRoles?: string[];
+
+  @IsOptional()
+  @IsString()
+  capability?: string | null;
 
   @IsOptional()
   @IsArray()

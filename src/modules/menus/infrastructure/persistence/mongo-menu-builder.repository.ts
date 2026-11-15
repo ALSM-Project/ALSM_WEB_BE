@@ -98,6 +98,7 @@ export class MongoMenuBuilderRepository implements IMenuBuilderRepository {
     if (data.featureKey !== undefined) item.featureKey = data.featureKey;
     if (data.description !== undefined) item.description = data.description;
     if (data.requiredRoles !== undefined) item.requiredRoles = data.requiredRoles;
+    if (data.capability !== undefined) (item as any).capability = data.capability;
 
     await item.save();
 
@@ -209,6 +210,7 @@ export class MongoMenuBuilderRepository implements IMenuBuilderRepository {
       featureKey: doc.featureKey || null,
       description: doc.description || null,
       requiredRoles: doc.requiredRoles || [],
+      capability: (doc as any).capability || null,
       createdAt: doc.createdAt,
       updatedAt: doc.updatedAt,
     };

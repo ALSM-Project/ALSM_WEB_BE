@@ -18,6 +18,7 @@ export interface IMenuItemData {
   featureKey?: string | null;
   description?: string | null;
   requiredRoles?: string[];
+  capability?: string | null;
   createdAt?: Date;
   updatedAt?: Date;
 }

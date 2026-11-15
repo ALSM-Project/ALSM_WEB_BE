@@ -44,6 +44,7 @@ export class MongoNavigationRepository implements INavigationRepository {
       featureKey: doc.featureKey || null,
       description: doc.description || null,
       requiredRoles: doc.requiredRoles || [],
+      capability: (doc as any).capability || null,
       createdAt: doc.createdAt,
       updatedAt: doc.updatedAt,
     }));
