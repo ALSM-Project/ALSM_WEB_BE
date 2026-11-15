@@ -287,33 +287,34 @@ export class NavigationService {
           }
         }
 
-        const contracts = contractOrConditions.length > 0
-          ? await contractsCol
-              .find(
-                { $or: contractOrConditions },
-                {
-                  projection: {
-                    status: 1,
-                    lifecycleStatus: 1,
-                    activationStatus: 1,
-                    serviceMode: 1,
-                    contractType: 1,
-                    contractNumber: 1,
-                    endDate: 1,
-                    'customer.contactEmail': 1,
-                    'customer.companyName': 1,
-                    'signingProcess.customerSigner.email': 1,
-                    customerUserId: 1,
-                    createdByUserId: 1,
-                    organizationId: 1,
-                    organizationName: 1,
-                    createdAt: 1,
-                  },
-                },
-              )
-              .limit(20)
-              .toArray()
-          : [];
+        let contracts: any[] = [];
+        if (contractOrConditions.length > 0) {
+          const rawCursor: any = contractsCol.find(
+            { $or: contractOrConditions },
+            {
+              projection: {
+                status: 1,
+                lifecycleStatus: 1,
+                activationStatus: 1,
+                serviceMode: 1,
+                contractType: 1,
+                contractNumber: 1,
+                endDate: 1,
+                'customer.contactEmail': 1,
+                'customer.companyName': 1,
+                'signingProcess.customerSigner.email': 1,
+                customerUserId: 1,
+                createdByUserId: 1,
+                organizationId: 1,
+                organizationName: 1,
+                createdAt: 1,
+              },
+            },
+          );
+          const sortedCursor = typeof rawCursor.sort === 'function' ? rawCursor.sort({ createdAt: -1 }) : rawCursor;
+          const limitedCursor = typeof sortedCursor.limit === 'function' ? sortedCursor.limit(20) : sortedCursor;
+          contracts = await limitedCursor.toArray();
+        }
 
         contracts.sort((a, b) => new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime());
 
