@@ -326,15 +326,25 @@ export class ProjectService {
     if (isPlatformAdmin && !organizationHeader?.trim()) {
       return this.projects.findAll();
     }
+    const isInternal =
+      typeof this.organizationContext?.isInternalOrAdmin === 'function'
+        ? await this.organizationContext.isInternalOrAdmin(userId).catch(() => false)
+        : false;
+    if (isInternal && !organizationHeader?.trim()) {
+      return this.projects.findAll();
+    }
     const organization = await this.organizationContext.resolve(userId, organizationHeader).catch(() => null);
     const own = organization ? await this.projects.findAll(organization.id) : [];
+    const createdByMe = this.projects.findByCreatedBy
+      ? ((await this.projects.findByCreatedBy(userId)) ?? [])
+      : [];
     const staffAllocated = (await this.projects.findByAssignedStaff(userId)) ?? [];
     const leadAllocated = this.projects.findByAssignedTeamLead
       ? ((await this.projects.findByAssignedTeamLead(userId)) ?? [])
       : [];
     const known = new Set(own.map((p) => p.id));
     const result = [...own];
-    for (const p of [...staffAllocated, ...leadAllocated]) {
+    for (const p of [...createdByMe, ...staffAllocated, ...leadAllocated]) {
       if (!known.has(p.id)) {
         known.add(p.id);
         result.push(p);
