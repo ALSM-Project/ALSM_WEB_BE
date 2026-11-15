@@ -86,11 +86,12 @@ export class ExecuteAiValidationService {
       const context = await this.buildContext.execute(input);
       if (
         context.conversionType !== ConversionType.COBOL_TO_JAVA &&
-        context.conversionType !== ConversionType.BMS_DSPF_TO_FRONTEND
+        context.conversionType !== ConversionType.BMS_DSPF_TO_FRONTEND &&
+        context.conversionType !== ConversionType.BMS_DSPF_TO_REACT
       ) {
         throw new ValidationExecutionError(
           'VALIDATION_UNSUPPORTED_CONVERSION_TYPE',
-          'AI semantic validation supports COBOL_TO_JAVA and BMS_DSPF_TO_FRONTEND',
+          'AI semantic validation supports COBOL_TO_JAVA and BMS_DSPF_TO_REACT',
           false,
         );
       }
@@ -99,7 +100,8 @@ export class ExecuteAiValidationService {
       this.requireStableProvider(run, metadata);
       const prepared = this.prepareContext.execute(context);
       const validator =
-        context.conversionType === ConversionType.BMS_DSPF_TO_FRONTEND
+        context.conversionType === ConversionType.BMS_DSPF_TO_FRONTEND ||
+        context.conversionType === ConversionType.BMS_DSPF_TO_REACT
           ? this.bmsAiValidator
           : this.aiValidator;
       const claimed = await this.validationRuns.claimProviderExecution(

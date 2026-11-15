@@ -187,6 +187,17 @@ export class MongoProjectRepository implements ProjectRepository {
     return (await this.model.find(filter).sort({ createdAt: -1 }).exec()).map((doc) => this.map(doc));
   }
 
+  async findByAssignedTeamLead(teamLeadId: string, organizationId?: string): Promise<ProjectRecord[]> {
+    const filter: FilterQuery<ProjectDocument> = {
+      deletedAt: { $exists: false },
+      assignedTeamLeadId: toValidObjectId(teamLeadId),
+    };
+    if (organizationId?.trim()) {
+      filter.organizationId = { $in: [toValidObjectId(organizationId), organizationId] };
+    }
+    return (await this.model.find(filter).sort({ createdAt: -1 }).exec()).map((doc) => this.map(doc));
+  }
+
   async assignStaff(
     id: string,
     staff: { staffId: string; staffName: string; note?: string; assignedBy: string },

@@ -1,4 +1,5 @@
 import { BadRequestException, Inject, Injectable, Logger } from '@nestjs/common';
+import * as fs from 'fs';
 import * as path from 'path';
 import { STORAGE_PORT, StoragePort } from '../../../shared/storage/storage.port';
 import { AUDIT_REPOSITORY, AuditRepository } from '../../audit/domain/audit.repository';
@@ -28,13 +29,14 @@ export interface UploadConversionSourceResult {
 }
 
 const MAX_FILE_BYTES = Number(process.env.MAX_UPLOAD_FILE_SIZE_MB || 50) * 1024 * 1024;
-const MAX_FILES_PER_UPLOAD = Number(process.env.MAX_UPLOAD_FILES_PER_REQUEST || 300);
+const MAX_FILES_PER_UPLOAD = Number(process.env.MAX_UPLOAD_FILES_PER_REQUEST || 1000);
 /** Upper bound for everything a single upload may expand to (guards against zip bombs). */
 const MAX_TOTAL_BYTES = MAX_FILE_BYTES * 4;
 
 const ALLOWED_EXTENSIONS: Record<ConversionType, string[]> = {
+  [ConversionType.BMS_DSPF_TO_REACT]: ['.bms', '.dspf'],
   [ConversionType.BMS_DSPF_TO_FRONTEND]: ['.bms', '.dspf'],
-  [ConversionType.COBOL_TO_JAVA]: ['.cob', '.cbl', '.cpy'],
+  [ConversionType.COBOL_TO_JAVA]: ['.cbl', '.cob', '.cpy'],
 };
 
 /** Extensions that create a real Screen record — copybooks (.cpy) are supporting
@@ -125,57 +127,108 @@ export class UploadConversionSourceService {
       }
       namesSeen.set(key, file.originalname);
     }
+    const finalFiles = files;
 
     const inputReference = await this.storage.writeFiles(
       `sources/${project.id}`,
-      files.map((file) => ({ relativePath: file.originalname, content: file.buffer })),
+      finalFiles.map((file) => ({ relativePath: file.originalname, content: file.buffer })),
     );
+
+    // Check existing screens for this project to avoid redundant duplicate records
+    let existingScreens: ScreenRecord[] = [];
+    try {
+      const listed = await this.screenService.list(userId, organizationHeader, project.id);
+      existingScreens = Array.isArray(listed) ? listed : [];
+    } catch {
+      existingScreens = [];
+    }
+    const safeScreens = Array.isArray(existingScreens) ? existingScreens : [];
+    const existingByName = new Map(safeScreens.map((s) => [s.name.toLowerCase(), s]));
 
     // Copybooks (.cpy) are supporting files only — they never become a screen of
     // their own, but they do share this same inputReference bundle so the COBOL
     // adapter can still resolve COPY statements against them later.
     const screens: ScreenRecord[] = [];
-    for (const file of files) {
+    for (const file of finalFiles) {
       const ext = path.extname(file.originalname).toLowerCase();
       const sourceType = SCREEN_SOURCE_TYPE_BY_EXTENSION[ext];
       if (!sourceType) continue;
-      screens.push(
-        await this.screenService.create(organization.id, project.id, userId, {
-          name: file.originalname,
-          sourceType,
-          inputReference,
-          sizeBytes: file.size,
-        }),
-      );
+      const existing = existingByName.get(file.originalname.toLowerCase());
+      if (existing) {
+        screens.push(existing);
+      } else {
+        screens.push(
+          await this.screenService.create(organization.id, project.id, userId, {
+            name: file.originalname,
+            sourceType,
+            inputReference,
+            sizeBytes: file.size,
+          }),
+        );
+      }
     }
 
-    // Copybook Dependency Resolver: one static-analysis pass over the whole bundle (builds
-    // its file index once), run only for COBOL projects, right after screens exist so each
-    // program's analysis can be persisted onto its own screen immediately.
+    // Copybook Dependency Resolver: analyze all project files (across all upload batches)
+    // so programs and copybooks uploaded in separate folders/batches still resolve one another.
     if (project.conversionType === ConversionType.COBOL_TO_JAVA) {
-      const analysis = analyzeBundle(
-        files.map((file) => ({ name: file.originalname, content: file.buffer.toString('utf8') })),
-      );
+      const allProjectFiles: { name: string; content: string }[] = [];
+      const projectSourcesDir = this.storage.resolvePath(`sources/${project.id}`);
+      if (fs.existsSync(projectSourcesDir)) {
+        const collectFiles = (dir: string) => {
+          for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+            const fullPath = path.join(dir, entry.name);
+            if (entry.isDirectory()) collectFiles(fullPath);
+            else if (entry.isFile()) {
+              try {
+                allProjectFiles.push({
+                  name: entry.name,
+                  content: fs.readFileSync(fullPath, 'utf8'),
+                });
+              } catch {
+                // ignore unreadable
+              }
+            }
+          }
+        };
+        collectFiles(projectSourcesDir);
+      }
+      if (allProjectFiles.length === 0) {
+        allProjectFiles.push(
+          ...finalFiles.map((file) => ({ name: file.originalname, content: file.buffer.toString('utf8') })),
+        );
+      }
+
+      const analysis = analyzeBundle(allProjectFiles);
       const analyzedAt = new Date();
-      for (const screen of screens) {
-        const programAnalysis = analysis.get(screen.name);
+      let allScreens: ScreenRecord[] = [];
+      try {
+        const res = await this.screenService.list(userId, organization.id, project.id);
+        allScreens = Array.isArray(res) && res.length > 0 ? res : screens;
+      } catch {
+        allScreens = screens;
+      }
+      for (const sc of allScreens) {
+        const programAnalysis = analysis.get(sc.name);
         if (!programAnalysis) continue;
-        await this.screenService.recordDependencyDiagnostics(organization.id, screen.id, {
+        await this.screenService.recordDependencyDiagnostics(organization.id, sc.id, {
           status: programAnalysis.status,
           dependencies: programAnalysis.dependencies,
           analyzedAt,
         });
-        screen.dependencyStatus = programAnalysis.status;
-        screen.dependencies = programAnalysis.dependencies;
-        screen.dependencyAnalyzedAt = analyzedAt;
+        const matched = screens.find((s) => s.id === sc.id);
+        if (matched) {
+          matched.dependencyStatus = programAnalysis.status;
+          matched.dependencies = programAnalysis.dependencies;
+          matched.dependencyAnalyzedAt = analyzedAt;
+        }
       }
     }
 
-    await this.recordUploadAudit(userId, organization.id, project.id, files.length, screens.length);
+    await this.recordUploadAudit(userId, organization.id, project.id, finalFiles.length, screens.length);
 
     return {
       inputReference,
-      files: files.map((file) => ({ name: file.originalname, sizeBytes: file.size })),
+      files: finalFiles.map((file) => ({ name: file.originalname, sizeBytes: file.size })),
       screens,
       ignoredEntries: ignored,
     };

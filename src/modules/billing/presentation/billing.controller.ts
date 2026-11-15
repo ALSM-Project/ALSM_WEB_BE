@@ -12,6 +12,7 @@ import {
   Query,
   UseGuards,
   Res,
+  Optional,
 } from '@nestjs/common';
 import { Response } from 'express';
 import {
@@ -29,6 +30,7 @@ import { CurrentUser } from '../../../shared/security/current-user.decorator';
 import { AuthenticatedUser } from '../../../shared/logging/request-id.middleware';
 import { BillingService } from '../application/billing.service';
 import { UsageService } from '../application/usage.service';
+import { PendingPaymentCheckJob } from '../application/pending-payment-check.job';
 import { PlanTier } from '../domain/billing.types';
 import {
   CancelSubscriptionDto,
@@ -59,7 +61,20 @@ export class BillingController {
   constructor(
     private readonly billingService: BillingService,
     private readonly usageService: UsageService,
+    @Optional() private readonly pendingPaymentCheckJob?: PendingPaymentCheckJob,
   ) {}
+
+  @Post('cron/check-pending-payments')
+  @ApiOperation({
+    summary: 'Trigger pending payment grace period check (BR-120, BR-121, Non-Screen #42)',
+    description: 'Checks for unpaid invoices exceeding the 7-day grace period and auto-cancels the Web 3 upgrade.',
+  })
+  async triggerPendingPaymentCheck() {
+    if (!this.pendingPaymentCheckJob) {
+      return { message: 'PendingPaymentCheckJob not available', processedCount: 0 };
+    }
+    return this.pendingPaymentCheckJob.checkPendingPaymentGracePeriod();
+  }
 
   // ─── Plans (Public) ──────────────────────────────────────
 

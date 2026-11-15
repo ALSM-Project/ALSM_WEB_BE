@@ -19,6 +19,9 @@ export class EffectivePermissionsService {
     const roleIds = [...baseRoles];
 
     const user = await this.rbacRepo.findUserById(userId);
+    if (user?.role && !roleIds.includes(user.role)) {
+      roleIds.push(user.role);
+    }
     if (user?.isPlatformAdmin && !roleIds.includes('ADMIN')) {
       roleIds.push('ADMIN');
     }

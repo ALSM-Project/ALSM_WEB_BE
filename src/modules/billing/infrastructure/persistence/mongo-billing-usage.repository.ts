@@ -204,7 +204,7 @@ export class MongoBillingUsageRepository implements IBillingUsageRepository {
               c.status === 'SIGNED' ||
               c.lifecycleStatus === 'COMPLETED' ||
               c.activationStatus === 'COMPLETED',
-          ) || contracts[0];
+          );
 
         if (activeContract) {
           const screensQuota =
@@ -257,20 +257,6 @@ export class MongoBillingUsageRepository implements IBillingUsageRepository {
       }
     }
 
-    // 2. Check if organization has direct contract capacity configured
-    if (org.contractCapacity && org.contractCapacity.screenCapacity > 0) {
-      return {
-        organizationId: org._id.toString(),
-        planTier: 'ENTERPRISE',
-        planName: org.engagementType || 'Enterprise Contract',
-        maxScreens: org.contractCapacity.screenCapacity,
-        maxPrograms: org.contractCapacity.programCapacity || 50,
-        maxProjects: org.contractCapacity.projectCapacity || 20,
-        maxStorageGb: org.contractCapacity.storageGb || 50,
-        isTrial: false,
-      };
-    }
-
     const engagementTypeName = org.engagementType || 'Trial';
     let engagementType: EngagementTypeDocument | null = null;
     if (this.engagementModel) {
@@ -288,21 +274,53 @@ export class MongoBillingUsageRepository implements IBillingUsageRepository {
     const isTrial = org.status === 'TRIAL' || engagementTypeName.toLowerCase() === 'trial';
 
     if (isTrial) {
-      // Prioritize admin-configured trial limits from EngagementType directly
-      const trialScreens = engagementType?.trialLimits?.maxScreens ?? org.limits?.trialScreens ?? 10;
-      const trialPrograms = engagementType?.trialLimits?.maxPrograms ?? org.limits?.trialPrograms ?? 5;
-      const trialStorage = engagementType?.trialLimits?.maxStorageGb ?? org.limits?.trialStorageGb ?? 2;
-      const maxProjects = org.limits?.maxProjects ?? 5;
+      // Prioritize admin-configured trial limits from Organization or EngagementType
+      const trialScreens =
+        org.limits?.maxScreens ??
+        engagementType?.trialLimits?.maxScreens ??
+        org.contractCapacity?.screenCapacity ??
+        org.limits?.trialScreens ??
+        20;
+      const trialPrograms =
+        org.limits?.maxPrograms ??
+        engagementType?.trialLimits?.maxPrograms ??
+        org.contractCapacity?.programCapacity ??
+        org.limits?.trialPrograms ??
+        10;
+      const trialStorage =
+        org.limits?.maxStorageGb ??
+        engagementType?.trialLimits?.maxStorageGb ??
+        org.contractCapacity?.storageGb ??
+        org.limits?.trialStorageGb ??
+        5;
+      const maxProjects =
+        org.limits?.maxProjects ??
+        org.contractCapacity?.projectCapacity ??
+        10;
 
       return {
         organizationId: org._id.toString(),
-        planTier: engagementType?.code || 'TRIAL',
-        planName: engagementType?.name || 'Trial',
+        planTier: 'TRIAL',
+        planName: 'Trial',
         maxScreens: trialScreens,
         maxPrograms: trialPrograms,
         maxProjects: maxProjects,
         maxStorageGb: trialStorage,
         isTrial: true,
+      };
+    }
+
+    // 2. Check if organization has direct contract capacity configured (non-trial enterprise)
+    if (org.contractCapacity && org.contractCapacity.screenCapacity > 0) {
+      return {
+        organizationId: org._id.toString(),
+        planTier: 'ENTERPRISE',
+        planName: org.engagementType || 'Enterprise Contract',
+        maxScreens: org.contractCapacity.screenCapacity,
+        maxPrograms: org.contractCapacity.programCapacity || 50,
+        maxProjects: org.contractCapacity.projectCapacity || 20,
+        maxStorageGb: org.contractCapacity.storageGb || 50,
+        isTrial: false,
       };
     }
 

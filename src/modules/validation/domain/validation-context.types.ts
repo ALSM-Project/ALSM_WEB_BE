@@ -10,6 +10,7 @@ export interface ValidationContext {
   organizationId: string;
   projectId: string;
   screenId?: string;
+  screenName?: string;
   conversionType: ConversionType;
   sourceFiles: ValidationCodeFile[];
   targetFiles: ValidationCodeFile[];

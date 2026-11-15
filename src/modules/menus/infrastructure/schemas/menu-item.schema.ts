@@ -58,6 +58,9 @@ export class MenuItem {
   @Prop({ type: [String], default: [] })
   requiredRoles!: string[];
 
+  @Prop({ type: String, default: null })
+  capability?: string | null;
+
   createdAt?: Date;
   updatedAt?: Date;
 }

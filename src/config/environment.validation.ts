@@ -135,9 +135,9 @@ export const environmentValidationSchema = Joi.object({
   AI_TIMEOUT_MS: Joi.number().integer().min(1_000).max(300_000).default(60_000),
   AI_MAX_RETRIES: Joi.number().integer().min(0).max(5).default(2),
   GEMINI_MIN_REQUEST_INTERVAL_MS: Joi.number().integer().min(0).max(60_000).default(0),
-  AI_MAX_FILES: Joi.number().integer().min(2).max(500).default(50),
-  AI_MAX_FILE_CHARS: Joi.number().integer().min(1).max(2_000_000).default(200_000),
-  AI_MAX_TOTAL_CHARS: Joi.number().integer().min(1).max(5_000_000).default(500_000),
+  AI_MAX_FILES: Joi.number().integer().min(2).max(500).default(100),
+  AI_MAX_FILE_CHARS: Joi.number().integer().min(1).max(2_000_000).default(300_000),
+  AI_MAX_TOTAL_CHARS: Joi.number().integer().min(1).max(5_000_000).default(1_000_000),
   AI_MAX_FINDINGS: Joi.number().integer().min(1).max(200).default(50),
   AI_PROMPT_VERSION: Joi.string()
     .valid('semantic-cobol-java-v1', 'semantic-bms-react-v1')

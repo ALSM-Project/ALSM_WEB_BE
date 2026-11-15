@@ -142,7 +142,8 @@ export class LegacyValidationService {
       job.organizationId !== organizationId ||
       job.projectId !== projectId ||
       job.screenId !== screenId ||
-      job.conversionType !== ConversionType.BMS_DSPF_TO_FRONTEND
+      (job.conversionType !== ConversionType.BMS_DSPF_TO_FRONTEND &&
+        job.conversionType !== ConversionType.BMS_DSPF_TO_REACT)
     )
       throw this.notFound();
     return job;
@@ -160,7 +161,9 @@ export class LegacyValidationService {
         _id: new Types.ObjectId(projectId),
         organizationId: new Types.ObjectId(organizationId),
         deletedAt: { $exists: false },
-        conversionType: ConversionType.BMS_DSPF_TO_FRONTEND,
+        conversionType: {
+          $in: [ConversionType.BMS_DSPF_TO_FRONTEND, ConversionType.BMS_DSPF_TO_REACT],
+        },
       })
       .exec();
     if (!project) throw this.notFound();

@@ -48,6 +48,7 @@ const routeCases = [
   ['get', `organizations/${targetId}`, 'organizations.view', 'getOrganizationDetails'],
   ['post', 'organizations/enterprise', 'organizations.manage', 'createEnterprise'],
   ['patch', `organizations/${targetId}/engagement`, 'organizations.manage', 'updateEngagement'],
+  ['delete', `organizations/${targetId}`, 'organizations.manage', 'deleteOrganization'],
   ['get', 'revenue/summary', 'revenue.view', 'getRevenueSummary'],
   ['get', 'revenue/transactions', 'revenue.view', 'getRevenueTransactions'],
   ['get', 'engagement-types', 'engagement-types.manage', 'listEngagementTypes'],
@@ -201,6 +202,8 @@ describe('real AdminModule authorization HTTP boundary', () => {
         findByIdAndUpdate: jest.fn(),
         updateMany: jest.fn(),
         updateOne: jest.fn(),
+        deleteOne: jest.fn(() => ({ exec: async () => ({ deletedCount: 1 }) })),
+        findByIdAndDelete: jest.fn(),
       },
     ]),
   );
@@ -369,6 +372,7 @@ describe('real AdminModule authorization HTTP boundary', () => {
       model.aggregate.mockImplementation(() => ({ exec: async () => [] }));
       model.create.mockResolvedValue({ _id: targetId, id: targetId, name: 'Created' });
       model.findByIdAndUpdate.mockImplementation(() => query({ id: targetId, name: 'Edited' }));
+      model.findByIdAndDelete.mockImplementation(() => query({ id: targetId, name: 'Deleted' }));
       model.updateMany.mockResolvedValue({ modifiedCount: 1 });
     }
     models.Organization.find.mockImplementation(() => query([org()]));

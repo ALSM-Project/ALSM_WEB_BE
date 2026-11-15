@@ -5,13 +5,16 @@ import { BmsAiValidatorAdapter } from './bms-ai-validator.adapter';
 import { FakeAiValidatorAdapter } from './fake-ai-validator.adapter';
 import { OpenAiValidatorAdapter } from './openai-ai-validator.adapter';
 import { GeminiAiValidatorAdapter } from './gemini-ai-validator.adapter';
+import { CobolAiValidatorAdapter } from './cobol-ai-validator.adapter';
 
 export function selectAiValidator(
   config: ConfigService,
   fakeAdapter: FakeAiValidatorAdapter,
   openAiAdapter: OpenAiValidatorAdapter,
   geminiAdapter: GeminiAiValidatorAdapter,
+  cobolAdapter?: CobolAiValidatorAdapter,
 ): AiValidatorPort {
+  if (cobolAdapter) return cobolAdapter;
   const enabled = config.get<boolean>('AI_VALIDATION_ENABLED') ?? false;
   const provider = config.get<string>('AI_PROVIDER') ?? 'fake';
   if (!enabled) return fakeAdapter;
@@ -22,7 +25,13 @@ export function selectAiValidator(
 
 export const aiValidatorProvider: Provider = {
   provide: AI_VALIDATOR,
-  inject: [ConfigService, FakeAiValidatorAdapter, OpenAiValidatorAdapter, GeminiAiValidatorAdapter],
+  inject: [
+    ConfigService,
+    FakeAiValidatorAdapter,
+    OpenAiValidatorAdapter,
+    GeminiAiValidatorAdapter,
+    CobolAiValidatorAdapter,
+  ],
   useFactory: selectAiValidator,
 };
 

@@ -21,6 +21,8 @@ import { NavigationController } from './presentation/controllers/navigation.cont
 import { MenuBuilderController } from './presentation/controllers/menu-builder.controller';
 import { MenuController } from './presentation/controllers/menu.controller';
 import { CommandPaletteController } from './presentation/controllers/command-palette.controller';
+import { SessionBootstrapController } from './presentation/controllers/session-bootstrap.controller';
+import { BootstrapCacheService } from './application/services/bootstrap-cache.service';
 import { RbacModule } from '../rbac/rbac.module';
 import {
   MENU_REPOSITORY,
@@ -56,8 +58,10 @@ import { Permission, PermissionSchema } from '../rbac/infrastructure/schemas/per
     MenuBuilderController,
     MenuController,
     CommandPaletteController,
+    SessionBootstrapController,
   ],
   providers: [
+    BootstrapCacheService,
     NavigationService,
     MenuBuilderService,
     GetPersonalizedMenuService,
@@ -76,6 +80,7 @@ import { Permission, PermissionSchema } from '../rbac/infrastructure/schemas/per
     { provide: NAVIGATION_REPOSITORY, useClass: MongoNavigationRepository },
   ],
   exports: [
+    BootstrapCacheService,
     NavigationService,
     MenuBuilderService,
     MENU_BUILDER_REPOSITORY,

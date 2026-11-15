@@ -25,12 +25,12 @@ export class NavigationController {
     @Query('role') role?: string,
   ) {
     const app = application || ApplicationContext.WEB_2;
-    return this.navigationService.getUserNavigation(user.userId, app, { contractType, role });
+    return this.navigationService.getUserNavigation(user.userId, app, { contractType, role }, user?.email);
   }
 
   @Get('contract-context')
   @ApiOperation({ summary: 'Get authoritative organization contract and service mode context' })
   async getContractContext(@CurrentUser() user: AuthenticatedUser) {
-    return this.navigationService.getAuthoritativeContractContext(user.userId);
+    return this.navigationService.getAuthoritativeContractContext(user.userId, undefined, undefined, user?.email);
   }
 }
