@@ -197,6 +197,8 @@ export interface ProjectRepository {
   findByAssignedStaff(staffId: string, organizationId?: string): Promise<ProjectRecord[]>;
   /** Projects assigned to this Team Lead by Platform Admin. */
   findByAssignedTeamLead?(teamLeadId: string, organizationId?: string): Promise<ProjectRecord[]>;
+  /** Projects created by this user directly. */
+  findByCreatedBy?(userId: string): Promise<ProjectRecord[]>;
   assignStaff(
     id: string,
     staff: { staffId: string; staffName: string; note?: string; assignedBy: string },
