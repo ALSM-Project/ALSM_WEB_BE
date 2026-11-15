@@ -21,6 +21,9 @@
           "tsconfig": "tsconfig.json"
         }
       ]
+    },
+    "moduleNameMapper": {
+      "^@nestjs/schedule$": "<rootDir>/test/__mocks__/nestjs-schedule.mock.js"
     }
   },
   "scripts": {

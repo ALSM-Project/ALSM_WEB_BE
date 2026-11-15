@@ -242,7 +242,7 @@ export class CobolJavaConversionAdapter {
 
       const programDirs = new Set<string>();
       for (const file of files) {
-        const target = path.join(targetDir, path.basename(file.name));
+        const target = path.join(targetDir, file.name);
         await fs.promises.mkdir(path.dirname(target), { recursive: true });
         await fs.promises.writeFile(
           target,

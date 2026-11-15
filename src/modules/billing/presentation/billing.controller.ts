@@ -12,6 +12,7 @@ import {
   Query,
   UseGuards,
   Res,
+  Optional,
 } from '@nestjs/common';
 import { Response } from 'express';
 import {
@@ -60,7 +61,7 @@ export class BillingController {
   constructor(
     private readonly billingService: BillingService,
     private readonly usageService: UsageService,
-    private readonly pendingPaymentCheckJob?: PendingPaymentCheckJob,
+    @Optional() private readonly pendingPaymentCheckJob?: PendingPaymentCheckJob,
   ) {}
 
   @Post('cron/check-pending-payments')

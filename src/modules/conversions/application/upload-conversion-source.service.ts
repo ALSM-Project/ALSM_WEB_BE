@@ -111,29 +111,23 @@ export class UploadConversionSourceService {
       }
     }
 
-    // Files are stored flat by basename (see storage.writeFiles below). When users upload
-    // whole project folders (e.g. aws-mainframe-modernization-carddemo with app/ and backup/subfolders),
-    // multiple files may share the same filename. Gracefully deduplicate (favoring larger/primary versions)
-    // rather than rejecting the entire upload bundle.
-    const dedupedFiles: UploadedSourceFile[] = [];
-    const namesSeen = new Map<string, UploadedSourceFile>();
+    // Files are stored flat by basename (see storage.writeFiles below), so two different local
+    // files sharing a basename (e.g. picked from two different subfolders) would silently
+    // overwrite one another on disk — and any dependency analysis run against the original
+    // upload list would then disagree with what actually landed in storage. Reject up front
+    // instead of guessing which one should "win".
+    const namesSeen = new Map<string, string>();
     for (const file of files) {
       const key = file.originalname.toLowerCase();
       if (namesSeen.has(key)) {
-        const existing = namesSeen.get(key)!;
-        if (file.size > existing.size) {
-          const idx = dedupedFiles.findIndex((f) => f.originalname.toLowerCase() === key);
-          if (idx !== -1) {
-            dedupedFiles[idx] = file;
-          }
-          namesSeen.set(key, file);
-        }
-        continue;
+        throw new BadRequestException({
+          code: 'DUPLICATE_FILE_NAME',
+          message: `Two different files named "${file.originalname}" were selected in this upload (likely from two different subfolders). Remove the duplicate and try again — files are stored by name only, so both would otherwise silently collide.`,
+        });
       }
-      namesSeen.set(key, file);
-      dedupedFiles.push(file);
+      namesSeen.set(key, file.originalname);
     }
-    const finalFiles = dedupedFiles;
+    const finalFiles = files;
 
     const inputReference = await this.storage.writeFiles(
       `sources/${project.id}`,
@@ -143,11 +137,13 @@ export class UploadConversionSourceService {
     // Check existing screens for this project to avoid redundant duplicate records
     let existingScreens: ScreenRecord[] = [];
     try {
-      existingScreens = await this.screenService.list(userId, organizationHeader, project.id);
+      const listed = await this.screenService.list(userId, organizationHeader, project.id);
+      existingScreens = Array.isArray(listed) ? listed : [];
     } catch {
       existingScreens = [];
     }
-    const existingByName = new Map(existingScreens.map((s) => [s.name.toLowerCase(), s]));
+    const safeScreens = Array.isArray(existingScreens) ? existingScreens : [];
+    const existingByName = new Map(safeScreens.map((s) => [s.name.toLowerCase(), s]));
 
     // Copybooks (.cpy) are supporting files only — they never become a screen of
     // their own, but they do share this same inputReference bundle so the COBOL
@@ -204,7 +200,13 @@ export class UploadConversionSourceService {
 
       const analysis = analyzeBundle(allProjectFiles);
       const analyzedAt = new Date();
-      const allScreens = await this.screenService.list(userId, organization.id, project.id);
+      let allScreens: ScreenRecord[] = [];
+      try {
+        const res = await this.screenService.list(userId, organization.id, project.id);
+        allScreens = Array.isArray(res) && res.length > 0 ? res : screens;
+      } catch {
+        allScreens = screens;
+      }
       for (const sc of allScreens) {
         const programAnalysis = analysis.get(sc.name);
         if (!programAnalysis) continue;

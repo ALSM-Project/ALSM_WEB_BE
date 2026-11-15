@@ -40,60 +40,19 @@ export class GeminiJsonClient {
     validate?: (output: unknown) => T,
     waitForRetry?: (milliseconds: number) => Promise<void>,
   ): Promise<{ output: T; modelVersion?: unknown }> {
-    const configuredModel = this.config.get<string>('GEMINI_MODEL');
-    const allowedRaw = this.config.get<string>('GEMINI_ALLOWED_MODELS') ?? '';
-    const allowed = allowedRaw
+    const allowed = (
+      this.config.get<string>('GEMINI_ALLOWED_MODELS') ??
+      this.config.getOrThrow<string>('GEMINI_MODEL')
+    )
       .split(',')
-      .map((value) => value.trim())
-      .filter(Boolean);
-
-    if (configuredModel && !allowed.includes(configuredModel)) {
-      allowed.push(configuredModel);
-    }
-    const defaultModels = ['gemini-3.8-flash', 'gemini-3.5-flash', 'gemini-2.5-flash', 'gemini-2.0-flash', 'gemini-1.5-flash', 'gemini-flash-latest'];
-    for (const m of defaultModels) {
-      if (!allowed.includes(m)) allowed.push(m);
-    }
-
+      .map((value) => value.trim());
     if (!/^[a-zA-Z0-9][a-zA-Z0-9._-]{0,127}$/.test(model) || !allowed.includes(model))
       throw new AiValidatorError(
         'AI_PROVIDER_REQUEST_REJECTED',
-        `Configured Gemini model "${model}" is not allowed. Allowed models: ${allowed.join(', ')}`,
+        'Configured Gemini model is not allowed',
       );
     const startedAt = Date.now();
-    const candidateModels = [model];
-    for (const fallback of ['gemini-3.5-flash', 'gemini-flash-latest']) {
-      if (allowed.includes(fallback) && !candidateModels.includes(fallback)) {
-        candidateModels.push(fallback);
-      }
-    }
-
-    let response: { body: GeminiResponseBody; httpStatus: number; attempts: number } | undefined;
-    let lastError: unknown;
-    let actualModel = model;
-
-    for (const m of candidateModels) {
-      try {
-        actualModel = m;
-        response = await this.requestWithRetries(m, body, startedAt, waitForRetry);
-        break;
-      } catch (err) {
-        lastError = err;
-        if (
-          err instanceof AiValidatorError &&
-          (err.code === 'AI_PROVIDER_UNAVAILABLE' || err.code === 'AI_PROVIDER_TIMEOUT') &&
-          candidateModels.indexOf(m) < candidateModels.length - 1
-        ) {
-          continue;
-        }
-        throw err;
-      }
-    }
-
-    if (!response) {
-      throw lastError;
-    }
-
+    const response = await this.requestWithRetries(model, body, startedAt, waitForRetry);
     try {
       const text = this.extractOutputText(response.body);
       let output: unknown;
@@ -116,7 +75,7 @@ export class GeminiJsonClient {
           retriesExhausted: false,
           totalLatencyMs: Math.max(0, Date.now() - startedAt),
         }),
-        actualModel,
+        model,
         response.body?.modelVersion,
       );
     }
