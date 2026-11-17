@@ -8,6 +8,7 @@ import { createHash, randomUUID } from 'node:crypto';
 import { ConfigService } from '@nestjs/config';
 import { MailService } from '../../../shared/mail/mail.service';
 import { generateCleanBankQrDataUrl } from '../../../shared/utils/bank-qr.helper';
+import { OrganizationRole } from '../../organizations/domain/organization.types';
 import {
   CreateEnterpriseContractDto,
   ReviewContractDto,
@@ -1383,11 +1384,11 @@ export class EnterpriseContractService {
             (m: any) => String(m.userId) === String(customerUser._id),
           );
           if (existingMemberIndex >= 0) {
-            members[existingMemberIndex].role = 'ORGANIZATION_OWNER';
+            members[existingMemberIndex].role = OrganizationRole.OWNER;
           } else {
             members.push({
               userId: customerUser._id,
-              role: 'ORGANIZATION_OWNER',
+              role: OrganizationRole.OWNER,
               joinedAt: now,
             });
           }
@@ -1431,7 +1432,7 @@ export class EnterpriseContractService {
         activeContractId: contract._id.toString(),
         modernizationStatus: 'PROVISIONED',
         members: customerUser
-          ? [{ userId: customerUser._id, role: 'ORGANIZATION_OWNER', joinedAt: now }]
+          ? [{ userId: customerUser._id, role: OrganizationRole.OWNER, joinedAt: now }]
           : [],
         createdAt: now,
         updatedAt: now,

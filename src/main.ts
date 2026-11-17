@@ -20,6 +20,9 @@ async function bootstrap(): Promise<void> {
   const app = await NestFactory.create(AppModule, { rawBody: true });
   app.enableShutdownHooks();
 
+  // Trust reverse proxies (AWS ALB, CloudFront, Nginx) so client IP is accurately captured
+  app.getHttpAdapter().getInstance().set('trust proxy', true);
+
   // Allow up to 10MB payloads for digital signature canvas and official seal uploads
   app.use(json({ limit: '10mb' }));
   app.use(urlencoded({ extended: true, limit: '10mb' }));

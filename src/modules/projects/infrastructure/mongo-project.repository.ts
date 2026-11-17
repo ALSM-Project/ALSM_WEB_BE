@@ -62,6 +62,18 @@ export class MongoProjectRepository implements ProjectRepository {
     return doc ? this.map(doc) : null;
   }
 
+  async findUnscopedById(id: string): Promise<ProjectRecord | null> {
+    const projObjId = toValidObjectId(id);
+    const doc = await this.model
+      .findOne({
+        $or: [{ _id: projObjId }, { name: id }],
+        deletedAt: { $exists: false },
+      })
+      .exec();
+
+    return doc ? this.map(doc) : null;
+  }
+
   async findAll(organizationId?: string): Promise<ProjectRecord[]> {
     const filter: FilterQuery<ProjectDocument> = { deletedAt: { $exists: false } };
     if (organizationId?.trim()) {

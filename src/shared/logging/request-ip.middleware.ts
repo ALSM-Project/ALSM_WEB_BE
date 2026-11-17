@@ -7,8 +7,16 @@ import { requestIpStorage } from './request-ip.storage';
 @Injectable()
 export class RequestIpMiddleware implements NestMiddleware {
   use(req: Request, _res: Response, next: NextFunction): void {
+    const cfIp = req.headers['cf-connecting-ip'];
+    const realIp = req.headers['x-real-ip'];
     const forwarded = req.headers['x-forwarded-for'];
+    const cfViewer = req.headers['cloudfront-viewer-address'];
+    const cfViewerIp = typeof cfViewer === 'string' ? cfViewer.split(':')[0].trim() : undefined;
+
     let ip =
+      (typeof cfIp === 'string' ? cfIp.trim() : undefined) ||
+      (typeof realIp === 'string' ? realIp.trim() : undefined) ||
+      cfViewerIp ||
       (Array.isArray(forwarded) ? forwarded[0] : forwarded)?.split(',')[0].trim() ||
       req.ip ||
       req.socket?.remoteAddress ||

@@ -305,7 +305,7 @@ export class ProjectsController {
     @Headers('x-organization-id') organizationId: string | undefined,
     @Param('id') id: string,
   ) {
-    return this.projects.get(user.userId, organizationId, id);
+    return this.projects.get(user.userId, organizationId, id, user.isPlatformAdmin);
   }
 
   @Patch(':id')

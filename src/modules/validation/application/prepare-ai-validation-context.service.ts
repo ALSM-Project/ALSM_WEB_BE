@@ -37,9 +37,11 @@ export class PrepareAiValidationContextService {
 
   execute(context: ValidationContext): PreparedAiValidationContext {
     const limits = this.getLimits();
-    const isBms = context.conversionType === ConversionType.BMS_DSPF_TO_FRONTEND;
-    const sourceExts = isBms ? BMS_SOURCE_EXTENSIONS : COBOL_SOURCE_EXTENSIONS;
-    const targetExts = isBms ? REACT_TARGET_EXTENSIONS : JAVA_TARGET_EXTENSIONS;
+    const isBmsOrDspf =
+      context.conversionType === ConversionType.BMS_DSPF_TO_FRONTEND ||
+      context.conversionType === ConversionType.BMS_DSPF_TO_REACT;
+    const sourceExts = isBmsOrDspf ? BMS_SOURCE_EXTENSIONS : COBOL_SOURCE_EXTENSIONS;
+    const targetExts = isBmsOrDspf ? REACT_TARGET_EXTENSIONS : JAVA_TARGET_EXTENSIONS;
     const sourceFiles = this.select(context.sourceFiles, sourceExts, 'source');
     const targetFiles = this.select(context.targetFiles, targetExts, 'target');
     const selectedFileCount = sourceFiles.length + targetFiles.length;
@@ -62,7 +64,7 @@ export class PrepareAiValidationContextService {
 
       const redacted = this.redactor.redact(file.content);
       redactionCount += redacted.redactionCount;
-      const content = isBms
+      const content = isBmsOrDspf
         ? this.bmsSanitizer.sanitize(file.path, redacted.content)
         : redacted.content;
       const lines = content.split(/\r\n|\n|\r/);

@@ -352,6 +352,61 @@ Generate the updated file with the fix applied.`;
       });
     }
 
+    // Case 3: BMS / DSPF React attribute mismatch - numeric inputMode
+    if (
+      explLower.includes('numeric') ||
+      suggLower.includes('inputmode="numeric"') ||
+      titleLower.includes('numeric')
+    ) {
+      const fieldId = (finding.fieldName || '').toLowerCase();
+      // Match <input ... id="fieldId" ... /> or <Input ... id="fieldId" ... />
+      const inputRegex = new RegExp(`(<(?:input|Input)[^>]*id=['"]${fieldId}['"][^>]*)(/?>)`, 'i');
+      if (inputRegex.test(result)) {
+        result = result.replace(inputRegex, (full: string, before: string, close: string) => {
+          if (!before.includes('inputMode')) {
+            return `${before} inputMode="numeric"${close}`;
+          }
+          return full;
+        });
+      } else {
+        // Fallback: match any input if target line matches
+        result = result.replace(/(<(?:input|Input)[^>]*?)(\/?>)/, (full: string, before: string, close: string) => {
+          if (!before.includes('inputMode')) {
+            return `${before} inputMode="numeric"${close}`;
+          }
+          return full;
+        });
+      }
+    }
+
+    // Case 4: BMS / DSPF React attribute mismatch - password / dark field
+    if (
+      explLower.includes('drk') ||
+      explLower.includes('dark') ||
+      explLower.includes('dspatr(nd)') ||
+      titleLower.includes('password') ||
+      suggLower.includes('type="password"')
+    ) {
+      const fieldId = (finding.fieldName || '').toLowerCase();
+      const inputRegex = new RegExp(`(<(?:input|Input)[^>]*id=['"]${fieldId}['"][^>]*type=['"])text(['"][^>]*>)`, 'i');
+      if (inputRegex.test(result)) {
+        result = result.replace(inputRegex, '$1password$2');
+      } else {
+        result = result.replace(/(<(?:input|Input)[^>]*type=['"])text(['"][^>]*>)/, '$1password$2');
+      }
+    }
+
+    // Case 5: BMS / DSPF React attribute mismatch - maxLength
+    const lenMatch = explLower.match(/length=(\d+)/i) || suggLower.match(/maxlength=\{?["']?(\d+)["']?\}?/i);
+    if (lenMatch) {
+      const targetLen = lenMatch[1];
+      const fieldId = (finding.fieldName || '').toLowerCase();
+      const maxLenRegex = new RegExp(`(<(?:input|Input)[^>]*id=['"]${fieldId}['"][^>]*maxLength=\\{?["']?)\\d+(["']?\\}?[^>]*>)`, 'i');
+      if (maxLenRegex.test(result)) {
+        result = result.replace(maxLenRegex, `$1${targetLen}$2`);
+      }
+    }
+
     return result;
   }
 

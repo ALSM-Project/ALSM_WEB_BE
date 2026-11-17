@@ -150,7 +150,9 @@ export class ProjectStaffAllocationService {
   }
 
   async getProjectAllocation(projectId: string): Promise<ProjectAllocationDetails> {
-    let project = await this.projects.findById(projectId);
+    let project = this.projects.findUnscopedById
+      ? await this.projects.findUnscopedById(projectId)
+      : await this.projects.findById(projectId);
     if (!project) {
       const allProjects = await this.projects.findAll();
       project = Array.isArray(allProjects) ? (allProjects.find((p) => p.id === projectId) ?? null) : null;
@@ -216,7 +218,9 @@ export class ProjectStaffAllocationService {
   }
 
   async getEligibleStaff(projectId: string): Promise<EligibleStaffMember[]> {
-    let project = await this.projects.findById(projectId);
+    let project = this.projects.findUnscopedById
+      ? await this.projects.findUnscopedById(projectId)
+      : await this.projects.findById(projectId);
     if (!project) {
       const allProjects = await this.projects.findAll();
       project = Array.isArray(allProjects) ? (allProjects.find((p) => p.id === projectId) ?? null) : null;
@@ -245,7 +249,9 @@ export class ProjectStaffAllocationService {
     note?: string,
     reason?: string,
   ): Promise<ProjectRecord> {
-    let project = await this.projects.findById(projectId);
+    let project = this.projects.findUnscopedById
+      ? await this.projects.findUnscopedById(projectId)
+      : await this.projects.findById(projectId);
     if (!project) {
       const allProjects = await this.projects.findAll();
       project = Array.isArray(allProjects) ? (allProjects.find((p) => p.id === projectId) ?? null) : null;
@@ -333,7 +339,9 @@ export class ProjectStaffAllocationService {
     staffId: string,
     reason?: string,
   ): Promise<ProjectRecord> {
-    let project = await this.projects.findById(projectId);
+    let project = this.projects.findUnscopedById
+      ? await this.projects.findUnscopedById(projectId)
+      : await this.projects.findById(projectId);
     if (!project) {
       const allProjects = await this.projects.findAll();
       project = Array.isArray(allProjects) ? (allProjects.find((p) => p.id === projectId) ?? null) : null;
@@ -422,7 +430,9 @@ export class ProjectStaffAllocationService {
       role: string;
     }>
   > {
-    let project = await this.projects.findById(projectId);
+    let project = this.projects.findUnscopedById
+      ? await this.projects.findUnscopedById(projectId)
+      : await this.projects.findById(projectId);
     if (!project) {
       const all = await this.projects.findAll();
       project = Array.isArray(all) ? (all.find((p) => p.id === projectId) ?? null) : null;

@@ -85,11 +85,13 @@ export class AuditLogService {
       ) as Record<string, unknown>;
       const actor = doc.actorUserId as { fullName?: string; email?: string } | undefined;
       const actorStr = actor?.fullName || actor?.email || String(doc.actorUserId || 'SYSTEM');
+      const upperResourceType = String(doc.resourceType || '').toUpperCase();
       const targetStr = doc.resourceId
-        ? `${String(doc.resourceType)}:${String(doc.resourceId)}`
-        : String(doc.resourceType || '');
+        ? `${upperResourceType}:${String(doc.resourceId)}`
+        : upperResourceType;
       return {
         ...doc,
+        resourceType: upperResourceType,
         timestamp: doc.createdAt,
         actor: actorStr,
         target: targetStr,
@@ -122,7 +124,7 @@ export class AuditLogService {
       const actor = l.actorUserId as unknown as { fullName?: string; email?: string } | undefined;
       const actorStr = actor?.fullName || actor?.email || String(l.actorUserId || 'SYSTEM');
       const metaStr = JSON.stringify(l.metadata || {}).replace(/"/g, '""');
-      return `"${l.createdAt ? (l.createdAt as Date).toISOString() : ''}","${actorStr}","${l.action}","${l.resourceType}","${l.resourceId || ''}","${l.ipAddress || ''}","${metaStr}"`;
+      return `"${l.createdAt ? (l.createdAt as Date).toISOString() : ''}","${actorStr}","${l.action}","${String(l.resourceType || '').toUpperCase()}","${l.resourceId || ''}","${l.ipAddress || ''}","${metaStr}"`;
     });
 
     return headers + rows.join('\n');
@@ -165,7 +167,7 @@ export class AuditLogService {
         l.createdAt ? (l.createdAt as Date).toISOString() : '',
         actorStr,
         l.action,
-        l.resourceType,
+        String(l.resourceType || '').toUpperCase(),
         l.resourceId || '',
         l.ipAddress || '',
       ];

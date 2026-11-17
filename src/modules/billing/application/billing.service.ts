@@ -639,7 +639,7 @@ export class BillingService implements OnModuleInit {
 
     const organization = await this.organizationContext.resolve(user.userId);
     const membership = organization.members.find((member) => member.userId === user.userId);
-    if (!membership || ![OrganizationRole.OWNER, OrganizationRole.ADMIN].includes(membership.role)) {
+    if (!membership || ![OrganizationRole.OWNER, OrganizationRole.ORGANIZATION_OWNER, OrganizationRole.ADMIN].includes(membership.role)) {
       throw new ForbiddenException('Only organization owners or admins can request an Enterprise migration quote.');
     }
     const organizationId = organization.id;
