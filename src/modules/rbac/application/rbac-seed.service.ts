@@ -29,22 +29,15 @@ export class RbacSeedService implements OnApplicationBootstrap {
       (await this.rbacService.getPermissions()).map((p) => [p.key, p]),
     );
     // 1. System Roles
-    await this.ensureRole('SYSTEM_ADMIN', 'Platform Admin', 'Platform administrator with unrestricted access', true);
     await this.ensureRole('ADMIN', 'Platform Administrator', 'Platform administrator with unrestricted access', true);
     await this.ensureRole('TEAM_LEAD', 'Team Lead', 'Internal team lead managing staff, conversions, and operations', true);
     await this.ensureRole('SALES_MANAGER', 'Sales Manager', 'Sales manager managing leads, quotes, and commercial metrics', true);
-    await this.ensureRole('SALES_VP', 'VP of Sales', 'Executive reviewer for discounts above Sales Manager authority', true);
     await this.ensureRole('INTERNAL_SALES', 'Internal Sales', 'Internal sales representative managing quotes and client leads', true);
     await this.ensureRole('INTERNAL_SUPPORT', 'Internal Support', 'Customer and operational support staff', true);
     await this.ensureRole('CONVERSION_STAFF', 'Conversion Staff', 'Modernization and conversion execution staff', true);
-    await this.ensureRole('SALES_REP', 'Sales Representative', 'Sales executive legacy alias', true);
     await this.ensureRole('ENTERPRISE_MEMBER', 'Enterprise Member', 'Enterprise client member', true);
     await this.ensureRole('PARTNER', 'Partner User', 'External partner organization representative with read-only modernization access', true);
     await this.ensureRole('ORGANIZATION_OWNER', 'Organization Owner', 'Enterprise partner owner with full workspace and organization governance rights', true);
-    await this.ensureRole('PROJECT_MANAGER', 'Project Manager', 'Partner project manager overseeing projects, files, and deliveries', true);
-    await this.ensureRole('DEVELOPER', 'Developer', 'Technical modernize engineer managing code conversions and results', true);
-    await this.ensureRole('VIEWER', 'Viewer', 'Read-only viewer for modernization projects and deliverables', true);
-    await this.ensureRole('ORGANIZATION_MEMBER', 'Organization Member', 'Standard enterprise client organization member', true);
 
     // 2. Authoritative Permission Catalog
     // Users & Access
@@ -300,7 +293,6 @@ export class RbacSeedService implements OnApplicationBootstrap {
       'partner_portal.download',
     ];
 
-    await this.grantRolePermissions('SYSTEM_ADMIN', allCatalogPermissionKeys);
     await this.grantRolePermissions('ADMIN', allCatalogPermissionKeys);
 
     await this.grantRolePermissions('TEAM_LEAD', [
@@ -365,18 +357,11 @@ export class RbacSeedService implements OnApplicationBootstrap {
       'sales.discounts.view',
       'sales.discounts.approve',
       'sales.discounts.reject',
+      'sales.discounts.executive.review',
       'meetings.create',
       'meetings.view',
       'partner.view',
       'partner_project.view',
-    ]);
-
-    await this.grantRolePermissions('SALES_VP', [
-      'sales.discounts.view',
-      'sales.discounts.executive.review',
-      'sales.reports.view',
-      'sales.team-performance.view',
-      'sales.contracts.review',
     ]);
 
     await this.grantRolePermissions('INTERNAL_SALES', [
@@ -444,14 +429,6 @@ export class RbacSeedService implements OnApplicationBootstrap {
       'conversion_result.notify_partner',
     ]);
 
-    await this.grantRolePermissions('SALES_REP', [
-      'billing.quotes.manage',
-      'billing.usage.view',
-      'sales.discounts.view',
-      'meetings.create',
-      'meetings.view',
-    ]);
-
     await this.grantRolePermissions('ENTERPRISE_MEMBER', [
       'meetings.create',
       'meetings.view',
@@ -504,94 +481,6 @@ export class RbacSeedService implements OnApplicationBootstrap {
       'partner_portal.project.view',
       'partner_portal.progress.view',
       'partner_portal.result.view',
-      'partner_portal.download',
-    ]);
-
-    await this.grantRolePermissions('PROJECT_MANAGER', [
-      'organization.view',
-      'organization.members.view',
-      'projects.view',
-      'projects.create',
-      'projects.update',
-      'projects.members.manage',
-      'project_files.view',
-      'project_files.upload',
-      'project_files.download',
-      'conversion.execute',
-      'conversion.view',
-      'conversion.history.view',
-      'conversion.results.view',
-      'conversion_requests.view',
-      'conversion_requests.create',
-      'conversion_requests.update',
-      'project_progress.view',
-      'project_deliverables.view',
-      'project_deliverables.download',
-      'service_usage.view',
-      'quotas.view',
-      'conversations.view',
-      'conversations.create',
-      'meetings.view',
-      'meetings.create',
-      'support_requests.create',
-      'partner_portal.dashboard.view',
-      'partner_portal.project.view',
-      'partner_portal.download',
-    ]);
-
-    await this.grantRolePermissions('DEVELOPER', [
-      'organization.view',
-      'projects.view',
-      'project_files.view',
-      'project_files.upload',
-      'project_files.download',
-      'conversion.execute',
-      'conversion.view',
-      'conversion.history.view',
-      'conversion.results.view',
-      'conversion_requests.view',
-      'project_progress.view',
-      'project_deliverables.download',
-      'service_usage.view',
-      'conversations.view',
-      'meetings.view',
-      'support_requests.create',
-      'partner_portal.dashboard.view',
-      'partner_portal.project.view',
-      'partner_portal.download',
-    ]);
-
-    await this.grantRolePermissions('VIEWER', [
-      'organization.view',
-      'projects.view',
-      'project_files.view',
-      'project_files.download',
-      'conversion.view',
-      'conversion.history.view',
-      'conversion.results.view',
-      'project_progress.view',
-      'project_deliverables.view',
-      'project_deliverables.download',
-      'service_usage.view',
-      'conversations.view',
-      'meetings.view',
-      'partner_portal.dashboard.view',
-      'partner_portal.project.view',
-      'partner_portal.download',
-    ]);
-
-    await this.grantRolePermissions('ORGANIZATION_MEMBER', [
-      'organization.view',
-      'projects.view',
-      'project_files.view',
-      'project_files.download',
-      'conversion.view',
-      'conversion.results.view',
-      'service_usage.view',
-      'conversations.view',
-      'meetings.view',
-      'partner_portal.dashboard.view',
-      'partner_portal.project.view',
       'partner_portal.download',
     ]);
 
