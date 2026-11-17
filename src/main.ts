@@ -21,7 +21,15 @@ async function bootstrap(): Promise<void> {
   app.enableShutdownHooks();
 
   // Trust reverse proxies (AWS ALB, CloudFront, Nginx) so client IP is accurately captured
-  app.getHttpAdapter().getInstance().set('trust proxy', true);
+  if (typeof app.getHttpAdapter === 'function') {
+    const adapter = app.getHttpAdapter();
+    if (adapter && typeof adapter.getInstance === 'function') {
+      const instance = adapter.getInstance();
+      if (instance && typeof instance.set === 'function') {
+        instance.set('trust proxy', true);
+      }
+    }
+  }
 
   // Allow up to 10MB payloads for digital signature canvas and official seal uploads
   app.use(json({ limit: '10mb' }));
@@ -59,8 +67,12 @@ async function bootstrap(): Promise<void> {
 
   // Initialize CRM Chat WebSocket gateway
   try {
-    const wsChatService = app.get(CrmChatWebSocketService);
-    wsChatService.initialize(app.getHttpServer());
+    if (typeof app.get === 'function' && typeof app.getHttpServer === 'function') {
+      const wsChatService = app.get(CrmChatWebSocketService);
+      if (wsChatService && typeof wsChatService.initialize === 'function') {
+        wsChatService.initialize(app.getHttpServer());
+      }
+    }
   } catch (wsErr) {
     console.error('Failed to initialize CRM Chat WebSocket server:', wsErr);
   }
