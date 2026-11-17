@@ -22,7 +22,10 @@ import {
 } from './rbac.dto';
 import { JwtAuthGuard } from '../../../shared/security/jwt-auth.guard';
 import { PermissionsGuard } from '../../../shared/security/permissions.guard';
-import { RequirePermissions } from '../../../shared/security/require-permissions.decorator';
+import {
+  RequirePermissions,
+  RequireAnyPermissions,
+} from '../../../shared/security/require-permissions.decorator';
 import { CurrentUser } from '../../../shared/security/current-user.decorator';
 import { AuthenticatedUser } from '../../../shared/logging/request-id.middleware';
 
@@ -34,8 +37,8 @@ export class RbacController {
   constructor(private readonly rbacService: RbacService) {}
 
   @Get('roles')
-  @RequirePermissions('roles.view')
-  @ApiOperation({ summary: 'List system roles', description: 'Requires roles.view permission.' })
+  @RequireAnyPermissions('roles.view', 'roles.temporary.request', 'roles.temporary.view')
+  @ApiOperation({ summary: 'List system roles', description: 'Requires roles.view or temporary role permissions.' })
   @ApiResponse({ status: 200, description: 'Roles retrieved successfully' })
   @ApiResponse({ status: 403, description: 'Forbidden - Missing roles.view permission' })
   async getRoles() {
