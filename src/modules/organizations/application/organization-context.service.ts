@@ -81,7 +81,13 @@ export class OrganizationContextService {
     projectId: string,
   ): Promise<OrganizationRecord | null> {
     if (!this.projects) return null;
-    const project = await this.projects.findById(projectId);
+    let project = (this.projects as any).findUnscopedById
+      ? await (this.projects as any).findUnscopedById(projectId)
+      : await this.projects.findById(projectId);
+    if (!project && this.projects.findAll) {
+      const all = await this.projects.findAll();
+      project = all.find((p) => p.id === projectId || (p as any).name === projectId) ?? null;
+    }
     if (!project || project.deletedAt) return null;
 
     const isInternal = await this.isInternalOrAdmin(userId);

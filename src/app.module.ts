@@ -2,7 +2,13 @@ import { MeetingRequest, MeetingRequestSchema } from './modules/meetings/infrast
 import { MeetingRequestService } from './modules/meetings/application/meeting-request.service';
 import { MeetingRequestController } from './modules/meetings/presentation/meeting-request.controller';
 import { TaxLookupController } from './modules/organizations/presentation/tax-lookup.controller';
+import { OrganizationMembersController } from './modules/organizations/presentation/organization-members.controller';
 import { OrganizationLegalProfileService } from './modules/organizations/application/organization-legal-profile.service';
+import { OrganizationMembersService } from './modules/organizations/application/organization-members.service';
+import {
+  OrganizationInvitation,
+  OrganizationInvitationSchema,
+} from './modules/organizations/infrastructure/organization-invitation.schema';
 import { TaxIdLookupAdapter } from './modules/organizations/infrastructure/tax-id-lookup.adapter';
 import { TAX_LOOKUP_PROVIDER } from './modules/organizations/domain/tax-lookup-provider.port';
 import { OrganizationUsageService } from './modules/billing/application/organization-usage.service';
@@ -471,6 +477,7 @@ import { NotificationsService } from './modules/notifications/notifications.serv
       { name: UC58_LEAD_MODEL, schema: Uc58LeadSchema },
       { name: User.name, schema: UserSchema },
       { name: Organization.name, schema: OrganizationSchema },
+      { name: OrganizationInvitation.name, schema: OrganizationInvitationSchema },
       { name: EngagementType.name, schema: EngagementTypeSchema },
       { name: UserSession.name, schema: UserSessionSchema },
       { name: AuditLog.name, schema: AuditLogSchema },
@@ -545,6 +552,7 @@ import { NotificationsService } from './modules/notifications/notifications.serv
     MeetingController,
     MeetingRequestController,
     TaxLookupController,
+    OrganizationMembersController,
     OrganizationUsageController,
     LeadController,
     PartnerController,
@@ -824,6 +832,7 @@ import { NotificationsService } from './modules/notifications/notifications.serv
     TaxIdLookupAdapter,
     { provide: TAX_LOOKUP_PROVIDER, useClass: TaxIdLookupAdapter },
     OrganizationLegalProfileService,
+    OrganizationMembersService,
     { provide: UC58_LEAD_REPOSITORY, useClass: MongoUc58LeadRepository },
     {
       provide: SEND_QUOTE_UNIT_OF_WORK,

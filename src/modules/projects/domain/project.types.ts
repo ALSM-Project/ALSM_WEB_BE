@@ -165,6 +165,7 @@ export interface ProjectRepository {
     input: Omit<ProjectRecord, 'id' | 'createdAt' | 'updatedAt'> & { id?: string },
   ): Promise<ProjectRecord>;
   findById(id: string, organizationId?: string): Promise<ProjectRecord | null>;
+  findUnscopedById?(id: string): Promise<ProjectRecord | null>;
   findAll(organizationId?: string): Promise<ProjectRecord[]>;
   update(
     id: string,

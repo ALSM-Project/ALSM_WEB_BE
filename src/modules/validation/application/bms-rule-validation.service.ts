@@ -48,27 +48,30 @@ export interface RuleValidationResult {
 
 /**
  * KIẾN TRÚC HYBRID: BƯỚC 1 & 2 - ĐỐI CHIẾU QUY TẮC CƠ HỌC (DETERMINISTIC RULE ENGINE)
+ * Hỗ trợ cả 2 định dạng màn hình di sản:
+ * - IBM 3270 CICS BMS (Basic Mapping Support)
+ * - IBM AS/400 IBM i DSPF (Display File DDS)
+ * 
  * - Tốc độ: < 10ms
  * - Không gây ảo giác (Zero Hallucination)
  * - Tự động phát hiện 100% các lỗi kỹ thuật cơ bản:
  *   + MISSING_FIELD
  *   + ATTRIBUTE_MISMATCH (NUM, DRK/Password, LENGTH/maxLength, PROT/ReadOnly)
- *   + LAYOUT_DISCREPANCY (gridRow, gridColumn)
- *   + PF_KEY_MISMATCH (F3, F12, Enter...)
+ *   + LAYOUT_DISCREPANCY (gridRow, gridColumn, GridItem)
+ *   + PF_KEY_MISMATCH (F3, F12, Enter, CF/CA keys...)
  */
 @Injectable()
 export class BmsRuleValidationService {
   private readonly logger = new Logger(BmsRuleValidationService.name);
 
   /**
-   * Bóc tách các trường từ mã nguồn BMS / DSPF (Legacy CICS)
+   * Bóc tách các trường từ mã nguồn BMS (IBM CICS 3270)
    */
   parseBmsFields(content: string): { fields: BmsRawField[]; pfKeys: string[] } {
     const lines = content.split('\n');
     const fields: BmsRawField[] = [];
     const pfKeys: string[] = [];
 
-    // Ghép các dòng macro có continuation character (dấu * hoặc nối dòng ở cột 72)
     let currentStatement = '';
     let startLine = 1;
 
@@ -76,7 +79,6 @@ export class BmsRuleValidationService {
       const line = lines[i];
       const trimmed = line.trim();
 
-      // Bỏ qua dòng comment thuần túy
       if (trimmed.startsWith('*') && !trimmed.includes('DFHM')) {
         continue;
       }
@@ -87,7 +89,6 @@ export class BmsRuleValidationService {
 
       currentStatement += ' ' + trimmed;
 
-      // Nếu dòng kết thúc bằng dấu nối hoặc chưa kết thúc câu lệnh BMS
       const isContinuation = trimmed.endsWith('*') || trimmed.endsWith('-');
       if (!isContinuation) {
         if (currentStatement.includes('DFHMDF')) {
@@ -98,12 +99,10 @@ export class BmsRuleValidationService {
         }
         currentStatement = '';
       } else {
-        // Cắt bỏ dấu * nối dòng ở cuối
         currentStatement = currentStatement.slice(0, -1).trim();
       }
     }
 
-    // Xử lý statement còn sót lại nếu có
     if (currentStatement.includes('DFHMDF')) {
       const parsed = this.parseSingleBmsDfhmdf(currentStatement, startLine);
       if (parsed) {
@@ -111,7 +110,6 @@ export class BmsRuleValidationService {
       }
     }
 
-    // Tìm phím tắt (PF keys) được khai báo trong BMS
     const pfRegex = /\b(ENTER|PF\d{1,2}|F\d{1,2})\s*=\s*([^',*]+)/gi;
     let pfMatch: RegExpExecArray | null;
     while ((pfMatch = pfRegex.exec(content)) !== null) {
@@ -128,11 +126,9 @@ export class BmsRuleValidationService {
   private parseSingleBmsDfhmdf(statement: string, line: number): BmsRawField | null {
     const trimmedStatement = statement.trim();
 
-    // 1. Tên trường (nếu có đứng trước DFHMDF)
     const nameMatch = trimmedStatement.match(/^([A-Za-z0-9_#$]+)\s+DFHMDF/i);
     const name = nameMatch ? nameMatch[1].toUpperCase() : '';
 
-    // 2. POS=(row, col)
     const posMatch = trimmedStatement.match(/POS=\s*\(\s*(\d+)\s*,\s*(\d+)\s*\)/i);
     if (!posMatch) {
       return null;
@@ -140,11 +136,9 @@ export class BmsRuleValidationService {
     const row = parseInt(posMatch[1], 10);
     const col = parseInt(posMatch[2], 10);
 
-    // 3. LENGTH=n
     const lengthMatch = trimmedStatement.match(/LENGTH=\s*(\d+)/i);
     const length = lengthMatch ? parseInt(lengthMatch[1], 10) : 1;
 
-    // 4. ATTRB=(...)
     const attrbMatch = trimmedStatement.match(/ATTRB=\s*(?:\(([^)]+)\)|([A-Za-z0-9_]+))/i);
     const attrbStr = (attrbMatch ? attrbMatch[1] || attrbMatch[2] : '').toUpperCase();
     const attrbTokens = attrbStr.split(/[\s,]+/).filter(Boolean);
@@ -154,7 +148,6 @@ export class BmsRuleValidationService {
     const isProtected = attrbTokens.includes('PROT') || attrbTokens.includes('ASKIP');
     const isUnprotected = attrbTokens.includes('UNPROT');
 
-    // 5. INITIAL='...'
     const initialMatch = trimmedStatement.match(/INITIAL=\s*'([^']*)'/i);
     const initial = initialMatch ? initialMatch[1] : undefined;
 
@@ -174,14 +167,139 @@ export class BmsRuleValidationService {
   }
 
   /**
-   * Bóc tách các thẻ và thuộc tính từ file React TSX
+   * Bóc tách các trường từ mã nguồn DSPF (IBM AS/400 DDS Display File)
+   */
+  parseDspfFields(content: string): { fields: BmsRawField[]; pfKeys: string[] } {
+    const lines = content.split('\n');
+    const fields: BmsRawField[] = [];
+    const pfKeys: string[] = [];
+
+    // 1. Quét tìm function keys / command keys: CF01..CF24, CA01..CA24
+    const cfRegex = /\b(CF|CA)(\d{1,2})\s*\(\s*\d{1,2}/gi;
+    let cfMatch: RegExpExecArray | null;
+    while ((cfMatch = cfRegex.exec(content)) !== null) {
+      const num = parseInt(cfMatch[2], 10);
+      const key = `F${num}`;
+      if (!pfKeys.includes(key)) pfKeys.push(key);
+    }
+
+    // Quét tìm text legends: e.g. 'F3=Exit  F5=Refresh'
+    const legendRegex = /\b(ENTER|PF\d{1,2}|F\d{1,2})\s*=\s*([^',*]+)/gi;
+    let legendMatch: RegExpExecArray | null;
+    while ((legendMatch = legendRegex.exec(content)) !== null) {
+      const keyName = legendMatch[1].toUpperCase();
+      const normalizedKey = keyName.startsWith('PF') ? keyName.replace('PF', 'F') : keyName;
+      if (!pfKeys.includes(normalizedKey)) pfKeys.push(normalizedKey);
+    }
+
+    let lastField: BmsRawField | null = null;
+
+    for (let i = 0; i < lines.length; i++) {
+      const rawLine = lines[i];
+      const trimmed = rawLine.trim();
+
+      // Bỏ qua dòng trống hoặc comment (A* hoặc * ở cột 7)
+      if (!trimmed || trimmed.startsWith('*') || trimmed.startsWith('A*') || (rawLine.length >= 7 && rawLine.charAt(6) === '*')) {
+        continue;
+      }
+
+      // Check các dòng thuộc tính bổ trợ cho trường đứng trước (DSPATR, EDTCDE, CHECK)
+      if (lastField && !/\b[A-Za-z0-9_#$]+\s+\d+/.test(trimmed) && !/'[^']*'/.test(trimmed)) {
+        if (/DSPATR\([^)]*PR[^)]*\)/i.test(trimmed)) {
+          lastField.isProtected = true;
+          lastField.isUnprotected = false;
+        }
+        if (/DSPATR\([^)]*ND[^)]*\)/i.test(trimmed)) {
+          lastField.isDark = true;
+        }
+        if (/EDTCDE\(/i.test(trimmed) || /CHECK\([^)]*VN[^)]*\)/i.test(trimmed)) {
+          lastField.isNumeric = true;
+        }
+      }
+
+      // Pattern 1: Khai báo trường dữ liệu có tên, độ dài, kiểu dữ liệu, usage (I/O/B), row, col
+      // Ví dụ:
+      // A            F1LIBL        10   B  3 22
+      // A            NAME          25A  I  5 25
+      // A            F1SYNM        32   O  3 47
+      // A            F1TEXT        50J  B  5 22
+      // A            CONDITION     10A  B 10  2
+      const fieldMatch = trimmed.match(
+        /^A\s+(?:N?\d{1,2}\s+)*([A-Za-z0-9_#$]+)\s+(\d+)?([A-Za-z]?)\s+([IOBH])\s+(\d+)\s+(\d+)/i,
+      );
+      if (fieldMatch) {
+        const name = fieldMatch[1].toUpperCase();
+        const length = fieldMatch[2] ? parseInt(fieldMatch[2], 10) : 10;
+        const typeChar = (fieldMatch[3] || '').toUpperCase();
+        const usage = fieldMatch[4].toUpperCase(); // I, O, B, H
+        const row = parseInt(fieldMatch[5], 10);
+        const col = parseInt(fieldMatch[6], 10);
+
+        const isProtected = usage === 'O' || /DSPATR\([^)]*PR[^)]*\)/i.test(trimmed);
+        const isDark = /DSPATR\([^)]*ND[^)]*\)/i.test(trimmed);
+        const isNumeric = ['S', 'Y'].includes(typeChar) || /CHECK\([^)]*VN[^)]*\)/i.test(trimmed) || /EDTCDE\(/i.test(trimmed);
+        const isUnprotected = (usage === 'I' || usage === 'B') && !isProtected;
+
+        const newField: BmsRawField = {
+          name,
+          row,
+          col,
+          length,
+          isNumeric,
+          isDark,
+          isProtected,
+          isUnprotected,
+          rawStatement: trimmed,
+          line: i + 1,
+        };
+        fields.push(newField);
+        lastField = newField;
+        continue;
+      }
+
+      // Pattern 2: Literal Label / Tiêu đề tĩnh
+      // Ví dụ:
+      // A                                  1  3'登録'
+      // A                                  5  5'What is your name?'
+      // A                                 23  2'F3=Exit  F5=Refresh'
+      const labelMatch = trimmed.match(
+        /^A\s+(?:N?\d{1,2}\s+)*(\d+)\s+(\d+)\s*'([^']*)'/i,
+      );
+      if (labelMatch) {
+        const row = parseInt(labelMatch[1], 10);
+        const col = parseInt(labelMatch[2], 10);
+        const initial = labelMatch[3];
+        const newField: BmsRawField = {
+          name: `LABEL_${row}_${col}`,
+          row,
+          col,
+          length: initial.length,
+          initial,
+          isNumeric: false,
+          isDark: false,
+          isProtected: true,
+          isUnprotected: false,
+          rawStatement: trimmed,
+          line: i + 1,
+        };
+        fields.push(newField);
+        lastField = newField;
+        continue;
+      }
+    }
+
+    return { fields, pfKeys };
+  }
+
+  /**
+   * Bóc tách các thẻ và thuộc tính từ file React TSX (hỗ trợ cả output từ bms2react và dspf2react)
    */
   parseTsxFields(content: string): { fields: TsxRawField[]; pfKeys: string[] } {
     const lines = content.split('\n');
     const fields: TsxRawField[] = [];
     const pfKeys: string[] = [];
 
-    // 1. Quét tìm các phím được bind trong React (window.addEventListener 'keydown' hoặc switch (e.key))
+    // 1. Quét tìm các phím được bind trong React (window.addEventListener 'keydown' hoặc FUNCTION_KEYS hoặc switch (e.key))
     const keyMatchRegex = /['"](F\d{1,2}|Enter|Escape)['"]/gi;
     let kMatch: RegExpExecArray | null;
     while ((kMatch = keyMatchRegex.exec(content)) !== null) {
@@ -191,14 +309,29 @@ export class BmsRuleValidationService {
       }
     }
 
-    // 2. Quét các thẻ HTML/JSX: <input ... />, <span ...>...</span>
-    // Chúng ta quét từng dòng hoặc khối element
+    // 2. Quét các thẻ HTML/JSX: <input ... />, <Input ... />, <span ...>, <label ...>, <GridItem ...>
+    let currentGridRow: number | undefined;
+    let currentGridCol: number | undefined;
+
     for (let i = 0; i < lines.length; i++) {
       const lineStr = lines[i];
 
-      // Tìm thẻ <input ...
-      if (lineStr.includes('<input')) {
-        // Thu thập toàn bộ thẻ input (có thể trải nhiều dòng)
+      // Track thẻ bao <GridItem col={col} row={row}> (từ dspf2react.py)
+      const gridItemMatch =
+        lineStr.match(/<GridItem\s+[^>]*col=\{?(\d+)\}?[^>]*row=\{?(\d+)\}?/i) ||
+        lineStr.match(/<GridItem\s+[^>]*row=\{?(\d+)\}?[^>]*col=\{?(\d+)\}?/i);
+      if (gridItemMatch) {
+        if (lineStr.includes('col=') && lineStr.indexOf('col=') < lineStr.indexOf('row=')) {
+          currentGridCol = parseInt(gridItemMatch[1], 10);
+          currentGridRow = parseInt(gridItemMatch[2], 10);
+        } else {
+          currentGridRow = parseInt(gridItemMatch[1], 10);
+          currentGridCol = parseInt(gridItemMatch[2], 10);
+        }
+      }
+
+      // Check input elements: <input ... /> hoặc <Input ... />
+      if (/<input\b|<Input\b/i.test(lineStr)) {
         let elementStr = lineStr;
         let endIdx = i;
         while (!elementStr.includes('/>') && !elementStr.includes('>') && endIdx < lines.length - 1) {
@@ -212,9 +345,12 @@ export class BmsRuleValidationService {
         const inputModeMatch = elementStr.match(/\binputMode=["']([^"']+)["']/i);
         const maxLengthMatch = elementStr.match(/\bmaxLength=\{?["']?(\d+)["']?\}?/i);
 
-        // gridRow và gridColumn
+        // gridRow và gridColumn từ style={{ ... }} hoặc từ <GridItem>
         const gridRowMatch = elementStr.match(/gridRow:\s*(\d+)/i);
         const gridColMatch = elementStr.match(/gridColumn:\s*['"]?(\d+)(?:\s*\/\s*span\s*(\d+))?['"]?/i);
+
+        const row = gridRowMatch ? parseInt(gridRowMatch[1], 10) : currentGridRow;
+        const col = gridColMatch ? parseInt(gridColMatch[1], 10) : currentGridCol;
 
         const isDisabled = /\bdisabled\b/i.test(elementStr);
         const isReadOnly = /\breadOnly\b/i.test(elementStr);
@@ -223,8 +359,8 @@ export class BmsRuleValidationService {
           id: idMatch ? idMatch[1] : undefined,
           name: nameMatch ? nameMatch[1] : undefined,
           tag: 'input',
-          gridRow: gridRowMatch ? parseInt(gridRowMatch[1], 10) : undefined,
-          gridCol: gridColMatch ? parseInt(gridColMatch[1], 10) : undefined,
+          gridRow: row,
+          gridCol: col,
           colSpan: gridColMatch && gridColMatch[2] ? parseInt(gridColMatch[2], 10) : undefined,
           maxLength: maxLengthMatch ? parseInt(maxLengthMatch[1], 10) : undefined,
           type: typeMatch ? typeMatch[1].toLowerCase() : 'text',
@@ -233,15 +369,19 @@ export class BmsRuleValidationService {
           isDisabled,
           line: i + 1,
         });
-      } else if (lineStr.includes('<span') || lineStr.includes('<p')) {
-        // Label hoặc output field
+      } else if (/<span\b|<p\b|<label\b/i.test(lineStr)) {
         const gridRowMatch = lineStr.match(/gridRow:\s*(\d+)/i);
         const gridColMatch = lineStr.match(/gridColumn:\s*['"]?(\d+)(?:\s*\/\s*span\s*(\d+))?['"]?/i);
+        const row = gridRowMatch ? parseInt(gridRowMatch[1], 10) : currentGridRow;
+        const col = gridColMatch ? parseInt(gridColMatch[1], 10) : currentGridCol;
+
+        const idMatch = lineStr.match(/\bid=["']([^"']+)["']/i);
 
         fields.push({
-          tag: lineStr.includes('<span') ? 'span' : 'p',
-          gridRow: gridRowMatch ? parseInt(gridRowMatch[1], 10) : undefined,
-          gridCol: gridColMatch ? parseInt(gridColMatch[1], 10) : undefined,
+          id: idMatch ? idMatch[1] : undefined,
+          tag: lineStr.includes('<span') ? 'span' : lineStr.includes('<label') ? 'label' : 'p',
+          gridRow: row,
+          gridCol: col,
           colSpan: gridColMatch && gridColMatch[2] ? parseInt(gridColMatch[2], 10) : undefined,
           isReadOnly: true,
           isDisabled: false,
@@ -255,7 +395,7 @@ export class BmsRuleValidationService {
   }
 
   /**
-   * So sánh sự khác biệt giữa BMS và React TSX theo các bộ quy tắc (Deterministic Rule Execution)
+   * So sánh sự khác biệt giữa BMS/DSPF và React TSX theo các bộ quy tắc (Deterministic Rule Execution)
    */
   validate(
     sourceFile: { path: string; content: string },
@@ -264,47 +404,52 @@ export class BmsRuleValidationService {
     const findings: BmsValidationFinding[] = [];
     const ambiguousItems: RuleValidationResult['ambiguousItems'] = [];
 
-    const bms = this.parseBmsFields(sourceFile.content);
+    const isDspf =
+      /\.(dspf|dds)$/i.test(sourceFile.path) ||
+      sourceFile.content.includes('DSPSIZ') ||
+      /^\s*A\s+R\s+/m.test(sourceFile.content);
+
+    const legacy = isDspf
+      ? this.parseDspfFields(sourceFile.content)
+      : this.parseBmsFields(sourceFile.content);
+
     const tsx = this.parseTsxFields(targetFile.content);
-
     const tsxInputs = tsx.fields.filter((f) => f.tag === 'input');
+    const techLabel = isDspf ? 'DSPF' : 'BMS';
 
-    // 1. Kiểm tra từng trường BMS
-    for (const bmsField of bms.fields) {
-      // Bỏ qua stopper fields (LENGTH=0) hoặc dummy fields không tên và không có initial
-      if (bmsField.length === 0) continue;
+    // 1. Kiểm tra từng trường legacy
+    for (const legacyField of legacy.fields) {
+      if (legacyField.length === 0) continue;
 
-      // Tìm trường TSX tương ứng: ưu tiên theo ID/Name, nếu không thì theo tọa độ (row, col)
       const matchingInput = tsxInputs.find((t) => {
-        if (!bmsField.name.startsWith('LABEL_')) {
-          const bmsLower = bmsField.name.toLowerCase();
-          if (t.id && t.id.toLowerCase() === bmsLower) return true;
-          if (t.name && t.name.toLowerCase() === bmsLower) return true;
+        if (!legacyField.name.startsWith('LABEL_')) {
+          const lower = legacyField.name.toLowerCase();
+          if (t.id && t.id.toLowerCase() === lower) return true;
+          if (t.name && t.name.toLowerCase() === lower) return true;
         }
-        // Khớp tọa độ
-        return t.gridRow === bmsField.row && t.gridCol === bmsField.col;
+        return t.gridRow === legacyField.row && t.gridCol === legacyField.col;
       });
 
       // RULE 1: MISSING_FIELD (Nếu là trường input tương tác nhưng không tìm thấy trong TSX)
-      if (bmsField.isUnprotected && !bmsField.name.startsWith('LABEL_')) {
+      if (legacyField.isUnprotected && !legacyField.name.startsWith('LABEL_')) {
         if (!matchingInput) {
           findings.push({
             category: BmsValidationCategory.MISSING_FIELD,
             severity: ValidationFindingSeverity.CRITICAL,
-            fieldName: bmsField.name,
+            fieldName: legacyField.name,
             sourceLocation: {
               file: sourceFile.path,
-              startLine: bmsField.line,
-              endLine: bmsField.line,
+              startLine: legacyField.line,
+              endLine: legacyField.line,
             },
             targetLocation: {
               file: targetFile.path,
               startLine: 1,
               endLine: 1,
             },
-            explanation: `Legacy BMS field '${bmsField.name}' (POS=(${bmsField.row},${bmsField.col}), LENGTH=${bmsField.length}) is an interactive UNPROT input but was omitted in React component.`,
-            suggestion: `<input style={{ gridRow: ${bmsField.row}, gridColumn: '${bmsField.col} / span ${bmsField.length}' }} id="${bmsField.name.toLowerCase()}" name="${bmsField.name.toLowerCase()}" type="${bmsField.isDark ? 'password' : 'text'}" ${bmsField.isNumeric ? 'inputMode="numeric" ' : ''}maxLength={${bmsField.length}} />`,
-            expectedBehavior: `Interactive input field '${bmsField.name}' rendered at row ${bmsField.row}, col ${bmsField.col}.`,
+            explanation: `Legacy ${techLabel} field '${legacyField.name}' (row=${legacyField.row}, col=${legacyField.col}, length=${legacyField.length}) is an interactive input but was omitted in React component.`,
+            suggestion: `<input style={{ gridRow: ${legacyField.row}, gridColumn: '${legacyField.col} / span ${legacyField.length}' }} id="${legacyField.name.toLowerCase()}" name="${legacyField.name.toLowerCase()}" type="${legacyField.isDark ? 'password' : 'text'}" ${legacyField.isNumeric ? 'inputMode="numeric" ' : ''}maxLength={${legacyField.length}} />`,
+            expectedBehavior: `Interactive input field '${legacyField.name}' rendered at row ${legacyField.row}, col ${legacyField.col}.`,
             actualBehavior: 'Field is completely missing from React TSX output.',
             confidence: 1.0,
           });
@@ -316,47 +461,47 @@ export class BmsRuleValidationService {
         const targetLine = matchingInput.line;
 
         // RULE 2: ATTRIBUTE_MISMATCH - NUMERIC
-        if (bmsField.isNumeric && matchingInput.inputMode !== 'numeric' && matchingInput.type !== 'number') {
+        if (legacyField.isNumeric && matchingInput.inputMode !== 'numeric' && matchingInput.type !== 'number') {
           findings.push({
             category: BmsValidationCategory.ATTRIBUTE_MISMATCH,
             severity: ValidationFindingSeverity.HIGH,
-            fieldName: bmsField.name,
+            fieldName: legacyField.name,
             sourceLocation: {
               file: sourceFile.path,
-              startLine: bmsField.line,
-              endLine: bmsField.line,
+              startLine: legacyField.line,
+              endLine: legacyField.line,
             },
             targetLocation: {
               file: targetFile.path,
               startLine: targetLine,
               endLine: targetLine,
             },
-            explanation: `Field '${bmsField.name}' has ATTRB=NUM in BMS macro, but React <input> lacks inputMode="numeric" or numeric constraint.`,
-            suggestion: `Add inputMode="numeric" to the <input id="${matchingInput.id || bmsField.name.toLowerCase()}" ... /> element.`,
+            explanation: `Field '${legacyField.name}' has ATTRB=NUM in ${techLabel} macro, but React <input> lacks inputMode="numeric" or numeric constraint.`,
+            suggestion: `Add inputMode="numeric" to the input element (id="${matchingInput.id || legacyField.name.toLowerCase()}").`,
             expectedBehavior: 'Input should enforce numeric mode (inputMode="numeric").',
-            actualBehavior: `Input has type="${matchingInput.type}" and lacks inputMode.`,
+            actualBehavior: `Input has type="${matchingInput.type}" and lacks inputMode="numeric".`,
             confidence: 1.0,
           });
         }
 
         // RULE 3: ATTRIBUTE_MISMATCH - DRK (PASSWORD/SECRET)
-        if (bmsField.isDark && matchingInput.type !== 'password') {
+        if (legacyField.isDark && matchingInput.type !== 'password') {
           findings.push({
             category: BmsValidationCategory.ATTRIBUTE_MISMATCH,
             severity: ValidationFindingSeverity.CRITICAL,
-            fieldName: bmsField.name,
+            fieldName: legacyField.name,
             sourceLocation: {
               file: sourceFile.path,
-              startLine: bmsField.line,
-              endLine: bmsField.line,
+              startLine: legacyField.line,
+              endLine: legacyField.line,
             },
             targetLocation: {
               file: targetFile.path,
               startLine: targetLine,
               endLine: targetLine,
             },
-            explanation: `Field '${bmsField.name}' is declared DRK (dark/hidden) in BMS, but React <input> is rendered as type="${matchingInput.type}", exposing secret data on screen.`,
-            suggestion: `Set type="password" on <input id="${matchingInput.id || bmsField.name.toLowerCase()}" ... />`,
+            explanation: `Field '${legacyField.name}' is declared DRK (dark/hidden) in ${techLabel}, but React <input> is rendered as type="${matchingInput.type}", exposing secret data on screen.`,
+            suggestion: `Set type="password" on input (id="${matchingInput.id || legacyField.name.toLowerCase()}").`,
             expectedBehavior: 'Input must obscure text with type="password".',
             actualBehavior: `Input renders plain text with type="${matchingInput.type}".`,
             confidence: 1.0,
@@ -364,47 +509,47 @@ export class BmsRuleValidationService {
         }
 
         // RULE 4: ATTRIBUTE_MISMATCH - LENGTH / MAXLENGTH
-        if (matchingInput.maxLength !== undefined && matchingInput.maxLength !== bmsField.length) {
+        if (matchingInput.maxLength !== undefined && matchingInput.maxLength !== legacyField.length) {
           findings.push({
             category: BmsValidationCategory.ATTRIBUTE_MISMATCH,
             severity: ValidationFindingSeverity.MEDIUM,
-            fieldName: bmsField.name,
+            fieldName: legacyField.name,
             sourceLocation: {
               file: sourceFile.path,
-              startLine: bmsField.line,
-              endLine: bmsField.line,
+              startLine: legacyField.line,
+              endLine: legacyField.line,
             },
             targetLocation: {
               file: targetFile.path,
               startLine: targetLine,
               endLine: targetLine,
             },
-            explanation: `Field '${bmsField.name}' declared LENGTH=${bmsField.length} in BMS, but React input has maxLength={${matchingInput.maxLength}}.`,
-            suggestion: `Update maxLength={${bmsField.length}} on <input id="${matchingInput.id || bmsField.name.toLowerCase()}" ... />`,
-            expectedBehavior: `maxLength should be ${bmsField.length}.`,
+            explanation: `Field '${legacyField.name}' declared LENGTH=${legacyField.length} in ${techLabel}, but React input has maxLength={${matchingInput.maxLength}}.`,
+            suggestion: `Update maxLength={${legacyField.length}} on input (id="${matchingInput.id || legacyField.name.toLowerCase()}").`,
+            expectedBehavior: `maxLength should be ${legacyField.length}.`,
             actualBehavior: `maxLength is ${matchingInput.maxLength}.`,
             confidence: 1.0,
           });
         }
 
         // RULE 5: ATTRIBUTE_MISMATCH - PROT/ASKIP
-        if (bmsField.isProtected && !matchingInput.isDisabled && !matchingInput.isReadOnly) {
+        if (legacyField.isProtected && !matchingInput.isDisabled && !matchingInput.isReadOnly) {
           findings.push({
             category: BmsValidationCategory.ATTRIBUTE_MISMATCH,
             severity: ValidationFindingSeverity.MEDIUM,
-            fieldName: bmsField.name,
+            fieldName: legacyField.name,
             sourceLocation: {
               file: sourceFile.path,
-              startLine: bmsField.line,
-              endLine: bmsField.line,
+              startLine: legacyField.line,
+              endLine: legacyField.line,
             },
             targetLocation: {
               file: targetFile.path,
               startLine: targetLine,
               endLine: targetLine,
             },
-            explanation: `Field '${bmsField.name}' has ATTRB=PROT/ASKIP in BMS, but React component renders an editable, enabled <input />.`,
-            suggestion: `Add disabled or readOnly, or replace with <span> element.`,
+            explanation: `Field '${legacyField.name}' is protected/read-only in ${techLabel}, but React component renders an editable, enabled input.`,
+            suggestion: `Add disabled or readOnly, or replace with label/span element.`,
             expectedBehavior: 'Field should be read-only or disabled.',
             actualBehavior: 'Field is rendered as fully interactive input.',
             confidence: 1.0,
@@ -415,25 +560,25 @@ export class BmsRuleValidationService {
         if (
           matchingInput.gridRow !== undefined &&
           matchingInput.gridCol !== undefined &&
-          (matchingInput.gridRow !== bmsField.row || matchingInput.gridCol !== bmsField.col)
+          (matchingInput.gridRow !== legacyField.row || matchingInput.gridCol !== legacyField.col)
         ) {
           findings.push({
             category: BmsValidationCategory.LAYOUT_DISCREPANCY,
             severity: ValidationFindingSeverity.LOW,
-            fieldName: bmsField.name,
+            fieldName: legacyField.name,
             sourceLocation: {
               file: sourceFile.path,
-              startLine: bmsField.line,
-              endLine: bmsField.line,
+              startLine: legacyField.line,
+              endLine: legacyField.line,
             },
             targetLocation: {
               file: targetFile.path,
               startLine: targetLine,
               endLine: targetLine,
             },
-            explanation: `Position divergence for '${bmsField.name}': BMS POS=(${bmsField.row},${bmsField.col}) vs React gridRow=${matchingInput.gridRow}, gridColumn=${matchingInput.gridCol}.`,
-            suggestion: `Adjust style to: style={{ gridRow: ${bmsField.row}, gridColumn: '${bmsField.col} / span ${bmsField.length}' }}`,
-            expectedBehavior: `Position at row ${bmsField.row}, col ${bmsField.col}.`,
+            explanation: `Position divergence for '${legacyField.name}': ${techLabel} pos=(${legacyField.row},${legacyField.col}) vs React row=${matchingInput.gridRow}, col=${matchingInput.gridCol}.`,
+            suggestion: `Adjust position to row ${legacyField.row}, col ${legacyField.col}.`,
+            expectedBehavior: `Position at row ${legacyField.row}, col ${legacyField.col}.`,
             actualBehavior: `Positioned at row ${matchingInput.gridRow}, col ${matchingInput.gridCol}.`,
             confidence: 0.95,
           });
@@ -442,7 +587,7 @@ export class BmsRuleValidationService {
     }
 
     // RULE 7: PF_KEY_MISMATCH
-    for (const pfKey of bms.pfKeys) {
+    for (const pfKey of legacy.pfKeys) {
       if (!tsx.pfKeys.includes(pfKey)) {
         findings.push({
           category: BmsValidationCategory.PF_KEY_MISMATCH,
@@ -458,7 +603,7 @@ export class BmsRuleValidationService {
             startLine: 1,
             endLine: 1,
           },
-          explanation: `Function key '${pfKey}' defined in BMS screen legend was not wired into React keyboard handlers.`,
+          explanation: `Function key '${pfKey}' defined in ${techLabel} screen was not wired into React keyboard handlers.`,
           suggestion: `Add handler for '${pfKey}' inside useEffect keydown event listener.`,
           expectedBehavior: `Key '${pfKey}' handled in React window keydown listener.`,
           actualBehavior: `Key '${pfKey}' is missing from keydown listener.`,

@@ -183,7 +183,9 @@ export class ProjectService {
     targetStage: ManagedProjectStage,
     note?: string,
   ): Promise<ProjectRecord> {
-    const existing = await this.projects.findById(projectId);
+    const existing = this.projects.findUnscopedById
+      ? await this.projects.findUnscopedById(projectId)
+      : await this.projects.findById(projectId);
     if (!existing) throw this.notFound();
 
     const stageIdx = MANAGED_PROJECT_STAGE_ORDER.indexOf(targetStage);
@@ -241,7 +243,9 @@ export class ProjectService {
     action: 'APPROVE' | 'REQUEST_INFO' | 'REJECT',
     notes?: string,
   ): Promise<ProjectRecord> {
-    const existing = await this.projects.findById(projectId);
+    const existing = this.projects.findUnscopedById
+      ? await this.projects.findUnscopedById(projectId)
+      : await this.projects.findById(projectId);
     if (!existing) throw this.notFound();
 
     let newStatus: ProjectStatus;
@@ -343,7 +347,19 @@ export class ProjectService {
     userId: string,
     organizationHeader: string | undefined,
     id: string,
+    isPlatformAdmin = false,
   ): Promise<ProjectRecord> {
+    if (isPlatformAdmin && !organizationHeader?.trim()) {
+      let project = this.projects.findUnscopedById
+        ? await this.projects.findUnscopedById(id)
+        : null;
+      if (!project) {
+        const all = await this.projects.findAll();
+        project = all.find((p) => p.id === id || p.name === id) ?? null;
+      }
+      if (!project) throw this.notFound();
+      return project;
+    }
     const organization = await this.organizationContext.resolve(userId, organizationHeader, id);
     return this.requireProject(id, organization.id);
   }

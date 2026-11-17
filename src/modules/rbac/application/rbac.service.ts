@@ -13,7 +13,7 @@ import {
   IRole,
   IPermission,
 } from '../domain/rbac.repository.interface';
-import { AUDIT_REPOSITORY, AuditRepository } from '../../audit/domain/audit.repository';
+import { AUDIT_REPOSITORY, AuditRepository, AuditResourceType } from '../../audit/domain/audit.repository';
 
 export interface IRoleResponse extends IRole {
   key: string;
@@ -90,7 +90,7 @@ export class RbacService {
       await this.audit.append({
         actorUserId: actorId,
         action: 'ROLE_CREATED',
-        resourceType: 'role',
+        resourceType: AuditResourceType.ROLE,
         resourceId: saved.id,
         metadata: {
           name: saved.name,
@@ -127,7 +127,7 @@ export class RbacService {
       await this.audit.append({
         actorUserId: actorId,
         action: 'ROLE_UPDATED',
-        resourceType: 'role',
+        resourceType: AuditResourceType.ROLE,
         resourceId: resolvedRoleId,
         metadata: {
           name: updated?.name || role.name,
@@ -167,7 +167,7 @@ export class RbacService {
       await this.audit.append({
         actorUserId: actorId,
         action: 'ROLE_DELETED',
-        resourceType: 'role',
+        resourceType: AuditResourceType.ROLE,
         resourceId: id,
         metadata: { name: role.name },
       });
@@ -210,7 +210,7 @@ export class RbacService {
       await this.audit.append({
         actorUserId: actorId,
         action: 'PERMISSION_CREATED',
-        resourceType: 'permission',
+        resourceType: AuditResourceType.PERMISSION,
         resourceId: perm.key,
         metadata: { label: perm.label, group: perm.group },
       });
@@ -243,7 +243,7 @@ export class RbacService {
       await this.audit.append({
         actorUserId: actorId,
         action: 'PERMISSION_UPDATED',
-        resourceType: 'permission',
+        resourceType: AuditResourceType.PERMISSION,
         resourceId: key,
         metadata: { label: updated?.label || perm.label },
       });
@@ -267,7 +267,7 @@ export class RbacService {
       await this.audit.append({
         actorUserId: actorId,
         action: 'PERMISSION_DELETED',
-        resourceType: 'permission',
+        resourceType: AuditResourceType.PERMISSION,
         resourceId: key,
       });
     }
@@ -311,7 +311,7 @@ export class RbacService {
       await this.audit.append({
         actorUserId: actorId,
         action: 'ROLE_PERMISSIONS_UPDATED',
-        resourceType: 'role',
+        resourceType: AuditResourceType.ROLE,
         resourceId: resolvedRoleId,
         metadata: {
           permissionCount: uniqueKeys.length.toString(),
@@ -347,7 +347,7 @@ export class RbacService {
       await this.audit.append({
         actorUserId: actorId,
         action: 'USER_ROLES_UPDATED',
-        resourceType: 'user',
+        resourceType: AuditResourceType.USER,
         resourceId: userId,
         metadata: {
           roles: validRoleIds.join(','),

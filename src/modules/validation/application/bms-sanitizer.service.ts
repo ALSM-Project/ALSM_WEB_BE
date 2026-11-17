@@ -39,14 +39,20 @@ export class BmsSanitizerService {
   }
 
   /**
-   * Làm sạch mã nguồn BMS: bỏ comment rác (dòng bắt đầu bằng *) nhưng giữ lại số dòng tương ứng
+   * Làm sạch mã nguồn BMS / DSPF: bỏ comment rác nhưng giữ lại số dòng tương ứng
    */
   stripBmsComments(bmsContent: string): string {
     const lines = bmsContent.split('\n');
     const cleaned = lines.map((line) => {
       const trimmed = line.trim();
-      // Giữ lại dòng trống để không làm lệch số dòng thực tế
-      if (trimmed.startsWith('*') && !trimmed.includes('DFHM')) {
+      // BMS comment: starts with * and does not include DFHM
+      // DSPF (AS400 DDS) comment: starts with A* or has * at column 7
+      if (
+        (trimmed.startsWith('*') && !trimmed.includes('DFHM')) ||
+        trimmed.startsWith('A*') ||
+        trimmed.startsWith('a*') ||
+        (line.length >= 7 && line.charAt(6) === '*')
+      ) {
         return '';
       }
       return line;
@@ -82,7 +88,7 @@ export class BmsSanitizerService {
   /** Domain preprocessing only; the shared gateway owns secrets, limits and numbering. */
   sanitize(path: string, content: string): string {
     const normalized = content.replace(/\r\n|\r/g, '\n');
-    const stripped = /\.(bms|dspf)$/i.test(path) ? this.stripBmsComments(normalized) : normalized;
+    const stripped = /\.(bms|dspf|dds)$/i.test(path) ? this.stripBmsComments(normalized) : normalized;
     // PII regex whitespace must never consume a newline and shift source locations.
     return stripped
       .split('\n')

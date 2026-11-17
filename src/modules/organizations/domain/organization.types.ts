@@ -8,6 +8,7 @@ export enum OrganizationType {
 
 export enum OrganizationRole {
   OWNER = 'OWNER',
+  ORGANIZATION_OWNER = 'ORGANIZATION_OWNER',
   ADMIN = 'ADMIN',
   MEMBER = 'MEMBER',
   VIEWER = 'VIEWER',

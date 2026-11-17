@@ -1,5 +1,6 @@
 import { Injectable, Logger, Optional } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
+import { BmsRuleValidationService } from '../application/bms-rule-validation.service';
 import {
   BMS_VALIDATION_JSON_SCHEMA,
   BmsValidationCategory,
@@ -57,6 +58,7 @@ export class BmsAiValidatorAdapter implements AiValidatorPort {
   constructor(
     private readonly config: ConfigService,
     @Optional() private readonly geminiClient: GeminiJsonClient = new GeminiJsonClient(config),
+    @Optional() private readonly ruleEngine: BmsRuleValidationService = new BmsRuleValidationService(),
   ) {}
 
   getMetadata(): AiValidatorMetadata {
@@ -299,26 +301,38 @@ export class BmsAiValidatorAdapter implements AiValidatorPort {
   }
 
   /**
-   * Quy tắc Heuristic dự phòng khi AI offline
+   * Quy tắc Heuristic dự phòng khi AI offline hoặc tắt (hỗ trợ cả BMS và DSPF)
    */
   private runHeuristicChecks(input: BmsAiValidationInput): BmsValidationFinding[] {
-    const findings: BmsValidationFinding[] = [];
-    const source = input.sourceFiles[0]?.content || '';
-    const target = input.targetFiles[0]?.content || '';
+    const sourceFile = input.sourceFiles[0];
+    const targetFile = input.targetFiles[0];
+    if (sourceFile && targetFile && this.ruleEngine) {
+      const res = this.ruleEngine.validate(
+        { path: sourceFile.path, content: sourceFile.content },
+        { path: targetFile.path, content: targetFile.content },
+      );
+      if (res.findings.length > 0) {
+        return res.findings;
+      }
+    }
 
-    // Check 1: Thuộc tính NUM nhưng React thiếu numeric
+    const findings: BmsValidationFinding[] = [];
+    const source = sourceFile?.content || '';
+    const target = targetFile?.content || '';
+
+    // Check 1: Thuộc tính NUM nhưng React thiếu numeric (BMS)
     if (source.includes('ATTRB=(UNPROT,NUM)') && !target.includes('inputMode="numeric"')) {
       findings.push({
         category: BmsValidationCategory.ATTRIBUTE_MISMATCH,
         severity: ValidationFindingSeverity.MEDIUM,
         fieldName: 'NUMERIC_INPUT',
         sourceLocation: {
-          file: input.sourceFiles[0]?.path || 'source.bms',
+          file: sourceFile?.path || 'source.bms',
           startLine: 1,
           endLine: 1,
         },
         targetLocation: {
-          file: input.targetFiles[0]?.path || 'target.tsx',
+          file: targetFile?.path || 'target.tsx',
           startLine: 1,
           endLine: 1,
         },

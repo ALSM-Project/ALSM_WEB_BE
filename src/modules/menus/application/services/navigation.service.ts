@@ -107,19 +107,24 @@ export class NavigationService {
     }
 
     // 2. Organization Management Capabilities
-    // Note: organization.members.view and organization.teams.view granted to view-capable roles without mapping view -> manage
+    // Note: organization.members.view granted to view-capable roles without mapping view -> manage
+    // Internal Teams is strictly an internal operational capability reserved for platform admins
     if (isAdmin) {
       caps.add('organization.view');
       caps.add('organization.profile.view');
       caps.add('organization.members.view');
-      caps.add('organization.teams.view');
+      if (isPlatformAdmin) {
+        caps.add('organization.teams.view');
+      }
       caps.add('organization.analytics.view');
       caps.add('organization.audit.view');
       if (!isReadOnly) {
         caps.add('organization.profile.update');
         caps.add('organization.members.invite');
         caps.add('organization.members.manage');
-        caps.add('organization.teams.manage');
+        if (isPlatformAdmin) {
+          caps.add('organization.teams.manage');
+        }
         caps.add('organization.roles.manage');
       }
     }
@@ -343,7 +348,17 @@ export class NavigationService {
 
         if (primaryContract) {
           const rawMode = (primaryContract.serviceMode || primaryContract.contractType || '').toUpperCase();
-          if (rawMode.includes('CONVERT') || rawMode.includes('MANAGED')) {
+          const isWeConvert =
+            rawMode.includes('WE_CONVERT') ||
+            rawMode.includes('MANAGED') ||
+            rawMode.includes('TURNKEY') ||
+            rawMode === 'TYPE_2';
+          const isSelfService =
+            rawMode.includes('SELF_SERVICE') ||
+            rawMode.includes('PLATFORM') ||
+            rawMode === 'TYPE_1';
+
+          if (isWeConvert && !isSelfService) {
             serviceMode = 'WE_CONVERT_FOR_YOU';
           } else {
             serviceMode = 'SELF_SERVICE';
@@ -367,7 +382,17 @@ export class NavigationService {
           );
           const candidate = suspended || expired || contracts[0];
           const rawMode = (candidate.serviceMode || candidate.contractType || '').toUpperCase();
-          if (rawMode.includes('CONVERT') || rawMode.includes('MANAGED')) {
+          const isWeConvert =
+            rawMode.includes('WE_CONVERT') ||
+            rawMode.includes('MANAGED') ||
+            rawMode.includes('TURNKEY') ||
+            rawMode === 'TYPE_2';
+          const isSelfService =
+            rawMode.includes('SELF_SERVICE') ||
+            rawMode.includes('PLATFORM') ||
+            rawMode === 'TYPE_1';
+
+          if (isWeConvert && !isSelfService) {
             serviceMode = 'WE_CONVERT_FOR_YOU';
           } else {
             serviceMode = 'SELF_SERVICE';
@@ -478,12 +503,13 @@ export class NavigationService {
 
     // Capabilities Engine: Strictly for WEB_3 (Enterprise Portal)
     const isWeb3 = app === ApplicationContext.WEB_3;
+    const isPlatformAdmin = userRoles.includes('ADMIN') || userRoles.includes('SYSTEM_ADMIN');
     const userCapabilities = isWeb3
       ? this.computeUserCapabilities(
           effectiveRole,
           effectiveServiceMode as any,
           contractContext.contractStatus,
-          userRoles.includes('ADMIN') || isEnterpriseLeader,
+          isPlatformAdmin || isEnterpriseLeader,
         )
       : null;
 
@@ -529,6 +555,16 @@ export class NavigationService {
       // 3. Capability / Permission Matching (Backend Authority)
       const required = itemPermsMap.get(item.id) || [];
       if (isWeb3) {
+        // Platform-Based Modernization: Internal teams strictly removed from customer Web3 portal
+        const isInternalTeamsItem =
+          item.key?.toLowerCase() === 'internal_teams' ||
+          item.key?.toLowerCase() === 'teams' ||
+          item.id?.toLowerCase().includes('teams') ||
+          (item.route && (item.route.includes('/organization/teams') || item.route.includes('/internal-teams')));
+        if (isInternalTeamsItem && !isPlatformAdmin) {
+          continue;
+        }
+
         if (item.capability) {
           if (!userCapabilities?.has(item.capability)) {
             continue;
