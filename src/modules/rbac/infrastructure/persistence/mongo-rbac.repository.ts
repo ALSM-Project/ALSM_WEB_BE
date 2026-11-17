@@ -251,13 +251,15 @@ export class MongoRbacRepository implements IRbacRepository {
       isLocked: u.isLocked ?? false,
       lockReason: u.lockReason,
       lockDuration: u.lockDuration,
+      role: (u as any).role,
+      roles: (u as any).roles || [],
     };
   }
 
   async findAllUsers(): Promise<IRbacUser[]> {
     const users = await this.userModel
       .find()
-      .select('email fullName isPlatformAdmin isActive isLocked lockReason lockDuration')
+      .select('email fullName isPlatformAdmin isActive isLocked lockReason lockDuration role roles')
       .exec();
     return users.map((u) => ({
       id: u.id || u._id.toString(),

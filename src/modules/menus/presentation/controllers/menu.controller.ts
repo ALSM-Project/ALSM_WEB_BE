@@ -6,6 +6,8 @@ import { AuthenticatedUser } from '../../../../shared/logging/request-id.middlew
 import { GetPersonalizedMenuService } from '../../application/services/get-personalized-menu.service';
 import { MenuPersonalizationService } from '../../application/services/personalization.service';
 import { MenuAnalyticsService } from '../../application/services/menu-analytics.service';
+import { MenuBuilderService } from '../../application/services/menu-builder.service';
+import { ApplicationContext } from '../../domain/enums/menu.enums';
 import { MenuPresenter } from '../response/menu.presenter';
 
 @ApiTags('Menus')
@@ -17,7 +19,20 @@ export class MenuController {
     private readonly getPersonalizedMenuService: GetPersonalizedMenuService,
     private readonly personalizationService: MenuPersonalizationService,
     private readonly analyticsService: MenuAnalyticsService,
+    private readonly menuBuilderService: MenuBuilderService,
   ) {}
+
+  @Post('save')
+  @ApiOperation({ summary: 'Save entire menu tree for an application' })
+  async saveMenuTree(
+    @CurrentUser() user: AuthenticatedUser,
+    @Body() body: { sidebarNav?: any[]; menuTree?: any[]; application?: ApplicationContext },
+  ) {
+    const app = body.application || ApplicationContext.WEB_1;
+    const items = body.sidebarNav || body.menuTree || [];
+    await this.menuBuilderService.saveMenuTree(app, items, user?.userId);
+    return { success: true };
+  }
 
   @Get('personalized')
   @ApiOperation({ summary: 'Get personalized menu structure for current user' })

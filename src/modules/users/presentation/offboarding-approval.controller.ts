@@ -25,6 +25,7 @@ import {
   ApproveOffboardingRequestDto,
   CreateOffboardingRequestDto,
   ListOffboardingRequestsQueryDto,
+  CancelOffboardingRequestDto,
   RejectOffboardingRequestDto,
 } from './offboarding-request.dto';
 
@@ -80,6 +81,29 @@ export class OffboardingApprovalController {
       user.userId,
       user.isPlatformAdmin,
       query,
+    );
+  }
+
+
+  @Get('search-staff')
+  @UseGuards(PermissionsGuard)
+  @RequirePermissions('users.offboard')
+  @ApiOperation({
+    summary: 'Search staff members for offboarding with autocomplete',
+    description: 'Searches staff by name, email, or employee ID (query >= 2 characters).',
+  })
+  @ApiResponse({
+    status: HttpStatus.OK,
+    description: 'Matching staff members retrieved successfully',
+  })
+  async searchStaff(
+    @CurrentUser() user: AuthenticatedUser,
+    @Query('q') query?: string,
+  ) {
+    return this.approvalService.searchStaff(
+      user.userId,
+      query || '',
+      user.isPlatformAdmin,
     );
   }
 
@@ -155,6 +179,32 @@ export class OffboardingApprovalController {
       user.userId,
       id,
       dto,
+      user.isPlatformAdmin,
+    );
+  }
+
+
+  @Post(':id/cancel')
+  @UseGuards(PermissionsGuard)
+  @RequirePermissions('users.offboard')
+  @ApiOperation({
+    summary: 'Cancel user offboarding request',
+    description: 'Allows the requester or an administrator to cancel a pending or draft offboarding request.',
+  })
+  @ApiParam({ name: 'id', description: 'Offboarding request ID' })
+  @ApiResponse({
+    status: HttpStatus.OK,
+    description: 'Offboarding request cancelled successfully',
+  })
+  async cancelRequest(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('id') id: string,
+    @Body() dto: CancelOffboardingRequestDto,
+  ) {
+    return this.approvalService.cancelRequest(
+      user.userId,
+      id,
+      dto?.reason,
       user.isPlatformAdmin,
     );
   }

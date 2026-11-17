@@ -81,6 +81,7 @@ describe('real public verification controller, verifier, auth service, JWT and c
       'hasPassword',
       'mustChangePassword',
       'refreshToken',
+      'user',
     ]);
     const claims = await f.jwt.verifyAsync(response.body.accessToken, {
       secret: f.config.getOrThrow('JWT_ACCESS_SECRET'),

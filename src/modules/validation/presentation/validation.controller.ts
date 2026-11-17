@@ -24,6 +24,7 @@ import { JwtAuthGuard } from '../../../shared/security/jwt-auth.guard';
 import { ValidationReadService } from '../application/validation-read.service';
 import { ReviewValidationFindingService } from '../application/review-validation-finding.service';
 import { TriggerAiValidationService } from '../application/trigger-ai-validation.service';
+import { ApplyAiFixService } from '../application/apply-ai-fix.service';
 import {
   ReviewValidationFindingRequestDto,
   ValidationFindingResponseDto,
@@ -44,6 +45,7 @@ export class ValidationController {
     private readonly validationReads: ValidationReadService,
     private readonly triggerAiValidation: TriggerAiValidationService,
     private readonly reviewValidationFinding: ReviewValidationFindingService,
+    private readonly applyAiFixService: ApplyAiFixService,
   ) {}
 
   @Post('projects/:projectId/conversions/:conversionJobId/validation-runs')
@@ -150,6 +152,29 @@ export class ValidationController {
       findingId,
       status: body.status,
       reviewNote: body.reviewNote,
+    });
+  }
+
+  @Post('projects/:projectId/validation-runs/:validationRunId/findings/:findingId/ai-fix')
+  @ApiOperation({ summary: 'Apply AI-suggested fix to target code and resolve finding' })
+  @ApiParam({ name: 'projectId', description: 'Project ID' })
+  @ApiParam({ name: 'validationRunId', description: 'Validation Run ID' })
+  @ApiParam({ name: 'findingId', description: 'Validation Finding ID' })
+  @ApiResponse({ status: 200, description: 'AI fix successfully applied and code updated' })
+  @ApiResponse({ status: 404, description: 'Project, validation run, or finding not found' })
+  async applyAiFix(
+    @CurrentUser() user: AuthenticatedUser,
+    @Headers('x-organization-id') organizationId: string | undefined,
+    @Param('projectId') projectId: string,
+    @Param('validationRunId') validationRunId: string,
+    @Param('findingId') findingId: string,
+  ) {
+    return this.applyAiFixService.execute({
+      userId: user.userId,
+      organizationHeader: organizationId,
+      projectId,
+      validationRunId,
+      findingId,
     });
   }
 }

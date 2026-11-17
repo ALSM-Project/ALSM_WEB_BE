@@ -42,7 +42,7 @@ export interface ScreenRecord {
 
 export interface ScreenRepository {
   create(input: Omit<ScreenRecord, 'id' | 'createdAt' | 'updatedAt'>): Promise<ScreenRecord>;
-  findById(id: string, organizationId: string): Promise<ScreenRecord | null>;
+  findById(id: string, organizationId?: string): Promise<ScreenRecord | null>;
   listByProject(projectId: string, organizationId: string): Promise<ScreenRecord[]>;
   updateStatus(id: string, organizationId: string, status: ScreenStatus): Promise<void>;
   /** Screens left in PROCESSING since before `updatedBefore`, oldest id first, paged by id. */

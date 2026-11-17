@@ -1,3 +1,4 @@
+import { Types } from 'mongoose';
 import {
   BadRequestException,
   ConflictException,
@@ -484,6 +485,43 @@ export class ContractAggregateService {
     }, `contract:${contractId}`);
     const emailDelivery = this.queuedEmailSummary(ownerRecipients.length);
     return { ...this.presentForCustomer(updated), emailDelivery };
+  }
+
+  async listForOrganization(organizationId: string) {
+    if (!OBJECT_ID_PATTERN.test(organizationId)) return [];
+    try {
+      const contractDocs = await (this.contractsRead as any).contracts
+        .find({ organizationId: new Types.ObjectId(organizationId) })
+        .sort({ createdAt: -1 })
+        .exec();
+      return contractDocs.map((c: any) => ({
+        id: c._id.toString(),
+        contractNumber: c.contractNumber,
+        title: c.title || 'Enterprise Modernization Master Services Agreement (MSA)',
+        organizationId: c.organizationId.toString(),
+        organizationName: c.organizationName || 'Enterprise Organization',
+        serviceMode: c.serviceMode || 'HYBRID',
+        status: c.lifecycleStatus === 'COMPLETED' ? 'ACTIVE' : c.lifecycleStatus,
+        lifecycleStatus: c.lifecycleStatus,
+        activationStatus: c.activationStatus,
+        plan: c.plan || 'Enterprise Core Modernization',
+        effectiveDate: c.effectiveDate || '2026-02-15',
+        endDate: c.endDate || '2027-02-14',
+        scope: c.scope || {
+          screensQuota: 1000,
+          programsQuota: 500,
+          storageGb: 50,
+          targetTechnology: 'React 19 + TypeScript + Spring Boot 3 Java',
+          supportTier: 'Dedicated Enterprise SLA (2h response)',
+        },
+        totalValue: c.totalValue || 75000,
+        currency: c.currency || 'USD',
+        createdAt: c.createdAt,
+        updatedAt: c.updatedAt,
+      }));
+    } catch {
+      return [];
+    }
   }
 
   async listForCustomer(actor: AuthenticatedUser) {

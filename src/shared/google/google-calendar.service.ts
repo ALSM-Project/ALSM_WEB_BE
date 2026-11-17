@@ -137,4 +137,84 @@ export class GoogleCalendarService {
       calendarEventId: createdEvent.id ?? '',
     };
   }
+
+  /**
+   * Reschedule or update an existing Google Calendar event.
+   */
+  async updateMeetingEvent(params: {
+    calendarEventId: string;
+    title?: string;
+    description?: string;
+    scheduledStartTime: Date;
+    scheduledEndTime: Date;
+    attendeeEmails?: string[];
+  }): Promise<GoogleMeetResult> {
+    if (!this.calendar) {
+      throw new Error('Google Calendar integration is not configured');
+    }
+
+    const { calendarEventId, title, description, scheduledStartTime, scheduledEndTime, attendeeEmails } = params;
+
+    const requestBody: calendar_v3.Schema$Event = {
+      start: {
+        dateTime: scheduledStartTime.toISOString(),
+        timeZone: 'Asia/Ho_Chi_Minh',
+      },
+      end: {
+        dateTime: scheduledEndTime.toISOString(),
+        timeZone: 'Asia/Ho_Chi_Minh',
+      },
+    };
+
+    if (title) requestBody.summary = title;
+    if (description !== undefined) requestBody.description = description;
+    if (attendeeEmails && attendeeEmails.length > 0) {
+      requestBody.attendees = attendeeEmails.map((email) => ({ email, responseStatus: 'needsAction' as const }));
+    }
+
+    const response = await this.calendar.events.patch({
+      calendarId: this.calendarId,
+      eventId: calendarEventId,
+      sendUpdates: 'all',
+      requestBody,
+    });
+
+    const updatedEvent = response.data;
+    const meetLink =
+      updatedEvent.conferenceData?.entryPoints?.find((ep) => ep.entryPointType === 'video')?.uri ||
+      `https://meet.google.com/${calendarEventId}`;
+    const meetCode = meetLink.replace('https://meet.google.com/', '');
+
+    return {
+      meetingUrl: meetLink,
+      meetingCode: meetCode,
+      calendarEventId: updatedEvent.id ?? calendarEventId,
+    };
+  }
+
+  /**
+   * Cancel / delete a Google Calendar event.
+   */
+  async deleteMeetingEvent(calendarEventId: string): Promise<void> {
+    if (!this.calendar) {
+      return;
+    }
+    try {
+      await this.calendar.events.delete({
+        calendarId: this.calendarId,
+        eventId: calendarEventId,
+        sendUpdates: 'all',
+      });
+      this.logger.log(`Google Calendar event deleted: ${calendarEventId}`);
+    } catch (err) {
+      this.logger.warn(`Failed to delete Google Calendar event ${calendarEventId}: ${(err as Error).message}`);
+    }
+  }
+
+  getStatus(): { isEnabled: boolean; calendarUserEmail?: string } {
+    return {
+      isEnabled: this.isEnabled,
+      calendarUserEmail: this.calendarId !== 'primary' ? this.calendarId : undefined,
+    };
+  }
 }

@@ -48,7 +48,9 @@ const routeCases = [
   ['get', `organizations/${targetId}`, 'organizations.view', 'getOrganizationDetails'],
   ['post', 'organizations/enterprise', 'organizations.manage', 'createEnterprise'],
   ['patch', `organizations/${targetId}/engagement`, 'organizations.manage', 'updateEngagement'],
+  ['delete', `organizations/${targetId}`, 'organizations.manage', 'deleteOrganization'],
   ['get', 'revenue/summary', 'revenue.view', 'getRevenueSummary'],
+  ['get', 'revenue/transactions', 'revenue.view', 'getRevenueTransactions'],
   ['get', 'engagement-types', 'engagement-types.manage', 'listEngagementTypes'],
   ['post', 'engagement-types', 'engagement-types.manage', 'createEngagementType'],
   ['patch', `engagement-types/${targetId}`, 'engagement-types.manage', 'editEngagementType'],
@@ -182,6 +184,10 @@ describe('real AdminModule authorization HTTP boundary', () => {
     'MenuItem',
     'MenuItemPermission',
     'TemporaryRole',
+    'Team',
+    'Invoice',
+    'Payment',
+    'ProviderCompanyProfile',
   ];
   const models = Object.fromEntries(
     modelNames.map((name) => [
@@ -196,6 +202,8 @@ describe('real AdminModule authorization HTTP boundary', () => {
         findByIdAndUpdate: jest.fn(),
         updateMany: jest.fn(),
         updateOne: jest.fn(),
+        deleteOne: jest.fn(() => ({ exec: async () => ({ deletedCount: 1 }) })),
+        findByIdAndDelete: jest.fn(),
       },
     ]),
   );
@@ -364,6 +372,7 @@ describe('real AdminModule authorization HTTP boundary', () => {
       model.aggregate.mockImplementation(() => ({ exec: async () => [] }));
       model.create.mockResolvedValue({ _id: targetId, id: targetId, name: 'Created' });
       model.findByIdAndUpdate.mockImplementation(() => query({ id: targetId, name: 'Edited' }));
+      model.findByIdAndDelete.mockImplementation(() => query({ id: targetId, name: 'Deleted' }));
       model.updateMany.mockResolvedValue({ modifiedCount: 1 });
     }
     models.Organization.find.mockImplementation(() => query([org()]));
@@ -703,7 +712,7 @@ describe('real AdminModule authorization HTTP boundary', () => {
     );
     it('preserves permitted administrator assignment', async () => {
       expect((await assign()).status).toBe(201);
-      expect(projectRepository.assignTeamLead).toHaveBeenCalledWith(targetId, otherId);
+      expect(projectRepository.assignTeamLead).toHaveBeenCalledWith(targetId, expect.objectContaining({ teamLeadId: otherId }));
     });
     it('preserves ordinary membership-scoped project listing', async () => {
       account.isPlatformAdmin = false;

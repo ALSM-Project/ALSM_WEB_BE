@@ -1,3 +1,15 @@
+export interface StaffSearchResultDto {
+  id: string;
+  fullName: string;
+  email: string;
+  employeeId: string;
+  department: string;
+  teamName?: string;
+  roles: string[];
+  isActive: boolean;
+  avatarUrl?: string;
+  directManager?: string;
+}
 import {
   BadRequestException,
   ForbiddenException,
@@ -12,6 +24,8 @@ import { NotificationsService } from '../../notifications/notifications.service'
 import { RbacService } from '../../rbac/application/rbac.service';
 import { Team } from '../../teams/infrastructure/team.schema';
 import { User, UserDocument } from '../infrastructure/user.schema';
+import { WorkforceService } from '../../workforce/application/workforce.service';
+import { WorkforceMemberType, MembershipStatus } from '../../organizations/domain/organization.types';
 import {
   IOffboardingRequestRepository,
   OFFBOARDING_REQUEST_REPOSITORY,
@@ -52,7 +66,46 @@ export class UserOffboardingApprovalService {
     @Inject(AUDIT_REPOSITORY)
     private readonly audit: AuditRepository,
     private readonly notifications: NotificationsService,
+    private readonly workforceService: WorkforceService,
   ) {}
+
+  /**
+   * Search staff members for autocomplete (query >= 2 characters).
+   */
+  async searchStaff(
+    actorUserId: string,
+    query: string,
+    isPlatformAdmin = false,
+  ): Promise<StaffSearchResultDto[]> {
+    const q = (query || '').trim();
+    if (q.length < 2) {
+      return [];
+    }
+
+    const workforceResults = await this.workforceService.searchEmployees(
+      { userId: actorUserId, isPlatformAdmin },
+      {
+        q,
+        portal: 'WEB2',
+        memberType: WorkforceMemberType.INTERNAL_EMPLOYEE,
+        status: 'ALL',
+        limit: 15,
+      },
+    );
+
+    return workforceResults.items
+      .filter((emp) => emp.userId !== actorUserId)
+      .map((emp) => ({
+        id: emp.userId,
+        fullName: emp.fullName,
+        email: emp.email,
+        employeeId: emp.employeeCode,
+        department: emp.department,
+        teamName: emp.teamName,
+        roles: emp.roles && emp.roles.length > 0 ? emp.roles : [emp.role],
+        isActive: emp.status === MembershipStatus.ACTIVE,
+      }));
+  }
 
   /**
    * UC-89: Create a new user offboarding request for Team Lead approval.
@@ -90,6 +143,9 @@ export class UserOffboardingApprovalService {
         message: 'Target staff member was not found',
       });
     }
+
+    // Verify target staff member belongs to ALSM Internal Workforce
+    await this.workforceService.validateInternalEmployee(dto.targetUserId);
 
     if (targetUser.isActive === false) {
       throw new BadRequestException({
@@ -192,7 +248,14 @@ export class UserOffboardingApprovalService {
       projectTransfers: dto.projectTransfers,
       reason: dto.reason.trim(),
       note: dto.note?.trim(),
-      status: 'PENDING',
+      status: dto.isDraft ? 'DRAFT' : 'PENDING',
+      offboardingType: dto.offboardingType,
+      effectiveDate: dto.effectiveDate ? new Date(dto.effectiveDate) : undefined,
+      handoverDeadline: dto.handoverDeadline ? new Date(dto.handoverDeadline) : undefined,
+      pendingTasks: dto.pendingTasks,
+      documentationStatus: dto.documentationStatus,
+      department: dto.department || targetTeam?.name,
+      directManager: dto.directManager,
     });
 
     await this.audit.append({
@@ -559,6 +622,62 @@ export class UserOffboardingApprovalService {
   /**
    * Helper to verify if actor is authorized to review/approve/reject a request.
    */
+  /**
+   * UC-89: Cancel an offboarding request (allowed by original requester or platform admin if status is PENDING or DRAFT).
+   */
+  async cancelRequest(
+    actorUserId: string,
+    requestId: string,
+    reason?: string,
+    isPlatformAdmin = false,
+  ): Promise<OffboardingRequestRecord> {
+    const request = await this.requestRepo.findById(requestId);
+    if (!request) {
+      throw new NotFoundException({
+        code: 'OFFBOARDING_REQUEST_NOT_FOUND',
+        message: 'Offboarding request not found',
+      });
+    }
+
+    if (request.status !== 'PENDING' && request.status !== 'DRAFT') {
+      throw new BadRequestException({
+        code: 'OFFBOARDING_REQUEST_CANNOT_BE_CANCELLED',
+        message: `This offboarding request cannot be cancelled because its status is ${request.status}`,
+      });
+    }
+
+    if (!isPlatformAdmin && request.requestedById !== actorUserId) {
+      throw new ForbiddenException({
+        code: 'UNAUTHORIZED_OFFBOARDING_CANCELLATION',
+        message: 'Only the requester or an administrator can cancel this offboarding request',
+      });
+    }
+
+    const actorOid = toObjectId(actorUserId);
+    const actorUser = await this.userModel.findById(actorOid).lean().exec();
+    const actorName = actorUser?.fullName || actorUser?.email || 'Authorized User';
+
+    const updatedRequest = await this.requestRepo.update(requestId, {
+      status: 'CANCELLED',
+      reviewNote: reason?.trim() ? `Cancelled: ${reason.trim()}` : 'Cancelled by requester',
+    });
+
+    await this.audit.append({
+      actorUserId,
+      action: 'OFFBOARDING_REQUEST_CANCELLED',
+      resourceType: 'OFFBOARDING_REQUEST',
+      resourceId: requestId,
+      metadata: {
+        targetUserId: request.targetUserId,
+        targetEmail: request.targetUserEmail || '',
+        cancelledBy: actorName,
+        reason: reason || '',
+      },
+    });
+
+    return updatedRequest || request;
+  }
+
   private async checkReviewAuthorization(
     actorUserId: string,
     request: OffboardingRequestRecord,

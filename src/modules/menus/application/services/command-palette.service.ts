@@ -97,11 +97,11 @@ export class CommandPaletteService {
       },
       {
         id: 'upgrade-plan',
-        label: 'Nâng cấp Gói dịch vụ VietQR',
+        label: 'Nâng cấp Gói dịch vụ',
         description: 'Nâng cấp lên Professional hoặc Enterprise',
         icon: 'zap',
         category: 'Billing',
-        keywords: ['upgrade', 'billing', 'plan', 'nâng cấp', 'vietqr'],
+        keywords: ['upgrade', 'billing', 'plan', 'nâng cấp', 'thanh toán'],
         action: 'action',
         data: { route: '/billing/upgrade' },
       },

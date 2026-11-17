@@ -14,6 +14,11 @@ export interface IMenuItemData {
   status: MenuItemStatus;
   openInNewTab?: boolean;
   hideParentLabel?: boolean;
+  contractTypeVisibility?: string;
+  featureKey?: string | null;
+  description?: string | null;
+  requiredRoles?: string[];
+  capability?: string | null;
   createdAt?: Date;
   updatedAt?: Date;
 }

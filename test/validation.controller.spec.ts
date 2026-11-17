@@ -6,10 +6,12 @@ describe('ValidationController human review', () => {
     const validationReads = {};
     const triggerAiValidation = {};
     const reviewValidationFinding = { execute: jest.fn().mockResolvedValue({ id: 'finding-1' }) };
+    const applyAiFixService = {};
     const controller = new ValidationController(
       validationReads as never,
       triggerAiValidation as never,
       reviewValidationFinding as never,
+      applyAiFixService as never,
     );
 
     await expect(

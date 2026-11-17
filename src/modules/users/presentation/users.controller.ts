@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Optional, Param, Patch, Post, UseGuards } from '@nestjs/common';
+import { Body, Controller, Get, NotFoundException, Optional, Param, Patch, Post, UseGuards } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagger';
 import { CurrentUser } from '../../../shared/security/current-user.decorator';
 import { JwtAuthGuard } from '../../../shared/security/jwt-auth.guard';
@@ -32,6 +32,21 @@ export class UsersController {
   @ApiResponse({ status: 200, description: 'Users retrieved successfully' })
   async list() {
     return this.rbacService.getAllUsers();
+  }
+
+  @Get(':id')
+  @UseGuards(PermissionsGuard)
+  @RequirePermissions('users.manage')
+  @ApiOperation({ summary: 'Get user details by ID', description: 'Requires users.manage permission.' })
+  @ApiResponse({ status: 200, description: 'User retrieved successfully' })
+  @ApiResponse({ status: 404, description: 'User not found' })
+  async getById(@Param('id') id: string) {
+    const all = await this.rbacService.getAllUsers();
+    const user = all.find((u) => u.id === id);
+    if (!user) {
+      throw new NotFoundException(`User with ID ${id} not found`);
+    }
+    return user;
   }
 
   @Post()

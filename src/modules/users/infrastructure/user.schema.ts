@@ -1,5 +1,5 @@
 import { Prop, Schema, SchemaFactory } from '@nestjs/mongoose';
-import { HydratedDocument } from 'mongoose';
+import { HydratedDocument, Schema as MongooseSchema, Types } from 'mongoose';
 import { UserAccountType } from '../domain/user.repository';
 export type UserDocument = HydratedDocument<User>;
 @Schema({ collection: 'users', timestamps: true })
@@ -8,6 +8,8 @@ export class User {
   @Prop({ required: true, unique: true, lowercase: true, trim: true }) email!: string;
   @Prop({ required: false, select: false }) passwordHash?: string;
   @Prop({ required: true, trim: true }) fullName!: string;
+  @Prop({ type: MongooseSchema.Types.ObjectId, ref: 'Organization', required: false, index: true })
+  organizationId?: Types.ObjectId;
   @Prop({ default: false }) isPlatformAdmin!: boolean;
   @Prop({ default: true }) isActive!: boolean;
   @Prop({ default: true }) isEmailVerified!: boolean;
@@ -17,6 +19,8 @@ export class User {
   @Prop() lockedAt?: Date;
   @Prop() lockedBy?: string;
   @Prop() lockDuration?: string;
+  @Prop() role?: string;
+  @Prop({ type: [String], default: [] }) roles?: string[];
   @Prop({
     type: {
       enabled: { type: Boolean, default: false },

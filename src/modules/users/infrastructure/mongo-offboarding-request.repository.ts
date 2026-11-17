@@ -39,6 +39,13 @@ export class MongoOffboardingRequestRepository implements IOffboardingRequestRep
       projectTransfers: input.projectTransfers || [],
       reason: input.reason,
       note: input.note,
+      offboardingType: input.offboardingType || 'Resignation',
+      effectiveDate: input.effectiveDate,
+      handoverDeadline: input.handoverDeadline,
+      pendingTasks: input.pendingTasks,
+      documentationStatus: input.documentationStatus || 'Pending',
+      department: input.department,
+      directManager: input.directManager,
       status: input.status,
       reviewedById: input.reviewedById
         ? new Types.ObjectId(input.reviewedById)
@@ -64,7 +71,7 @@ export class MongoOffboardingRequestRepository implements IOffboardingRequestRep
     const doc = await this.requestModel
       .findOne({
         targetUserId: new Types.ObjectId(targetUserId),
-        status: 'PENDING',
+        status: { $in: ['PENDING', 'PENDING_APPROVAL', 'DRAFT'] },
       })
       .sort({ createdAt: -1 })
       .lean()
@@ -95,7 +102,11 @@ export class MongoOffboardingRequestRepository implements IOffboardingRequestRep
       query.requestedById = new Types.ObjectId(filter.requestedById);
     }
     if (filter?.status) {
-      query.status = filter.status;
+      if (filter.status === 'PENDING') {
+        query.status = { $in: ['PENDING', 'PENDING_APPROVAL'] };
+      } else {
+        query.status = filter.status;
+      }
     }
 
     const docs = await this.requestModel
@@ -104,7 +115,7 @@ export class MongoOffboardingRequestRepository implements IOffboardingRequestRep
       .lean()
       .exec();
 
-    return docs.map((doc) => this.mapToRecord(doc));
+    return docs.map((d) => this.mapToRecord(d));
   }
 
   async update(
@@ -114,21 +125,29 @@ export class MongoOffboardingRequestRepository implements IOffboardingRequestRep
     if (!Types.ObjectId.isValid(id)) return null;
 
     const updateDoc: Record<string, unknown> = {};
-    if (patch.status) updateDoc.status = patch.status;
-    if (patch.reviewedById) {
-      updateDoc.reviewedById = new Types.ObjectId(patch.reviewedById);
+
+    if (patch.status !== undefined) updateDoc.status = patch.status;
+    if (patch.reason !== undefined) updateDoc.reason = patch.reason;
+    if (patch.note !== undefined) updateDoc.note = patch.note;
+    if (patch.offboardingType !== undefined) updateDoc.offboardingType = patch.offboardingType;
+    if (patch.effectiveDate !== undefined) updateDoc.effectiveDate = patch.effectiveDate;
+    if (patch.handoverDeadline !== undefined) updateDoc.handoverDeadline = patch.handoverDeadline;
+    if (patch.pendingTasks !== undefined) updateDoc.pendingTasks = patch.pendingTasks;
+    if (patch.documentationStatus !== undefined) updateDoc.documentationStatus = patch.documentationStatus;
+    if (patch.department !== undefined) updateDoc.department = patch.department;
+    if (patch.directManager !== undefined) updateDoc.directManager = patch.directManager;
+
+    if (patch.reviewedById !== undefined) {
+      updateDoc.reviewedById = patch.reviewedById
+        ? new Types.ObjectId(patch.reviewedById)
+        : undefined;
     }
-    if (patch.reviewedByName !== undefined) {
-      updateDoc.reviewedByName = patch.reviewedByName;
-    }
+    if (patch.reviewedByName !== undefined) updateDoc.reviewedByName = patch.reviewedByName;
     if (patch.reviewedAt !== undefined) updateDoc.reviewedAt = patch.reviewedAt;
     if (patch.reviewNote !== undefined) updateDoc.reviewNote = patch.reviewNote;
-    if (patch.rejectionReason !== undefined) {
-      updateDoc.rejectionReason = patch.rejectionReason;
-    }
-    if (patch.executionResult !== undefined) {
-      updateDoc.executionResult = patch.executionResult;
-    }
+    if (patch.rejectionReason !== undefined) updateDoc.rejectionReason = patch.rejectionReason;
+    if (patch.executionResult !== undefined) updateDoc.executionResult = patch.executionResult;
+
     if (patch.transferToUserId !== undefined) {
       updateDoc.transferToUserId = patch.transferToUserId
         ? new Types.ObjectId(patch.transferToUserId)
@@ -176,6 +195,13 @@ export class MongoOffboardingRequestRepository implements IOffboardingRequestRep
       projectTransfers: doc.projectTransfers || [],
       reason: doc.reason,
       note: doc.note,
+      offboardingType: doc.offboardingType,
+      effectiveDate: doc.effectiveDate ? new Date(doc.effectiveDate) : undefined,
+      handoverDeadline: doc.handoverDeadline ? new Date(doc.handoverDeadline) : undefined,
+      pendingTasks: doc.pendingTasks,
+      documentationStatus: doc.documentationStatus,
+      department: doc.department,
+      directManager: doc.directManager,
       status: doc.status,
       reviewedById: doc.reviewedById?.toString(),
       reviewedByName: doc.reviewedByName,

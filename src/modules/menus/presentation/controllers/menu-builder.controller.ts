@@ -23,6 +23,7 @@ import { RequirePermissions } from '../../../../shared/security/require-permissi
 import { CurrentUser } from '../../../../shared/security/current-user.decorator';
 import { AuthenticatedUser } from '../../../../shared/logging/request-id.middleware';
 import { ApplicationContext } from '../../domain/enums/menu.enums';
+import { CAPABILITY_REGISTRY } from '../../domain/capabilities.constants';
 
 @ApiTags('Menu Builder')
 @ApiBearerAuth()
@@ -31,12 +32,30 @@ import { ApplicationContext } from '../../domain/enums/menu.enums';
 export class MenuBuilderController {
   constructor(private readonly menuBuilderService: MenuBuilderService) {}
 
+  @Post('save')
+  @RequirePermissions('menu.manage')
+  async saveMenuTree(
+    @CurrentUser() user: AuthenticatedUser,
+    @Body() body: { sidebarNav?: any[]; menuTree?: any[]; application?: ApplicationContext },
+  ) {
+    const app = body.application || ApplicationContext.WEB_2;
+    const items = body.sidebarNav || body.menuTree || [];
+    await this.menuBuilderService.saveMenuTree(app, items, user?.userId);
+    return { success: true };
+  }
+
   @Get()
   @RequirePermissions('menu.view')
   @ApiQuery({ name: 'application', enum: ApplicationContext, required: false })
   async getMenuTree(@Query('application') application?: ApplicationContext) {
     const app = application || ApplicationContext.WEB_2;
     return this.menuBuilderService.getAdminMenuTree(app);
+  }
+
+  @Get('capabilities')
+  @RequirePermissions('menu.view')
+  async getCapabilities() {
+    return CAPABILITY_REGISTRY;
   }
 
   @Get(':id')

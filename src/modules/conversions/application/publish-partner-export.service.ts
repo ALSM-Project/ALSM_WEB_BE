@@ -1,10 +1,11 @@
-import { Inject, Injectable, Logger, NotFoundException } from '@nestjs/common';
+import { Inject, Injectable, Logger, NotFoundException, Optional } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { Types } from 'mongoose';
 import { MailService } from '../../../shared/mail/mail.service';
 import { STORAGE_PORT, StoragePort } from '../../../shared/storage/storage.port';
 import { OrganizationContextService } from '../../organizations/application/organization-context.service';
 import { ProjectService } from '../../projects/application/project.service';
+import { DeliverableService } from './deliverable.service';
 import {
   EXPORT_BUNDLE_REPOSITORY,
   EXPORT_PUBLICATION_UNIT_OF_WORK,
@@ -46,6 +47,7 @@ export class PublishPartnerExportService {
     private readonly config: ConfigService,
     private readonly organizationContext: OrganizationContextService,
     private readonly projects: ProjectService,
+    @Optional() private readonly deliverableService?: DeliverableService,
   ) {}
 
   async publish(
@@ -94,6 +96,29 @@ export class PublishPartnerExportService {
       },
     });
 
+    if (this.deliverableService) {
+      try {
+        await this.deliverableService.create({
+          projectId: new Types.ObjectId(built.project.id),
+          projectName: built.summary.projectName,
+          organizationId: new Types.ObjectId(built.organizationId),
+          version: `v1.${built.summary.screensIncluded + built.summary.programsIncluded}.0`,
+          title: `${built.summary.projectName} — Modernization Release Package`,
+          description: `Official published release bundle containing ${built.summary.screensIncluded} screens and ${built.summary.programsIncluded} programs modernized for ${built.summary.targetFramework}.`,
+          packageType: 'FULL_MODERNIZATION_PACKAGE',
+          fileCount: built.summary.screensIncluded + built.summary.programsIncluded,
+          totalSizeFormatted: `${(buffer.length / (1024 * 1024)).toFixed(1)} MB`,
+          downloadUrl: `/api/v1/projects/${built.project.id}/partner-export/bundles/${record.id}/download`,
+          status: 'PUBLISHED',
+          publishedAt: new Date(),
+          publishedBy: userId,
+          publishedByName: 'ALSM Platform Admin',
+        } as any);
+      } catch (e) {
+        this.logger.warn(`Could not sync bundle to deliverable: ${(e as Error).message}`);
+      }
+    }
+
     return this.toView(await this.notify(record, built.summary.projectName, built.summary.targetFramework));
   }
 
@@ -114,7 +139,7 @@ export class PublishPartnerExportService {
     organizationHeader: string | undefined,
     projectId: string,
   ): Promise<ExportBundleView[]> {
-    const organization = await this.organizationContext.resolve(userId, organizationHeader);
+    const organization = await this.organizationContext.resolve(userId, organizationHeader, projectId);
     const project = await this.projects.getForOrganization(projectId, organization.id);
     const records = await this.bundles.listByProject(project.id, organization.id);
     return records.map((r) => this.toView(r));
@@ -193,7 +218,7 @@ export class PublishPartnerExportService {
     projectId: string,
     bundleId: string,
   ) {
-    const organization = await this.organizationContext.resolve(userId, organizationHeader);
+    const organization = await this.organizationContext.resolve(userId, organizationHeader, projectId);
     const project = await this.projects.getForOrganization(projectId, organization.id);
     const record = await this.bundles.findById(bundleId, organization.id);
     if (!record || record.projectId !== project.id) {

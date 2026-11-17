@@ -77,3 +77,63 @@ export class ListMeetingsQueryDto {
   @IsOptional()
   limit?: number;
 }
+
+export class UpdateMeetingDto {
+  @ApiPropertyOptional({ description: 'Title of the meeting room' })
+  @IsOptional()
+  @IsString()
+  @MinLength(3)
+  @MaxLength(200)
+  title?: string;
+
+  @ApiPropertyOptional({ description: 'Agenda or description for the meeting' })
+  @IsOptional()
+  @IsString()
+  @MinLength(5)
+  @MaxLength(1000)
+  description?: string;
+
+  @ApiPropertyOptional({
+    description: 'Custom Google Meet link',
+    example: 'https://meet.google.com/abc-defg-hij',
+  })
+  @IsOptional()
+  @IsUrl()
+  @Matches(/^https:\/\/meet\.google\.com\/[a-z0-9][a-z0-9-]*$/, {
+    message: 'customMeetingUrl must be a valid Google Meet link (https://meet.google.com/xxx-yyyy-zzz)',
+  })
+  customMeetingUrl?: string;
+
+  @ApiPropertyOptional({ description: 'Related project ID' })
+  @IsOptional()
+  @IsString()
+  projectId?: string;
+
+  @ApiPropertyOptional({ description: 'List of attendee emails', type: [String] })
+  @IsOptional()
+  @IsArray()
+  @IsEmail({}, { each: true })
+  attendeeEmails?: string[];
+
+  @ApiPropertyOptional({ description: 'ISO-8601 start time' })
+  @IsOptional()
+  @IsISO8601()
+  scheduledStartTime?: string;
+
+  @ApiPropertyOptional({ description: 'ISO-8601 end time' })
+  @IsOptional()
+  @IsISO8601()
+  scheduledEndTime?: string;
+
+  @ApiPropertyOptional({ enum: ['SCHEDULED', 'IN_PROGRESS', 'COMPLETED', 'CANCELLED'] })
+  @IsOptional()
+  @IsString()
+  status?: string;
+}
+
+export class UpdateMeetingStatusDto {
+  @ApiProperty({ enum: ['SCHEDULED', 'IN_PROGRESS', 'COMPLETED', 'CANCELLED'] })
+  @IsNotEmpty()
+  @IsString()
+  status!: string;
+}

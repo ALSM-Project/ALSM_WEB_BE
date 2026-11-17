@@ -71,11 +71,12 @@ export class TriggerAiValidationService {
     }
     if (
       conversion.conversionType !== ConversionType.COBOL_TO_JAVA &&
-      conversion.conversionType !== ConversionType.BMS_DSPF_TO_FRONTEND
+      conversion.conversionType !== ConversionType.BMS_DSPF_TO_FRONTEND &&
+      conversion.conversionType !== ConversionType.BMS_DSPF_TO_REACT
     ) {
       throw new BadRequestException({
         code: 'VALIDATION_UNSUPPORTED_CONVERSION_TYPE',
-        message: 'AI semantic validation supports COBOL_TO_JAVA and BMS_DSPF_TO_FRONTEND',
+        message: 'AI semantic validation supports COBOL_TO_JAVA and BMS_DSPF_TO_REACT',
       });
     }
 

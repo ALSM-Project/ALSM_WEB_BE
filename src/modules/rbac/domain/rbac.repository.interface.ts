@@ -25,6 +25,8 @@ export interface IRbacUser {
   isLocked: boolean;
   lockReason?: string;
   lockDuration?: string;
+  role?: string;
+  roles?: string[];
 }
 
 export interface IRbacRepository {

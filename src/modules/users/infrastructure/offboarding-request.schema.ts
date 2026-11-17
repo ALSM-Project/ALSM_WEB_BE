@@ -76,9 +76,41 @@ export class OffboardingRequest {
   @Prop({ trim: true, default: '' })
   note?: string;
 
+  @Prop({ trim: true, default: 'Resignation' })
+  offboardingType?: string;
+
+  @Prop()
+  effectiveDate?: Date;
+
+  @Prop()
+  handoverDeadline?: Date;
+
+  @Prop({ trim: true })
+  pendingTasks?: string;
+
+  @Prop({ trim: true, default: 'Pending' })
+  documentationStatus?: string;
+
+  @Prop({ trim: true })
+  department?: string;
+
+  @Prop({ trim: true })
+  directManager?: string;
+
   @Prop({
     type: String,
-    enum: ['PENDING', 'APPROVED', 'REJECTED', 'CANCELLED'],
+    enum: [
+      'DRAFT',
+      'PENDING',
+      'PENDING_APPROVAL',
+      'APPROVED',
+      'REJECTED',
+      'HANDOVER_IN_PROGRESS',
+      'HANDOVER_COMPLETED',
+      'ACCESS_REVOCATION_PENDING',
+      'COMPLETED',
+      'CANCELLED',
+    ],
     default: 'PENDING',
     index: true,
   })

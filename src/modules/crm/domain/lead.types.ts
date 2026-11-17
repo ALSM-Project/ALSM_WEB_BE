@@ -87,7 +87,16 @@ export interface LeadRecord {
   company?: string;
   phone?: string;
   source?: string;
-  stage?: 'NEW' | 'CONTACTED' | 'QUALIFIED' | 'PROPOSAL' | 'WON' | 'LOST';
+  stage?: 'NEW' | 'CONTACTED' | 'QUALIFIED' | 'PROPOSAL' | 'NEGOTIATION' | 'WON' | 'LOST';
+  conversationId?: string;
+  dealValue?: number;
+  estimatedValue?: number;
+  estimatedScreens?: number;
+  estimatedPrograms?: number;
+  priority?: string;
+  expectedCloseDate?: Date;
+  followUpDate?: Date;
+  businessRequirements?: string;
   score?: number;
   lastContactAt?: Date;
   notes?: string;

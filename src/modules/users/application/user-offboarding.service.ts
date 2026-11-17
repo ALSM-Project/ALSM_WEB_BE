@@ -13,6 +13,7 @@ import { ConversionJob, ConversionJobDocument } from '../../conversions/infrastr
 import { UserSession, UserSessionDocument } from '../../auth/infrastructure/user-session.schema';
 import { RbacService } from '../../rbac/application/rbac.service';
 import { AUDIT_REPOSITORY, AuditRepository } from '../../audit/domain/audit.repository';
+import { WorkforceService } from '../../workforce/application/workforce.service';
 import {
   ExecuteUserOffboardingDto,
 } from '../presentation/user-offboarding.dto';
@@ -44,6 +45,7 @@ export class UserOffboardingService {
     @InjectModel(ConversionJob.name) private readonly jobModel: Model<ConversionJobDocument>,
     @InjectModel(UserSession.name) private readonly sessionModel: Model<UserSessionDocument>,
     private readonly rbacService: RbacService,
+    private readonly workforceService: WorkforceService,
     @Inject(AUDIT_REPOSITORY) private readonly audit: AuditRepository,
   ) {}
 

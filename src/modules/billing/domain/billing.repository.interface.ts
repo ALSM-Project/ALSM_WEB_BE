@@ -35,15 +35,24 @@ export interface InvoiceProps {
   userId: string;
   organizationId: string;
   subscriptionId?: string;
+  contractId?: string;
+  contractNumber?: string;
   invoiceNumber: string;
   planTier: PlanTier;
   planName: string;
+  subtotalVnd?: number;
+  vatRate?: number;
+  taxAmountVnd?: number;
   amountVnd: number;
+  currency?: string;
   status: InvoiceStatus;
   billingPeriodStart: Date;
   billingPeriodEnd: Date;
+  dueDate?: Date;
   paidAt?: Date;
   paymentMethod?: string;
+  cassoTransactionId?: string;
+  items?: any[];
   createdAt?: Date;
 }
 
@@ -53,6 +62,8 @@ export interface PaymentProps {
   organizationId: string;
   subscriptionId?: string;
   invoiceId?: string;
+  contractId?: string;
+  contractNumber?: string;
   planTier: PlanTier;
   amountVnd: number;
   status: PaymentStatus;
@@ -93,17 +104,39 @@ export interface ISubscriptionRepository {
   cancel(id: string, reason: string, feedback?: string): Promise<SubscriptionProps | null>;
 }
 
+export interface InvoiceQueryOptions {
+  userId?: string;
+  userEmail?: string;
+  organizationId?: string;
+  organizationIds?: string[];
+  contractNumber?: string;
+  status?: InvoiceStatus;
+  planTier?: PlanTier;
+  startDate?: Date | string;
+  endDate?: Date | string;
+  search?: string;
+  skip?: number;
+  limit?: number;
+}
+
 export interface IInvoiceRepository {
   findById(id: string): Promise<InvoiceProps | null>;
   findRecentByUser(userId: string, limit?: number): Promise<InvoiceProps[]>;
+  findByOrganizationId?(organizationId: string, limit?: number): Promise<InvoiceProps[]>;
+  findByInvoiceNumber?(invoiceNumber: string): Promise<InvoiceProps | null>;
+  findByContractNumber?(contractNumber: string): Promise<InvoiceProps | null>;
+  findByContractId?(contractId: string): Promise<InvoiceProps | null>;
+  findInvoices?(options: InvoiceQueryOptions): Promise<{ items: InvoiceProps[]; total: number }>;
   countDocuments(): Promise<number>;
   create(props: Omit<InvoiceProps, 'id'>): Promise<InvoiceProps>;
-  markPaid(id: string, paymentMethod: string): Promise<InvoiceProps | null>;
+  markPaid(id: string, paymentMethod: string, cassoTxId?: string): Promise<InvoiceProps | null>;
 }
 
 export interface IPaymentRepository {
   findById(id: string): Promise<PaymentProps | null>;
   findPending(): Promise<PaymentProps[]>;
+  findByReferenceCode?(referenceCode: string): Promise<PaymentProps | null>;
+  findByInvoiceId?(invoiceId: string): Promise<PaymentProps | null>;
   create(props: Omit<PaymentProps, 'id'>): Promise<PaymentProps>;
   updateStatus(
     id: string,
@@ -135,9 +168,22 @@ export interface IBankConfigRepository {
   updateConfig(props: Partial<BankConfigProps>): Promise<BankConfigProps>;
 }
 
+export interface OrganizationQuotaProps {
+  organizationId?: string;
+  planTier: string;
+  planName: string;
+  contractNumber?: string;
+  maxScreens: number;
+  maxPrograms?: number;
+  maxProjects: number;
+  maxStorageGb: number;
+  isTrial: boolean;
+}
+
 export interface IBillingUsageRepository {
   findActiveSubscription(userId: string): Promise<SubscriptionProps | null>;
   countProjectsByOrganization(organizationId: string): Promise<number>;
+  countProgramsByOrganization?(organizationId: string): Promise<number>;
   /** Counts jobs completed successfully in the organization's billing period. */
   countConversionsByOrganizationSince(organizationId: string, sinceDate: Date): Promise<number>;
   /** Reports successful conversion jobs grouped by completion month. */
@@ -145,6 +191,7 @@ export interface IBillingUsageRepository {
     organizationId: string,
     sinceDate: Date,
   ): Promise<Array<{ month: string; count: number }>>;
+  findOrganizationQuota?(organizationId: string): Promise<OrganizationQuotaProps | null>;
 }
 
 export interface QuoteRequestProps {

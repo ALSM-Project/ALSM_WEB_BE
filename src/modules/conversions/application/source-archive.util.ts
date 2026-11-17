@@ -114,10 +114,15 @@ export async function expandZipArchives(
     }
 
     if (usable === 0) {
-      throw new BadRequestException({
-        code: 'EMPTY_ARCHIVE',
-        message: `Archive "${upload.originalname}" contains no supported source files (${allowedExtensions.join(', ')})`,
-      });
+      if (uploads.length === 1) {
+        throw new BadRequestException({
+          code: 'EMPTY_ARCHIVE',
+          message: `Archive "${upload.originalname}" contains no supported source files (${allowedExtensions.join(', ')})`,
+        });
+      }
+      // If other files are in this upload batch, silently skip an archive with no source files
+      ignored.push(upload.originalname);
+      continue;
     }
   }
 

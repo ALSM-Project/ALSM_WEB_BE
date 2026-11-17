@@ -1,4 +1,14 @@
-export type OffboardingRequestStatus = 'PENDING' | 'APPROVED' | 'REJECTED' | 'CANCELLED';
+export type OffboardingRequestStatus =
+  | 'DRAFT'
+  | 'PENDING'
+  | 'PENDING_APPROVAL'
+  | 'APPROVED'
+  | 'REJECTED'
+  | 'HANDOVER_IN_PROGRESS'
+  | 'HANDOVER_COMPLETED'
+  | 'ACCESS_REVOCATION_PENDING'
+  | 'COMPLETED'
+  | 'CANCELLED';
 
 export interface ProjectTransferItem {
   projectId: string;
@@ -25,6 +35,13 @@ export interface OffboardingRequestRecord {
   projectTransfers?: ProjectTransferItem[];
   reason: string;
   note?: string;
+  offboardingType?: string;
+  effectiveDate?: Date;
+  handoverDeadline?: Date;
+  pendingTasks?: string;
+  documentationStatus?: string;
+  department?: string;
+  directManager?: string;
   status: OffboardingRequestStatus;
   reviewedById?: string;
   reviewedByName?: string;

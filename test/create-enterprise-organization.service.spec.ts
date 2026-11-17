@@ -61,6 +61,8 @@ describe('[UC-74] Create New Enterprise Organisation Service', () => {
       {} as never,
       {} as never,
       { append: jest.fn(), inTransaction: jest.fn(() => ({ append: auditAppend })) } as never,
+      {} as never,
+      {} as never,
       { create: jest.fn().mockResolvedValue([{ tokenHash: 'hashed-token' }]) } as never,
       { findOne: jest.fn().mockReturnValue(query({ id: 'ENTERPRISE_MEMBER' })) } as never,
       { updateOne: roleAssignment } as never,

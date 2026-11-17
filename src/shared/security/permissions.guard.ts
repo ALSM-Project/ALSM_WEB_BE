@@ -3,10 +3,11 @@ import {
   ExecutionContext,
   ForbiddenException,
   Injectable,
+  Optional,
   UnauthorizedException,
 } from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
-import { PERMISSIONS_KEY } from './require-permissions.decorator';
+import { ANY_PERMISSIONS_KEY, PERMISSIONS_KEY } from './require-permissions.decorator';
 import { EffectivePermissionsService } from '../../modules/rbac/application/effective-permissions.service';
 import { RequestWithContext } from '../logging/request-id.middleware';
 
@@ -14,7 +15,8 @@ import { RequestWithContext } from '../logging/request-id.middleware';
 export class PermissionsGuard implements CanActivate {
   constructor(
     private readonly reflector: Reflector,
-    private readonly effectivePermissionsService: EffectivePermissionsService,
+    @Optional()
+    private readonly effectivePermissionsService?: EffectivePermissionsService,
   ) {}
 
   async canActivate(context: ExecutionContext): Promise<boolean> {
@@ -23,7 +25,15 @@ export class PermissionsGuard implements CanActivate {
       context.getClass(),
     ]);
 
-    if (!requiredPermissions || requiredPermissions.length === 0) {
+    const anyPermissions = this.reflector.getAllAndOverride<string[]>(ANY_PERMISSIONS_KEY, [
+      context.getHandler(),
+      context.getClass(),
+    ]);
+
+    if (
+      (!requiredPermissions || requiredPermissions.length === 0) &&
+      (!anyPermissions || anyPermissions.length === 0)
+    ) {
       return true;
     }
 
@@ -37,16 +47,28 @@ export class PermissionsGuard implements CanActivate {
       });
     }
 
-    const userPermissions = await this.effectivePermissionsService.getEffectivePermissions(userId);
+    const userPermissions = this.effectivePermissionsService ? await this.effectivePermissionsService.getEffectivePermissions(userId) : [];
 
-    // Rule: User must possess ALL required permissions
-    const hasAllPermissions = requiredPermissions.every((perm) => userPermissions.includes(perm));
+    // Rule: User must possess AT LEAST ONE of anyPermissions if specified
+    if (anyPermissions && anyPermissions.length > 0) {
+      const hasAny = anyPermissions.some((perm) => userPermissions.includes(perm));
+      if (!hasAny) {
+        throw new ForbiddenException({
+          code: 'FORBIDDEN',
+          message: 'You do not have permission to perform this action',
+        });
+      }
+    }
 
-    if (!hasAllPermissions) {
-      throw new ForbiddenException({
-        code: 'FORBIDDEN',
-        message: 'You do not have permission to perform this action',
-      });
+    // Rule: User must possess ALL required permissions if specified
+    if (requiredPermissions && requiredPermissions.length > 0) {
+      const hasAll = requiredPermissions.every((perm) => userPermissions.includes(perm));
+      if (!hasAll) {
+        throw new ForbiddenException({
+          code: 'FORBIDDEN',
+          message: 'You do not have permission to perform this action',
+        });
+      }
     }
 
     return true;

@@ -8,6 +8,8 @@ import {
   NotFoundException,
   UnprocessableEntityException,
 } from '@nestjs/common';
+import * as fs from 'fs';
+import * as path from 'path';
 import { AUDIT_REPOSITORY, AuditRepository } from '../../audit/domain/audit.repository';
 import { OrganizationAuthorizationService } from '../../organizations/application/organization-authorization.service';
 import { OrganizationContextService } from '../../organizations/application/organization-context.service';
@@ -29,7 +31,7 @@ import {
   ScreenRecord,
   ScreenRepository,
 } from '../../screens/domain/screen.types';
-import { findCopybookBlockers } from '../domain/copybook-dependency-resolver';
+import { findCopybookBlockers, normalizeCopyName } from '../domain/copybook-dependency-resolver';
 import { ConversionProjectAccessService } from './conversion-project-access.service';
 
 /** A screen that a staff-triggered conversion did not start, and why. */
@@ -39,7 +41,9 @@ export interface SkippedConversion {
     | 'SCREEN_NOT_FOUND'
     | 'CONVERSION_ALREADY_IN_PROGRESS'
     | 'COPYBOOK_DEPENDENCY_BLOCKED'
-    | 'CONVERSION_QUEUE_UNAVAILABLE';
+    | 'CONVERSION_QUEUE_UNAVAILABLE'
+    | 'INCOMPATIBLE_CONVERSION_TYPE'
+    | 'UNSUPPORTED_CONVERSION_TYPE';
   message: string;
 }
 
@@ -194,7 +198,7 @@ export class ConversionJobService {
     organizationHeader: string | undefined,
     projectId: string,
   ): Promise<{ organization: OrganizationRecord; project: ProjectRecord }> {
-    const organization = await this.organizationContext.resolve(userId, organizationHeader);
+    const organization = await this.organizationContext.resolve(userId, organizationHeader, projectId);
     this.authorization.require(organization, userId, [
       OrganizationRole.OWNER,
       OrganizationRole.ADMIN,
@@ -233,18 +237,63 @@ export class ConversionJobService {
       };
     }
 
-    if (
-      project.conversionType === ConversionType.COBOL_TO_JAVA &&
-      screen.dependencyStatus === 'BLOCKED'
-    ) {
-      const blockers = findCopybookBlockers(screen.dependencies ?? []);
-      if (blockers.length > 0) {
+    if (project.conversionType === ConversionType.COBOL_TO_JAVA) {
+      if (screen.sourceType && screen.sourceType !== 'COBOL') {
         return {
           screenId,
-          code: 'COPYBOOK_DEPENDENCY_BLOCKED',
-          message: `"${screen.name}" is missing copybooks: ${blockers.join(' | ')}`,
+          code: 'INCOMPATIBLE_CONVERSION_TYPE',
+          message: `"${screen.name}" is a BMS/DSPF screen and cannot be converted in a COBOL project`,
         };
       }
+      if (screen.dependencyStatus === 'BLOCKED') {
+        const blockers = findCopybookBlockers(screen.dependencies ?? []);
+        if (blockers.length > 0) {
+          const projectSourcesDir = path.resolve(process.env.STORAGE_ROOT || './storage', 'sources', project.id);
+          let allFound = false;
+          if (fs.existsSync(projectSourcesDir)) {
+            const allNames = new Set<string>();
+            const scanNames = (dir: string) => {
+              for (const ent of fs.readdirSync(dir, { withFileTypes: true })) {
+                if (ent.isDirectory()) scanNames(path.join(dir, ent.name));
+                else if (ent.isFile()) allNames.add(normalizeCopyName(ent.name));
+              }
+            };
+            scanNames(projectSourcesDir);
+            const remaining = blockers.filter((b) => {
+              const match = b.match(/'([^']+)'/);
+              const name = match ? normalizeCopyName(match[1]) : '';
+              return !allNames.has(name);
+            });
+            if (remaining.length === 0) {
+              allFound = true;
+            }
+          }
+          if (!allFound) {
+            return {
+              screenId,
+              code: 'COPYBOOK_DEPENDENCY_BLOCKED',
+              message: `"${screen.name}" is missing copybooks: ${blockers.join(' | ')}`,
+            };
+          }
+        }
+      }
+    } else if (
+      project.conversionType === ConversionType.BMS_DSPF_TO_REACT ||
+      project.conversionType === ConversionType.BMS_DSPF_TO_FRONTEND
+    ) {
+      if (screen.sourceType === 'COBOL') {
+        return {
+          screenId,
+          code: 'INCOMPATIBLE_CONVERSION_TYPE',
+          message: `"${screen.name}" is a COBOL program and cannot be converted in a BMS/DSPF project`,
+        };
+      }
+    } else {
+      return {
+        screenId,
+        code: 'UNSUPPORTED_CONVERSION_TYPE',
+        message: `Project conversion type "${project.conversionType}" is unsupported`,
+      };
     }
     return null;
   }
@@ -285,6 +334,29 @@ export class ConversionJobService {
       : null;
     if (input.screenId && (!screen || screen.projectId !== project.id)) {
       throw new NotFoundException({ code: 'SCREEN_NOT_FOUND', message: 'Screen was not found' });
+    }
+    if (project.conversionType === ConversionType.COBOL_TO_JAVA) {
+      if (screen && screen.sourceType && screen.sourceType !== 'COBOL') {
+        throw new BadRequestException({
+          code: 'INCOMPATIBLE_CONVERSION_TYPE',
+          message: `COBOL projects cannot convert "${screen.name}" of type ${screen.sourceType}`,
+        });
+      }
+    } else if (
+      project.conversionType === ConversionType.BMS_DSPF_TO_REACT ||
+      project.conversionType === ConversionType.BMS_DSPF_TO_FRONTEND
+    ) {
+      if (screen && screen.sourceType === 'COBOL') {
+        throw new BadRequestException({
+          code: 'INCOMPATIBLE_CONVERSION_TYPE',
+          message: `BMS/DSPF projects cannot convert COBOL program "${screen.name}"`,
+        });
+      }
+    } else {
+      throw new BadRequestException({
+        code: 'UNSUPPORTED_CONVERSION_TYPE',
+        message: `Project conversion type "${project.conversionType}" is unsupported`,
+      });
     }
     const inputReference = screen ? screen.inputReference : input.inputReference;
     if (!screen) await this.requireSourceAccess(organization.id, project.id, inputReference);
@@ -364,8 +436,13 @@ export class ConversionJobService {
     organizationHeader: string | undefined,
     id: string,
   ): Promise<ConversionJobRecord> {
-    const organization = await this.organizationContext.resolve(userId, organizationHeader);
-    const job = await this.jobs.findById(id, organization.id);
+    let job = await this.jobs.findByIdAnyOrganization(id);
+    if (!job) {
+      const organization = await this.organizationContext.resolve(userId, organizationHeader);
+      job = await this.jobs.findById(id, organization.id);
+    }
+    if (!job) throw this.notFound();
+    const organization = await this.organizationContext.resolve(userId, organizationHeader, job.projectId);
     if (!job) throw this.notFound();
     await this.access.requireAssignment(userId, organization.id, job.projectId);
     await this.projects.getForOrganization(job.projectId, organization.id);
