@@ -39,10 +39,24 @@ const INTERNAL_ORG_NAME = 'ALSM Corporation (Internal Operations)';
 const INTERNAL_ORG_DOMAIN = 'alsm.internal';
 
 const INTERNAL_ROLES = new Set([
+  'ADMIN',
+  'PLATFORM_ADMIN',
+  'TEAM_LEAD',
+  'STAFF',
+  'CONVERSION_STAFF',
+  'ENGINEER',
+  'SUPPORT',
+  'INTERNAL_SALES',
+  'INTERNAL_SUPPORT',
+  'SALES_MANAGER',
+  'VP_OF_SALES',
+  'SYSTEM_ADMIN',
   'Platform Administrator',
+  'Platform Admin',
   'System Admin',
   'Team Lead',
   'conversion staff',
+  'Conversion Staff',
   'Internal Sales',
   'Internal Support',
   'Sales Manager',
@@ -159,35 +173,61 @@ export class WorkforceService implements OnModuleInit {
 
       // Check if membership already exists for this user in any org
       const existing = await this.membershipModel.findOne({ userId: user._id }).exec();
-      if (existing) {
-        continue;
-      }
 
-      const hasInternalRole = roles.some((r) => INTERNAL_ROLES.has(r));
+      const hasInternalRole = roles.some((r) => INTERNAL_ROLES.has(r) || INTERNAL_ROLES.has(r.toUpperCase()));
       const hasInternalEmail =
         email.endsWith('@alsm.internal') || email.endsWith('@alsm.dev');
 
       if (user.isPlatformAdmin || hasInternalRole || hasInternalEmail) {
         // INTERNAL WORKFORCE
+        const roleName = roles.includes('ADMIN') || user.isPlatformAdmin
+          ? 'Platform Administrator'
+          : roles.includes('TEAM_LEAD') || roles.includes('Team Lead')
+          ? 'Team Lead'
+          : roles.includes('CONVERSION_STAFF') || roles.includes('conversion staff')
+          ? 'Conversion Staff'
+          : roles[0] || 'Staff';
+
+        const departmentName = roles.includes('ADMIN') || user.isPlatformAdmin
+          ? 'Executive & Administration'
+          : roles.includes('TEAM_LEAD') || roles.includes('Team Lead')
+          ? 'Modernization Engineering'
+          : 'Conversion Operations';
+
+        if (existing) {
+          if (
+            existing.memberType !== WorkforceMemberType.INTERNAL_EMPLOYEE ||
+            existing.organizationId.toString() !== internalOrg.id
+          ) {
+            existing.organizationId = internalOrg._id;
+            existing.memberType = WorkforceMemberType.INTERNAL_EMPLOYEE;
+            existing.role = roleName;
+            existing.status = user.isActive ? MembershipStatus.ACTIVE : MembershipStatus.OFFBOARDED;
+            existing.department = departmentName;
+            existing.employmentStatus = user.isActive ? EmploymentStatus.ACTIVE : EmploymentStatus.OFFBOARDED;
+            await existing.save();
+            createdCount++;
+          }
+          continue;
+        }
+
         const codeNum = (createdCount + 1).toString().padStart(4, '0');
         await this.membershipModel.create({
           userId: user._id,
           organizationId: internalOrg._id,
           memberType: WorkforceMemberType.INTERNAL_EMPLOYEE,
-          role: roles[0] || (user.isPlatformAdmin ? 'Platform Administrator' : 'Staff'),
+          role: roleName,
           status: user.isActive ? MembershipStatus.ACTIVE : MembershipStatus.OFFBOARDED,
           employeeCode: `ALSM-EMP-${codeNum}`,
-          department: hasInternalRole
-            ? 'Conversion Operations'
-            : user.isPlatformAdmin
-            ? 'Executive & Administration'
-            : 'Engineering',
+          department: departmentName,
           employmentStatus: user.isActive
             ? EmploymentStatus.ACTIVE
             : EmploymentStatus.OFFBOARDED,
           joinedAt: user.createdAt || new Date(),
         });
         createdCount++;
+      } else if (existing) {
+        continue;
       } else if (partnerEmails.has(email) || roles.includes('Partner User')) {
         // PARTNER WORKFORCE
         const matchedPartner = allPartners.find(
@@ -283,7 +323,7 @@ export class WorkforceService implements OnModuleInit {
     const internalOrg = await this.getInternalOrganization();
     const portal = query.portal || 'WEB2';
     const page = Math.max(1, Number(query.page) || 1);
-    const limit = Math.min(20, Math.max(1, Number(query.limit) || 10));
+    const limit = Math.min(100, Math.max(1, Number(query.limit) || 10));
     const skip = (page - 1) * limit;
 
     const membershipFilter: Record<string, unknown> = {};
@@ -434,7 +474,7 @@ export class WorkforceService implements OnModuleInit {
   async getInternalEmployees(): Promise<WorkforceEmployeeDto[]> {
     const res = await this.searchEmployees(
       { userId: '000000000000000000000000', isPlatformAdmin: true },
-      { portal: 'WEB2', status: MembershipStatus.ACTIVE, limit: 20 },
+      { portal: 'WEB2', status: MembershipStatus.ACTIVE, limit: 100 },
     );
     return res.items;
   }
