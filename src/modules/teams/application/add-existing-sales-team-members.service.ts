@@ -9,7 +9,7 @@ import { RbacService } from '../../rbac/application/rbac.service';
 import { USER_REPOSITORY, UserRepository } from '../../users/domain/user.repository';
 import { TeamAccessService, teamId } from './team-access.service';
 
-const SALES_ROLES = new Set(['SALES_MANAGER', 'SALES_VP', 'INTERNAL_SALES', 'SALES_REP']);
+const SALES_ROLES = new Set(['SALES_MANAGER', 'INTERNAL_SALES']);
 
 @Injectable()
 export class AddExistingSalesTeamMembersService {
