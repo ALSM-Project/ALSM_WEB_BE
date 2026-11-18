@@ -2,7 +2,7 @@ import { Injectable } from '@nestjs/common';
 import { RbacService } from '../../rbac/application/rbac.service';
 import { TeamAccessService } from './team-access.service';
 
-const SALES_ROLES = new Set(['SALES_MANAGER', 'SALES_VP', 'INTERNAL_SALES', 'SALES_REP']);
+const SALES_ROLES = new Set(['SALES_MANAGER', 'INTERNAL_SALES']);
 
 @Injectable()
 export class SearchSalesTeamMemberCandidatesService {
