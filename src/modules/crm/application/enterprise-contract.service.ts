@@ -1238,6 +1238,11 @@ export class EnterpriseContractService {
     }
   }
 
+  // Auto-sync CRM Lead to Closed Won when contract is signed on Web 3
+  if (bothSigned) {
+    await this.syncLeadToClosedWon(contract, now, signerRecord.name || signerRecord.email);
+  }
+
   return this.getContractDetail(contractId);
 }
 
@@ -1565,6 +1570,9 @@ export class EnterpriseContractService {
         .catch((e) => console.warn('Failed to send Web 3 activation email:', e));
     }
 
+    // Auto-sync CRM Lead to Closed Won & Converted Customer
+    await this.syncLeadToClosedWon(contract, now, 'ALSM Web 3 Activation Engine', orgId);
+
     return {
       success: true,
       contractId: contract._id.toString(),
@@ -1579,6 +1587,197 @@ export class EnterpriseContractService {
       web3PortalUrl: process.env.WEB3_URL || 'http://localhost:3003',
       message: 'Automatic Web 3 activation completed successfully.',
     };
+  }
+
+  /**
+   * Automatically synchronize CRM Lead to CLOSED_WON & CONVERTED
+   * whenever an electronic contract is executed or activated on Web 3.
+   */
+  private async syncLeadToClosedWon(
+    contract: any,
+    now: Date,
+    actorNameOrEmail: string,
+    orgId?: any,
+  ) {
+    try {
+      const customerEmail =
+        contract.customer?.contactEmail ||
+        contract.signingProcess?.customerSigner?.email ||
+        contract.parties?.customer?.contactEmail;
+
+      const customerCompany =
+        contract.customer?.companyName ||
+        contract.organizationName ||
+        contract.parties?.customer?.legalName;
+
+      const queryCandidates: any[] = [];
+      if (contract.leadId && Types.ObjectId.isValid(contract.leadId)) {
+        queryCandidates.push({ _id: new Types.ObjectId(contract.leadId) });
+      } else if (contract.leadId) {
+        queryCandidates.push({ _id: contract.leadId });
+      }
+
+      if (customerEmail) {
+        const cleanEmail = customerEmail.toLowerCase().trim();
+        queryCandidates.push({ contactEmail: cleanEmail });
+        queryCandidates.push({ email: cleanEmail });
+      }
+
+      if (customerCompany) {
+        queryCandidates.push({ company: customerCompany });
+        queryCandidates.push({ companyName: customerCompany });
+      }
+
+      if (queryCandidates.length === 0) return;
+
+      const matchedLead = await this.leadsCol.findOne({
+        $or: queryCandidates,
+        stage: { $ne: 'WON' },
+      });
+
+      if (!matchedLead) {
+        // Lead may already be WON; verify contract is recorded in its contracts list
+        const wonLead = await this.leadsCol.findOne({ $or: queryCandidates });
+        if (wonLead) {
+          const hasContract = (wonLead.contracts || []).some(
+            (c: any) =>
+              c.id === contract._id.toString() ||
+              c.contractNumber === contract.contractNumber,
+          );
+          if (!hasContract) {
+            await this.leadsCol.updateOne(
+              { _id: wonLead._id },
+              {
+                $push: {
+                  contracts: {
+                    id: contract._id.toString(),
+                    contractNumber: contract.contractNumber,
+                    title: contract.title,
+                    status: 'FULLY_SIGNED',
+                    annualValue:
+                      contract.totalValue ||
+                      contract.commercialTerms?.totalValue ||
+                      0,
+                    signedAt: now,
+                    createdAt: contract.createdAt || now,
+                  },
+                } as any,
+              },
+            );
+          }
+        }
+        return;
+      }
+
+      const effectiveOrgId =
+        orgId ||
+        contract.organizationId ||
+        matchedLead.convertedOrganizationId ||
+        matchedLead.organizationId;
+
+      const companyTitle =
+        customerCompany || matchedLead.company || 'Enterprise Customer';
+
+      const updateSet: any = {
+        stage: 'WON',
+        status: 'CONVERTED',
+        convertedAt: now,
+        updatedAt: now,
+      };
+
+      if (effectiveOrgId) {
+        updateSet.convertedOrganizationId = Types.ObjectId.isValid(effectiveOrgId)
+          ? new Types.ObjectId(effectiveOrgId)
+          : effectiveOrgId;
+      }
+
+      updateSet['provisioning'] = {
+        status: 'COMPLETED',
+        organizationId: effectiveOrgId ? effectiveOrgId.toString() : 'AUTO_PROVISIONED',
+        organizationName: companyTitle,
+        domain: customerEmail ? customerEmail.split('@')[1] : undefined,
+        adminEmail: customerEmail || matchedLead.contactEmail,
+        adminLinked: true,
+        completedAt: now,
+      };
+
+      const existingContracts = matchedLead.contracts || [];
+      const contractAlreadyListed = existingContracts.some(
+        (c: any) =>
+          c.id === contract._id.toString() ||
+          c.contractNumber === contract.contractNumber,
+      );
+
+      const pushOps: any = {
+        interactions: {
+          id: randomUUID(),
+          type: 'EMAIL',
+          summary: `Hợp đồng ${contract.contractNumber} đã ký trên Web 3 — Pipeline tự động cập nhật Closed Won`,
+          notes: `Khách hàng hoàn tất ký số điện tử trên Web 3 (${actorNameOrEmail}). Pipeline CRM tự động chuyển sang Closed Won và kích hoạt tài khoản khách hàng.`,
+          performedBy: actorNameOrEmail || 'Hệ thống E-Sign Web 3',
+          createdAt: now,
+          timestamp: now,
+        },
+      };
+
+      if (!contractAlreadyListed) {
+        pushOps.contracts = {
+          id: contract._id.toString(),
+          contractNumber: contract.contractNumber,
+          title: contract.title,
+          status: 'FULLY_SIGNED',
+          annualValue:
+            contract.totalValue ||
+            contract.commercialTerms?.totalValue ||
+            0,
+          signedAt: now,
+          createdAt: contract.createdAt || now,
+        };
+      }
+
+      await this.leadsCol.updateOne(
+        { _id: matchedLead._id },
+        {
+          $set: updateSet,
+          $push: pushOps,
+        },
+      );
+
+      // Back-populate contract.leadId if it was missing
+      if (!contract.leadId) {
+        await this.contractsCol.updateOne(
+          { _id: contract._id },
+          { $set: { leadId: matchedLead._id } },
+        );
+      }
+
+      // Record audit entry in audit_logs
+      try {
+        await this.connection.db!.collection('audit_logs').insertOne({
+          _id: new Types.ObjectId(),
+          actorUserId: Types.ObjectId.isValid(contract.createdByUserId)
+            ? new Types.ObjectId(contract.createdByUserId)
+            : new Types.ObjectId(),
+          organizationId: effectiveOrgId && Types.ObjectId.isValid(effectiveOrgId)
+            ? new Types.ObjectId(effectiveOrgId)
+            : undefined,
+          action: 'LEAD_CONVERTED_TO_CUSTOMER',
+          resourceType: 'LEAD',
+          resourceId: matchedLead._id.toString(),
+          metadata: {
+            customerOrganizationId: effectiveOrgId ? effectiveOrgId.toString() : '',
+            contractId: contract._id.toString(),
+            contractNumber: contract.contractNumber,
+            reason: 'AUTOMATED_WEB3_SIGNATURE_WON',
+          },
+          createdAt: now,
+        });
+      } catch {
+        // non-fatal
+      }
+    } catch (err) {
+      console.warn('syncLeadToClosedWon non-fatal error:', err);
+    }
   }
 
   // ─────────────────────────────────────────────────────────────────────────────
@@ -2047,6 +2246,7 @@ export class EnterpriseContractService {
 
     const contractDoc: any = {
       _id: new Types.ObjectId(),
+      createRequestId: randomUUID(),
       contractNumber,
       title: `${packageTitle} (${dto.serviceMode}) — ${companyName}`,
       serviceMode: dto.serviceMode,
@@ -2142,6 +2342,41 @@ export class EnterpriseContractService {
       createdAt: now,
       updatedAt: now,
     };
+
+    // Pre-associate CRM Lead if an open lead exists for this customer
+    try {
+      const existingLead = await this.leadsCol.findOne({
+        $or: [
+          { contactEmail: contactEmail.toLowerCase().trim() },
+          { email: contactEmail.toLowerCase().trim() },
+          { company: companyName },
+          { companyName: companyName },
+        ],
+        stage: { $ne: 'WON' },
+      });
+      if (existingLead) {
+        contractDoc.leadId = existingLead._id;
+        await this.leadsCol.updateOne(
+          { _id: existingLead._id },
+          {
+            $set: { stage: 'PROPOSAL', updatedAt: now },
+            $push: {
+              contracts: {
+                id: contractDoc._id.toString(),
+                contractNumber,
+                title: contractDoc.title,
+                status: 'SENT_FOR_SIGNATURE',
+                annualValue: totalValue,
+                signedAt: null,
+                createdAt: now,
+              },
+            } as any,
+          },
+        );
+      }
+    } catch (leadLinkErr) {
+      console.warn('Pre-associating CRM lead failed non-fatally:', leadLinkErr);
+    }
 
     await this.contractsCol.insertOne(contractDoc);
     return await this.mapFullContract(contractDoc);
@@ -2530,7 +2765,14 @@ export class EnterpriseContractService {
   // 14. SELECTABLE CUSTOMERS (ORGS & CONVERTED LEADS)
   // ─────────────────────────────────────────────────────────────────────────────
   async getSelectableCustomers() {
-    const orgs = await this.orgsCol.find({}).sort({ name: 1 }).limit(100).toArray();
+    const orgs = await this.orgsCol
+      .find({
+        type: { $nin: ['SELF_SERVICE'] },
+        name: { $not: /(?:'s Organization|'s Workspace|Personal Workspace)$/i },
+      })
+      .sort({ name: 1 })
+      .limit(100)
+      .toArray();
     const leads = await this.leadsCol
       .find({ stage: { $in: ['QUALIFIED', 'PROPOSAL', 'NEGOTIATION', 'CLOSED_WON'] } })
       .sort({ createdAt: -1 })
