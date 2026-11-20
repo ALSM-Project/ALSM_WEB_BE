@@ -185,11 +185,11 @@ describe('catalogue-only RBAC startup security', () => {
       const app = (await f.compile()).createNestApplication({ logger: false });
       try {
         await app.init();
-        expect(f.roles.size).toBe(16);
-        expect(f.roles.has('SALES_VP')).toBe(true);
-        expect(f.grants.get('SALES_VP')).toContain('sales.discounts.executive.review');
+        expect(f.roles.size).toBe(9);
+        expect(f.roles.has('SALES_MANAGER')).toBe(true);
+        expect(f.grants.get('SALES_MANAGER')).toContain('sales.discounts.executive.review');
         expect(f.permissions.has('resources.transfer.confirm')).toBe(true);
-        expect(f.grants.get('SYSTEM_ADMIN')).toContain('organizations.view');
+        expect(f.grants.get('ADMIN')).toContain('organizations.view');
         f.expectNoIdentityAccess();
       } finally {
         await app.close();

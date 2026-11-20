@@ -13,7 +13,10 @@ import { Response } from 'express';
 import { CurrentUser } from '../../../shared/security/current-user.decorator';
 import { JwtAuthGuard } from '../../../shared/security/jwt-auth.guard';
 import { PermissionsGuard } from '../../../shared/security/permissions.guard';
-import { RequirePermissions } from '../../../shared/security/require-permissions.decorator';
+import {
+  RequirePermissions,
+  RequireAnyPermissions,
+} from '../../../shared/security/require-permissions.decorator';
 import { AuthenticatedUser } from '../../../shared/logging/request-id.middleware';
 import { TemporaryRoleService } from '../application/temporary-role.service';
 import {
@@ -52,7 +55,7 @@ export class TemporaryRoleController {
   }
 
   @Get('elevation-catalog')
-  @RequirePermissions('roles.temporary.grant')
+  @RequireAnyPermissions('roles.temporary.grant', 'roles.temporary.request')
   @ApiOperation({ summary: 'Get catalogue of roles available for temporary elevation with permission previews' })
   async getElevationCatalog() {
     return this.tempRoleService.getElevationCatalog();

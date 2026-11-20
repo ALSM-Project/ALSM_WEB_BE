@@ -77,6 +77,13 @@ export class UploadConversionSourceService {
         message: 'At least one file is required',
       });
     }
+    const maxFilesAllowed = Number(process.env.MAX_UPLOAD_FILES_PER_REQUEST || 300);
+    if (uploads.length > maxFilesAllowed) {
+      throw new BadRequestException({
+        code: 'MAX_FILES_EXCEEDED',
+        message: `Số lượng file tải lên (${uploads.length}) vượt quá giới hạn tối đa cho phép (${maxFilesAllowed} file). Vui lòng chọn chính xác thư mục chứa mã nguồn hoặc nén thành file .zip.`,
+      });
+    }
     const organization = await this.organizationContext.resolve(userId, organizationHeader, projectId);
     this.authorization.require(organization, userId, [
       OrganizationRole.OWNER,
@@ -122,7 +129,7 @@ export class UploadConversionSourceService {
       if (namesSeen.has(key)) {
         throw new BadRequestException({
           code: 'DUPLICATE_FILE_NAME',
-          message: `Two different files named "${file.originalname}" were selected in this upload (likely from two different subfolders). Remove the duplicate and try again — files are stored by name only, so both would otherwise silently collide.`,
+          message: `Phát hiện hai file trùng tên "${file.originalname}" trong danh sách tải lên (thường do nằm ở các thư mục con khác nhau). ALSM lưu trữ mã nguồn theo tên file để phân tích liên kết. Vui lòng chọn trực tiếp thư mục mã nguồn (ví dụ: app/cbl, app/cpy hoặc app/bms) hoặc loại bỏ file trùng lặp.`,
         });
       }
       namesSeen.set(key, file.originalname);

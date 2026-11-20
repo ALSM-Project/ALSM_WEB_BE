@@ -185,7 +185,7 @@ export class TemporaryRoleService {
       status: 'ACTIVE',
       reason: justification,
       requestStatus: 'APPROVED',
-      ...(projectId ? { projectId: toValidObjectId(projectId) } : {}),
+      ...(projectId && projectId !== '__CUSTOM__' && projectId.trim().length > 0 ? { projectId: toValidObjectId(projectId) } : {}),
     });
 
     await this.audit.append({
@@ -388,9 +388,7 @@ export class TemporaryRoleService {
       if ((requesterUser as { isActive?: boolean }).isActive === false) {
         throw new BadRequestException('A deactivated account cannot request a temporary role');
       }
-      if (requesterUser.isPlatformAdmin) {
-        throw new BadRequestException('Platform Admin already has full privileges');
-      }
+      // Note: Platform Admin already has global privileges, but can request temporary elevation for testing/auditing
     }
 
     const role = await this.roleModel.findOne({
@@ -441,7 +439,7 @@ export class TemporaryRoleService {
       reason: justification,
       requestedBy: toValidObjectId(staffUserId),
       requestStatus: 'PENDING',
-      ...(projectId ? { projectId: toValidObjectId(projectId) } : {}),
+      ...(projectId && projectId !== '__CUSTOM__' && projectId.trim().length > 0 ? { projectId: toValidObjectId(projectId) } : {}),
     });
 
     await this.audit.append({
@@ -682,6 +680,47 @@ export class TemporaryRoleService {
     const allDepartments = new Set<string>();
     const allRoleNames = new Set<string>();
 
+    const INTERNAL_ROLES = new Set([
+      'ADMIN',
+      'PLATFORM_ADMIN',
+      'TEAM_LEAD',
+      'STAFF',
+      'CONVERSION_STAFF',
+      'ENGINEER',
+      'SUPPORT',
+      'INTERNAL_SALES',
+      'INTERNAL_SUPPORT',
+      'SALES_MANAGER',
+      'VP_OF_SALES',
+      'SYSTEM_ADMIN',
+      'Platform Administrator',
+      'Platform Admin',
+      'System Admin',
+      'Team Lead',
+      'conversion staff',
+      'Conversion Staff',
+      'Internal Sales',
+      'Internal Support',
+      'Sales Manager',
+      'VP of Sales',
+    ]);
+
+    // Query internal staff memberships from org_memberships
+    let internalMemberships: any[] = [];
+    try {
+      internalMemberships = await this.userModel.db.collection('org_memberships').find({
+        memberType: 'INTERNAL_EMPLOYEE',
+      }).toArray();
+    } catch {
+      internalMemberships = [];
+    }
+    const internalMembershipByUser = new Map<string, any>();
+    for (const m of internalMemberships) {
+      if (m.userId) {
+        internalMembershipByUser.set(String(m.userId), m);
+      }
+    }
+
     for (const u of userDocs) {
       if ((u as any).accountType === 'PROSPECT') continue;
 
@@ -690,8 +729,28 @@ export class TemporaryRoleService {
       if (u.isPlatformAdmin && !currentRoles.includes('ADMIN')) {
         currentRoles.push('ADMIN');
       }
+      if (u.role && !currentRoles.includes(u.role)) {
+        currentRoles.push(u.role);
+      }
+      if (Array.isArray((u as any).roles)) {
+        for (const r of (u as any).roles) {
+          if (!currentRoles.includes(r)) currentRoles.push(r);
+        }
+      }
 
-      let department = teamByUser.get(uid)?.department;
+      const mem = internalMembershipByUser.get(uid);
+      const isInternalMember = Boolean(mem && mem.memberType === 'INTERNAL_EMPLOYEE');
+      const hasInternalRole = currentRoles.some(
+        (r) => INTERNAL_ROLES.has(r) || INTERNAL_ROLES.has(r.toUpperCase())
+      );
+      const isInternalStaff = Boolean(u.isPlatformAdmin || isInternalMember || hasInternalRole);
+
+      // Only internal staff belong in the Internal Staff Directory
+      if (!isInternalStaff) {
+        continue;
+      }
+
+      let department = mem?.department || teamByUser.get(uid)?.department;
       const assignedTeam = teamByUser.get(uid)?.teamName || 'Modernization Operations Team';
       if (!department) {
         if (currentRoles.some((r) => /conversion/i.test(r))) {
@@ -714,7 +773,7 @@ export class TemporaryRoleService {
       let accountStatus: 'ACTIVE' | 'LOCKED' | 'DEACTIVATED' = 'ACTIVE';
       if (u.isLocked) {
         accountStatus = 'LOCKED';
-      } else if (!u.isActive) {
+      } else if (!u.isActive || mem?.status === 'OFFBOARDED') {
         accountStatus = 'DEACTIVATED';
       }
 
@@ -748,7 +807,7 @@ export class TemporaryRoleService {
         id: uid,
         fullName: u.fullName || 'Internal Staff',
         email: u.email,
-        employeeId: `EMP-${uid.slice(-6).toUpperCase()}`,
+        employeeId: mem?.employeeCode || `EMP-${uid.slice(-6).toUpperCase()}`,
         department,
         assignedTeam,
         currentRoles,

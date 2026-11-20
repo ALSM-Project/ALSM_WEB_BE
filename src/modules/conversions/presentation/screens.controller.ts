@@ -51,16 +51,4 @@ export class ScreensController {
   async deleteScreen(@Param('projectId') projectId: string, @Param('screenId') screenId: string) {
     return this.screenService.deleteScreen(projectId, screenId);
   }
-
-  @Post('projects/:projectId/conversion-sources')
-  @ApiOperation({ summary: 'Upload legacy conversion source files (BMS/DSPF/COBOL)' })
-  @ApiConsumes('multipart/form-data')
-  @ApiParam({ name: 'projectId', description: 'Project ID' })
-  @UseInterceptors(FilesInterceptor('files'))
-  async uploadConversionSources(
-    @Param('projectId') projectId: string,
-    @UploadedFiles() files: UploadedFileItem[],
-  ) {
-    return this.screenService.uploadConversionSources(projectId, files || []);
-  }
 }

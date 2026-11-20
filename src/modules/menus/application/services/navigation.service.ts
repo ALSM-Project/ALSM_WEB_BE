@@ -489,6 +489,7 @@ export class NavigationService {
         ...userRoles.map((r) => r.toUpperCase()),
         effectiveRole,
         ...(isEnterpriseLeader ? ['OWNER', 'ORGANIZATION_OWNER', 'ADMIN', 'ENTERPRISE_ADMIN', 'PARTNER'] : []),
+        ...(app === ApplicationContext.WEB_1 ? ['OWNER', 'ORGANIZATION_OWNER', 'CUSTOMER'] : []),
       ]),
     );
 
@@ -500,6 +501,7 @@ export class NavigationService {
     permissionsSet.add('service_usage.view');
     permissionsSet.add('meetings.view');
     permissionsSet.add('users.view');
+    permissionsSet.add('organization.view');
 
     // Capabilities Engine: Strictly for WEB_3 (Enterprise Portal)
     const isWeb3 = app === ApplicationContext.WEB_3;

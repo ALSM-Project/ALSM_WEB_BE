@@ -120,7 +120,7 @@ export class SalesCrmController {
   async sendLeadEmail(
     @CurrentUser() user: AuthenticatedUser,
     @Param('id') id: string,
-    @Body() dto: { to?: string; subject: string; content: string },
+    @Body() dto: { to?: string; subject: string; content: string; html?: string },
   ) {
     return this.crmService.sendLeadEmail(user.userId, id, dto);
   }

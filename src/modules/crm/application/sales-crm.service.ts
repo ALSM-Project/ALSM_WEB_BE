@@ -65,6 +65,8 @@ export interface SendQuoteDto {
   discountReason?: string;
 }
 
+import { renderEnterpriseCrmEmailHtml } from './crm-email-template.helper';
+
 @Injectable()
 export class SalesCrmService {
   private readonly logger = new Logger(SalesCrmService.name);
@@ -324,7 +326,7 @@ export class SalesCrmService {
   async sendLeadEmail(
     userId: string,
     leadId: string,
-    dto: { to?: string; subject: string; content: string },
+    dto: { to?: string; subject: string; content: string; html?: string },
   ) {
     const doc = await this.findLeadById(leadId);
     const recipient = dto.to?.trim() || doc.contactEmail;
@@ -335,21 +337,15 @@ export class SalesCrmService {
     let deliveryStatus: string = 'SENT';
     if (this.email) {
       try {
-        const formattedHtml = `
-          <div style="font-family: Arial, sans-serif; line-height: 1.6; color: #17263A; max-width: 600px; margin: 0 auto; padding: 24px; border: 1px solid #E5EAF0; border-radius: 12px; background-color: #ffffff;">
-            <div style="margin-bottom: 20px; border-bottom: 2px solid #0652CC; padding-bottom: 12px;">
-              <h2 style="color: #0652CC; margin: 0; font-size: 20px;">ALSM Enterprise Platform</h2>
-              <span style="font-size: 12px; color: #6B778C;">Modernization & Enterprise Solutions</span>
-            </div>
-            <div style="white-space: pre-line; font-size: 14px; color: #17263A; line-height: 1.7;">
-${dto.content.replace(/</g, '&lt;').replace(/>/g, '&gt;')}
-            </div>
-            <div style="margin-top: 32px; padding-top: 16px; border-top: 1px solid #E5EAF0; font-size: 11px; color: #8491A3;">
-              <p style="margin: 0 0 4px 0;">Email này được gửi chính thức từ Hệ thống Quản trị ALSM Enterprise.</p>
-              <p style="margin: 0;">&copy; 2026 ALSM Technology Solutions JSC. Tòa nhà Keangnam Landmark 72, Hà Nội.</p>
-            </div>
-          </div>
-        `;
+        const formattedHtml = dto.html?.trim()
+          ? dto.html
+          : renderEnterpriseCrmEmailHtml({
+              subject: dto.subject,
+              content: dto.content,
+              companyName: doc.company,
+              contactName: doc.contactName,
+              referenceCode: `LEI-${doc.id.slice(-6).toUpperCase()}`,
+            });
 
         const res = await this.email.send({
           to: recipient,

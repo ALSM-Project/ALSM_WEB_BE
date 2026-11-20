@@ -1,6 +1,6 @@
 import { ForbiddenException, Injectable } from '@nestjs/common';
 import { OrganizationRecord } from '../domain/organization.repository';
-import { OrganizationRole } from '../domain/organization.types';
+import { OrganizationRole, OrganizationType } from '../domain/organization.types';
 
 @Injectable()
 export class OrganizationAuthorizationService {

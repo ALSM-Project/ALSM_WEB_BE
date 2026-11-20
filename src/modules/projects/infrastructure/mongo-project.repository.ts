@@ -83,6 +83,15 @@ export class MongoProjectRepository implements ProjectRepository {
     return (await this.model.find(filter).sort({ createdAt: -1 }).exec()).map((doc) => this.map(doc));
   }
 
+  async findByCreatedBy(userId: string): Promise<ProjectRecord[]> {
+    const userObjId = toValidObjectId(userId);
+    const filter: FilterQuery<ProjectDocument> = {
+      deletedAt: { $exists: false },
+      $or: [{ createdBy: userObjId }, { createdBy: userId }],
+    };
+    return (await this.model.find(filter).sort({ createdAt: -1 }).exec()).map((doc) => this.map(doc));
+  }
+
   async update(
     id: string,
     organizationId: string,
@@ -189,9 +198,10 @@ export class MongoProjectRepository implements ProjectRepository {
   }
 
   async findByAssignedStaff(staffId: string, organizationId?: string): Promise<ProjectRecord[]> {
+    const staffObjId = toValidObjectId(staffId);
     const filter: FilterQuery<ProjectDocument> = {
       deletedAt: { $exists: false },
-      assignedStaffId: toValidObjectId(staffId),
+      $or: [{ assignedStaffId: staffObjId }, { assignedStaffId: staffId }],
     };
     if (organizationId?.trim()) {
       filter.organizationId = { $in: [toValidObjectId(organizationId), organizationId] };
@@ -200,9 +210,10 @@ export class MongoProjectRepository implements ProjectRepository {
   }
 
   async findByAssignedTeamLead(teamLeadId: string, organizationId?: string): Promise<ProjectRecord[]> {
+    const leadObjId = toValidObjectId(teamLeadId);
     const filter: FilterQuery<ProjectDocument> = {
       deletedAt: { $exists: false },
-      assignedTeamLeadId: toValidObjectId(teamLeadId),
+      $or: [{ assignedTeamLeadId: leadObjId }, { assignedTeamLeadId: teamLeadId }],
     };
     if (organizationId?.trim()) {
       filter.organizationId = { $in: [toValidObjectId(organizationId), organizationId] };

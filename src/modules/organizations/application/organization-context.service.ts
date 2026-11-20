@@ -1,5 +1,5 @@
 import { ForbiddenException, Inject, Injectable, Optional } from '@nestjs/common';
-import { OrganizationRole } from '../domain/organization.types';
+import { OrganizationRole, OrganizationType } from '../domain/organization.types';
 import { PROJECT_REPOSITORY, ProjectRepository } from '../../projects/domain/project.types';
 import {
   ORGANIZATION_REPOSITORY,
@@ -16,7 +16,7 @@ export class OrganizationContextService {
     @Optional() @Inject(USER_REPOSITORY) private readonly users?: UserRepository,
   ) {}
 
-  private async isInternalOrAdmin(userId: string): Promise<boolean> {
+  async isInternalOrAdmin(userId: string): Promise<boolean> {
     if (!this.users) return false;
     try {
       const user = await this.users.findById(userId);
@@ -29,6 +29,10 @@ export class OrganizationContextService {
         user.roles?.includes('PLATFORM_ADMIN') ||
         user.role === 'STAFF' ||
         user.roles?.includes('STAFF') ||
+        user.role === 'CONVERSION_STAFF' ||
+        user.roles?.includes('CONVERSION_STAFF') ||
+        user.role === 'INTERNAL_SUPPORT' ||
+        user.roles?.includes('INTERNAL_SUPPORT') ||
         user.role === 'TEAM_LEAD' ||
         user.roles?.includes('TEAM_LEAD')
       );
@@ -67,12 +71,25 @@ export class OrganizationContextService {
       });
     }
 
-    const organization = await this.organizations.findFirstForMember(userId);
-    if (!organization)
+    let organization = await this.organizations.findFirstForMember(userId);
+    if (!organization) {
+      if (this.users) {
+        const user = await this.users.findById(userId);
+        if (user && typeof this.organizations.create === 'function') {
+          const orgName = user.fullName ? `${user.fullName}'s Workspace` : 'Personal Workspace';
+          const created = await this.organizations.create({
+            name: orgName,
+            type: OrganizationType.SELF_SERVICE,
+            members: [{ userId, role: OrganizationRole.OWNER }],
+          });
+          if (created) return created;
+        }
+      }
       throw new ForbiddenException({
         code: 'ORGANIZATION_ACCESS_DENIED',
         message: 'You do not have access to this organization',
       });
+    }
     return organization;
   }
 
