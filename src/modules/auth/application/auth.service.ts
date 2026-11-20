@@ -166,14 +166,21 @@ export class AuthService {
         fullName: payload.name?.trim() || email.split('@')[0],
         isEmailVerified: true,
       });
-      const organization = await this.organizations.create({
-        name: `${user.fullName}'s Organization`,
-        type: OrganizationType.SELF_SERVICE,
-        members: [{ userId: user.id, role: OrganizationRole.OWNER }],
-      });
+      // Ensure the user has a personal workspace
+      let existingOrg = this.organizations?.findFirstForMember
+        ? await this.organizations.findFirstForMember(user.id)
+        : null;
+      if (!existingOrg && this.organizations) {
+        existingOrg = await this.organizations.create({
+          name: `${user.fullName}'s Workspace`,
+          type: OrganizationType.SELF_SERVICE,
+          members: [{ userId: user.id, role: OrganizationRole.OWNER }],
+        });
+      }
+
       await this.audit.append({
         actorUserId: user.id,
-        organizationId: organization.id,
+        organizationId: existingOrg?.id,
         action: 'USER_REGISTERED_GOOGLE',
         resourceType: 'USER',
         resourceId: user.id,
@@ -347,9 +354,9 @@ export class AuthService {
     let org = this.organizations?.findFirstForMember
       ? await this.organizations.findFirstForMember(userId)
       : null;
-    if (!org && this.organizations?.create) {
+    if (!org && typeof this.organizations?.create === 'function') {
       org = await this.organizations.create({
-        name: `${user.fullName}'s Organization`,
+        name: user.fullName ? `${user.fullName}'s Workspace` : 'Personal Workspace',
         type: OrganizationType.SELF_SERVICE,
         members: [{ userId: user.id, role: OrganizationRole.OWNER }],
       });
