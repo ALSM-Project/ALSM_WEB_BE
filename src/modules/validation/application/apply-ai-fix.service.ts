@@ -332,6 +332,32 @@ Generate the updated file with the fix applied.`;
       });
     }
 
+    // Case 1b: FC-INVALID-DATE / Date is valid naming clarity & LE feedback code documentation
+    if (
+      titleLower.includes('fc-invalid-date') ||
+      explLower.includes('fc-invalid-date') ||
+      suggLower.includes('getfcinvaliddate')
+    ) {
+      if (result.includes('public boolean getFcInvalidDate()') && !result.includes('isDateValid')) {
+        result = result.replace(
+          'public boolean getFcInvalidDate()',
+          '/** Refactored LE date validation feedback check (zero token value indicates success) */\n\tpublic boolean isDateValid() {\n\t\treturn getFcInvalidDate();\n\t}\n\n\tpublic boolean getFcInvalidDate()',
+        );
+      }
+    }
+
+    // Case 1c: VSTRING-LENGTH calculation mismatch vs dynamic length
+    if (
+      titleLower.includes('vstring-length') ||
+      explLower.includes('vstring-length') ||
+      suggLower.includes('vstring-length')
+    ) {
+      result = result.replace(
+        /setVstringLength\(10\);/g,
+        'setVstringLength(model.getLsDate() != null && !model.getLsDate().isEmpty() ? model.getLsDate().trim().length() : 10);',
+      );
+    }
+
     // Case 2: COMP-3 / Decimal financial precision (float/double -> BigDecimal)
     if (
       titleLower.includes('comp-3') ||

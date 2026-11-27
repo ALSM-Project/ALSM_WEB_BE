@@ -61,5 +61,6 @@ export interface UserRepository {
     encryptedSecret: string,
     maxAttempts: number,
   ): Promise<MfaSetupFailureResult | null>;
+  consumeMfaBackupCode(userId: string, usedHash: string): Promise<boolean>;
 }
 export const USER_REPOSITORY = Symbol('USER_REPOSITORY');

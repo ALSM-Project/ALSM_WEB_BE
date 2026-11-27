@@ -4,6 +4,7 @@ import {
   Injectable,
   Logger,
   NotFoundException,
+  Optional,
 } from '@nestjs/common';
 import { AUDIT_REPOSITORY, AuditRepository } from '../../audit/domain/audit.repository';
 import {
@@ -15,6 +16,7 @@ import {
 } from '../domain/meeting.types';
 import { PROJECT_REPOSITORY, ProjectRepository } from '../../projects/domain/project.types';
 import { UpdateMeetingDto } from '../presentation/meeting.dto';
+import { NotificationsService } from '../../notifications/notifications.service';
 
 const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
@@ -26,6 +28,7 @@ export class ManageMeetingService {
     @Inject(MEETING_REPOSITORY) private readonly meetings: MeetingRepository,
     @Inject(AUDIT_REPOSITORY) private readonly audit: AuditRepository,
     @Inject(PROJECT_REPOSITORY) private readonly projects: ProjectRepository,
+    @Optional() private readonly notificationsService?: NotificationsService,
   ) {}
 
   async getById(id: string): Promise<MeetingRecord & { projectName?: string }> {
@@ -169,6 +172,24 @@ export class ManageMeetingService {
       },
     });
 
+    if (this.notificationsService && (dto.scheduledStartTime !== undefined || dto.scheduledEndTime !== undefined || dto.status === MeetingStatus.CANCELLED)) {
+      const isCancelled = updated.status === MeetingStatus.CANCELLED;
+      void this.notificationsService
+        .createForEmails({
+          recipientEmails: updated.attendeeEmails || [],
+          type: isCancelled ? 'MEETING_CANCELLED' : 'MEETING_RESCHEDULED',
+          title: isCancelled ? `Meeting Cancelled: ${updated.title}` : `Meeting Rescheduled: ${updated.title}`,
+          message: isCancelled
+            ? `The meeting "${updated.title}" has been cancelled.`
+            : `The meeting "${updated.title}" has been rescheduled to ${updated.scheduledStartTime.toLocaleString()}.`,
+          eventKey: `meeting:${isCancelled ? 'cancelled' : 'rescheduled'}:${updated.id}:${Date.now()}`,
+          resourceType: 'MEETING',
+          resourceId: updated.id,
+          link: '/workspace/contact',
+        })
+        .catch(() => undefined);
+    }
+
     return updated;
   }
 
@@ -211,6 +232,21 @@ export class ManageMeetingService {
         newStatus: updated.status,
       },
     });
+
+    if (this.notificationsService && newStatus === MeetingStatus.CANCELLED) {
+      void this.notificationsService
+        .createForEmails({
+          recipientEmails: updated.attendeeEmails || [],
+          type: 'MEETING_CANCELLED',
+          title: `Meeting Cancelled: ${updated.title}`,
+          message: `The meeting "${updated.title}" has been cancelled.`,
+          eventKey: `meeting:cancelled:${updated.id}:${Date.now()}`,
+          resourceType: 'MEETING',
+          resourceId: updated.id,
+          link: '/workspace/contact',
+        })
+        .catch(() => undefined);
+    }
 
     return updated;
   }

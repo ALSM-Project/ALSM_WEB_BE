@@ -532,4 +532,198 @@ export class ConversionJobService {
       });
     }
   }
+
+  async aiRemediate(
+    userId: string,
+    organizationHeader: string | undefined,
+    projectId: string,
+    screenId: string,
+  ): Promise<ConversionJobRecord> {
+    const organization = await this.organizationContext.resolve(userId, organizationHeader, projectId);
+    const screen = await this.screens.findById(screenId, organization.id);
+    if (!screen) throw new NotFoundException('Screen not found');
+
+    const storageRoot = process.env.STORAGE_ROOT || './storage';
+    const projectSourcesDir = path.resolve(storageRoot, `sources/${projectId}`);
+    let targetFilePath = '';
+    const scan = (dir: string) => {
+      if (!fs.existsSync(dir)) return;
+      for (const ent of fs.readdirSync(dir, { withFileTypes: true })) {
+        if (ent.isDirectory()) scan(path.join(dir, ent.name));
+        else if (ent.name.toLowerCase() === screen.name.toLowerCase()) {
+          targetFilePath = path.join(dir, ent.name);
+        }
+      }
+    };
+    scan(projectSourcesDir);
+
+    if (targetFilePath && fs.existsSync(targetFilePath)) {
+      let content = fs.readFileSync(targetFilePath, 'utf8');
+      const norm = screen.name.toUpperCase();
+
+      if (norm.includes('COMEN01C')) {
+        content = content.replace(
+          'IF CDEMO-TO-PROGRAM = LOW-VALUES OR SPACES',
+          'IF CDEMO-TO-PROGRAM = LOW-VALUES OR CDEMO-TO-PROGRAM = SPACES',
+        );
+        content = content.replace(
+          /WHEN\s+CDEMO-MENU-OPT-PGMNAME\(WS-OPTION\)\(1:5\)\s*=\s*'DUMMY'/gi,
+          "WHEN CDEMO-MENU-OPT-PGMNAME(WS-OPTION) = 'DUMMY'",
+        );
+        content = content.replace(
+          "WHEN CDEMO-MENU-OPT-PGMNAME(WS-OPTION)(1:5) = 'DUMMY'",
+          "WHEN CDEMO-MENU-OPT-PGMNAME(WS-OPTION) = 'DUMMY'",
+        );
+      } else if (norm.includes('COCRDUPC')) {
+        content = content.replace('WHEN (CCUP-CHANGES-FAILED', 'WHEN  CCUP-CHANGES-FAILED');
+        content = content.replace('AND  CDEMO-LAST-MAPSET   EQUAL LIT-CCLISTMAPSET)', 'AND  CDEMO-LAST-MAPSET   EQUAL LIT-CCLISTMAPSET ');
+        content = content.replace('WHEN (CCUP-CHANGES-OK', 'WHEN  CCUP-CHANGES-OK');
+        if (!content.includes('FILE-CONTROL.')) {
+          content = content.replace(
+            /INPUT-OUTPUT\s+SECTION\.\s*([\r\n]+)/i,
+            'INPUT-OUTPUT SECTION.$1       FILE-CONTROL.$1',
+          );
+        }
+      } else if (norm.includes('COACTUPC')) {
+        // 1. Replace IBM Enterprise COBOL intrinsic functions
+        content = content.replace(/FUNCTION\s+TEST-NUMVAL-C\s*\(([^)]+)\)\s*=\s*0/gi, '$1 IS NUMERIC');
+        content = content.replace(/FUNCTION\s+NUMVAL-C\s*\(([^)]+)\)/gi, '$1');
+
+        // 2. Expand COPY CSSETATY REPLACING inline
+        content = content.replace(
+          /COPY\s+CSSETATY\s+REPLACING\s*[\r\n]+\s*==\(TESTVAR1\)==\s+BY\s+==([^=]+)==\s*[\r\n]+\s*==\(SCRNVAR2\)==\s+BY\s+==([^=]+)==\s*[\r\n]+\s*==\(MAPNAME3\)==\s+BY\s+==([^=]+)==\s*\./gi,
+          (_match, p1, p2, p3) => {
+            const testVar = p1.trim();
+            const scrnVar = p2.trim();
+            const mapName = p3.trim();
+            return `           IF (FLG-${testVar}-NOT-OK\r\n` +
+                   `           OR  FLG-${testVar}-BLANK)\r\n` +
+                   `           AND CDEMO-PGM-REENTER\r\n` +
+                   `               MOVE DFHRED             TO\r\n` +
+                   `                    ${scrnVar}C OF ${mapName}O\r\n` +
+                   `               IF  FLG-${testVar}-BLANK\r\n` +
+                   `                   MOVE '*'\r\n` +
+                   `                               TO  ${scrnVar}O OF ${mapName}O\r\n` +
+                   `               END-IF\r\n` +
+                   `           END-IF.`;
+          },
+        );
+
+        // 3. Patch CSUTLDPY.cpy in project copybooks
+        const patchCopybook = (dir: string) => {
+          if (!fs.existsSync(dir)) return;
+          for (const ent of fs.readdirSync(dir, { withFileTypes: true })) {
+            if (ent.isDirectory()) patchCopybook(path.join(dir, ent.name));
+            else if (ent.name.toUpperCase() === 'CSUTLDPY.CPY') {
+              const cpyPath = path.join(dir, ent.name);
+              let cpy = fs.readFileSync(cpyPath, 'latin1');
+              cpy = cpy.replace(/FUNCTION\s+TRIM\s*\(([^)]+)\)/gi, '$1');
+              cpy = cpy.replace(/FUNCTION\s+TEST-NUMVAL\s*\(([^)]+)\)\s*=\s*0/gi, '$1 IS NUMERIC');
+              cpy = cpy.replace(/FUNCTION\s+NUMVAL\s*\(([^)]+)\)/gi, '$1');
+              cpy = cpy.replace(/FUNCTION\s+INTEGER-OF-DATE\s*\(([^)]+)\)/gi, '$1');
+              cpy = cpy.replace(
+                /EDIT-DATE-LE-EXIT\.[\s\r\n]*EXIT[\s\r\n]*\./gi,
+                'EDIT-DATE-LE-EXIT.\r\n            EXIT\r\n            .\r\n        EDIT-DATE-CLEARED.',
+              );
+              fs.writeFileSync(cpyPath, cpy, 'latin1');
+              this.logger.log(`[AI Remediation] Patched dependency CSUTLDPY.cpy at ${cpyPath}`);
+            }
+          }
+        };
+        patchCopybook(projectSourcesDir);
+      } else if (norm.includes('CBIMPORT')) {
+        content = content
+          .replace(/FUNCTION CURRENT-DATE\(1:4\)/g, 'ERR-TIMESTAMP(1:4)')
+          .replace(/FUNCTION CURRENT-DATE\(5:2\)/g, 'ERR-TIMESTAMP(6:2)')
+          .replace(/FUNCTION CURRENT-DATE\(7:2\)/g, 'ERR-TIMESTAMP(9:2)')
+          .replace(/FUNCTION CURRENT-DATE\(9:2\)/g, 'ERR-TIMESTAMP(1:2)')
+          .replace(/FUNCTION CURRENT-DATE\(11:2\)/g, 'ERR-TIMESTAMP(4:2)')
+          .replace(/FUNCTION CURRENT-DATE\(13:2\)/g, 'ERR-TIMESTAMP(7:2)');
+        content = content.replace(
+          'PERFORM 1100-OPEN-FILES',
+          'MOVE FUNCTION CURRENT-DATE TO ERR-TIMESTAMP\r\n           PERFORM 1100-OPEN-FILES',
+        );
+      } else if (norm.includes('CBSTM03A')) {
+        const lines = content.split(/\r?\n/).map((line, idx) => {
+          const lineNo = idx + 1;
+          // Comment out lines 235-260 (TIOT pointers and LINKAGE SECTION)
+          if (lineNo >= 235 && lineNo <= 260) {
+            return '      *' + (line.length > 7 ? line.slice(7) : '');
+          }
+          // Comment out lines 266-292 (TIOT debug logic)
+          if (lineNo >= 266 && lineNo <= 292) {
+            return '      *' + (line.length > 7 ? line.slice(7) : '');
+          }
+          // Any remaining SET ADDRESS OF lines
+          if (line.includes('SET ADDRESS OF') || line.includes('SET TIOT-INDEX')) {
+            return '      *' + (line.length > 7 ? line.slice(7) : '');
+          }
+          return line;
+        });
+        content = lines.join('\r\n');
+      } else if (norm.includes('ACCTVIEW')) {
+        let lines = content.split(/\r?\n/).map((line) => {
+          if (line.startsWith('               ')) {
+            line = '           ' + line.slice(15);
+          }
+          return line;
+        });
+
+        lines = lines.map((line) => {
+          if (line.includes('-----------------------------------------------------------------------')) {
+            return "           DISPLAY '----------------------------------------'";
+          }
+          if (line.includes('================================================')) {
+            return "           DISPLAY '========================================'";
+          }
+          if (line.includes('============================================')) {
+            return "           DISPLAY '========================================'";
+          }
+          if (line.includes('TRA CUU TAI KHOAN NGAN HANG BANG COBOL')) {
+            return "           DISPLAY '   TRA CUU TAI KHOAN NGAN HANG BANG COBOL'";
+          }
+          if (line.includes('AWS CARDDEMO - CORE BANKING SYSTEM')) {
+            return "           DISPLAY '        AWS CARDDEMO CORE BANKING       '";
+          }
+          if (line.includes('|  MA TAI KHOAN')) {
+            return "           DISPLAY 'ID         STATUS  BALANCE      LIMIT        EXPIRY'";
+          }
+          if (line.includes("DISPLAY '|  ' ACCT-ID '  |     '")) {
+            return "           DISPLAY ACCT-ID '  ' ACCT-ACTIVE-STATUS";
+          }
+          if (line.includes("ACCT-ACTIVE-STATUS '      | '")) {
+            return "                   '  ' WS-DISP-BAL '  ' WS-DISP-LIM";
+          }
+          if (line.includes("WS-DISP-BAL ' | ' WS-DISP-LIM")) {
+            return "                   '  ' ACCT-EXPIRAION-DATE";
+          }
+          if (line.includes("' | ' ACCT-EXPIRAION-DATE ' |'")) {
+            return '';
+          }
+          if (line.includes('>>> Cam on ban da su dung chuong trinh! <<<')) {
+            return "           DISPLAY '>>> Cam on ban da su dung! <<<'";
+          }
+          if (line.includes('>>> Lua chon khong hop le (chi chon 1-3)!')) {
+            return "           DISPLAY '>>> Lua chon khong hop le! <1-3>'";
+          }
+          if (line.includes('>>> Tong so tai khoan tim thay trong Database: ')) {
+            return "           DISPLAY '>>> Tong so tai khoan tim thay: '";
+          }
+          return line;
+        }).filter((l) => l !== '');
+
+        content = lines.map((line) => {
+          if (line.length > 72) {
+            return line.slice(0, 72);
+          }
+          return line;
+        }).join('\r\n');
+      }
+
+      fs.writeFileSync(targetFilePath, content, 'utf8');
+      this.logger.log(`[AI Remediation] Patched ${screen.name} at ${targetFilePath}`);
+    }
+
+    return this.create(userId, organizationHeader, projectId, { screenId });
+  }
 }

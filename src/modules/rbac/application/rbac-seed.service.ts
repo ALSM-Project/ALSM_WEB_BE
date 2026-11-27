@@ -200,6 +200,9 @@ export class RbacSeedService implements OnApplicationBootstrap {
     await this.ensurePermission('conversations.view', 'View Conversations', 'communication', 'View communication threads and project dialogues');
     await this.ensurePermission('conversations.create', 'Create Conversation', 'communication', 'Initiate project communication threads');
     await this.ensurePermission('support_requests.create', 'Create Support Request', 'support', 'Submit operational and conversion support tickets');
+    await this.ensurePermission('feedback.view', 'View Support Feedback', 'support', 'Review customer feedback and ratings');
+    await this.ensurePermission('feedback.manage', 'Manage Support Feedback', 'support', 'Update status and notes on customer feedback');
+    await this.ensurePermission('feedback.summary.view', 'View Feedback Summary', 'support', 'View aggregated feedback ratings and analytics');
 
     // 3. Grant Permissions to System Roles
     const allCatalogPermissionKeys = [
@@ -258,6 +261,9 @@ export class RbacSeedService implements OnApplicationBootstrap {
       'organizations.impersonate',
       'organizations.view',
       'organizations.manage',
+      'feedback.view',
+      'feedback.manage',
+      'feedback.summary.view',
       'organizations.delete',
       'company_profile.view',
       'company_profile.manage',
@@ -399,6 +405,10 @@ export class RbacSeedService implements OnApplicationBootstrap {
       'partner_project.view',
       'partner_project.view_progress',
       'conversion_result.view',
+      'conversations.view',
+      'conversations.create',
+      'feedback.view',
+      'feedback.manage',
     ]);
 
     await this.grantRolePermissions('CONVERSION_STAFF', [

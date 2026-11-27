@@ -26,6 +26,7 @@ import { EffectivePermissionsService } from '../../rbac/application/effective-pe
 import { EmailVerificationService } from './email-verification.service';
 import { getSessionClientMetadata } from './session-client-metadata';
 import { isAccountAdmitted } from '../domain/account-admission';
+import { MFA_SECURITY, MfaSecurityPort } from './mfa-security.port';
 
 export interface AuthTokens {
   accessToken: string;
@@ -34,6 +35,13 @@ export interface AuthTokens {
   hasPassword?: boolean;
   user?: any;
 }
+
+export interface MfaChallengeResult {
+  requiresTwoFactor: true;
+  mfaToken: string;
+}
+
+export type LoginResult = AuthTokens | MfaChallengeResult;
 
 export interface RegisterResult {
   requiresEmailVerification: boolean;
@@ -53,6 +61,7 @@ export class AuthService {
     private readonly effectivePermissionsService: EffectivePermissionsService,
     private readonly emailVerificationService: EmailVerificationService,
     @Optional() @InjectConnection() private readonly connection?: Connection,
+    @Optional() @Inject(MFA_SECURITY) private readonly mfaSecurity?: MfaSecurityPort,
   ) {}
 
   async register(email: string, password: string, fullName: string): Promise<RegisterResult> {
@@ -93,7 +102,7 @@ export class AuthService {
     };
   }
 
-  async login(email: string, password: string, userAgent?: string): Promise<AuthTokens> {
+  async login(email: string, password: string, userAgent?: string): Promise<LoginResult> {
     const user = await this.users.findByEmail(email.trim().toLowerCase());
     if (
       !user ||
@@ -118,6 +127,10 @@ export class AuthService {
         message: 'Your account has been locked. Please contact your administrator.',
       });
     }
+    if (user.mfa?.enabled) {
+      return this.createMfaChallenge(user);
+    }
+
     const tokens = await this.createSessionTokens(user, userAgent);
     try { tokens.user = await this.me(user.id); } catch {}
     await this.audit.append({
@@ -132,6 +145,110 @@ export class AuthService {
       },
     });
     return tokens;
+  }
+
+  async verifyMfaLogin(mfaToken: string, code: string, userAgent?: string): Promise<AuthTokens> {
+    if (!this.mfaSecurity) {
+      throw new ServiceUnavailableException({
+        code: 'MFA_UNAVAILABLE',
+        message: 'Two-factor authentication service is unavailable',
+      });
+    }
+
+    let payload: { sub?: string; email?: string; type?: string };
+    try {
+      payload = await this.jwt.verifyAsync(mfaToken, {
+        secret: this.config.getOrThrow('JWT_ACCESS_SECRET'),
+      });
+    } catch {
+      throw new UnauthorizedException({
+        code: 'INVALID_MFA_TOKEN',
+        message: 'Two-factor authentication session expired. Please sign in again.',
+      });
+    }
+
+    if (payload?.type !== 'mfa_challenge' || !isSessionId(payload.sub)) {
+      throw new UnauthorizedException({
+        code: 'INVALID_MFA_TOKEN',
+        message: 'Invalid two-factor authentication session. Please sign in again.',
+      });
+    }
+
+    const user = await this.users.findByIdForMfa(payload.sub);
+    if (
+      !user ||
+      user.isActive !== true ||
+      !user.isEmailVerified ||
+      user.isLocked ||
+      !user.mfa?.enabled ||
+      !user.mfa.secret
+    ) {
+      throw new UnauthorizedException({
+        code: 'INVALID_CREDENTIALS',
+        message: 'Account is unavailable',
+      });
+    }
+
+    const trimmedCode = code.trim();
+    let verified = false;
+    let usedBackupCode = false;
+
+    if (/^\d{6}$/.test(trimmedCode)) {
+      verified = await this.mfaSecurity.verifyEncryptedSecret(user.mfa.secret, trimmedCode);
+    }
+
+    if (!verified && user.mfa.backupCodeHashes.length > 0) {
+      for (const hash of user.mfa.backupCodeHashes) {
+        if (await bcrypt.compare(trimmedCode, hash)) {
+          const consumed = await this.users.consumeMfaBackupCode(user.id, hash);
+          if (consumed) {
+            verified = true;
+            usedBackupCode = true;
+          }
+          break;
+        }
+      }
+    }
+
+    if (!verified) {
+      throw new UnauthorizedException({
+        code: 'INVALID_MFA_CODE',
+        message: 'Invalid two-factor authentication code',
+      });
+    }
+
+    const tokens = await this.createSessionTokens(user, userAgent);
+    try { tokens.user = await this.me(user.id); } catch {}
+    await this.audit.append({
+      actorUserId: user.id,
+      action: 'USER_LOGIN',
+      resourceType: 'USER',
+      resourceId: user.id,
+      metadata: {
+        email: user.email,
+        method: usedBackupCode ? 'MFA_BACKUP_CODE' : 'MFA_TOTP',
+        ...(userAgent ? { userAgent } : {}),
+      },
+    });
+    return tokens;
+  }
+
+  private async createMfaChallenge(user: UserRecord): Promise<MfaChallengeResult> {
+    const mfaToken = await this.jwt.signAsync(
+      {
+        sub: user.id,
+        email: user.email,
+        type: 'mfa_challenge',
+      },
+      {
+        secret: this.config.getOrThrow('JWT_ACCESS_SECRET'),
+        expiresIn: 300,
+      },
+    );
+    return {
+      requiresTwoFactor: true,
+      mfaToken,
+    };
   }
 
   async verifyEmail(email: string, codeOrToken: string, userAgent?: string): Promise<AuthTokens> {
@@ -154,7 +271,7 @@ export class AuthService {
     await this.emailVerificationService.resendVerification(email);
   }
 
-  async loginWithGoogle(idToken: string, userAgent?: string): Promise<AuthTokens> {
+  async loginWithGoogle(idToken: string, userAgent?: string): Promise<LoginResult> {
     const payload = await this.verifyGoogleIdToken(idToken);
     const email = (payload.email ?? '').trim().toLowerCase();
 
@@ -206,6 +323,10 @@ export class AuthService {
       if (!user.isEmailVerified) {
         await this.users.markEmailVerified(user.id);
       }
+    }
+
+    if (user.mfa?.enabled) {
+      return this.createMfaChallenge(user);
     }
 
     const tokens = await this.createSessionTokens(user, userAgent);

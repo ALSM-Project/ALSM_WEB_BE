@@ -185,6 +185,16 @@ export class MongoUserRepository implements UserRepository {
     return doc ? { reset: this.map(doc).mfa.secret === null } : null;
   }
 
+  async consumeMfaBackupCode(userId: string, usedHash: string): Promise<boolean> {
+    const result = await this.model
+      .updateOne(
+        { _id: userId, 'mfa.enabled': true, 'mfa.backupCodeHashes': usedHash },
+        { $pull: { 'mfa.backupCodeHashes': usedHash } },
+      )
+      .exec();
+    return result.modifiedCount === 1;
+  }
+
   private map(doc: UserDocument): UserRecord {
     return {
       id: doc.id,

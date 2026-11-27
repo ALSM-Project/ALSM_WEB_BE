@@ -43,6 +43,14 @@ export class ScreensController {
     return this.screenService.getScreenById(screenId);
   }
 
+  @Get('screens/:screenId/source')
+  @ApiOperation({ summary: 'Get original legacy source code for a screen' })
+  @ApiParam({ name: 'screenId', description: 'Screen ID' })
+  @ApiResponse({ status: 200, description: 'Screen source code' })
+  async getScreenSource(@Param('screenId') screenId: string) {
+    return this.screenService.getScreenSource(screenId);
+  }
+
   @Delete('projects/:projectId/screens/:screenId')
   @ApiOperation({ summary: 'Delete a screen and its associated data' })
   @ApiParam({ name: 'projectId', description: 'Project ID' })

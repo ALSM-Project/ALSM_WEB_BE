@@ -45,6 +45,19 @@ export class ConfirmMfaSetupDto {
   code!: string;
 }
 
+export class VerifyMfaLoginDto {
+  @ApiProperty({ description: 'Short-lived MFA challenge token from /auth/login' })
+  @IsString()
+  mfaToken!: string;
+
+  @ApiProperty({ example: '123456', description: 'Six-digit TOTP code or 10-character backup code' })
+  @IsString()
+  @Matches(/^(?:\d{6}|[A-Za-z0-9]{10})$/, {
+    message: 'code must be a 6-digit authenticator code or a 10-character backup code',
+  })
+  code!: string;
+}
+
 export class VerifyEmailDto {
   @ApiProperty({ example: 'alex@example.com' }) @IsEmail() email!: string;
   @ApiProperty({ example: '123456', description: 'Six-digit OTP code or plain verification token' })

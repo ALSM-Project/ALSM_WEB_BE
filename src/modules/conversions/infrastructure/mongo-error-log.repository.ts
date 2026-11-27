@@ -30,7 +30,10 @@ export class MongoErrorLogRepository implements ErrorLogRepository {
     projectId: string,
     organizationId: string,
   ): Promise<ErrorLogRecord | null> {
-    const doc = await this.model.findOne({ _id: id, projectId, organizationId }).exec();
+    const pId = Types.ObjectId.isValid(projectId) ? new Types.ObjectId(projectId) : projectId;
+    const orgId = Types.ObjectId.isValid(organizationId) ? new Types.ObjectId(organizationId) : organizationId;
+    const logId = Types.ObjectId.isValid(id) ? new Types.ObjectId(id) : id;
+    const doc = await this.model.findOne({ _id: logId, projectId: pId, organizationId: orgId }).exec();
     return doc ? this.map(doc) : null;
   }
 
@@ -43,7 +46,20 @@ export class MongoErrorLogRepository implements ErrorLogRepository {
     const limit = Math.min(100, Math.max(1, query.limit ?? 20));
     const skip = (page - 1) * limit;
 
-    const filter: FilterQuery<ErrorLog> = { projectId, organizationId };
+    const pId = Types.ObjectId.isValid(projectId) ? new Types.ObjectId(projectId) : projectId;
+    const orgId = Types.ObjectId.isValid(organizationId) ? new Types.ObjectId(organizationId) : organizationId;
+
+    const filter: FilterQuery<ErrorLog> = {
+      $and: [
+        {
+          $or: [
+            { projectId: pId, organizationId: orgId },
+            { projectId: projectId, organizationId: organizationId },
+          ],
+        },
+      ],
+    };
+
     if (query.severity) filter.severity = query.severity;
     if (query.status) filter.status = query.status;
     if (query.search) {
@@ -73,9 +89,12 @@ export class MongoErrorLogRepository implements ErrorLogRepository {
     organizationId: string,
     userId: string,
   ): Promise<ErrorLogRecord | null> {
+    const pId = Types.ObjectId.isValid(projectId) ? new Types.ObjectId(projectId) : projectId;
+    const orgId = Types.ObjectId.isValid(organizationId) ? new Types.ObjectId(organizationId) : organizationId;
+    const logId = Types.ObjectId.isValid(id) ? new Types.ObjectId(id) : id;
     const doc = await this.model
       .findOneAndUpdate(
-        { _id: id, projectId, organizationId, status: { $ne: ErrorLogStatus.RESOLVED } },
+        { _id: logId, projectId: pId, organizationId: orgId, status: { $ne: ErrorLogStatus.RESOLVED } },
         {
           $set: {
             status: ErrorLogStatus.RESOLVED,
@@ -94,9 +113,12 @@ export class MongoErrorLogRepository implements ErrorLogRepository {
     projectId: string,
     organizationId: string,
   ): Promise<ErrorLogRecord | null> {
+    const pId = Types.ObjectId.isValid(projectId) ? new Types.ObjectId(projectId) : projectId;
+    const orgId = Types.ObjectId.isValid(organizationId) ? new Types.ObjectId(organizationId) : organizationId;
+    const logId = Types.ObjectId.isValid(id) ? new Types.ObjectId(id) : id;
     const doc = await this.model
       .findOneAndUpdate(
-        { _id: id, projectId, organizationId, status: ErrorLogStatus.UNRESOLVED },
+        { _id: logId, projectId: pId, organizationId: orgId, status: ErrorLogStatus.UNRESOLVED },
         { $set: { status: ErrorLogStatus.IGNORED } },
         { new: true },
       )
@@ -105,9 +127,11 @@ export class MongoErrorLogRepository implements ErrorLogRepository {
   }
 
   async getSummary(projectId: string, organizationId: string): Promise<ErrorLogSummary> {
+    const pId = Types.ObjectId.isValid(projectId) ? new Types.ObjectId(projectId) : projectId;
+    const orgId = Types.ObjectId.isValid(organizationId) ? new Types.ObjectId(organizationId) : organizationId;
     const results = await this.model
       .aggregate<{ severity: string; status: string; count: number }>([
-        { $match: { projectId, organizationId } },
+        { $match: { projectId: pId, organizationId: orgId } },
         { $group: { _id: { severity: '$severity', status: '$status' }, count: { $sum: 1 } } },
         { $project: { severity: '$_id.severity', status: '$_id.status', count: 1, _id: 0 } },
       ])

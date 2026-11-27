@@ -252,4 +252,105 @@ describe('AuthService', () => {
       expect.objectContaining({ secret: 'a' }),
     );
   });
+
+  describe('2FA login challenge', () => {
+    const mfaSecurity = {
+      createEnrollment: jest.fn(),
+      verifyEncryptedSecret: jest.fn(),
+      createBackupCodes: jest.fn(),
+    };
+    const mfaUsers = {
+      ...users,
+      findByIdForMfa: jest.fn(),
+      consumeMfaBackupCode: jest.fn(),
+    };
+    const mfaService = new AuthService(
+      jwt as never,
+      config as never,
+      mfaUsers as never,
+      organizations as never,
+      sessions as never,
+      audit as never,
+      effectivePermissions as never,
+      emailVerificationService as never,
+      undefined,
+      mfaSecurity as never,
+    );
+
+    it('returns requiresTwoFactor challenge instead of session tokens when MFA is enabled', async () => {
+      const passwordHash = await bcrypt.hash('secret123', 4);
+      mfaUsers.findByEmail.mockResolvedValue({
+        id: '507f1f77bcf86cd799439011',
+        email: 'mfa@example.com',
+        passwordHash,
+        isActive: true,
+        isEmailVerified: true,
+        isLocked: false,
+        mfa: { enabled: true, secret: 'enc-secret', setupFailureCount: 0, backupCodeHashes: [] },
+      });
+
+      const result = await mfaService.login('mfa@example.com', 'secret123');
+
+      expect(result).toEqual({
+        requiresTwoFactor: true,
+        mfaToken: 'signed-token',
+      });
+      expect(sessions.create).not.toHaveBeenCalled();
+    });
+
+    it('verifies TOTP code on 2FA login and issues session tokens', async () => {
+      jwt.verifyAsync.mockResolvedValue({
+        sub: '507f1f77bcf86cd799439011',
+        email: 'mfa@example.com',
+        type: 'mfa_challenge',
+      });
+      const userRecord = {
+        id: '507f1f77bcf86cd799439011',
+        email: 'mfa@example.com',
+        isActive: true,
+        isEmailVerified: true,
+        isLocked: false,
+        isPlatformAdmin: false,
+        passwordHash: 'set',
+        mustChangePassword: false,
+        mfa: { enabled: true, secret: 'enc-secret', setupFailureCount: 0, backupCodeHashes: [] },
+      };
+      mfaUsers.findByIdForMfa.mockResolvedValue(userRecord);
+      mfaUsers.findById.mockResolvedValue(userRecord);
+      mfaSecurity.verifyEncryptedSecret.mockResolvedValue(true);
+      sessions.create.mockImplementation(async (input) => ({
+        ...input,
+        id: '507f1f77bcf86cd799439012',
+      }));
+
+      const tokens = await mfaService.verifyMfaLogin('challenge-jwt', '123456');
+
+      expect(mfaSecurity.verifyEncryptedSecret).toHaveBeenCalledWith('enc-secret', '123456');
+      expect(tokens.accessToken).toBe('signed-token');
+      expect(tokens.refreshToken).toBe('signed-token');
+      expect(sessions.create).toHaveBeenCalledTimes(1);
+    });
+
+    it('rejects invalid TOTP code on 2FA login', async () => {
+      jwt.verifyAsync.mockResolvedValue({
+        sub: '507f1f77bcf86cd799439011',
+        email: 'mfa@example.com',
+        type: 'mfa_challenge',
+      });
+      mfaUsers.findByIdForMfa.mockResolvedValue({
+        id: '507f1f77bcf86cd799439011',
+        email: 'mfa@example.com',
+        isActive: true,
+        isEmailVerified: true,
+        isLocked: false,
+        mfa: { enabled: true, secret: 'enc-secret', setupFailureCount: 0, backupCodeHashes: [] },
+      });
+      mfaSecurity.verifyEncryptedSecret.mockResolvedValue(false);
+
+      await expect(mfaService.verifyMfaLogin('challenge-jwt', '000000')).rejects.toThrow(
+        UnauthorizedException,
+      );
+      expect(sessions.create).not.toHaveBeenCalled();
+    });
+  });
 });

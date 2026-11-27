@@ -397,6 +397,7 @@ export class MeetingRequestService {
     });
 
     const updated = await meeting.save();
+
     return updated;
   }
 
@@ -489,6 +490,21 @@ export class MeetingRequestService {
       },
     });
 
+    if (this.notificationsService) {
+      void this.notificationsService
+        .createForEmails({
+          recipientEmails: [meeting.customer.email, ...(meeting.scheduling.attendeeEmails || [])],
+          type: 'MEETING_SCHEDULED',
+          title: `Meeting Confirmed: ${meeting.topic}`,
+          message: `Your consultation meeting is scheduled for ${start.toLocaleString()}.`,
+          eventKey: `meeting_request:confirmed:${meeting.id}`,
+          resourceType: 'MEETING_REQUEST',
+          resourceId: meeting.id,
+          link: '/workspace/contact',
+        })
+        .catch(() => undefined);
+    }
+
     return updated;
   }
 
@@ -542,7 +558,22 @@ export class MeetingRequestService {
       createdAt: new Date(),
     });
 
-    return meeting.save();
+    const saved = await meeting.save();
+    if (this.notificationsService) {
+      void this.notificationsService
+        .createForEmails({
+          recipientEmails: [meeting.customer.email, ...(meeting.scheduling.attendeeEmails || [])],
+          type: 'MEETING_RESCHEDULED',
+          title: `Meeting Rescheduled: ${meeting.topic}`,
+          message: `Your consultation meeting has been rescheduled to ${start.toLocaleString()}.`,
+          eventKey: `meeting_request:rescheduled:${meeting.id}:${Date.now()}`,
+          resourceType: 'MEETING_REQUEST',
+          resourceId: meeting.id,
+          link: '/workspace/contact',
+        })
+        .catch(() => undefined);
+    }
+    return saved;
   }
 
   /**
@@ -581,7 +612,22 @@ export class MeetingRequestService {
       createdAt: new Date(),
     });
 
-    return meeting.save();
+    const saved = await meeting.save();
+    if (this.notificationsService) {
+      void this.notificationsService
+        .createForEmails({
+          recipientEmails: [meeting.customer.email, ...(meeting.scheduling.attendeeEmails || [])],
+          type: 'MEETING_CANCELLED',
+          title: `Meeting Cancelled: ${meeting.topic}`,
+          message: `Your consultation meeting "${meeting.topic}" has been cancelled. Reason: ${dto.reason}`,
+          eventKey: `meeting_request:cancelled:${meeting.id}:${Date.now()}`,
+          resourceType: 'MEETING_REQUEST',
+          resourceId: meeting.id,
+          link: '/workspace/contact',
+        })
+        .catch(() => undefined);
+    }
+    return saved;
   }
 
   /**

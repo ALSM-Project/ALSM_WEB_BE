@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException, ConflictException, BadRequestException, Logger, Inject, Optional, forwardRef } from '@nestjs/common';
+import { Injectable, NotFoundException, ConflictException, BadRequestException, ForbiddenException, Logger, Inject, Optional, forwardRef } from '@nestjs/common';
 import { randomUUID, randomBytes } from 'node:crypto';
 import { Lead, LeadDocument } from '../infrastructure/lead.schema';
 import { LeadStatus } from '../domain/lead.types';
@@ -68,9 +68,21 @@ export class CrmConversationService {
       lastMessage: item.lastMessage,
       lastMessageAt: item.lastMessageAt,
       unreadCount: item.unreadCount || 0,
+      customerUnreadCount: item.customerUnreadCount || 0,
       createdAt: item.createdAt,
       updatedAt: item.updatedAt,
     };
+  }
+
+  private assertCanAccessConversation(
+    conversation: { customerEmail?: string },
+    requesterEmail?: string,
+    hasStaffAccess = false,
+  ): void {
+    if (hasStaffAccess) return;
+    if (!requesterEmail || conversation.customerEmail?.toLowerCase() !== requesterEmail.toLowerCase()) {
+      throw new ForbiddenException('You do not have access to this conversation');
+    }
   }
 
   async listConversations(
@@ -214,7 +226,7 @@ export class CrmConversationService {
     return items.map((item) => this.mapConversationDoc(item));
   }
 
-  async getConversationById(id: string, requesterEmail?: string): Promise<CrmConversationItem> {
+  async getConversationById(id: string, requesterEmail?: string, hasStaffAccess = false): Promise<CrmConversationItem> {
     if (!Types.ObjectId.isValid(id)) {
       throw new NotFoundException(`Invalid conversation ID: ${id}`);
     }
@@ -224,10 +236,30 @@ export class CrmConversationService {
       throw new NotFoundException(`Conversation with ID ${id} not found`);
     }
 
-    // Reset unread count when opened
-    await this.conversationModel.updateOne({ _id: id }, { $set: { unreadCount: 0 } });
+    this.assertCanAccessConversation(conversation, requesterEmail, hasStaffAccess);
 
-    return this.mapConversationDoc({ ...conversation, unreadCount: 0 });
+    // Reset unread count when opened by staff
+    if (hasStaffAccess) {
+      await this.conversationModel.updateOne({ _id: id }, { $set: { unreadCount: 0 } });
+      return this.mapConversationDoc({ ...conversation, unreadCount: 0 });
+    }
+
+    return this.mapConversationDoc(conversation);
+  }
+
+  async markCustomerRead(id: string, requesterEmail?: string, hasStaffAccess = false): Promise<{ ok: boolean }> {
+    if (!Types.ObjectId.isValid(id)) {
+      throw new NotFoundException(`Invalid conversation ID: ${id}`);
+    }
+
+    const conversation = await this.conversationModel.findById(id).lean();
+    if (!conversation) {
+      throw new NotFoundException(`Conversation with ID ${id} not found`);
+    }
+
+    this.assertCanAccessConversation(conversation, requesterEmail, hasStaffAccess);
+    await this.conversationModel.updateOne({ _id: id }, { $set: { customerUnreadCount: 0 } });
+    return { ok: true };
   }
 
   async getOrCreateCustomerConversation(
@@ -365,18 +397,22 @@ export class CrmConversationService {
     return item;
   }
 
-  async listMessages(conversationId: string, requesterEmail?: string): Promise<CrmConversationMessageItem[]> {
+  async listMessages(conversationId: string, requesterEmail?: string, hasStaffAccess = false): Promise<CrmConversationMessageItem[]> {
     if (!Types.ObjectId.isValid(conversationId)) {
       throw new NotFoundException(`Invalid conversation ID: ${conversationId}`);
     }
 
     const conv = await this.conversationModel.findById(conversationId).lean();
+    if (!conv) {
+      throw new NotFoundException(`Conversation with ID ${conversationId} not found`);
+    }
+
+    this.assertCanAccessConversation(conv, requesterEmail, hasStaffAccess);
+
     const isCustomer = Boolean(
-      conv &&
-      (
-        (requesterEmail && conv.customerEmail.toLowerCase() === requesterEmail.toLowerCase()) ||
-        conv.organizationId // In customer organization conversations, keep internal staff notes private
-      )
+      !hasStaffAccess ||
+      (requesterEmail && conv.customerEmail.toLowerCase() === requesterEmail.toLowerCase()) ||
+      conv.organizationId // In customer organization conversations, keep internal staff notes private
     );
 
     const filter: any = { conversationId: new Types.ObjectId(conversationId) };
@@ -409,6 +445,7 @@ export class CrmConversationService {
     userName: string,
     conversationId: string,
     dto: PostMessageDto,
+    hasStaffAccess = false,
   ): Promise<CrmConversationMessageItem> {
     if (!Types.ObjectId.isValid(conversationId)) {
       throw new NotFoundException(`Invalid conversation ID: ${conversationId}`);
@@ -419,9 +456,11 @@ export class CrmConversationService {
       throw new NotFoundException(`Conversation with ID ${conversationId} not found`);
     }
 
+    this.assertCanAccessConversation(conv, userEmail, hasStaffAccess);
+
     const isCustomer =
-      conv.customerEmail.toLowerCase() === userEmail.toLowerCase() ||
-      Boolean(conv.organizationId);
+      !hasStaffAccess &&
+      (conv.customerEmail.toLowerCase() === userEmail.toLowerCase() || Boolean(conv.organizationId));
     const effectiveRole = isCustomer ? MessageSenderRole.CUSTOMER : MessageSenderRole.SALES_REP;
     const effectiveInternal = isCustomer ? false : Boolean(dto.isInternal);
 
@@ -442,6 +481,8 @@ export class CrmConversationService {
     if (isCustomer) {
       conv.status = ConversationStatus.OPEN;
       conv.unreadCount = (conv.unreadCount || 0) + 1;
+    } else if (!effectiveInternal) {
+      conv.customerUnreadCount = (conv.customerUnreadCount || 0) + 1;
     }
     await conv.save();
 

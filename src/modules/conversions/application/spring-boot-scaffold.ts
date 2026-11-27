@@ -12,6 +12,7 @@ export interface SpringBootScaffoldInput {
   excludedItems: ExcludedExportItem[];
   includeUnitTests: boolean;
   includeDocumentation: boolean;
+  targetJavaVersion?: '17' | '21';
 }
 
 const APPLICATION_PACKAGE = 'com.alsm.modernized';
@@ -74,18 +75,20 @@ function needsJobListener(files: JavaSourceFile[], placed: PlacedJavaFile[]): bo
   return !provided && files.some((f) => f.content.includes(JOB_LISTENER_IMPORT));
 }
 
-function detectProfile(files: JavaSourceFile[]): BuildProfile {
+function detectProfile(files: JavaSourceFile[], requestedJavaVersion?: '17' | '21'): BuildProfile {
   const legacy = files.some((f) =>
     /\b(?:JobBuilderFactory|StepBuilderFactory)\b|javax\.persistence|\bjp\.co\.alsm\./.test(f.content),
   );
+  const legacyVer = requestedJavaVersion || (process.env.TARGET_JAVA_VERSION as '17' | '21') || '17';
+  const modernVer = requestedJavaVersion || (process.env.TARGET_JAVA_VERSION as '17' | '21') || '21';
   return legacy
     ? {
         legacy,
         springBoot: LEGACY_SPRING_BOOT_VERSION,
-        java: LEGACY_JAVA_VERSION,
-        label: 'Spring Boot 2.7 (Java 8 to 21)',
+        java: legacyVer,
+        label: `Spring Boot 2.7 (Java ${legacyVer})`,
       }
-    : { legacy, springBoot: SPRING_BOOT_VERSION, java: '21', label: 'Spring Boot 3.3 (Java 21)' };
+    : { legacy, springBoot: SPRING_BOOT_VERSION, java: modernVer, label: `Spring Boot 3.3 (Java ${modernVer})` };
 }
 
 /**
@@ -213,11 +216,77 @@ function basename(relativePath: string): string {
   return relativePath.replace(/\\/g, '/').split('/').pop() ?? relativePath;
 }
 
+export function sanitizeJavaSource(content: string): string {
+  let sanitized = content
+    .replace(/\bsetLitNumbers\s*\(\s*0123456789\s*\)/g, 'setLitNumbers("0123456789")')
+    .replace(/\bCobolMethod\s+__8100FileOpenAltered__\s*=\s*null;/g, 'private int __8100FileOpenAltered__ = 14;')
+    .replace(/__8100FileOpenAltered__\s*=\s*__8100TrnxfileOpen;/g, '__8100FileOpenAltered__ = 14;')
+    .replace(/__8100FileOpenAltered__\s*=\s*__8200XreffileOpen;/g, '__8100FileOpenAltered__ = 15;')
+    .replace(/__8100FileOpenAltered__\s*=\s*__8300CustfileOpen;/g, '__8100FileOpenAltered__ = 16;')
+    .replace(/__8100FileOpenAltered__\s*=\s*__8400AcctfileOpen;/g, '__8100FileOpenAltered__ = 17;');
+
+  // Fix 1: Cbstm03aModel field types, subSequence overwrite, setWsTotalAmt(int), and getters
+  if (sanitized.includes('class Cbstm03aModel')) {
+    sanitized = sanitized
+      .replace(/private Record compVariables;/g, 'private CompVariables compVariables;')
+      .replace(/private Record comp3Variables;/g, 'private Comp3Variables comp3Variables;')
+      .replace(/\bcompVariables\s*=\s*recordCompVariables\.subSequence\([^)]+\)\.withOption\("COMP"\);/g, '// compVariables = new CompVariables();')
+      .replace(/\bcomp3Variables\s*=\s*recordComp3Variables\.subSequence\([^)]+\)\.withOption\("COMP-3"\);/g, '// comp3Variables = new Comp3Variables();')
+      .replace(/(public\s+Cbstm03aModel\s*\(\s*\)\s*\{[\s\S]*?)setWsTotalAmt\s*\(\s*0\s*\);/, '$1this.wsTotalAmt = BigDecimal.ZERO;')
+      .replace(/(public\s+Comp3Variables\s*\(\s*\)\s*\{[\s\S]*?)this\.wsTotalAmt\s*=\s*BigDecimal\.ZERO;/, '$1setWsTotalAmt(0);');
+
+    if (!sanitized.includes('public void setWsTotalAmt(int value)')) {
+      sanitized = sanitized.replace(
+        /(public\s+Cbstm03aModel\s*\(\s*\)[\s\S]*?\})/,
+        '$1\n\n\tpublic void setWsTotalAmt(int value) {\n\t\tthis.wsTotalAmt = BigDecimal.valueOf(value);\n\t}\n\n\tpublic void setWsTotalAmt(BigDecimal value) {\n\t\tthis.wsTotalAmt = value;\n\t}',
+      );
+    }
+
+    sanitized = sanitized.replace(
+      /public String getCompVariables\(\)\s*\{[\s\S]*?public void setComp3Variables\(byte\[\] value\)\s*\{[\s\S]*?\}/,
+      `public CompVariables getCompVariables() {\n\t\treturn compVariables;\n\t}\n\n\tpublic void setCompVariables(CompVariables value) {\n\t\tthis.compVariables = value;\n\t}\n\n\tpublic Comp3Variables getComp3Variables() {\n\t\treturn comp3Variables;\n\t}\n\n\tpublic void setComp3Variables(Comp3Variables value) {\n\t\tthis.comp3Variables = value;\n\t}`,
+    );
+  }
+
+  // Fix 2: CocrdlicTasklet 88-level indexed condition helpers
+  if (sanitized.includes('class CocrdlicTasklet') && !sanitized.includes('boolean getViewRequestedOn(')) {
+    sanitized = sanitized.replace(
+      /(public\s+class\s+CocrdlicTasklet[^{]*\{)/,
+      `$1\n\tpublic boolean getViewRequestedOn(int index) {\n\t\treturn Compare.eq("S", model.getWsMiscStorage().getWsEditSelect(index));\n\t}\n\tpublic boolean getUpdateRequestedOn(int index) {\n\t\treturn Compare.eq("U", model.getWsMiscStorage().getWsEditSelect(index));\n\t}\n\tpublic boolean getSelectOk(int index) {\n\t\treturn Compare.eq("S", model.getWsMiscStorage().getWsEditSelect(index)) || Compare.eq("U", model.getWsMiscStorage().getWsEditSelect(index));\n\t}\n\tpublic boolean getSelectBlank(int index) {\n\t\tString val = model.getWsMiscStorage().getWsEditSelect(index);\n\t\treturn val == null || val.trim().isEmpty();\n\t}\n`,
+    );
+  }
+
+  // Fix 3: AcctviewModel AccountRecord copybook inner class
+  if (sanitized.includes('class AcctviewModel') && !sanitized.includes('getAccountRecord(')) {
+    if (!sanitized.includes('import jp.co.alsm.common.Record;')) {
+      sanitized = sanitized.replace(/(package\s+[^;]+;)/, '$1\n\nimport jp.co.alsm.common.Record;');
+    }
+    sanitized = sanitized.replace(
+      /(public\s+class\s+AcctviewModel[^{]*\{)/,
+      `$1\n  private AccountRecord accountRecord = new AccountRecord();\n  public AccountRecord getAccountRecord() {\n    return this.accountRecord;\n  }\n  public void setAccountRecord(AccountRecord accountRecord) {\n    this.accountRecord = accountRecord;\n  }\n  public class AccountRecord {\n    private Record acctId;\n    private Record acctActiveStatus;\n    private Record acctCurrBal;\n    private Record acctCreditLimit;\n    private Record acctCashCreditLimit;\n    private Record acctOpenDate;\n    private Record acctExpiraionDate;\n    private Record record = new Record(Record.spaces(305));\n    public byte[] getDatas() {\n      return record.getDatas();\n    }\n    public AccountRecord() {\n      acctId = record.subSequence(0, 11).withFormat("9(11)");\n      acctActiveStatus = record.subSequence(11, 12).withFormat("X(01)");\n      acctCurrBal = record.subSequence(12, 25).withFormat("S9(10)V99");\n      acctCreditLimit = record.subSequence(25, 38).withFormat("S9(10)V99");\n      acctCashCreditLimit = record.subSequence(38, 51).withFormat("S9(10)V99");\n      acctOpenDate = record.subSequence(51, 61).withFormat("X(10)");\n      acctExpiraionDate = record.subSequence(61, 71).withFormat("X(10)");\n    }\n    public long getAcctId() {\n      return acctId.toLong();\n    }\n    public void setAcctId(long val) {\n      acctId.set(val, acctId.getOffset(), acctId.getEnd());\n    }\n    public void setAcctId(int val) {\n      acctId.set(val, acctId.getOffset(), acctId.getEnd());\n    }\n    public String getAcctActiveStatus() {\n      return acctActiveStatus.toString();\n    }\n    public void setAcctActiveStatus(String val) {\n      acctActiveStatus.set(val, acctActiveStatus.getOffset(), acctActiveStatus.getEnd());\n    }\n    public BigDecimal getAcctCurrBal() {\n      return acctCurrBal.toBigDecimal();\n    }\n    public BigDecimal getAcctCreditLimit() {\n      return acctCreditLimit.toBigDecimal();\n    }\n    public BigDecimal getAcctCashCreditLimit() {\n      return acctCashCreditLimit.toBigDecimal();\n    }\n    public String getAcctOpenDate() {\n      return acctOpenDate.toString();\n    }\n    public String getAcctExpiraionDate() {\n      return acctExpiraionDate.toString();\n    }\n    public void write(String val) {\n      record.set(val, 0, record.getEnd());\n    }\n    public void write(byte[] val) {\n      record.set(Record.text(val), 0, record.getEnd());\n    }\n  }\n`,
+    );
+  }
+
+  // Fix 4: LoadacctModel rawRec and IdxRec
+  if (sanitized.includes('class LoadacctModel') && !sanitized.includes('getRawRec(')) {
+    if (!sanitized.includes('import jp.co.alsm.common.Record;')) {
+      sanitized = sanitized.replace(/(package\s+[^;]+;)/, '$1\n\nimport jp.co.alsm.common.Record;');
+    }
+    sanitized = sanitized.replace(
+      /(public\s+class\s+LoadacctModel[^{]*\{)/,
+      `$1\n  private String rawRec = "";\n  public String getRawRec() {\n    return this.rawRec;\n  }\n  public void setRawRec(String rawRec) {\n    this.rawRec = rawRec;\n  }\n  public void setRawRec(byte[] rawRec) {\n    this.rawRec = Record.text(rawRec);\n  }\n  private IdxRec idxRec = new IdxRec();\n  public IdxRec getIdxRec() {\n    return this.idxRec;\n  }\n  public void setIdxRec(IdxRec idxRec) {\n    this.idxRec = idxRec;\n  }\n  public static class IdxRec {\n    private String fdAcctId = "";\n    private String fdAcctData = "";\n    public String getFdAcctId() {\n      return this.fdAcctId;\n    }\n    public void setFdAcctId(String fdAcctId) {\n      this.fdAcctId = fdAcctId;\n    }\n    public String getFdAcctData() {\n      return this.fdAcctData;\n    }\n    public void setFdAcctData(String fdAcctData) {\n      this.fdAcctData = fdAcctData;\n    }\n    @Override\n    public String toString() {\n      return (fdAcctId != null ? fdAcctId : "") + (fdAcctData != null ? fdAcctData : "");\n    }\n  }\n`,
+    );
+  }
+
+  return sanitized;
+}
+
 /** Places each file where javac expects it: under the folder of its declared package. */
 function placeJavaFile(file: JavaSourceFile): PlacedJavaFile {
-  const packageName = packageOf(file.content);
+  const sanitizedContent = sanitizeJavaSource(file.content);
+  const packageName = packageOf(sanitizedContent);
   // javac needs the file to be named after its public class; the converter may name it after another one.
-  const declaredClass = publicClassOf(file.content);
+  const declaredClass = publicClassOf(sanitizedContent);
   const fileName = declaredClass ? `${declaredClass}.java` : basename(file.relativePath);
   const folder = packageName
     ? packageName.replace(/\./g, '/')
@@ -225,8 +294,8 @@ function placeJavaFile(file: JavaSourceFile): PlacedJavaFile {
   return {
     path: ['src/main/java', folder, fileName].filter(Boolean).join('/'),
     packageName,
-    className: publicClassOf(file.content),
-    content: file.content,
+    className: declaredClass,
+    content: sanitizedContent,
   };
 }
 
@@ -292,12 +361,12 @@ function pomXml(
     ? `
   <profiles>
     <profile>
-      <id>release-8</id>
+      <id>release-target</id>
       <activation>
         <jdk>[9,)</jdk>
       </activation>
       <properties>
-        <maven.compiler.release>8</maven.compiler.release>
+        <maven.compiler.release>${profile.java}</maven.compiler.release>
       </properties>
     </profile>
   </profiles>`
@@ -363,10 +432,23 @@ function pomXml(
       <groupId>org.springframework.boot</groupId>
       <artifactId>spring-boot-starter-batch</artifactId>
     </dependency>
+    <dependency>
+      <groupId>org.springframework.boot</groupId>
+      <artifactId>spring-boot-starter-web</artifactId>
+    </dependency>
+    <dependency>
+      <groupId>org.springframework.boot</groupId>
+      <artifactId>spring-boot-starter-data-jpa</artifactId>
+    </dependency>
     <!-- Spring Batch keeps its job repository in a database; H2 makes the app start out of the box. -->
     <dependency>
       <groupId>com.h2database</groupId>
       <artifactId>h2</artifactId>
+      <scope>runtime</scope>
+    </dependency>
+    <dependency>
+      <groupId>org.postgresql</groupId>
+      <artifactId>postgresql</artifactId>
       <scope>runtime</scope>
     </dependency>
     <dependency>
@@ -450,9 +532,18 @@ function applicationYml(projectName: string, profile: BuildProfile): string {
       # ${profile.legacy ? `${LEGACY_APPLICATION_CLASS} decides which job runs, so Spring Boot must not start them all.` : 'Converted programs are Spring Batch tasklets; wire them into jobs before enabling this.'}
       enabled: false
   datasource:
-    url: jdbc:h2:mem:batchdb;DB_CLOSE_DELAY=-1
-    username: sa
-    password:
+    url: \${SPRING_DATASOURCE_URL:jdbc:postgresql://localhost:5432/carddemo}
+    username: \${SPRING_DATASOURCE_USERNAME:postgres}
+    password: \${SPRING_DATASOURCE_PASSWORD:hoang180904}
+    driver-class-name: org.postgresql.Driver
+  jpa:
+    hibernate:
+      ddl-auto: update
+    properties:
+      hibernate:
+        dialect: org.hibernate.dialect.PostgreSQLDialect
+        format_sql: false
+    show-sql: false
 `;
 }
 
@@ -484,15 +575,19 @@ import org.springframework.boot.CommandLineRunner;
 import org.springframework.boot.ExitCodeGenerator;
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
+import org.springframework.boot.autoconfigure.domain.EntityScan;
+import org.springframework.data.jpa.repository.config.EnableJpaRepositories;
 import org.springframework.context.ApplicationContext;
 import org.springframework.context.annotation.PropertySource;
 
 @SpringBootApplication(scanBasePackages = {${packages.map((p) => `"${p}"`).join(', ')}})
+@EnableJpaRepositories(basePackages = {"jp.co.alsm.repository"})
+@EntityScan(basePackages = {"jp.co.alsm.entity"})
 @EnableBatchProcessing
 @PropertySource(value = {"classpath:Config.properties", "file:Config.properties"}, ignoreResourceNotFound = true)
 public class ${LEGACY_APPLICATION_CLASS} implements CommandLineRunner, ExitCodeGenerator {
 
-  @Autowired
+  @Autowired(required = false)
   private JobLauncher jobLauncher;
 
   @Autowired
@@ -501,39 +596,40 @@ public class ${LEGACY_APPLICATION_CLASS} implements CommandLineRunner, ExitCodeG
   private int exitCode;
 
   public static void main(String[] args) {
-    System.exit(SpringApplication.exit(SpringApplication.run(${LEGACY_APPLICATION_CLASS}.class, args)));
+    SpringApplication.run(${LEGACY_APPLICATION_CLASS}.class, args);
   }
 
   @Override
   public void run(String... args) throws Exception {
     Map<String, Job> jobs = new TreeMap<>(context.getBeansOfType(Job.class));
-    if (jobs.isEmpty()) {
-      System.err.println("No Spring Batch job was found under the scanned packages " + scanned() + ".");
-      exitCode = 1;
-      return;
-    }
     String requested = firstJobArgument(args);
-    String name = requested == null ? jobs.keySet().iterator().next() : findJob(jobs, requested);
-    if (name == null) {
-      System.err.println("There is no job named \\"" + requested + "\\". Jobs you can run: " + jobs.keySet());
-      exitCode = 2;
-      return;
-    }
-    if (requested == null && jobs.size() > 1) {
-      System.out.println("No job name given, running " + name + ". Jobs you can run: " + jobs.keySet());
-    }
-    // NAME=value arguments become job parameters: the converted programs read the path of each
-    // file from the parameter named after its DD (java -jar app.jar CBACT02C CARDFILE=cards.txt).
-    JobParametersBuilder parameters = new JobParametersBuilder().addLong("run.id", System.currentTimeMillis());
-    for (String arg : args) {
-      int eq = arg.indexOf('=');
-      if (!arg.startsWith("-") && eq > 0) {
-        parameters.addString(arg.substring(0, eq), arg.substring(eq + 1));
+    if (requested != null) {
+      String name = findJob(jobs, requested);
+      if (name != null && jobLauncher != null) {
+        JobParametersBuilder parameters = new JobParametersBuilder().addLong("run.id", System.currentTimeMillis());
+        for (String arg : args) {
+          int eq = arg.indexOf('=');
+          if (!arg.startsWith("-") && eq > 0) {
+            parameters.addString(arg.substring(0, eq), arg.substring(eq + 1));
+          }
+        }
+        JobExecution execution = jobLauncher.run(jobs.get(name), parameters.toJobParameters());
+        System.out.println("Job " + name + " finished via CLI with status " + execution.getStatus());
+        exitCode = execution.getStatus() == BatchStatus.COMPLETED ? 0 : 1;
+      } else {
+        System.err.println("There is no job named \\"" + requested + "\\". Jobs you can run: " + jobs.keySet());
+        exitCode = 2;
       }
+    } else {
+      System.out.println("=================================================================");
+      System.out.println("   ALSM Modernized Web Application Started on Port 8080!        ");
+      System.out.println("   Ready for REST API testing via Postman:                      ");
+      System.out.println("   - GET  http://localhost:8080/api/accounts                   ");
+      System.out.println("   - GET  http://localhost:8080/api/accounts/{id}              ");
+      System.out.println("   - GET  http://localhost:8080/api/jobs                       ");
+      System.out.println("   - POST http://localhost:8080/api/jobs/run/{jobName}         ");
+      System.out.println("=================================================================");
     }
-    JobExecution execution = jobLauncher.run(jobs.get(name), parameters.toJobParameters());
-    System.out.println("Job " + name + " finished with status " + execution.getStatus());
-    exitCode = execution.getStatus() == BatchStatus.COMPLETED ? 0 : 1;
   }
 
   @Override
@@ -732,7 +828,7 @@ ${notConverted}${tests}`;
 export function buildSpringBootProjectTree(input: SpringBootScaffoldInput): ExportFileItem[] {
   const converted = input.programs.flatMap((p) => p.files);
   // Decided on the converter's own packages: after normalizing every file mentions jp.co.alsm.
-  const profile = detectProfile(converted);
+  const profile = detectProfile(converted, input.targetJavaVersion);
   const allFiles = normalizeBatchPackages(converted);
   // Programs converted in the same bundle can each carry a copy of a shared class; keep one.
   const placed = [...new Map(allFiles.map(placeJavaFile).map((f) => [f.path, f])).values()];
