@@ -1,4 +1,5 @@
 import { OAuth2Client } from 'google-auth-library';
+import { AuthTokens } from '../src/modules/auth/application/auth.service';
 import { LockUserService } from '../src/modules/admin/application/lock-user.service';
 import { admissionFixture, otherId, sessionId, userId } from './authentication-admission.fixture';
 
@@ -25,7 +26,7 @@ describe('account admission at every ordinary session boundary', () => {
         await expect(f.service.loginWithGoogle('synthetic-provider-proof')).rejects.toMatchObject({
           status: 401,
         });
-        await expect(f.service.refresh(credentials.refreshToken)).rejects.toMatchObject({
+        await expect(f.service.refresh((credentials as AuthTokens).refreshToken)).rejects.toMatchObject({
           status: 401,
         });
         await expect(
@@ -48,7 +49,7 @@ describe('account admission at every ordinary session boundary', () => {
     const login = await f.service.login(f.account.email, f.password);
     const old = f.rows[0].accessVersion;
     await expect(f.current.execute(userId, sessionId, old)).resolves.toBeUndefined();
-    const refreshed = await f.service.refresh(login.refreshToken);
+    const refreshed = await f.service.refresh((login as AuthTokens).refreshToken);
     expect(refreshed.accessToken).toEqual(expect.any(String));
     await expect(f.current.execute(userId, sessionId, old)).rejects.toMatchObject({ status: 401 });
     await expect(
@@ -167,7 +168,7 @@ describe('account admission at every ordinary session boundary', () => {
         if (order === 'after-rotation') f.account.isLocked = true;
         return won;
       });
-      await expect(f.service.refresh(credentials.refreshToken)).rejects.toMatchObject({
+      await expect(f.service.refresh((credentials as AuthTokens).refreshToken)).rejects.toMatchObject({
         status: 401,
       });
       expect(f.rows[0].revokedAt).toBeInstanceOf(Date);
@@ -237,7 +238,7 @@ describe('account admission at every ordinary session boundary', () => {
     if (kind === 'malformed-session') f.rows[0].id = 'invalid';
     if (kind === 'malformed-subject')
       jest.spyOn(f.jwt, 'verifyAsync').mockResolvedValue({ sub: {}, tid: f.rows[0].tokenId });
-    await expect(f.service.refresh(credentials.refreshToken)).rejects.toMatchObject({
+    await expect(f.service.refresh((credentials as AuthTokens).refreshToken)).rejects.toMatchObject({
       status: kind.endsWith('store') ? 503 : 401,
     });
   });

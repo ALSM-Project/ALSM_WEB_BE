@@ -64,6 +64,9 @@ export class CrmConversation {
   @Prop({ default: 0 })
   unreadCount!: number;
 
+  @Prop({ default: 0 })
+  customerUnreadCount!: number;
+
   @Prop({ type: MongoSchema.Types.ObjectId, ref: 'Project', index: true })
   projectId?: Types.ObjectId;
 

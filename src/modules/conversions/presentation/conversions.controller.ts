@@ -198,4 +198,21 @@ export class ConversionsController {
   ) {
     return this.conversions.retry(user.userId, organizationId, id);
   }
+
+  @Post('projects/:projectId/screens/:screenId/ai-remediate')
+  @ApiOperation({
+    summary: 'Apply AI syntax patch to a failed COBOL program and re-run conversion',
+    description: 'Patches known parser blockers in the source code using AI rules and starts a fresh conversion job.',
+  })
+  @ApiParam({ name: 'projectId', description: 'Project ID' })
+  @ApiParam({ name: 'screenId', description: 'Screen/Program ID' })
+  @ApiResponse({ status: 201, description: 'AI patch applied and conversion job queued' })
+  async aiRemediate(
+    @CurrentUser() user: AuthenticatedUser,
+    @Headers('x-organization-id') organizationId: string | undefined,
+    @Param('projectId') projectId: string,
+    @Param('screenId') screenId: string,
+  ) {
+    return this.conversions.aiRemediate(user.userId, organizationId, projectId, screenId);
+  }
 }

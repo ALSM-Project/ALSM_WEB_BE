@@ -1,5 +1,11 @@
 export type ExportOutputOption = 'scaffold' | 'standalone' | 'storybook';
-export type FrameworkTarget = 'react-19' | 'react-18';
+export type FrameworkTarget =
+  | 'react-19'
+  | 'react-18'
+  | 'java-17'
+  | 'java-21'
+  | 'java-11'
+  | 'java-8';
 export type StylingOption = 'tailwind' | 'css-modules';
 
 export interface ExportFileItem {

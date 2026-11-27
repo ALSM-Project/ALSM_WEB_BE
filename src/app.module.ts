@@ -1,5 +1,6 @@
 import { MeetingRequest, MeetingRequestSchema } from './modules/meetings/infrastructure/meeting-request.schema';
 import { MeetingRequestService } from './modules/meetings/application/meeting-request.service';
+import { CustomerMeetingsService } from './modules/meetings/application/customer-meetings.service';
 import { MeetingRequestController } from './modules/meetings/presentation/meeting-request.controller';
 import { TaxLookupController } from './modules/organizations/presentation/tax-lookup.controller';
 import { OrganizationMembersController } from './modules/organizations/presentation/organization-members.controller';
@@ -98,6 +99,7 @@ import { ActivateCrmLeadService } from './modules/crm/application/activate-crm-l
 import { ReviewDiscountService } from './modules/crm/application/review-discount.service';
 import { AdminModule } from './modules/admin/admin.module';
 import { BankAccountModule } from './modules/bank-accounts/bank-account.module';
+import { SupportEngagementModule } from './modules/support-engagement/support-engagement.module';
 import { WorkforceModule } from './modules/workforce/workforce.module';
 
 import { CurrentSessionGuard } from './shared/security/current-session.guard';
@@ -521,6 +523,7 @@ import { NotificationsService } from './modules/notifications/notifications.serv
     AdminModule,
     BankAccountModule,
     WorkforceModule,
+    SupportEngagementModule,
   ],
   controllers: [
     SalesController,
@@ -828,6 +831,7 @@ import { NotificationsService } from './modules/notifications/notifications.serv
     ListMeetingsService,
     ManageMeetingService,
     MeetingRequestService,
+    CustomerMeetingsService,
     OrganizationUsageService,
     TaxIdLookupAdapter,
     { provide: TAX_LOOKUP_PROVIDER, useClass: TaxIdLookupAdapter },

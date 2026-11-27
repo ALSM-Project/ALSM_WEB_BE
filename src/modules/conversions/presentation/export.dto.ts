@@ -21,8 +21,11 @@ export class ExportConfigurationDto {
   @IsEnum(['scaffold', 'standalone', 'storybook'])
   outputOption!: ExportOutputOption;
 
-  @ApiProperty({ example: 'react-19', enum: ['react-19', 'react-18'] })
-  @IsEnum(['react-19', 'react-18'])
+  @ApiProperty({
+    example: 'java-17',
+    enum: ['react-19', 'react-18', 'java-17', 'java-21', 'java-11', 'java-8'],
+  })
+  @IsEnum(['react-19', 'react-18', 'java-17', 'java-21', 'java-11', 'java-8'])
   frameworkTarget!: FrameworkTarget;
 
   @ApiProperty({ example: 'tailwind', enum: ['tailwind', 'css-modules'] })

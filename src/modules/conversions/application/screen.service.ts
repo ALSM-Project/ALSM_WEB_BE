@@ -1,6 +1,8 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model, Types } from 'mongoose';
+import * as fs from 'fs';
+import * as path from 'path';
 import { ScreenDocument, ScreenSourceType, ScreenStatus } from '../infrastructure/screen.schema';
 import { ConversionJob, ConversionJobDocument } from '../infrastructure/conversion-job.schema';
 
@@ -114,6 +116,85 @@ export class ScreenService {
     }
 
     return this.toResponseDto(screen);
+  }
+
+  async getScreenSource(screenId: string) {
+    let screen: ScreenDocument | null = null;
+    if (Types.ObjectId.isValid(screenId)) {
+      screen = await this.screenModel.findById(screenId).exec();
+    }
+    if (!screen) {
+      const clean = screenId.replace(/\.(bms|dspf|cob|cbl|cpy)$/i, '');
+      const nameRegex = new RegExp(`^${clean}(\\.(bms|dspf|cob|cbl|cpy))?$`, 'i');
+      screen = await this.screenModel
+        .findOne({
+          $or: [{ name: screenId }, { name: nameRegex }, { inputReference: screenId }],
+        })
+        .exec();
+    }
+    if (!screen) {
+      throw new NotFoundException({
+        code: 'SCREEN_NOT_FOUND',
+        message: `Screen with identifier ${screenId} was not found`,
+      });
+    }
+
+    let sourceContent = (screen as any).content || '';
+    if (!sourceContent) {
+      const storageRoot = path.resolve(process.env.STORAGE_ROOT || './storage');
+      if (screen.inputReference) {
+        const directPath = path.join(storageRoot, screen.inputReference, screen.name);
+        if (fs.existsSync(directPath)) {
+          sourceContent = fs.readFileSync(directPath, 'utf8');
+        }
+      }
+      if (!sourceContent && screen.projectId) {
+        const projDir = path.join(storageRoot, 'sources', screen.projectId);
+        if (fs.existsSync(projDir)) {
+          const findFile = (dir: string): string | null => {
+            const entries = fs.readdirSync(dir, { withFileTypes: true });
+            for (const entry of entries) {
+              const full = path.join(dir, entry.name);
+              if (entry.isDirectory()) {
+                const found = findFile(full);
+                if (found) return found;
+              } else if (entry.isFile() && entry.name.toLowerCase() === screen.name.toLowerCase()) {
+                return fs.readFileSync(full, 'utf8');
+              }
+            }
+            return null;
+          };
+          sourceContent = findFile(projDir) || '';
+        }
+      }
+      if (!sourceContent) {
+        const sourcesDir = path.join(storageRoot, 'sources');
+        if (fs.existsSync(sourcesDir)) {
+          const findFile = (dir: string): string | null => {
+            const entries = fs.readdirSync(dir, { withFileTypes: true });
+            for (const entry of entries) {
+              const full = path.join(dir, entry.name);
+              if (entry.isDirectory()) {
+                const found = findFile(full);
+                if (found) return found;
+              } else if (entry.isFile() && entry.name.toLowerCase() === screen.name.toLowerCase()) {
+                return fs.readFileSync(full, 'utf8');
+              }
+            }
+            return null;
+          };
+          sourceContent = findFile(sourcesDir) || '';
+        }
+      }
+    }
+
+    return {
+      screenId: screen._id.toString(),
+      name: screen.name,
+      sourceType: screen.sourceType,
+      content: sourceContent,
+      linesOfCode: sourceContent ? sourceContent.split('\n').length : 0,
+    };
   }
 
   async uploadConversionSources(projectId: string, files: UploadedFileItem[]) {

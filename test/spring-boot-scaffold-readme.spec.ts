@@ -93,7 +93,7 @@ describe('Java export README: how to run', () => {
     expect(readme).toContain('exits - with code 0 only when the job ended `COMPLETED`');
     expect(readme).toContain('Config.properties');
     expect(readme).toContain('jdbc:h2:mem:batchdb');
-    expect(readme).toContain('JDK 8 or newer (8, 11, 17 and 21 all work)');
+    expect(readme).toContain('JDK 17 or newer (8, 11, 17 and 21 all work)');
     expect(readme).not.toContain('does nothing');
   });
 });

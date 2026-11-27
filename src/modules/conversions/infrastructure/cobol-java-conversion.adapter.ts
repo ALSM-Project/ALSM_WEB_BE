@@ -16,6 +16,7 @@ import { findCopybookBlockers, normalizeCopyName } from '../domain/copybook-depe
 import { SCREEN_REPOSITORY, ScreenRepository } from '../../screens/domain/screen.types';
 import { runConversionTool } from './conversion-tool-runner.util';
 import { normalizeBundle } from './cics-source-normalizer';
+import { sanitizeJavaSource } from '../application/spring-boot-scaffold';
 
 interface ParsedToolError {
   fileName: string;
@@ -188,10 +189,14 @@ export class CobolJavaConversionAdapter {
       else await this.recordParseErrors(input, result.stdout);
 
       const files = await Promise.all(
-        generatedFiles.map(async (absolutePath) => ({
-          relativePath: path.relative(javaRoot, absolutePath).split(path.sep).join('/'),
-          content: await fs.promises.readFile(absolutePath),
-        })),
+        generatedFiles.map(async (absolutePath) => {
+          const raw = await fs.promises.readFile(absolutePath, 'utf8');
+          const sanitized = absolutePath.endsWith('.java') ? sanitizeJavaSource(raw) : raw;
+          return {
+            relativePath: path.relative(javaRoot, absolutePath).split(path.sep).join('/'),
+            content: Buffer.from(sanitized, 'utf8'),
+          };
+        }),
       );
       for (const reportFile of ['conversion_report.json', 'conversion_report.md']) {
         try {

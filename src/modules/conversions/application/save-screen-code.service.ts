@@ -60,13 +60,21 @@ export class SaveScreenCodeService {
     // 1. Exact match with input.filename or basename
     // 2. OR any .tsx / .jsx file that is NOT routes.tsx or router.tsx
     const targetIndex = files.findIndex((f) => {
-      const lower = f.relativePath.toLowerCase();
-      if (input.filename && (f.relativePath === input.filename || lower.endsWith(`/${input.filename.toLowerCase()}`))) {
-        return true;
+      const normF = f.relativePath.replace(/\\/g, '/').toLowerCase();
+      if (input.filename) {
+        const normTarget = input.filename.replace(/\\/g, '/').toLowerCase();
+        const baseTarget = normTarget.split('/').pop() || '';
+        const baseF = normF.split('/').pop() || '';
+        if (normF === normTarget || normF.endsWith('/' + normTarget) || normF.endsWith(normTarget)) {
+          return true;
+        }
+        if (baseTarget && baseF === baseTarget) {
+          return true;
+        }
       }
-      if (lower.endsWith('.json')) return false;
-      if (lower.endsWith('routes.tsx') || lower.endsWith('router.tsx')) return false;
-      return lower.endsWith('.tsx') || lower.endsWith('.jsx');
+      if (normF.endsWith('.json')) return false;
+      if (normF.endsWith('routes.tsx') || normF.endsWith('router.tsx')) return false;
+      return normF.endsWith('.tsx') || normF.endsWith('.jsx') || normF.endsWith('.java');
     });
 
     const updatedFiles = [...files];

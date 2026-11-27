@@ -3,6 +3,7 @@ import {
   Controller,
   Get,
   Headers,
+  Optional,
   Param,
   Patch,
   Post,
@@ -16,6 +17,7 @@ import { PermissionsGuard } from '../../../shared/security/permissions.guard';
 import { RequireAnyPermissions, RequirePermissions } from '../../../shared/security/require-permissions.decorator';
 import { CurrentUser } from '../../../shared/security/current-user.decorator';
 import { AuthenticatedUser } from '../../../shared/logging/request-id.middleware';
+import { EffectivePermissionsService } from '../../rbac/application/effective-permissions.service';
 import { CrmConversationService } from '../application/crm-conversation.service';
 import {
   CreateConversationDto,
@@ -33,11 +35,23 @@ import {
 @UseGuards(JwtAuthGuard, CurrentSessionGuard)
 @Controller('crm/conversations')
 export class CrmConversationController {
-  constructor(private readonly conversationService: CrmConversationService) {}
+  constructor(
+    private readonly conversationService: CrmConversationService,
+    @Optional() private readonly effectivePermissionsService?: EffectivePermissionsService,
+  ) {}
+
+  private async hasStaffAccess(user: AuthenticatedUser): Promise<boolean> {
+    if (user?.isPlatformAdmin) return true;
+    if (!this.effectivePermissionsService || !user?.userId) return false;
+    const perms = await this.effectivePermissionsService.getEffectivePermissions(user.userId);
+    return perms.some((p) =>
+      ['conversations.view', 'sales.leads.view', 'sales.leads.manage', 'organizations.impersonate', 'users.manage'].includes(p),
+    );
+  }
 
   @Get()
   @UseGuards(PermissionsGuard)
-  @RequireAnyPermissions('conversations.view', 'sales.leads.view')
+  @RequireAnyPermissions('conversations.view', 'sales.leads.view', 'organizations.impersonate')
   @ApiOperation({ summary: 'List CRM customer conversations with filters' })
   async listConversations(
     @CurrentUser() user: AuthenticatedUser,
@@ -110,12 +124,23 @@ export class CrmConversationController {
     @Param('id') id: string,
     @CurrentUser() user: AuthenticatedUser,
   ): Promise<CrmConversationItem> {
-    return this.conversationService.getConversationById(id, user?.email);
+    const isStaff = await this.hasStaffAccess(user);
+    return this.conversationService.getConversationById(id, user?.email, isStaff);
+  }
+
+  @Post(':id/read')
+  @ApiOperation({ summary: 'Mark conversation messages as read by customer' })
+  async markAsRead(
+    @Param('id') id: string,
+    @CurrentUser() user: AuthenticatedUser,
+  ): Promise<{ ok: boolean }> {
+    const isStaff = await this.hasStaffAccess(user);
+    return this.conversationService.markCustomerRead(id, user?.email, isStaff);
   }
 
   @Patch(':id/status')
   @UseGuards(PermissionsGuard)
-  @RequireAnyPermissions('conversations.create', 'sales.leads.manage')
+  @RequireAnyPermissions('conversations.create', 'sales.leads.manage', 'organizations.impersonate')
   @ApiOperation({ summary: 'Update conversation status' })
   async updateStatus(
     @Param('id') id: string,
@@ -130,7 +155,8 @@ export class CrmConversationController {
     @CurrentUser() user: AuthenticatedUser,
     @Param('id') id: string,
   ): Promise<CrmConversationMessageItem[]> {
-    return this.conversationService.listMessages(id, user?.email);
+    const isStaff = await this.hasStaffAccess(user);
+    return this.conversationService.listMessages(id, user?.email, isStaff);
   }
 
   @Post(':id/messages')
@@ -141,12 +167,14 @@ export class CrmConversationController {
     @Body() dto: PostMessageDto,
   ): Promise<CrmConversationMessageItem> {
     const userName = (user as any).fullName || user.email || 'User';
+    const isStaff = await this.hasStaffAccess(user);
     return this.conversationService.postMessage(
       user.userId,
       user.email,
       userName,
       id,
       dto,
+      isStaff,
     );
   }
 

@@ -14,6 +14,7 @@ import { MailService } from '../../../shared/mail/mail.service';
 import { GoogleCalendarService } from '../../../shared/google/google-calendar.service';
 import { OrganizationContextService } from '../../organizations/application/organization-context.service';
 import { RbacService } from '../../rbac/application/rbac.service';
+import { NotificationsService } from '../../notifications/notifications.service';
 
 // Google Meet code format: 3-4-3 lowercase letters (e.g. abc-defg-hij)
 const MEET_CODE_PART_CHARS = 'abcdefghijklmnopqrstuvwxyz';
@@ -41,6 +42,7 @@ export class CreateMeetingService {
     private readonly googleCalendar: GoogleCalendarService,
     private readonly organizationContext: OrganizationContextService,
     @Optional() private readonly rbac?: RbacService,
+    @Optional() private readonly notificationsService?: NotificationsService,
   ) {}
 
   async execute(
@@ -255,6 +257,23 @@ export class CreateMeetingService {
           ),
       ),
     );
+
+    if (this.notificationsService) {
+      void this.notificationsService
+        .createForEmails({
+          recipientEmails: attendeeEmails,
+          type: 'MEETING_SCHEDULED',
+          title: `Meeting Scheduled: ${meeting.title}`,
+          message: `A meeting has been scheduled for ${meeting.scheduledStartTime.toLocaleString()}.`,
+          eventKey: `meeting:scheduled:${meeting.id}`,
+          resourceType: 'MEETING',
+          resourceId: meeting.id,
+          link: '/workspace/contact',
+        })
+        .catch((err: unknown) =>
+          this.logger.warn(`Failed to create meeting notification: ${(err as Error).message}`),
+        );
+    }
 
     return meeting;
   }

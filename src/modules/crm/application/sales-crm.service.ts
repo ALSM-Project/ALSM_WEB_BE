@@ -66,6 +66,7 @@ export interface SendQuoteDto {
 }
 
 import { renderEnterpriseCrmEmailHtml } from './crm-email-template.helper';
+import { NotificationsService } from '../../notifications/notifications.service';
 
 @Injectable()
 export class SalesCrmService {
@@ -80,6 +81,7 @@ export class SalesCrmService {
     @Optional() @InjectModel(ConversionJob.name) private readonly conversionJobModel?: Model<ConversionJob>,
     @Optional() @Inject(EMAIL_PORT) private readonly email?: EmailPort,
     @Optional() @Inject(TEAM_REPOSITORY) private readonly teams?: TeamRepository,
+    @Optional() private readonly notificationsService?: NotificationsService,
   ) {}
 
   async listLeads(
@@ -624,6 +626,22 @@ export class SalesCrmService {
       resourceId: doc.id,
       metadata: { title, meetLink },
     });
+
+    if (this.notificationsService) {
+      const recipients = [doc.contactEmail, ...attendees].filter((e): e is string => Boolean(e));
+      void this.notificationsService
+        .createForEmails({
+          recipientEmails: recipients,
+          type: 'MEETING_SCHEDULED',
+          title: `Demo Scheduled: ${title}`,
+          message: `A demo meeting "${title}" has been scheduled for ${new Date(dto.scheduledAt).toLocaleString()}.`,
+          eventKey: `lead_demo:scheduled:${demo.id}`,
+          resourceType: 'LEAD_DEMO',
+          resourceId: demo.id,
+          link: '/workspace/contact',
+        })
+        .catch(() => undefined);
+    }
 
     return this.mapLead(doc);
   }

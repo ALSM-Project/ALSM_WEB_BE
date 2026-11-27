@@ -148,6 +148,7 @@ export interface CrmConversationItem {
   lastMessage?: string;
   lastMessageAt?: Date;
   unreadCount: number;
+  customerUnreadCount?: number;
   createdAt?: Date;
   updatedAt?: Date;
 }

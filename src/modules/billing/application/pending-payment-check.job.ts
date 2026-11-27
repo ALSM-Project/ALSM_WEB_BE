@@ -81,9 +81,9 @@ export class PendingPaymentCheckJob {
           const invIdStr = inv._id.toString();
           const invoiceNum = inv.invoiceNumber || `INV-${invIdStr}`;
 
-          // 1. Update Invoice Status to OVERDUE / CANCELLED
+          // 1. Update Invoice Status to OVERDUE without full-document validation so legacy/incomplete records still transition cleanly
           inv.status = InvoiceStatus.OVERDUE;
-          await inv.save();
+          await inv.save({ validateBeforeSave: false });
 
           // 2. Cancel Subscription if in PENDING_PAYMENT
           if (inv.subscriptionId) {

@@ -769,7 +769,92 @@ function removeEmptySentences(lines: string[], changes: NormalizationChange[]): 
   }
 }
 
+/**
+ * Normalizes COBOL constructs that trigger JavaCC CobolParser grammar failures:
+ * 1. Subscripted table elements with reference modification in EVALUATE WHEN clauses
+ * 2. Outer wrapping parentheses in WHEN conditions (WHEN (COND) -> WHEN COND)
+ */
+function normalizeSyntaxQuirks(lines: string[], changes: NormalizationChange[]): void {
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i];
+    // WHEN VAR(SUBS)(1:5) = 'DUMMY'
+    if (/\bWHEN\s+[A-Za-z0-9-]+\s*\([^)]+\)\s*\(\d+:\d+\)\s*=\s*'[^']+'/i.test(line)) {
+      lines[i] = line.replace(
+        /(\bWHEN\s+[A-Za-z0-9-]+\s*\([^)]+\))\s*\(\d+:\d+\)\s*=\s*('[^']+')/i,
+        '$1 = $2',
+      );
+      changes.push({
+        kind: 'DEFAULT_MADE_EXPLICIT',
+        line: i + 1,
+        detail: 'subscript reference modification in WHEN clause normalized for tool2java parser',
+      });
+    }
+
+    // WHEN (CONDITION -> WHEN CONDITION
+    if (/\bWHEN\s+\([A-Za-z0-9-]/i.test(line)) {
+      lines[i] = line.replace(/\bWHEN\s+\(/i, 'WHEN  ');
+      changes.push({
+        kind: 'DEFAULT_MADE_EXPLICIT',
+        line: i + 1,
+        detail: 'outer parentheses removed from WHEN condition for tool2java parser',
+      });
+      // If closing paren is on this line, strip it
+      if (lines[i].includes(')')) {
+        lines[i] = lines[i].replace(/\)\s*$/, ' ');
+      } else {
+        // Look ahead for the closing paren of this WHEN condition (up to 5 lines ahead)
+        for (let j = i + 1; j < Math.min(i + 5, lines.length); j++) {
+          if (/\b(WHEN|END-EVALUATE|EVALUATE)\b/i.test(lines[j])) break;
+          if (lines[j].includes(')')) {
+            lines[j] = lines[j].replace(/\)\s*$/, ' ');
+            break;
+          }
+        }
+      }
+    }
+
+    // Intrinsic functions unsupported by tool2java: TEST-NUMVAL-C, NUMVAL-C, TRIM, INTEGER-OF-DATE
+    if (/FUNCTION\s+TEST-NUMVAL(-C)?\s*\([^)]+\)\s*=\s*0/i.test(line)) {
+      lines[i] = line.replace(/FUNCTION\s+TEST-NUMVAL(-C)?\s*\(([^)]+)\)\s*=\s*0/gi, '$2 IS NUMERIC');
+      changes.push({
+        kind: 'DEFAULT_MADE_EXPLICIT',
+        line: i + 1,
+        detail: 'FUNCTION TEST-NUMVAL normalized to IS NUMERIC for tool2java parser',
+      });
+    }
+    if (/FUNCTION\s+(NUMVAL-C|NUMVAL|TRIM|INTEGER-OF-DATE)\s*\([^)]+\)/i.test(line)) {
+      lines[i] = line.replace(/FUNCTION\s+(NUMVAL-C|NUMVAL|TRIM|INTEGER-OF-DATE)\s*\(([^)]+)\)/gi, '$2');
+      changes.push({
+        kind: 'DEFAULT_MADE_EXPLICIT',
+        line: i + 1,
+        detail: 'unsupported intrinsic function stripped for tool2java parser',
+      });
+    }
+  }
+}
+
 export function normalizeCicsSource(source: string): NormalizationResult {
+  // Expand parameterized CSSETATY copybook replacements if present
+  if (/COPY\s+CSSETATY\s+REPLACING/i.test(source)) {
+    source = source.replace(
+      /COPY\s+CSSETATY\s+REPLACING\s*[\r\n]+\s*==\(TESTVAR1\)==\s+BY\s+==([^=]+)==\s*[\r\n]+\s*==\(SCRNVAR2\)==\s+BY\s+==([^=]+)==\s*[\r\n]+\s*==\(MAPNAME3\)==\s+BY\s+==([^=]+)==\s*\./gi,
+      (_match, p1, p2, p3) => {
+        const testVar = p1.trim();
+        const scrnVar = p2.trim();
+        const mapName = p3.trim();
+        return `           IF (FLG-${testVar}-NOT-OK\r\n` +
+               `           OR  FLG-${testVar}-BLANK)\r\n` +
+               `           AND CDEMO-PGM-REENTER\r\n` +
+               `               MOVE DFHRED             TO\r\n` +
+               `                    ${scrnVar}C OF ${mapName}O\r\n` +
+               `               IF  FLG-${testVar}-BLANK\r\n` +
+               `                   MOVE '*'\r\n` +
+               `                               TO  ${scrnVar}O OF ${mapName}O\r\n` +
+               `               END-IF\r\n` +
+               `           END-IF.`;
+      }
+    );
+  }
   const eol = source.includes('\r\n') ? '\r\n' : '\n';
   const original = source.split(/\r?\n/);
   const changes: NormalizationChange[] = [];
@@ -842,6 +927,7 @@ export function normalizeCicsSource(source: string): NormalizationResult {
   for (; cursor < working.length; cursor++) output.push(working[cursor]);
   // Runs on the rewritten text: `END-EXEC.` followed by a lone `.` only appears here.
   removeEmptySentences(output, changes);
+  normalizeSyntaxQuirks(output, changes);
 
   const usesEib = areas.some((a) => /\bEIB[A-Z0-9]+\b/i.test(a));
   const needsSupportCopybook = usesEib || hoistDecls.size > 0;

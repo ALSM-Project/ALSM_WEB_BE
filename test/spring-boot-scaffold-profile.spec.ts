@@ -46,12 +46,12 @@ describe('Spring Boot scaffold build profile', () => {
     programs: [{ name: 'MODEL01', files: [{ relativePath: 'cobolprogramclasses/model01/Model01Job.java', content: job }, model] }],
   });
 
-  it('builds code that uses Spring Batch 4 and the jp.co.alsm runtime on Spring Boot 2.7 for Java 8 to 21', () => {
+  it('builds code that uses Spring Batch 4 and the jp.co.alsm runtime on Spring Boot 2.7 for Java 17', () => {
     const pom = find(legacy, 'pom.xml')?.content ?? '';
     expect(pom).toContain('<version>2.7.18</version>');
-    expect(pom).toContain('<java.version>1.8</java.version>');
-    // Compiled against the Java 8 API on any newer JDK, so the jar also runs on Java 8.
-    expect(pom).toContain('<maven.compiler.release>8</maven.compiler.release>');
+    expect(pom).toContain('<java.version>17</java.version>');
+    // Compiled against the target Java release on any newer JDK.
+    expect(pom).toContain('<maven.compiler.release>17</maven.compiler.release>');
     expect(pom).toContain('<lombok.version>1.18.38</lombok.version>');
     // JDK 23+ only runs annotation processors it is told about.
     expect(pom).toMatch(/<annotationProcessorPaths>[\s\S]*<artifactId>lombok<\/artifactId>/);
@@ -59,7 +59,7 @@ describe('Spring Boot scaffold build profile', () => {
     expect(pom).not.toContain('<groupId>C2J</groupId>');
     expect(pom).toContain('spring-boot-starter-data-jpa');
     expect(find(legacy, 'application.yml')?.content).toMatch(/^ {4}jdbc:\n {6}initialize-schema: always/m);
-    expect(find(legacy, 'README.md')?.content).toContain('Spring Boot 2.7 (Java 8 to 21)');
+    expect(find(legacy, 'README.md')?.content).toContain('Spring Boot 2.7 (Java 17)');
     // One executable jar with a predictable name.
     expect(pom).toContain('<finalName>acme</finalName>');
     expect(pom).toContain('spring-boot-maven-plugin');
@@ -76,15 +76,14 @@ describe('Spring Boot scaffold build profile', () => {
     expect(find(legacy, 'ModernizedApplication.java')).toBeUndefined();
   });
 
-  it('runs the named job, or the first job when none is named, and lists the jobs for a wrong name', () => {
+  it('runs the named job via CLI, lists the jobs for a wrong name, or starts the web app when no job is named', () => {
     const app = find(legacy, 'BatchApplication.java')?.content ?? '';
     expect(app).toContain('@EnableBatchProcessing');
     expect(app).toContain('implements CommandLineRunner, ExitCodeGenerator');
     expect(app).toContain('context.getBeansOfType(Job.class)');
-    expect(app).toContain('jobs.keySet().iterator().next()');
     expect(app).toContain('Jobs you can run: " + jobs.keySet()');
     expect(app).toContain('equalsIgnoreCase(requested)');
-    expect(app).toContain('System.exit(SpringApplication.exit(');
+    expect(app).toContain('SpringApplication.run(BatchApplication.class, args)');
   });
 
   it('writes Config.properties at the project root, packs it into the jar and lets a local copy override it', () => {
@@ -131,7 +130,7 @@ describe('Spring Boot scaffold build profile', () => {
     const pom = find(tree, 'pom.xml')?.content ?? '';
     expect(pom).toContain('<version>3.3.5</version>');
     expect(pom).toContain('<java.version>21</java.version>');
-    expect(pom).not.toContain('spring-boot-starter-data-jpa');
+    expect(pom).toContain('spring-boot-starter-data-jpa');
     expect(find(tree, 'application.yml')?.content).toMatch(/^ {4}jdbc:/m);
     expect(find(tree, 'ModernizedApplication.java')?.content).not.toContain('@EnableBatchProcessing');
     expect(find(tree, 'BaseJobExecutionListener.java')).toBeUndefined();

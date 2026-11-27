@@ -2,24 +2,27 @@ import { Body, Controller, Delete, Get, Param, Patch, Post, Query, UseGuards } f
 import { ApiBearerAuth, ApiOperation, ApiParam, ApiQuery, ApiResponse, ApiTags } from '@nestjs/swagger';
 import { CurrentUser } from '../../../shared/security/current-user.decorator';
 import { JwtAuthGuard } from '../../../shared/security/jwt-auth.guard';
+import { CurrentSessionGuard } from '../../../shared/security/current-session.guard';
 import { PermissionsGuard } from '../../../shared/security/permissions.guard';
 import { RequirePermissions } from '../../../shared/security/require-permissions.decorator';
 import { AuthenticatedUser } from '../../../shared/logging/request-id.middleware';
 import { CreateMeetingService } from '../application/create-meeting.service';
 import { ListMeetingsService } from '../application/list-meetings.service';
 import { ManageMeetingService } from '../application/manage-meeting.service';
+import { CustomerMeetingsService } from '../application/customer-meetings.service';
 import { CreateMeetingDto, ListMeetingsQueryDto, UpdateMeetingDto, UpdateMeetingStatusDto } from './meeting.dto';
 import { MeetingStatus } from '../domain/meeting.types';
 
 @ApiTags('Meetings (UC-43)')
 @ApiBearerAuth()
-@UseGuards(JwtAuthGuard, PermissionsGuard)
+@UseGuards(JwtAuthGuard, CurrentSessionGuard, PermissionsGuard)
 @Controller('meetings')
 export class MeetingController {
   constructor(
     private readonly createMeetingService: CreateMeetingService,
     private readonly listMeetingsService: ListMeetingsService,
     private readonly manageMeetingService: ManageMeetingService,
+    private readonly customerMeetingsService: CustomerMeetingsService,
   ) {}
 
   @Post()
@@ -62,6 +65,29 @@ export class MeetingController {
       status: query.status as MeetingStatus | undefined,
       page: query.page ? Number(query.page) : undefined,
       limit: query.limit ? Number(query.limit) : undefined,
+    });
+  }
+
+  @Get('my')
+  @ApiOperation({ summary: 'List meetings assigned to the authenticated customer or their organization' })
+  async listMyMeetings(@CurrentUser() user: AuthenticatedUser) {
+    return this.customerMeetingsService.listForCustomer({
+      userId: user.userId,
+      email: user.email,
+      organizationId: (user as any).organizationId,
+    });
+  }
+
+  @Get('my/:id')
+  @ApiOperation({ summary: 'Get details of a customer meeting by ID' })
+  async getMyMeetingById(
+    @Param('id') id: string,
+    @CurrentUser() user: AuthenticatedUser,
+  ) {
+    return this.customerMeetingsService.getForCustomerById(id, {
+      userId: user.userId,
+      email: user.email,
+      organizationId: (user as any).organizationId,
     });
   }
 

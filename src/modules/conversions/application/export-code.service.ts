@@ -175,6 +175,7 @@ export class ExportCodeService {
     // (pom.xml, application.yml, the Spring Boot application class) around the real Java.
     // A mix with React screens keeps the plain layout below, since one bundle cannot be both.
     if (config.outputOption === 'scaffold' && javaScreens.length > 0 && reactScreens.length === 0) {
+      const targetJavaVersion = config.frameworkTarget === 'java-21' ? '21' : '17';
       return buildSpringBootProjectTree({
         projectName,
         programs: javaScreens.map((s) => ({ name: s.screenId, files: s.files })),
@@ -184,6 +185,7 @@ export class ExportCodeService {
         })),
         includeUnitTests: config.includeUnitTests,
         includeDocumentation: config.includeDocumentation,
+        targetJavaVersion,
       });
     }
 

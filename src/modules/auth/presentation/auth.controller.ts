@@ -20,7 +20,7 @@ import {
   ApiTags,
   ApiUnauthorizedResponse,
 } from '@nestjs/swagger';
-import { AuthService, AuthTokens, RegisterResult } from '../application/auth.service';
+import { AuthService, AuthTokens, LoginResult, RegisterResult } from '../application/auth.service';
 import { ConfirmMfaSetupService } from '../application/confirm-mfa-setup.service';
 import { StartMfaSetupService } from '../application/start-mfa-setup.service';
 import { ForgotPasswordService } from '../application/forgot-password.service';
@@ -43,6 +43,7 @@ import {
   ActiveSessionResponseDto,
   SessionIdParamDto,
   VerifyEmailDto,
+  VerifyMfaLoginDto,
 } from './auth.dto';
 import { MfaPresenter } from './mfa.presenter';
 import { CurrentUser } from '../../../shared/security/current-user.decorator';
@@ -104,8 +105,18 @@ export class AuthController {
   async login(
     @Body() dto: LoginDto,
     @Headers('user-agent') userAgent?: string,
-  ): Promise<AuthTokens> {
+  ): Promise<LoginResult> {
     return this.auth.login(dto.email, dto.password, userAgent);
+  }
+
+  @HttpCode(HttpStatus.OK)
+  @Post('2fa/login')
+  @Header('Cache-Control', 'no-store')
+  async verifyMfaLogin(
+    @Body() dto: VerifyMfaLoginDto,
+    @Headers('user-agent') userAgent?: string,
+  ): Promise<AuthTokens> {
+    return this.auth.verifyMfaLogin(dto.mfaToken, dto.code, userAgent);
   }
 
   @HttpCode(HttpStatus.OK)
@@ -113,7 +124,7 @@ export class AuthController {
   async google(
     @Body() dto: GoogleLoginDto,
     @Headers('user-agent') userAgent?: string,
-  ): Promise<AuthTokens> {
+  ): Promise<LoginResult> {
     return this.auth.loginWithGoogle(dto.idToken, userAgent);
   }
 
