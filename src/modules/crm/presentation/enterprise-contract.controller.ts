@@ -291,15 +291,21 @@ export class EnterpriseContractController {
   }
 
   @Get(':id/pdf')
+  @UseGuards(JwtAuthGuard)
   @ApiOperation({ summary: 'Download or view official enterprise contract document in court-admissible PDF format' })
   async downloadPdf(
+    @CurrentUser() user: AuthenticatedUser,
     @Param('id') id: string,
     @Res() res: Response,
     @Query('format') format?: string,
     @Query('locale') locale?: 'vi' | 'en' | 'vi-en',
     @Query('download') download?: string,
   ) {
-    const contract = await this.contractService.getContractDetail(id);
+    const contract = await this.contractService.getContractDetail(id, {
+      userId: user?.userId,
+      email: user?.email,
+      isPlatformAdmin: user?.isPlatformAdmin,
+    });
     if (!contract) {
       return res.status(404).send('Contract not found.');
     }

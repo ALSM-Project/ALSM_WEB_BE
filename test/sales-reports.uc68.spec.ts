@@ -21,7 +21,9 @@ describe('UC-68 sales reports', () => {
     await service.getSalesReports(organizationId, '30D');
 
     const [filter] = leadModel.find.mock.calls[0];
-    expect(String(filter.organizationId)).toBe(organizationId);
+    expect(filter.$or).toEqual(
+      expect.arrayContaining([expect.objectContaining({ organizationId: new Types.ObjectId(organizationId) })]),
+    );
     expect(filter.createdAt.$gte).toBeInstanceOf(Date);
     expect(filter.createdAt.$gte.getTime()).toBeGreaterThan(Date.now() - 31 * 24 * 60 * 60 * 1000);
   });
@@ -39,7 +41,9 @@ describe('UC-68 sales reports', () => {
     await service.exportSalesReportsCsv(organizationId, 'YTD');
 
     const [filter] = leadModel.find.mock.calls[0];
-    expect(String(filter.organizationId)).toBe(organizationId);
+    expect(filter.$or).toEqual(
+      expect.arrayContaining([expect.objectContaining({ organizationId: new Types.ObjectId(organizationId) })]),
+    );
     expect(filter.createdAt.$gte).toEqual(new Date(Date.UTC(new Date().getUTCFullYear(), 0, 1)));
     expect(sort).toHaveBeenCalledWith({ createdAt: -1 });
   });
