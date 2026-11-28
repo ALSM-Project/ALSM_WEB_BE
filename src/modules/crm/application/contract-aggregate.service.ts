@@ -342,22 +342,42 @@ export class ContractAggregateService {
         resourceId: updated.contract.id,
         link: approvedForCustomer ? '/contracts' : `/crm/leads/${lead.id}`,
       });
-      const intendedRecipientIds = input.action === 'APPROVE' && updated.contract.customerUserId
-        ? [updated.contract.createdByUserId, updated.contract.customerUserId]
-        : [updated.contract.createdByUserId];
-      const recipients = await this.getContractEmailRecipients(intendedRecipientIds);
+      const staffRecipients = await this.getContractEmailRecipients([updated.contract.createdByUserId]);
+      const customerRecipients = input.action === 'APPROVE' && updated.contract.customerUserId
+        ? await this.getContractEmailRecipients([updated.contract.customerUserId])
+        : [];
+      const reviewTitle = input.action === 'APPROVE'
+        ? 'Hợp đồng đã được duyệt'
+        : input.action === 'RETURN'
+          ? 'Hợp đồng cần chỉnh sửa'
+          : 'Hợp đồng bị từ chối';
+      const reviewMessage = input.action === 'APPROVE'
+        ? `Hợp đồng ${updated.contract.contractNumber} đã được ALSM duyệt nội bộ. Bạn có thể đăng nhập ALSM để xem bản hợp đồng.`
+        : `Hợp đồng ${updated.contract.contractNumber} ${input.action === 'RETURN' ? 'được yêu cầu chỉnh sửa' : 'bị từ chối'} trong quy trình duyệt nội bộ. Đăng nhập ALSM để xem thông tin.`;
       queuedRecipients = await this.queueContractNoticeEmails(emailOutbox, {
-        recipients,
+        recipients: staffRecipients,
         eventKey: `contract-review-result:${updated.contract.id}:${updated.contract.revision}`,
         contractId: updated.contract.id,
         organizationId,
         actorUserId: input.actor.userId,
-        title: input.action === 'APPROVE' ? 'Hợp đồng đã được duyệt' : input.action === 'RETURN' ? 'Hợp đồng cần chỉnh sửa' : 'Hợp đồng bị từ chối',
-        message: input.action === 'APPROVE'
-          ? `Hợp đồng ${updated.contract.contractNumber} đã được ALSM duyệt nội bộ. Bạn có thể đăng nhập ALSM để xem bản hợp đồng.`
-          : `Hợp đồng ${updated.contract.contractNumber} ${input.action === 'RETURN' ? 'được yêu cầu chỉnh sửa' : 'bị từ chối'} trong quy trình duyệt nội bộ. Đăng nhập ALSM để xem thông tin.`,
-        linkPath: input.action === 'APPROVE' ? '/contracts' : `/crm/leads/${lead.id}`,
+        title: reviewTitle,
+        message: reviewMessage,
+        linkPath: `/crm/leads/${lead.id}`,
+        audience: 'STAFF',
       });
+      if (customerRecipients.length > 0) {
+        queuedRecipients += await this.queueContractNoticeEmails(emailOutbox, {
+          recipients: customerRecipients,
+          eventKey: `contract-review-result:${updated.contract.id}:${updated.contract.revision}`,
+          contractId: updated.contract.id,
+          organizationId,
+          actorUserId: input.actor.userId,
+          title: reviewTitle,
+          message: reviewMessage,
+          linkPath: '/contracts',
+          audience: 'CUSTOMER',
+        });
+      }
       return updated;
     }, `contract:${input.contractId}`);
     const emailDelivery = this.queuedEmailSummary(queuedRecipients);
@@ -927,8 +947,14 @@ export class ContractAggregateService {
         resourceId: completed.contract.id,
         link: `/crm/leads/${completed.contract.leadId}`,
       });
+      const customerEmailRecipients = emailRecipients.filter(
+        (recipient) => recipient.userId === completed.contract.customerUserId,
+      );
+      const staffEmailRecipients = emailRecipients.filter(
+        (recipient) => recipient.userId !== completed.contract.customerUserId,
+      );
       await this.queueContractNoticeEmails(emailOutbox, {
-        recipients: emailRecipients,
+        recipients: customerEmailRecipients,
         eventKey,
         contractId: completed.contract.id,
         organizationId: completed.contract.organizationId,
@@ -936,6 +962,19 @@ export class ContractAggregateService {
         title: 'Hợp đồng đã ký hoàn tất',
         message: `Hợp đồng ${completed.contract.contractNumber} đã được nhà cung cấp ký xác nhận và lưu PDF cùng hồ sơ bằng chứng trong ALSM.`,
         linkPath: '/contracts',
+        audience: 'CUSTOMER',
+        ...(demoCompletion ? { title: 'Demo signing flow completed', message: 'The simulation and demo evidence archive completed. This is not a legally valid electronic signature.' } : {}),
+      });
+      await this.queueContractNoticeEmails(emailOutbox, {
+        recipients: staffEmailRecipients,
+        eventKey,
+        contractId: completed.contract.id,
+        organizationId: completed.contract.organizationId,
+        actorUserId: completed.contract.createdByUserId,
+        title: 'Hợp đồng đã ký hoàn tất',
+        message: `Hợp đồng ${completed.contract.contractNumber} đã được nhà cung cấp ký xác nhận và lưu PDF cùng hồ sơ bằng chứng trong ALSM.`,
+        linkPath: `/crm/leads/${completed.contract.leadId}`,
+        audience: 'STAFF',
         ...(demoCompletion ? { title: 'Demo signing flow completed', message: 'The simulation and demo evidence archive completed. This is not a legally valid electronic signature.' } : {}),
       });
       return completed;
@@ -1257,10 +1296,11 @@ export class ContractAggregateService {
     title: string;
     message: string;
     linkPath: string;
+    audience?: 'STAFF' | 'CUSTOMER';
     },
   ): Promise<number> {
     if (input.recipients.length === 0) return 0;
-    const url = this.getContractPortalUrl(input.linkPath);
+    const url = this.getContractPortalUrl(input.linkPath, input.audience);
     const now = new Date();
     for (const recipient of input.recipients) {
       await outbox.enqueue({
@@ -1286,9 +1326,15 @@ export class ContractAggregateService {
     };
   }
 
-  private getContractPortalUrl(path: string): string | undefined {
-    const configured = this.config.get<string>('CONTRACT_PORTAL_URL')?.trim()
-      || this.config.get<string>('APP_BASE_URL')?.trim();
+  private getContractPortalUrl(path: string, audience?: 'STAFF' | 'CUSTOMER'): string | undefined {
+    const isStaffTarget = audience === 'STAFF' || (!audience && path.startsWith('/crm/'));
+    const configured = isStaffTarget
+      ? (this.config.get<string>('STAFF_PORTAL_URL')?.trim()
+        || this.config.get<string>('CONTRACT_PORTAL_URL')?.trim()
+        || this.config.get<string>('APP_BASE_URL')?.trim())
+      : (this.config.get<string>('CONTRACT_PORTAL_URL')?.trim()
+        || this.config.get<string>('PARTNER_PORTAL_URL')?.trim()
+        || this.config.get<string>('APP_BASE_URL')?.trim());
     if (!configured) return undefined;
     try {
       const base = new URL(configured);

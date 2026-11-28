@@ -752,19 +752,32 @@ export class SalesCrmService {
     return 0;
   }
 
-  async getSalesReports(organizationId?: string, period: SalesReportPeriod = 'ALL') {
+  private buildSalesReportFilter(
+    organizationId?: string,
+    period: SalesReportPeriod = 'ALL',
+  ): FilterQuery<LeadDocument> {
     const filter: FilterQuery<LeadDocument> = {};
     if (organizationId) {
       if (!Types.ObjectId.isValid(organizationId)) {
         throw new BadRequestException({ code: 'INVALID_ORGANIZATION_ID', message: 'The organization ID is invalid.' });
       }
-      filter.organizationId = new Types.ObjectId(organizationId);
+      filter.$or = [
+        { organizationId: new Types.ObjectId(organizationId) },
+        { source: 'CONVERSATION' },
+        { sourceReference: { $regex: '^conv_' } },
+      ];
     }
     const start = this.salesReportStart(period);
     if (start) filter.createdAt = { $gte: start };
+    return filter;
+  }
+
+  async getSalesReports(organizationId?: string, period: SalesReportPeriod = 'ALL') {
+    const filter = this.buildSalesReportFilter(organizationId, period);
     const leads = await this.leadModel.find(filter).exec();
     const totalLeads = leads.length;
-    const wonLeads = leads.filter((l) => l.stage === 'WON').length;
+    const wonLeadRecords = leads.filter((l) => l.stage === 'WON');
+    const wonLeads = wonLeadRecords.length;
     const conversionRate = totalLeads > 0 ? Math.round((wonLeads / totalLeads) * 100) : 0;
 
     const pipelineBreakdown = {
@@ -786,6 +799,37 @@ export class SalesCrmService {
     const totalRevenue = leads.reduce((sum, lead) => sum + this.computeLeadContractRevenue(lead), 0);
     const avgDealSize = wonLeads > 0 ? Math.round(totalRevenue / wonLeads) : 0;
 
+    const monthlyMap = new Map<string, { revenue: number; dealsCount: number }>();
+    for (const lead of wonLeadRecords) {
+      const dateValue = (lead as any).updatedAt || lead.createdAt || new Date();
+      const d = new Date(dateValue);
+      const monthKey = `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, '0')}`;
+      const existing = monthlyMap.get(monthKey) ?? { revenue: 0, dealsCount: 0 };
+      existing.revenue += this.computeLeadContractRevenue(lead);
+      existing.dealsCount += 1;
+      monthlyMap.set(monthKey, existing);
+    }
+    const revenueOverTime = Array.from(monthlyMap.entries())
+      .sort(([a], [b]) => a.localeCompare(b))
+      .map(([periodKey, stats]) => ({
+        period: periodKey,
+        revenue: stats.revenue,
+        dealsCount: stats.dealsCount,
+      }));
+
+    const recentWonDeals = wonLeadRecords
+      .slice()
+      .sort((a, b) => new Date((b as any).updatedAt || b.createdAt || 0).getTime() - new Date((a as any).updatedAt || a.createdAt || 0).getTime())
+      .slice(0, 5)
+      .map((lead) => ({
+        id: String((lead as any)._id ?? lead.id ?? ''),
+        company: lead.company || 'Enterprise Client',
+        repName: lead.assignedToName || 'Sales Team',
+        dealValue: this.computeLeadContractRevenue(lead),
+        convertedAt: new Date((lead as any).updatedAt || lead.createdAt || Date.now()).toISOString(),
+        region: 'Global',
+      }));
+
     return {
       totalLeads,
       wonLeads,
@@ -798,6 +842,8 @@ export class SalesCrmService {
       pipelineBreakdown,
       sourceDistribution: leadSources,
       leadSources,
+      revenueOverTime,
+      recentWonDeals,
       organizationId,
       period,
       lastUpdated: new Date().toISOString(),
@@ -805,15 +851,7 @@ export class SalesCrmService {
   }
 
   async exportSalesReportsCsv(organizationId?: string, period: SalesReportPeriod = 'ALL') {
-    const filter: FilterQuery<LeadDocument> = {};
-    if (organizationId) {
-      if (!Types.ObjectId.isValid(organizationId)) {
-        throw new BadRequestException({ code: 'INVALID_ORGANIZATION_ID', message: 'The organization ID is invalid.' });
-      }
-      filter.organizationId = new Types.ObjectId(organizationId);
-    }
-    const start = this.salesReportStart(period);
-    if (start) filter.createdAt = { $gte: start };
+    const filter = this.buildSalesReportFilter(organizationId, period);
     const leads = await this.leadModel.find(filter).sort({ createdAt: -1 }).exec();
     const headers = 'ID,Company,Contact,Email,Phone,Source,Stage,Score,LastContactAt,Created\n';
     const rows = leads.map((l) => {

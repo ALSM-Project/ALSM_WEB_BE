@@ -75,6 +75,10 @@ export const environmentValidationSchema = Joi.object({
     .uri({ scheme: ['http', 'https'] })
     .allow('')
     .default(''),
+  STAFF_PORTAL_URL: Joi.string()
+    .uri({ scheme: ['http', 'https'] })
+    .allow('')
+    .default(''),
   VNPT_ECONTRACT_ENVIRONMENT: Joi.when('NODE_ENV', {
     is: 'production',
     then: Joi.string().valid('DISABLED', 'SANDBOX', 'PRODUCTION').default('DISABLED'),

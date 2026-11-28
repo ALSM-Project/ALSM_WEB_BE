@@ -74,7 +74,7 @@ export class PartnerBundleService {
     projectId: string,
     config: Omit<PartnerExportConfiguration, 'projectId'>,
   ): Promise<BuiltPartnerBundle> {
-    const organization = await this.organizationContext.resolve(userId, organizationHeader);
+    const organization = await this.organizationContext.resolve(userId, organizationHeader, projectId);
     const project = await this.projects.getForOrganization(projectId, organization.id);
     const isJava = project.conversionType === ConversionType.COBOL_TO_JAVA;
     const projectName = config.projectName?.trim() || project.name;
